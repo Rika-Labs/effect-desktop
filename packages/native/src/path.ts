@@ -3,24 +3,16 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
-  RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
-import { Context, Effect, Layer } from "effect"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import { CanonicalPath } from "./contracts/path.js"
 
 export type PathError = HostProtocolError
@@ -84,14 +76,16 @@ export interface PathServiceApi {
   readonly downloads: () => Effect.Effect<string, PathError, never>
 }
 
-export class Path extends Context.Service<Path, PathServiceApi>()("@effect-desktop/native/Path") {}
+export class Path extends Context.Service<Path, PathServiceApi>()("@effect-desktop/native/Path") {
+  static readonly layer = Layer.effect(Path)(
+    Effect.gen(function* () {
+      const client = yield* PathClient
+      return Path.of(makePathService(client))
+    })
+  )
+}
 
-export const PathLive = Layer.effect(Path)(
-  Effect.gen(function* () {
-    const client = yield* PathClient
-    return makePathService(client)
-  })
-)
+export const PathLive = Path.layer
 
 export const makePathClientLayer = (client: PathClientApi): Layer.Layer<PathClient> =>
   Layer.succeed(PathClient)(client)
@@ -102,12 +96,11 @@ export const makePathServiceLayer = (client: PathClientApi): Layer.Layer<Path> =
 export const makePathBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<PathClient> =>
-  Layer.provide(PathSurface.clientLayer, makePathBridgeProtocolLayer(exchange, options))
+): Layer.Layer<PathClient> => PathSurface.bridgeClientLayer(exchange, options)
 
 export type PathRpc = RpcGroup.Rpcs<typeof PathRpcGroup>
 
-export type PathRpcHandlers = Parameters<typeof PathRpcGroup.toLayer>[0]
+export type PathRpcHandlers = RpcGroup.HandlersFrom<PathRpc>
 
 export const PathHandlersLive = PathRpcGroup.toLayer({
   "Path.appData": () =>
@@ -148,8 +141,9 @@ export const PathHandlersLive = PathRpcGroup.toLayer({
     })
 })
 
-export const PathSurface = DesktopRpc.surface("Path", PathRpcGroup, {
+export const PathSurface = NativeSurface.make("Path", PathRpcGroup, {
   service: PathClient,
+  capabilities: PathMethodNames,
   handlers: PathHandlersLive,
   client: (client) => pathClientFromRpcClient(client)
 })
@@ -157,8 +151,7 @@ export const PathSurface = DesktopRpc.surface("Path", PathRpcGroup, {
 export const makeHostPathRpcRuntime = (
   handlers: PathRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(PathRpcGroup, PathRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => PathSurface.hostRuntime(handlers, runtimeOptions)
 
 const makePathService = (client: PathClientApi): PathServiceApi => {
   const toStringPath = (effect: Effect.Effect<CanonicalPath, PathError, never>) =>
@@ -189,49 +182,17 @@ const pathClientFromRpcClient = (client: DesktopRpcClient<PathRpc>): PathClientA
   return Object.freeze(pathClient)
 }
 
-const makePathBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
-export const makeUnsupportedPathClient = (): PathClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, PathError, never> =>
-    Effect.fail(unsupportedError(method))
-
-  const client: PathClientApi = {
-    appData: () => unsupportedEffect<CanonicalPath>("Path.appData"),
-    cache: () => unsupportedEffect<CanonicalPath>("Path.cache"),
-    logs: () => unsupportedEffect<CanonicalPath>("Path.logs"),
-    temp: () => unsupportedEffect<CanonicalPath>("Path.temp"),
-    home: () => unsupportedEffect<CanonicalPath>("Path.home"),
-    downloads: () => unsupportedEffect<CanonicalPath>("Path.downloads")
-  }
-
-  return Object.freeze(client)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Path platform adapter is not implemented yet",
-    message: `unsupported Path method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
-
 function pathRpc<const Method extends (typeof PathMethodNames)[number]>(
   method: Method,
   permission: RpcCapabilityMetadata
 ) {
-  return Rpc.make(`Path.${method}` as const, {
+  return NativeSurface.rpc("Path", method, {
+    payload: Schema.Void,
     success: CanonicalPath,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(permission))
+    authority: NativeSurface.authority.custom(permission),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runPathRpc = <A, E>(

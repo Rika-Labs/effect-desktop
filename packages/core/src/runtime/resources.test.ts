@@ -3,17 +3,17 @@ import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "ef
 
 import {
   generateUuidV7,
+  makeResourceId,
   makeResourceRegistry,
   ResourceInvalidArgumentError,
   ResourceRegistry,
   ResourceRegistryLive,
   ResourceHandleShape,
   ResourceHandleSchema,
-  StaleHandle,
-  type ResourceId
+  StaleHandle
 } from "./resources.js"
 
-const id = (value: string): ResourceId => value as ResourceId
+const id = makeResourceId
 
 test("register returns handles and list enumerates live resources", async () => {
   const result = await Effect.runPromise(
@@ -175,6 +175,30 @@ test("dispose runs cleanup once and removes the resource", async () => {
 
   expect(result.cleanupCount).toBe(1)
   expect(result.snapshot.entries).toEqual([])
+})
+
+test("dispose removes the resource when cleanup defects", async () => {
+  const snapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-0000000000b1")
+      })
+      const handle = yield* registry.register({
+        kind: "stream",
+        ownerScope: "scope-stream",
+        state: "open",
+        dispose: Effect.sync(() => {
+          throw new Error("stream disposer failed")
+        })
+      })
+
+      yield* registry.dispose(handle.id)
+
+      return yield* registry.list()
+    })
+  )
+
+  expect(snapshot.entries).toEqual([])
 })
 
 test("dispose keeps resources in the registry while cleanup is in progress", async () => {

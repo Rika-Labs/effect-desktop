@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Clock, Effect } from "effect"
 
 import {
   HostProtocolInvalidArgumentError,
@@ -71,21 +71,23 @@ test("host window client preserves macOS polish fields in Window.create", async 
 })
 
 test("host window client requests Window.destroy", async () => {
+  const timestamp = 1_715_000_000_001
   const requests: HostProtocolRequestEnvelope[] = []
   const client = makeHostWindowClient(windowExchange(requests), {
     nextRequestId: () => "request-window-destroy",
-    nextTraceId: () => "trace-window-destroy",
-    now: () => 1710000000001
+    nextTraceId: () => "trace-window-destroy"
   })
 
-  await Effect.runPromise(client.destroy("window-1"))
+  await Effect.runPromise(
+    client.destroy("window-1").pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
 
   expect(requests).toEqual([
     {
       kind: "request",
       id: "request-window-destroy",
       method: WINDOW_DESTROY_METHOD,
-      timestamp: 1710000000001,
+      timestamp,
       traceId: "trace-window-destroy",
       payload: {
         windowId: "window-1"
@@ -280,3 +282,11 @@ const expectEffectFailure = async (
 
   throw new Error("expected Effect to fail")
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})

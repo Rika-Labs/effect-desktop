@@ -41,7 +41,7 @@
     {
       "name": "ScaffoldResult",
       "kind": "interface",
-      "signature": "export interface ScaffoldResult { readonly path: string readonly template: TemplateName readonly stubs: readonly string[] }"
+      "signature": "export interface ScaffoldResult { readonly path: string readonly template: TemplateName readonly sourceTemplate: string readonly architecture: TemplateArchitecture }"
     },
     {
       "name": "ScaffoldTargetError",
@@ -54,9 +54,19 @@
       "signature": "export class ScaffoldTemplateError extends Data.TaggedError(\"ScaffoldTemplateError\")<{ readonly template: string readonly message: string }> {}"
     },
     {
+      "name": "TEMPLATE_CATALOG",
+      "kind": "value",
+      "signature": "const TEMPLATE_CATALOG: Record<\"local-first-sqlite\" | \"workflow-jobs\" | \"ai-desktop\" | \"plugin-host\", TemplateArchitecture>"
+    },
+    {
       "name": "TEMPLATE_NAMES",
       "kind": "value",
-      "signature": "const TEMPLATE_NAMES: readonly [\"basic-react-tailwind\", \"todo-sqlite\", \"multi-window\"]"
+      "signature": "const TEMPLATE_NAMES: readonly [\"local-first-sqlite\", \"workflow-jobs\", \"ai-desktop\", \"plugin-host\"]"
+    },
+    {
+      "name": "TemplateArchitecture",
+      "kind": "interface",
+      "signature": "export interface TemplateArchitecture { readonly source: string readonly description: string readonly demonstrates: readonly string[] }"
     },
     {
       "name": "TemplateName",

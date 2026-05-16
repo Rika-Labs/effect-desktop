@@ -1,30 +1,25 @@
-import { Effect, Layer } from "effect"
+import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
 
-import type { DesktopRpcContractLaw } from "@effect-desktop/core"
 import {
-  AppSurface,
+  makePermissionRegistry,
+  NormalizedCapability,
+  PermissionRegistry,
+  ResourceRegistry,
+  ResourceRegistryLive,
+  type DesktopRpcContractLaw,
+  type DesktopRpcSchemaDoc,
+  type PermissionRegistryApi,
+  type ResourceRegistryApi
+} from "@effect-desktop/core"
+import {
   Clipboard,
   ClipboardSurface,
-  ContextMenuSurface,
-  CrashReporterSurface,
   Dialog,
   DialogSurface,
-  DockSurface,
-  GlobalShortcutSurface,
-  MenuSurface,
-  NotificationSurface,
-  PathSurface,
-  PowerMonitorSurface,
-  ProtocolSurface,
-  SafeStorageSurface,
   Screen,
   ScreenSurface,
-  ShellSurface,
-  SystemAppearanceSurface,
-  TraySurface,
-  UpdaterSurface,
-  WebViewSurface,
-  WindowSurface,
+  Window,
+  Native,
   type ClipboardClient,
   type ClipboardError,
   type ClipboardServiceApi,
@@ -33,7 +28,9 @@ import {
   type DialogServiceApi,
   type ScreenClient,
   type ScreenError,
-  type ScreenServiceApi
+  type ScreenServiceApi,
+  type WindowError,
+  type WindowServiceApi
 } from "@effect-desktop/native"
 import {
   ClipboardImage,
@@ -46,8 +43,12 @@ import {
   type DialogOpenDirectoryOptions,
   type DialogOpenFileOptions,
   type DialogSaveFileOptions,
-  type ScreenMethod
+  type ScreenMethod,
+  type WindowCreateOptions,
+  type WindowHandle
 } from "@effect-desktop/native/contracts"
+// oxlint-disable-next-line import/no-cycle -- test native harness extends the package barrel it is re-exported from.
+import { assertNoOpenResources } from "./index.js"
 
 export interface TestClipboardOptions {
   readonly text?: string
@@ -81,33 +82,26 @@ export interface TestScreenOptions {
   }[]
 }
 
+export interface TestWindowRecord {
+  readonly input: WindowCreateOptions
+  readonly window: WindowHandle
+}
+
+export interface TestWindowStateApi {
+  readonly windows: Effect.Effect<readonly TestWindowRecord[], never, never>
+}
+
+export class TestWindowState extends Context.Service<TestWindowState, TestWindowStateApi>()(
+  "@effect-desktop/test/TestWindowState"
+) {}
+
 export interface TestNativeSurface {
   readonly tag: string
   readonly contractLaws: readonly DesktopRpcContractLaw[]
+  readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
 }
 
-export const TestNativeSurfaces: readonly TestNativeSurface[] = Object.freeze([
-  { tag: AppSurface.tag, contractLaws: AppSurface.contractLaws },
-  { tag: ClipboardSurface.tag, contractLaws: ClipboardSurface.contractLaws },
-  { tag: ContextMenuSurface.tag, contractLaws: ContextMenuSurface.contractLaws },
-  { tag: CrashReporterSurface.tag, contractLaws: CrashReporterSurface.contractLaws },
-  { tag: DialogSurface.tag, contractLaws: DialogSurface.contractLaws },
-  { tag: DockSurface.tag, contractLaws: DockSurface.contractLaws },
-  { tag: GlobalShortcutSurface.tag, contractLaws: GlobalShortcutSurface.contractLaws },
-  { tag: MenuSurface.tag, contractLaws: MenuSurface.contractLaws },
-  { tag: NotificationSurface.tag, contractLaws: NotificationSurface.contractLaws },
-  { tag: PathSurface.tag, contractLaws: PathSurface.contractLaws },
-  { tag: PowerMonitorSurface.tag, contractLaws: PowerMonitorSurface.contractLaws },
-  { tag: ProtocolSurface.tag, contractLaws: ProtocolSurface.contractLaws },
-  { tag: SafeStorageSurface.tag, contractLaws: SafeStorageSurface.contractLaws },
-  { tag: ScreenSurface.tag, contractLaws: ScreenSurface.contractLaws },
-  { tag: ShellSurface.tag, contractLaws: ShellSurface.contractLaws },
-  { tag: SystemAppearanceSurface.tag, contractLaws: SystemAppearanceSurface.contractLaws },
-  { tag: TraySurface.tag, contractLaws: TraySurface.contractLaws },
-  { tag: UpdaterSurface.tag, contractLaws: UpdaterSurface.contractLaws },
-  { tag: WebViewSurface.tag, contractLaws: WebViewSurface.contractLaws },
-  { tag: WindowSurface.tag, contractLaws: WindowSurface.contractLaws }
-])
+export const TestNativeSurfaces: readonly TestNativeSurface[] = snapshotTestNativeSurfaces()
 
 export const ClipboardTest = (options: TestClipboardOptions = {}): Layer.Layer<Clipboard> =>
   makeClipboardScenarioLayer(options)
@@ -117,6 +111,9 @@ export const DialogTest = (options: TestDialogOptions = {}): Layer.Layer<Dialog>
 
 export const ScreenTest = (options: TestScreenOptions = {}): Layer.Layer<Screen> =>
   makeScreenScenarioLayer(options)
+
+export const WindowTest = (): Layer.Layer<Window | TestWindowState, never, ResourceRegistry> =>
+  makeWindowScenarioLayer()
 
 export const ClipboardClientTest = (
   options: TestClipboardOptions = {}
@@ -129,11 +126,21 @@ export const DialogClientTest = (options: TestDialogOptions = {}): Layer.Layer<D
 export const ScreenClientTest = (options: TestScreenOptions = {}): Layer.Layer<ScreenClient> =>
   Layer.provide(ScreenSurface.testClientLayer, makeScreenScenarioLayer(options))
 
-export type TestDesktopServices = Clipboard | Dialog | Screen
+export type TestDesktopServices =
+  | Clipboard
+  | Dialog
+  | PermissionRegistry
+  | Screen
+  | Window
+  | TestWindowState
+  | ResourceRegistry
+
+export type TestDesktopPermissions = "allow-all" | "deny-all"
 
 export interface TestDesktopOptions {
   readonly clipboard?: TestClipboardOptions
   readonly dialog?: TestDialogOptions
+  readonly permissions?: TestDesktopPermissions
   readonly screen?: TestScreenOptions
 }
 
@@ -143,12 +150,43 @@ export const TestDesktopLive = (
   Layer.mergeAll(
     ClipboardTest(options.clipboard),
     DialogTest(options.dialog),
-    ScreenTest(options.screen)
+    TestPermissionRegistry(options.permissions ?? "allow-all"),
+    ScreenTest(options.screen),
+    WindowTest().pipe(Layer.provideMerge(ResourceRegistryLive))
   )
 
 export const TestDesktop = Object.freeze({
-  layer: TestDesktopLive
+  expectNoLeakedResources: Effect.suspend(() => assertNoOpenResources()),
+  layer: TestDesktopLive,
+  windows: Effect.gen(function* () {
+    const state = yield* TestWindowState
+    return yield* state.windows
+  })
 })
+
+export const TestPermissionRegistry = (
+  permissions: TestDesktopPermissions
+): Layer.Layer<PermissionRegistry> =>
+  Layer.effect(PermissionRegistry, makeTestPermissionRegistry(permissions))
+
+export const makeTestPermissionRegistry = (
+  permissions: TestDesktopPermissions
+): Effect.Effect<PermissionRegistryApi, never, never> =>
+  Effect.gen(function* () {
+    const registry = yield* makePermissionRegistry()
+    if (permissions === "deny-all") {
+      return registry
+    }
+
+    const capabilities = yield* nativeInvokeCapabilities()
+    yield* Effect.forEach(capabilities, (capability) =>
+      registry
+        .declare(capability, { effect: "allow", source: "TestDesktop.allow-all" })
+        .pipe(Effect.orDie)
+    )
+
+    return registry
+  })
 
 export const makeClipboardScenarioLayer = (
   options: TestClipboardOptions
@@ -257,3 +295,99 @@ const makeScreenScenario = (options: TestScreenOptions): ScreenServiceApi => {
       Effect.succeed(true)
   } satisfies ScreenServiceApi)
 }
+
+export const makeWindowScenarioLayer = (): Layer.Layer<
+  Window | TestWindowState,
+  never,
+  ResourceRegistry
+> =>
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const registry = yield* ResourceRegistry
+      const windows = yield* Ref.make<ReadonlyMap<string, TestWindowRecord>>(new Map())
+      const state: TestWindowStateApi = {
+        windows: Ref.get(windows).pipe(Effect.map((records) => [...records.values()]))
+      }
+      const service = makeWindowScenario(registry, windows)
+
+      return Context.add(Window, service)(Context.make(TestWindowState, state))
+    })
+  )
+
+const makeWindowScenario = (
+  registry: ResourceRegistryApi,
+  windows: Ref.Ref<ReadonlyMap<string, TestWindowRecord>>
+): WindowServiceApi =>
+  Object.freeze({
+    create: (input = {}): Effect.Effect<WindowHandle, WindowError, never> =>
+      Effect.gen(function* () {
+        const handle = yield* registry
+          .register({
+            kind: "window",
+            ownerScope: "test-window",
+            state: "open"
+          })
+          .pipe(Effect.orDie)
+        const window: WindowHandle = {
+          kind: handle.kind,
+          id: handle.id,
+          generation: handle.generation,
+          ownerScope: handle.ownerScope,
+          state: handle.state
+        }
+        yield* Ref.update(windows, (records) => {
+          const next = new Map(records)
+          next.set(window.id, { input, window })
+          return next
+        })
+
+        return window
+      }),
+    close: (window): Effect.Effect<void, WindowError, never> =>
+      Effect.gen(function* () {
+        yield* registry.dispose(window.id)
+        yield* Ref.update(windows, (records) => {
+          const next = new Map(records)
+          next.delete(window.id)
+          return next
+        })
+      })
+  } satisfies WindowServiceApi)
+
+function testNativeSurface(surface: {
+  readonly tag: string
+  readonly contractLaws: readonly DesktopRpcContractLaw[]
+  readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
+}): TestNativeSurface {
+  return Object.freeze({
+    tag: surface.tag,
+    contractLaws: surface.contractLaws,
+    schemaDocs: surface.schemaDocs
+  })
+}
+
+function snapshotTestNativeSurfaces(): readonly TestNativeSurface[] {
+  return Object.freeze(Native.all.surfaces.map(testNativeSurface))
+}
+
+const nativeInvokeCapabilities = (): Effect.Effect<
+  readonly (typeof NormalizedCapability.Type)[],
+  never,
+  never
+> =>
+  Effect.forEach(
+    TestNativeSurfaces.flatMap((surface) => surface.schemaDocs),
+    (doc) =>
+      Option.isSome(doc.capability)
+        ? Schema.decodeUnknownEffect(NormalizedCapability)(doc.capability.value).pipe(Effect.option)
+        : Effect.succeed(Option.none()),
+    { concurrency: "unbounded" }
+  ).pipe(
+    Effect.map((capabilities) =>
+      capabilities.flatMap((capability) =>
+        Option.isSome(capability) && capability.value.kind === "native.invoke"
+          ? [capability.value]
+          : []
+      )
+    )
+  )

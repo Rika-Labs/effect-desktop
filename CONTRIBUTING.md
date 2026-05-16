@@ -1,12 +1,12 @@
 # Contributing
 
-Effect Desktop follows the repository specification in `docs/SPEC.md`. The
+Effect Desktop follows the repository specification in `engineering/SPEC.md`. The
 spec is normative; code changes should implement the smallest correct slice
 that preserves its boundaries.
 
 ## Ground Rules
 
-- Read `AGENTS.md` and the relevant section of `docs/SPEC.md` before changing
+- Read `AGENTS.md` and the relevant section of `engineering/SPEC.md` before changing
   code.
 - Keep app logic out of Rust. Rust owns the host boundary; TypeScript and
   Effect own framework and application behavior.

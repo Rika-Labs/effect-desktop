@@ -6,8 +6,8 @@ import {
   DuplicateDesktopRpcNameError,
   MissingDesktopRpcClientError
 } from "@effect-desktop/core"
-import { AsyncResult } from "effect/unstable/reactivity"
-import { Cause, Effect, Exit, Option, Schema } from "effect"
+import { AsyncResult, Atom } from "effect/unstable/reactivity"
+import { Cause, Effect, Exit, Option, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
@@ -23,6 +23,7 @@ import {
   windows,
   type PermissionState,
   useDesktop,
+  useAtomValue,
   usePermission,
   useWindow
 } from "./index.js"
@@ -33,23 +34,26 @@ import { disposeRuntime } from "./provider.js"
 // Regression coverage may mention the old placeholder marker:
 // "phase 0 stub compiles and runs" without triggering the repo-shape gate.
 
-interface ReactPackageJson {
-  readonly exports: Record<string, ReactPackageExportTarget>
-}
+const ReactPackageExportTarget = Schema.Union([
+  Schema.String,
+  Schema.Struct({
+    types: Schema.optionalKey(Schema.String),
+    default: Schema.optionalKey(Schema.String)
+  })
+])
 
-type ReactPackageExportTarget =
-  | string
-  | {
-      readonly types?: string
-      readonly default?: string
-    }
+const ReactPackageJson = Schema.Struct({
+  exports: Schema.Record(Schema.String, ReactPackageExportTarget)
+})
+
+const decodeReactPackageJson = Schema.decodeUnknownSync(Schema.fromJsonString(ReactPackageJson))
 
 const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
 const reactPackageRootUrl = new URL("../", import.meta.url)
 const reactPackageIndexUrl = new URL("index.ts", import.meta.url)
 
 test("React package exports point at checked-in source files", () => {
-  const packageJson = JSON.parse(readFileSync(reactPackageJsonUrl, "utf8")) as ReactPackageJson
+  const packageJson = decodeReactPackageJson(readFileSync(reactPackageJsonUrl, "utf8"))
   const missing: string[] = []
 
   for (const [subpath, target] of Object.entries(packageJson.exports)) {
@@ -93,14 +97,14 @@ test("disposeRuntime reports cleanup defects through onCleanupError", async () =
   const failures: Array<{ context: string; error: unknown }> = []
   disposeRuntime(
     {
-      dispose: () => Promise.reject(new Error("dispose failed"))
+      disposeEffect: Effect.die(new Error("dispose failed"))
     },
     (error, context) => {
       failures.push({ context, error })
     }
   )
 
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Effect.runPromise(Effect.yieldNow)
   expect(failures).toEqual([{ context: "runtime cleanup", error: expect.anything() }])
 })
 
@@ -114,6 +118,15 @@ test("DesktopProvider renders children without crashing (SSR)", () => {
     createElement(DesktopProvider, { client: desktop }, createElement(Child))
   )
   expect(html).toBe("<span>child</span>")
+})
+
+test("DesktopProvider exposes the upstream Effect atom registry", () => {
+  const count = Atom.make(42)
+  const Probe = () => createElement("span", null, useAtomValue(count))
+
+  expect(
+    renderToStaticMarkup(createElement(DesktopProvider, { client: desktop }, createElement(Probe)))
+  ).toBe("<span>42</span>")
 })
 
 test("hooks model a missing provider without throwing", () => {
@@ -208,6 +221,26 @@ test("useDesktopQuery defaults to reload-only dependencies for inline operations
   expect(source).not.toContain("deps === undefined ? [reloads, operation]")
 })
 
+test("React adapter lifecycle paths use the shared scoped framework helper", () => {
+  const desktopSource = readFileSync(new URL("./desktop.tsx", import.meta.url), "utf8")
+  const mutationSource = readFileSync(new URL("./mutation.ts", import.meta.url), "utf8")
+  const desktopHookSource = readFileSync(new URL("./hooks/desktop.ts", import.meta.url), "utf8")
+  const streamHookSource = readFileSync(new URL("./hooks/stream.ts", import.meta.url), "utf8")
+
+  expect(desktopSource).toContain("makeFrameworkRuntime(runtime)")
+  expect(desktopSource).toContain("Effect.runCallback(runtime.disposeEffect)")
+  expect(desktopSource).not.toContain("void runtime.dispose()")
+  expect(desktopSource).not.toContain("await frameworkRuntime.dispose()")
+  expect(mutationSource).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(mutationSource).not.toContain("runIdRef")
+  expect(mutationSource).not.toContain("mountedRef")
+  expect(mutationSource).not.toContain("runFrameworkPromiseExit")
+  expect(desktopHookSource).toContain("makeFrameworkScopedOperation(defaultRuntime)")
+  expect(desktopHookSource).not.toContain("runFrameworkPromiseExit")
+  expect(streamHookSource).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(streamHookSource).not.toContain("let active")
+})
+
 test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
     RpcEndpoint.query
@@ -217,7 +250,7 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
     success: Schema.String
   })
   const NotesRpcs = RpcGroup.make(ListNotes, CreateNote)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.List": () => Effect.succeed(["inbox"]),
@@ -225,15 +258,11 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [NotesLayer]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs)
     const list = notes.list.useQuery()
@@ -247,37 +276,33 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
   }
 
   expect(
-    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcLayers }, createElement(Probe)))
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>initial:idle</span>")
 })
 
 test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", () => {
   const Reserved = Rpc.make("Notes.__proto__", { success: Schema.String }).pipe(RpcEndpoint.query)
   const NotesRpcs = RpcGroup.make(Reserved)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.__proto__": () => Effect.succeed("ok")
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [NotesLayer]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
   const Probe = () => {
-    const notes = NotesReact.useDesktop(NotesRpcs) as unknown as Record<string, unknown>
+    const notes = NotesReact.useDesktop(NotesRpcs)
     const hasReserved = Object.prototype.hasOwnProperty.call(notes, "__proto__")
     return createElement("span", null, `${Object.getPrototypeOf(notes) === null}:${hasReserved}`)
   }
 
   expect(
-    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcLayers }, createElement(Probe)))
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>true:true</span>")
 })
 
@@ -285,7 +310,7 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
   const ProjectList = Rpc.make("Projects.List", { success: Schema.Array(Schema.String) })
   const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })
   const CollidingRpcs = RpcGroup.make(ProjectList, TaskList)
-  const CollidingLayer = Desktop.Rpcs.layer(
+  const CollidingLayer = Desktop.rpc(
     CollidingRpcs,
     CollidingRpcs.toLayer({
       "Projects.List": () => Effect.succeed(["project"]),
@@ -293,24 +318,18 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
     })
   )
   const CollidingApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Lists"
-      }
-    },
-    rpcs: [CollidingLayer]
+    windows: Desktop.window("main", { title: "Lists" }),
+    rpcs: CollidingLayer
   })
   const CollidingReact = ReactDesktop.from(Desktop.manifest(CollidingApp))
-  const rpcLayers = [CollidingLayer]
+  const rpcs = CollidingLayer
   const Probe = () => {
     CollidingReact.useDesktop(CollidingRpcs)
     return createElement("span", null, "mounted")
   }
 
   expect(() =>
-    renderToStaticMarkup(
-      createElement(CollidingReact.DesktopRoot, { rpcLayers }, createElement(Probe))
-    )
+    renderToStaticMarkup(createElement(CollidingReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toThrow(DuplicateDesktopRpcNameError)
 })
 
@@ -318,19 +337,13 @@ test("ReactDesktop.useDesktop fails loudly without a generated root or renderer 
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.Ping": () => Effect.void
-        })
-      )
-    ]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: Desktop.rpc(
+      NotesRpcs,
+      NotesRpcs.toLayer({
+        "Notes.Ping": () => Effect.void
+      })
+    )
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const Probe = () => {
@@ -355,35 +368,58 @@ test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
     RpcSupport.unsupported("host method is unavailable")
   )
   const NotesRpcs = RpcGroup.make(Unsupported)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Unsupported": () => Effect.succeed("unused")
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [NotesLayer]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs)
     const endpoint: SupportedQueryEndpoint = notes.unsupported
-    return createElement(
-      "span",
-      null,
-      `${endpoint.isSupported}:${endpoint.support.status}`
-    )
+    return createElement("span", null, `${endpoint.isSupported}:${endpoint.support.status}`)
   }
 
   expect(
-    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcLayers }, createElement(Probe)))
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>false:unsupported</span>")
+})
+
+test("ReactDesktop generated no-payload stream hooks accept stream options", () => {
+  const Tail = Rpc.make("Notes.Tail", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  })
+  const NotesRpcs = RpcGroup.make(Tail)
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Tail": () => Stream.make("a", "b", "c")
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
+  })
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
+  const Probe = () => {
+    const notes = NotesReact.useDesktop(NotesRpcs)
+    const tail = notes.tail.useStream({ capacity: 0, onItem: () => undefined })
+    return createElement("span", null, `${tail.status}:${tail.data.length}`)
+  }
+
+  expect(
+    renderToStaticMarkup(
+      createElement(NotesReact.DesktopRoot, { rpcs: NotesLayer }, createElement(Probe))
+    )
+  ).toBe("<span>idle:0</span>")
 })
 
 test("usePermission exports the deferred shape", () => {

@@ -1,10 +1,11 @@
-import { Context, Data, Effect, Option, Schema, Stream } from "effect"
-import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
+import { Context, Data, Option, Schema } from "effect"
+import { RpcGroup, RpcSchema } from "effect/unstable/rpc"
+import type { Any as RpcAny, AnyWithProps as RpcAnyWithProps } from "effect/unstable/rpc/Rpc"
 
 import { rpcCapability, rpcSupport, type RpcSupportMetadata } from "./rpc-endpoint.js"
 
-interface AnnotatableRpc extends Rpc.Any {
-  annotate<I, S>(tag: Context.Key<I, S>, value: S): Rpc.Any
+interface AnnotatableRpc extends RpcAny {
+  annotate<I, S>(tag: Context.Key<I, S>, value: S): RpcAny
 }
 
 export type BridgeContractCodec<Type = unknown, Encoded = unknown> = Schema.Codec<
@@ -46,16 +47,6 @@ export interface BridgeStreamSpec<
   readonly backpressure?: BackpressureSpec
 }
 
-type BridgeOutputType<Output> = Output extends BridgeStreamSpec
-  ? Stream.Stream<
-      BridgeContractCodecType<Output["chunk"]>,
-      BridgeContractCodecType<Output["error"]>,
-      unknown
-    >
-  : Output extends BridgeContractCodec
-    ? BridgeContractCodecType<Output>
-    : never
-
 export interface BackpressureSpec {
   readonly strategy: "buffer" | "drop" | "block"
   readonly size?: number
@@ -64,7 +55,7 @@ export interface BackpressureSpec {
 
 export type BridgeStreamSchema = RpcSchema.Stream<BridgeContractCodec, BridgeContractCodec>
 export type BridgeSuccessSchema = BridgeContractCodec | BridgeStreamSchema
-export type BridgeContractRpc = Rpc.AnyWithProps & {
+export type BridgeContractRpc = RpcAnyWithProps & {
   readonly payloadSchema: BridgeContractCodec
   readonly successSchema: BridgeSuccessSchema
   readonly errorSchema: BridgeContractCodec
@@ -142,28 +133,6 @@ export type BridgeContract<
   readonly events: Events
 }
 
-export type BridgeContractHandlers<Spec extends BridgeContractSpec> = {
-  readonly [Method in keyof Spec]: (
-    input: BridgeContractCodecType<Spec[Method]["input"]>
-  ) => Spec[Method]["output"] extends BridgeStreamSpec
-    ? BridgeOutputType<Spec[Method]["output"]>
-    : Effect.Effect<
-        BridgeOutputType<Spec[Method]["output"]>,
-        BridgeContractCodecType<Spec[Method]["error"]>,
-        unknown
-      >
-}
-
-export interface BridgeHandlerLayer<
-  Tag extends string,
-  Spec extends BridgeContractSpec,
-  Handlers extends BridgeContractHandlers<Spec>,
-  Events extends BridgeContractEvents = BridgeContractEvents
-> {
-  readonly group: BridgeContract<Tag, Spec, Events>
-  readonly handlers: Handlers
-}
-
 export class InvalidBridgeMetadataError extends Data.TaggedError("InvalidBridgeMetadataError")<{
   readonly tag: string
   readonly method: string
@@ -186,10 +155,10 @@ const BridgeRuntimeAnnotation = Context.Service<BridgeRuntimeMetadata>(
 
 export const BridgeRuntime =
   (metadata: BridgeRuntimeMetadata) =>
-  <R extends Rpc.Any>(rpc: R): R =>
+  <R extends RpcAny>(rpc: R): R =>
     annotateRpc(rpc, BridgeRuntimeAnnotation, Object.freeze(metadata))
 
-export const bridgeRuntime = (rpc: Rpc.Any): Option.Option<BridgeRuntimeMetadata> =>
+export const bridgeRuntime = (rpc: RpcAny): Option.Option<BridgeRuntimeMetadata> =>
   Context.getOption(rpc.annotations, BridgeRuntimeAnnotation)
 
 export const bridgeContractFromRpcGroup = <
@@ -227,20 +196,6 @@ export const bridgeContractFromRpcGroup = <
     Group
   >
 }
-
-export const makeBridgeHandlerLayer =
-  <Tag extends string, Spec extends BridgeContractSpec, Events extends BridgeContractEvents>(
-    group: BridgeContract<Tag, Spec, Events>
-  ) =>
-  <Handlers extends BridgeContractHandlers<Spec>>(
-    handlers: Handlers
-  ): BridgeHandlerLayer<Tag, Spec, Handlers, Events> => {
-    validateHandlers(group.tag, group.spec, handlers)
-    return Object.freeze({
-      group,
-      handlers: Object.freeze(handlers)
-    })
-  }
 
 const bridgeMetadataFromRpcGroup = (
   tag: string,
@@ -416,22 +371,6 @@ const validateSupportSpec = (tag: string, method: string, spec: RpcSupportMetada
   }
 }
 
-const validateHandlers = <Spec extends BridgeContractSpec>(
-  tag: string,
-  spec: Spec,
-  handlers: unknown
-): void => {
-  if (typeof handlers !== "object" || handlers === null) {
-    throw invalidSpec(tag, "<handlers>", "handlers must be an object")
-  }
-
-  for (const method of Object.keys(spec)) {
-    if (typeof Reflect.get(handlers, method) !== "function") {
-      throw invalidSpec(tag, method, "handler must be a function")
-    }
-  }
-}
-
 const freezeRpcSpec = <Spec extends BridgeContractSpec>(spec: Spec): Spec => {
   for (const methodSpec of Object.values(spec)) {
     if (methodSpec.backpressure !== undefined) {
@@ -581,7 +520,7 @@ const makeBridgeStreamSpec = <Chunk extends BridgeContractCodec, Error extends B
     ...(backpressure === undefined ? {} : { backpressure: Object.freeze(backpressure) })
   })
 
-const annotateRpc = <R extends Rpc.Any, I, S>(rpc: R, tag: Context.Key<I, S>, value: S): R =>
+const annotateRpc = <R extends RpcAny, I, S>(rpc: R, tag: Context.Key<I, S>, value: S): R =>
   (rpc as R & AnnotatableRpc).annotate(tag, value) as R
 
 const backpressureStrategies = new Set<BackpressureSpec["strategy"]>(["buffer", "drop", "block"])

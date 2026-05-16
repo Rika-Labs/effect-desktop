@@ -177,18 +177,15 @@ const emitTraceIdMissing = (
 
 const isHostProtocolObject = (
   value: unknown
-): value is { readonly kind: string; readonly traceId?: unknown } =>
-  typeof value === "object" &&
-  value !== null &&
-  "kind" in value &&
-  typeof Reflect.get(value, "kind") === "string"
+): value is { readonly kind: string; readonly timestamp?: unknown; readonly traceId?: unknown } =>
+  typeof value === "object" && value !== null && "kind" in value && typeof value.kind === "string"
 
 const hostProtocolObjectTimestamp = (
-  value: { readonly kind: string },
+  value: { readonly kind: string; readonly timestamp?: unknown },
   operation: string
 ): Effect.Effect<number, HostProtocolError, never> => {
-  const timestamp = Reflect.get(value, "timestamp")
-  return Number.isSafeInteger(timestamp) && timestamp >= 0
+  const timestamp = value.timestamp
+  return typeof timestamp === "number" && Number.isSafeInteger(timestamp) && timestamp >= 0
     ? Effect.succeed(timestamp)
     : Effect.fail(makeHostProtocolInvalidOutputError(operation, "invalid host envelope timestamp"))
 }

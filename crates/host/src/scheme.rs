@@ -73,14 +73,14 @@ fn app_scheme_response_with_policy(
         return app_method_not_allowed_response(&policy, &nonce, &trace_id);
     }
 
-    let Some(asset) = assets::resolve(&path) else {
+    let Some(asset) = resolve_asset(&path) else {
         return app_not_found_response(&policy, &nonce, &trace_id);
     };
 
     let body = if method == Method::HEAD {
         Cow::Borrowed::<[u8]>(b"")
     } else {
-        Cow::Borrowed(asset.bytes)
+        Cow::Owned(asset.bytes.clone())
     };
 
     if !asset.content_type.starts_with("text/html") {
@@ -94,7 +94,7 @@ fn app_scheme_response_with_policy(
         );
     }
 
-    match rewriter(asset.bytes, &nonce) {
+    match rewriter(&asset.bytes, &nonce) {
         Ok(outcome) => {
             if outcome.script_count == 0 && outcome.style_count == 0 && outcome.link_count == 0 {
                 warn!(
@@ -136,6 +136,30 @@ fn app_scheme_response_with_policy(
             );
             app_rewrite_error_response(&policy, &trace_id, &nonce)
         }
+    }
+}
+
+#[cfg(not(test))]
+fn resolve_asset(path: &str) -> Option<assets::Asset> {
+    assets::resolve(path)
+}
+
+#[cfg(test)]
+fn resolve_asset(path: &str) -> Option<assets::Asset> {
+    match path {
+        "" | "/" | "/index.html" => Some(assets::Asset {
+            bytes: b"<!doctype html><html><head><link rel=\"stylesheet\" href=\"/style.css\"><style>body{}</style></head><body><script src=\"/app.js\"></script></body></html>".to_vec(),
+            content_type: "text/html; charset=utf-8"
+        }),
+        "/style.css" => Some(assets::Asset {
+            bytes: b"body{}".to_vec(),
+            content_type: "text/css; charset=utf-8"
+        }),
+        "/app.js" => Some(assets::Asset {
+            bytes: b"console.log('ok')".to_vec(),
+            content_type: "text/javascript; charset=utf-8"
+        }),
+        _ => None
     }
 }
 
@@ -270,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn app_scheme_response_returns_embedded_index_html() {
+    fn app_scheme_response_returns_renderer_index_html() {
         let request = Request::builder()
             .uri(APP_URL)
             .header(TRACE_ID_HEADER, "trace-app-request")

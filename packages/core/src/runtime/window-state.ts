@@ -15,6 +15,8 @@ import {
 } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
+import { WindowContext } from "./window-context.js"
+
 export class WindowStateRecord extends Schema.Class<WindowStateRecord>("WindowStateRecord")({
   x: Schema.Number.check(Schema.isFinite()),
   y: Schema.Number.check(Schema.isFinite()),
@@ -106,14 +108,16 @@ const decodeWindowId = (
   )
 
 export interface WindowStateApi {
+  readonly restore: () => Effect.Effect<Option.Option<WindowStateRecord>, WindowStateError, never>
+  readonly persist: (state: WindowStateRecord) => Effect.Effect<void, WindowStateError, never>
+  readonly clear: () => Effect.Effect<void, WindowStateError, never>
+  readonly observe: () => Stream.Stream<WindowStateEvent, never, never>
+}
+
+interface WindowStateRepositoryApi {
   readonly restore: (
     windowId: string
   ) => Effect.Effect<Option.Option<WindowStateRecord>, WindowStateError, never>
-  readonly restoreAll: () => Effect.Effect<
-    Readonly<Record<string, WindowStateRecord>>,
-    WindowStateError,
-    never
-  >
   readonly persist: (
     windowId: string,
     state: WindowStateRecord
@@ -131,8 +135,27 @@ export interface WindowStateOptions {
 }
 
 export const makeWindowState = (
+  windowId: string,
   options: WindowStateOptions = {}
 ): Effect.Effect<WindowStateApi, WindowStateInvalidArgumentError, KeyValueStore.KeyValueStore> =>
+  Effect.gen(function* () {
+    const repository = yield* makeWindowStateRepository(options)
+    const resolvedWindowId = yield* decodeWindowId(windowId, "WindowState.make")
+    return Object.freeze({
+      restore: () => repository.restore(resolvedWindowId),
+      persist: (state: WindowStateRecord) => repository.persist(resolvedWindowId, state),
+      clear: () => repository.clear(resolvedWindowId),
+      observe: () => repository.observe()
+    })
+  })
+
+const makeWindowStateRepository = (
+  options: WindowStateOptions = {}
+): Effect.Effect<
+  WindowStateRepositoryApi,
+  WindowStateInvalidArgumentError,
+  KeyValueStore.KeyValueStore
+> =>
   Effect.gen(function* () {
     const path =
       options.path ??
@@ -173,17 +196,6 @@ export const makeWindowState = (
           const store = result.store
           const record = store.windows[windowId]
           return record === undefined ? Option.none() : Option.some(validateBounds(record))
-        }),
-      restoreAll: () =>
-        Effect.gen(function* () {
-          const result = yield* read
-          yield* publishReadEvent(result)
-          return Object.fromEntries(
-            Object.entries(result.store.windows).map(([windowId, record]) => [
-              windowId,
-              validateBounds(record)
-            ])
-          )
         }),
       persist: (windowId: string, state: WindowStateRecord) =>
         Semaphore.withPermit(
@@ -240,13 +252,29 @@ export const makeWindowState = (
     })
   })
 
-export class WindowState extends Context.Service<WindowState, WindowStateApi>()("WindowState") {}
+export class WindowState extends Context.Service<WindowState, WindowStateApi>()("WindowState") {
+  static window(
+    options: WindowStateOptions = {}
+  ): Layer.Layer<
+    WindowState,
+    WindowStateInvalidArgumentError,
+    WindowContext | KeyValueStore.KeyValueStore
+  > {
+    return Layer.effect(
+      WindowState,
+      Effect.gen(function* () {
+        const context = yield* WindowContext
+        return yield* makeWindowState(context.registrationId, options)
+      })
+    )
+  }
+}
 
 export const WindowStateLive: Layer.Layer<
   WindowState,
   WindowStateInvalidArgumentError,
-  KeyValueStore.KeyValueStore
-> = Layer.effect(WindowState)(makeWindowState())
+  WindowContext | KeyValueStore.KeyValueStore
+> = WindowState.window()
 
 const readStore = (
   kv: KeyValueStore.KeyValueStore,
@@ -415,7 +443,15 @@ const buildDefaultWindowStatePath = (bundleId: string): string => {
       return join(homeDirectory(), "Library", "Application Support", bundleId, "window-state.json")
     case "win32":
       return join(process.env["APPDATA"] ?? tmpdir(), bundleId, "window-state.json")
-    default:
+    case "aix":
+    case "android":
+    case "cygwin":
+    case "freebsd":
+    case "haiku":
+    case "linux":
+    case "netbsd":
+    case "openbsd":
+    case "sunos":
       return join(
         process.env["XDG_STATE_HOME"] ?? join(homeDirectory(), ".local", "state"),
         bundleId,

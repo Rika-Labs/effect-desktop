@@ -1,10 +1,20 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect"
+import {
+  Cause,
+  Clock,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Schedule,
+  Schema
+} from "effect"
 
 import {
   type BridgeClientResponse,
   Client,
-  Handlers,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
   RendererOriginAuth,
@@ -12,9 +22,9 @@ import {
   RpcClient,
   RpcGroup,
   bridgeContractFromRpcGroup,
-  makeBridgeHandlerLayer,
   makeBridgeInspector,
   makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInvalidOutputError,
   type HostProtocolError,
@@ -85,20 +95,109 @@ test("makeUnaryDesktopTransportFromBridgeClientExchange adapts unary bridge exch
   expect(requests[0]?.traceId).toBeString()
 })
 
+test("makeUnaryDesktopTransportFromBridgeClientExchange uses the Effect Clock by default", async () => {
+  const timestamp = 1_715_000_000_000
+  const responses: unknown[] = []
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const transport = yield* makeUnaryDesktopTransportFromBridgeClientExchange(
+        responseExchange([], { id: "project-1" }),
+        { nextTraceId: () => "trace-transport" }
+      )
+      const fiber = yield* transport
+        .run((envelope) =>
+          Effect.sync(() => {
+            responses.push(envelope)
+          })
+        )
+        .pipe(Effect.forkChild({ startImmediately: true }))
+
+      yield* transport.send(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-1",
+          method: "Project.open",
+          timestamp: 42,
+          traceId: "trace-request"
+        })
+      )
+      yield* Effect.yieldNow
+      yield* Fiber.interrupt(fiber)
+    }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
+
+  expect(responses).toContainEqual(
+    expect.objectContaining({
+      kind: "response",
+      id: "request-1",
+      timestamp,
+      traceId: "trace-request"
+    })
+  )
+})
+
+test("makeUnaryDesktopTransportFromBridgeClientExchange converts invalid exchange responses to failure frames", async () => {
+  const responses: unknown[] = []
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const transport = yield* makeUnaryDesktopTransportFromBridgeClientExchange(
+        {
+          request: () => Effect.succeed({ kind: "nonsense", payload: { id: "accepted" } })
+        },
+        { now: () => 43, nextTraceId: () => "trace-transport" }
+      )
+      const fiber = yield* transport
+        .run((envelope) =>
+          Effect.sync(() => {
+            responses.push(envelope)
+          })
+        )
+        .pipe(Effect.forkChild({ startImmediately: true }))
+
+      yield* transport.send(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-invalid-response",
+          method: "Project.open",
+          timestamp: 42,
+          traceId: "trace-request"
+        })
+      )
+      yield* Effect.yieldNow
+      yield* Fiber.interrupt(fiber)
+    })
+  )
+
+  expect(responses).toContainEqual(
+    expect.objectContaining({
+      kind: "response",
+      id: "request-invalid-response",
+      traceId: "trace-request",
+      error: expect.objectContaining({
+        tag: "InvalidOutput",
+        operation: "Project.open"
+      })
+    })
+  )
+})
+
 test("Client generates a typed namespace from contract entries", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientTest")
   const client = Client({ project: ProjectRpcs }, responseExchange(requests, { id: "project-1" }), {
     nextRequestId: () => "request-project-open",
     nextTraceId: () => "trace-project-open",
-    now: () => 42,
     windowId: "window-1",
     originToken: "origin-1"
   })
 
   const effect: Effect.Effect<ProjectOpenOutput, ProjectOpenError | HostProtocolError, never> =
     client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
-  const output = await Effect.runPromise(effect)
+  const output = await Effect.runPromise(
+    effect.pipe(Effect.provideService(Clock.Clock, fixedClock(42)))
+  )
 
   expect(output.id).toBe("project-1")
   expect(requests).toEqual([
@@ -167,9 +266,8 @@ test("Client rejects malformed input as a typed Effect failure before transport"
   const ProjectRpcs = makeProjectRpcs("ProjectRpcs.InvalidInput")
   const client = Client({ project: ProjectRpcs }, responseExchange(requests, { id: "project-1" }))
 
-  const exit = await Effect.runPromiseExit(
-    client.project.open({ path: 123 } as unknown as ProjectOpenInput)
-  )
+  // @ts-expect-error intentionally malformed path exercises runtime payload decoding.
+  const exit = await Effect.runPromiseExit(client.project.open({ path: 123 }))
 
   expectFailureTag(exit, "InvalidArgument")
   expect(requests).toEqual([])
@@ -342,6 +440,7 @@ test("Client emits inspector decode failures for malformed outputs", async () =>
       method: "ProjectRpcs.InvalidOutputInspector.open",
       requestId: "request-decode-failure",
       traceId: "trace-decode-failure",
+      timestamp: 42,
       frameKind: "response",
       errorTag: "InvalidOutput"
     })
@@ -396,7 +495,7 @@ test("Client rejects unknown response kinds as InvalidOutput", async () => {
         Effect.succeed({
           kind: "nonsense",
           payload: { id: "accepted" }
-        } as never)
+        })
     }
   )
 
@@ -459,22 +558,23 @@ test("Client interruption sends bridge cancellation", async () => {
   const ProcessRpcs = makeProjectRpcs("ProjectRpcs.ClientInterrupt")
   const started = await Effect.runPromise(Deferred.make<void>())
   const states: string[] = []
-  const runtime = Handlers.withOptions(
+  const runtime = makeDesktopRpcHandlerRuntime(
+    ProcessRpcs,
+    ProcessRpcs.toLayer({
+      "ProjectRpcs.ClientInterrupt.open": () =>
+        Effect.gen(function* () {
+          yield* Deferred.succeed(started, undefined)
+          yield* Effect.sleep(10_000)
+          return new ProjectOpenOutput({ id: "project-1" })
+        })
+    }),
     {
       originAuth: RendererOriginAuth.unsafeDisabledForTests,
       onState: (state) =>
         Effect.sync(() => {
           states.push(state.tag)
         })
-    },
-    makeBridgeHandlerLayer(ProcessRpcs)({
-      open: () =>
-        Effect.gen(function* () {
-          yield* Deferred.succeed(started, undefined)
-          yield* Effect.sleep(10_000)
-          return new ProjectOpenOutput({ id: "project-1" })
-        })
-    })
+    }
   )
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const client = Client(
@@ -510,7 +610,7 @@ test("Client interruption sends bridge cancellation", async () => {
       traceId: "trace-client-cancel"
     })
   ])
-  expect(states).toEqual(["Pending", "Authorized", "Running", "Canceled"])
+  expect(states).toEqual(["Pending", "Running", "Canceled"])
 })
 
 test("Client runtime AbortSignal interruption sends bridge cancellation", async () => {
@@ -627,6 +727,44 @@ test("Client interruption releases callers when cancel dispatch does not answer"
   }
   await waitFor(() => finalizers.includes("request"))
   await waitFor(() => finalizers.includes("cancel"))
+})
+
+test("Client normalizes outbound requests before exchange dispatch", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const ProjectRpcs = makeProjectRpcs("ProjectRpcs.ClientNormalizeRequest")
+  const client = Client({ project: ProjectRpcs }, responseExchange(requests, { id: "project-1" }), {
+    nextRequestId: () => "request-project-open",
+    nextTraceId: () => "trace-project-open",
+    normalizeRequest: (request) =>
+      new HostProtocolRequestEnvelope({
+        kind: request.kind,
+        id: request.id,
+        method: request.method,
+        timestamp: request.timestamp,
+        traceId: request.traceId,
+        ...(request.payload === undefined ? {} : { payload: request.payload }),
+        ...(request.windowId === undefined ? {} : { windowId: request.windowId }),
+        originToken: "normalized-origin"
+      })
+  })
+
+  await Effect.runPromise(
+    client.project
+      .open(new ProjectOpenInput({ path: "/tmp/project" }))
+      .pipe(Effect.provideService(Clock.Clock, fixedClock(42)))
+  )
+
+  expect(requests).toEqual([
+    new HostProtocolRequestEnvelope({
+      kind: "request",
+      id: "request-project-open",
+      method: "ProjectRpcs.ClientNormalizeRequest.open",
+      timestamp: 42,
+      traceId: "trace-project-open",
+      originToken: "normalized-origin",
+      payload: new ProjectOpenInput({ path: "/tmp/project" })
+    })
+  ])
 })
 
 test("Client interruption ignores invalid cancel timestamps without masking interruption", async () => {
@@ -768,11 +906,20 @@ const expectFailureField = (
 }
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1))
-  }
-  expect(predicate()).toBe(true)
+  await Effect.runPromise(
+    Effect.suspend(() =>
+      predicate() ? Effect.void : Effect.fail(new Error("condition not met"))
+    ).pipe(
+      Effect.retry(Schedule.spaced("1 millis").pipe(Schedule.both(Schedule.recurs(100)))),
+      Effect.mapError(() => new Error("timed out waiting for condition"))
+    )
+  )
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})

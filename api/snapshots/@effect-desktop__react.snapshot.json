@@ -56,12 +56,22 @@
     {
       "name": "DesktopAsyncState",
       "kind": "type",
-      "signature": "export type DesktopAsyncState<A, E> = | { readonly _tag: \"Idle\" } | { readonly _tag: \"Running\" } | { readonly _tag: \"Success\"; readonly value: A } | { readonly _tag: \"Failure\"; readonly cause: Cause.Cause<E>; readonly message: string } | { readonly _tag: \"Canceled\" } | { readonly _tag: \"Unavailable\"; readonly message: string }"
+      "signature": "export type DesktopAsyncState<A, E> = AsyncResult.AsyncResult<A, E>"
     },
     {
       "name": "DesktopAsyncStatus",
       "kind": "type",
-      "signature": "export type DesktopAsyncStatus = | \"idle\" | \"running\" | \"success\" | \"failure\" | \"canceled\" | \"unavailable\""
+      "signature": "export type DesktopAsyncStatus = AsyncResultStatus"
+    },
+    {
+      "name": "DesktopAtomRegistryContext",
+      "kind": "value",
+      "signature": "const RegistryContext: React.Context<AtomRegistry.AtomRegistry>"
+    },
+    {
+      "name": "DesktopAtomRegistryProvider",
+      "kind": "value",
+      "signature": "const RegistryProvider: (options: { readonly children?: React.ReactNode | undefined; readonly initialValues?: Iterable<readonly [Atom.Atom<any>, any]> | undefined; readonly scheduleTask?: ((f: () => void) => () => void) | undefined; readonly timeoutResolution?: number | undefined; readonly defaultIdleTTL?: number | undefined; }) => React.FunctionComponentElement<React.ProviderProps<AtomRegistry.AtomRegistry>>"
     },
     {
       "name": "DesktopClient",
@@ -146,12 +156,12 @@
     {
       "name": "MutationState",
       "kind": "type",
-      "signature": "export type MutationState<A, E> = | { readonly status: \"idle\" } | { readonly status: \"running\" } | { readonly status: \"success\"; readonly value: A } | { readonly status: \"failure\"; readonly cause: Cause.Cause<E> }"
+      "signature": "export type MutationState<A, E> = AsyncResult.AsyncResult<A, E>"
     },
     {
       "name": "MutationStatus",
       "kind": "type",
-      "signature": "export type MutationStatus = \"idle\" | \"running\" | \"success\" | \"failure\""
+      "signature": "export type MutationStatus = DesktopAsyncStatus"
     },
     {
       "name": "PendingApproval",
@@ -216,7 +226,7 @@
     {
       "name": "ReactDesktopRootProps",
       "kind": "interface",
-      "signature": "export interface ReactDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined readonly children?: ReactNode | undefined }"
+      "signature": "export interface ReactDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcs?: DesktopRpcsLayer<never, never> | undefined readonly children?: ReactNode | undefined }"
     },
     {
       "name": "ReactDesktopRpcClient",
@@ -231,12 +241,12 @@
     {
       "name": "ReactDesktopRpcs",
       "kind": "type",
-      "signature": "export type ReactDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: ReactRpcEndpoint<Current> }"
+      "signature": "export type ReactDesktopRpcs<Group extends RpcGroup.Any> = Readonly< Record<string, ReactEndpoint & ReactDesktopSupport> > & { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: ReactRpcEndpoint<Current> }"
     },
     {
       "name": "ReactDesktopSupport",
       "kind": "interface",
-      "signature": "export interface ReactDesktopSupport { readonly support: RpcSupportMetadata readonly isSupported: boolean }"
+      "signature": "export interface ReactDesktopSupport extends DesktopEndpointSupport {}"
     },
     {
       "name": "statusOf",
@@ -271,17 +281,42 @@
     {
       "name": "useAtom",
       "kind": "value",
-      "signature": "const useAtom: <R, W>(atom: Atom.Writable<R, W>) => [R | undefined, (value: W) => void]"
+      "signature": "const useAtom: <R, W, const Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => readonly [value: R, write: \"promise\" extends Mode ? ((value: W) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)]"
+    },
+    {
+      "name": "useAtomInitialValues",
+      "kind": "value",
+      "signature": "const useAtomInitialValues: (initialValues: Iterable<readonly [Atom.Atom<any>, any]>) => void"
+    },
+    {
+      "name": "useAtomMount",
+      "kind": "value",
+      "signature": "const useAtomMount: <A>(atom: Atom.Atom<A>) => void"
+    },
+    {
+      "name": "useAtomRefresh",
+      "kind": "value",
+      "signature": "const useAtomRefresh: <A>(atom: Atom.Atom<A>) => () => void"
     },
     {
       "name": "useAtomSet",
       "kind": "value",
-      "signature": "const useAtomSet: <R, W>(atom: Atom.Writable<R, W>) => ((value: W) => void)"
+      "signature": "const useAtomSet: <R, W, Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => \"promise\" extends Mode ? ((value: W) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)"
+    },
+    {
+      "name": "useAtomSubscribe",
+      "kind": "value",
+      "signature": "const useAtomSubscribe: <A>(atom: Atom.Atom<A>, f: (_: A) => void, options?: { readonly immediate?: boolean; }) => void"
+    },
+    {
+      "name": "useAtomSuspense",
+      "kind": "value",
+      "signature": "const useAtomSuspense: <A, E, const IncludeFailure extends boolean = false>(atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>, options?: { readonly suspendOnWaiting?: boolean | undefined; readonly includeFailure?: IncludeFailure | undefined; }) => AsyncResult.Success<A, E> | (IncludeFailure extends true ? AsyncResult.Failure<A, E> : never)"
     },
     {
       "name": "useAtomValue",
       "kind": "value",
-      "signature": "const useAtomValue: <A>(atom: Atom.Atom<A>) => A | undefined"
+      "signature": "const useAtomValue: { <A>(atom: Atom.Atom<A>): A; <A, B>(atom: Atom.Atom<A>, f: (_: A) => B): B; }"
     },
     {
       "name": "useCloseCurrentWindowMutation",
@@ -336,7 +371,7 @@
     {
       "name": "useDesktopStream",
       "kind": "value",
-      "signature": "const useDesktopStream: <A, E>(stream: Stream.Stream<A, E, never>, options?: DesktopStreamOptions<A>) => StreamState<A, E>"
+      "signature": "const useDesktopStream: <A, E, R = never, ER = never>(stream: Stream.Stream<A, E, R>, options?: DesktopStreamOptions<A>, runtime?: FrameworkRuntime<R, ER>) => StreamState<A, E | ER>"
     },
     {
       "name": "useDisplays",
@@ -346,12 +381,12 @@
     {
       "name": "useEffectResult",
       "kind": "value",
-      "signature": "const useEffectResult: <A, E>(effect: Effect.Effect<A, E, never>, deps?: DependencyList) => AsyncResult.AsyncResult<A, E>"
+      "signature": "const useEffectResult: <A, E, R = never, ER = never>(effect: Effect.Effect<A, E, R>, deps?: DependencyList, runtime?: FrameworkRuntime<R, ER>) => AsyncResult.AsyncResult<A, E | ER>"
     },
     {
       "name": "useMutation",
       "kind": "value",
-      "signature": "const useMutation: <I, A, E>(makeEffect: (input: I) => Effect.Effect<A, E, never>) => MutationResult<I, A, E>"
+      "signature": "const useMutation: <I, A, E, R = never, ER = never>(makeEffect: (input: I) => Effect.Effect<A, E, R>, runtime?: FrameworkRuntime<R, ER>) => MutationResult<I, A, E | ER>"
     },
     {
       "name": "useOptionalDesktopClient",

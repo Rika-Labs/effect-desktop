@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test"
 import { CspPolicy } from "@effect-desktop/config"
-import { Effect, Fiber, Layer, Stream } from "effect"
-import { HttpServerRequest } from "effect/unstable/http"
+import { Clock, Effect, Fiber, Layer, Stream } from "effect"
+import { HttpClientRequest, HttpRouter, HttpServer, HttpServerRequest } from "effect/unstable/http"
 
 import {
   AppAssetResolver,
+  AppAssetRoutes,
   AppCspInspector,
   AppCspPolicyDefault,
   AppHttpServer,
@@ -22,16 +23,7 @@ const makeRequest = (
   url: string,
   headers: Record<string, string> = {}
 ): HttpServerRequest.HttpServerRequest =>
-  ({
-    url,
-    method: "GET",
-    headers,
-    source: {},
-    originalUrl: url,
-    cookies: {},
-    modify: (opts: { url?: string; headers?: Record<string, string> }) =>
-      makeRequest(opts.url ?? url, (opts.headers as Record<string, string>) ?? headers)
-  }) as unknown as HttpServerRequest.HttpServerRequest
+  HttpServerRequest.fromClientRequest(HttpClientRequest.get(url, { headers }))
 
 const htmlAsset: ResolvedAsset = {
   bytes: TEXT_ENCODER.encode(
@@ -56,6 +48,48 @@ const makeServer = (resolver: AppAssetResolverApi = staticResolver, policy?: Csp
   Effect.gen(function* () {
     return yield* AppHttpServer
   }).pipe(Effect.provide(makeAppHttpServerLayer(resolver, policy)))
+
+const makeWebHandler = (resolver: AppAssetResolverApi = staticResolver, policy?: CspPolicy) =>
+  HttpRouter.toWebHandler(
+    AppAssetRoutes.pipe(
+      Layer.provide(makeAppHttpServerLayer(resolver, policy)),
+      Layer.provide(HttpServer.layerServices)
+    )
+  )
+
+interface OpenApiSpec {
+  readonly info: { readonly title: string }
+  readonly paths: Readonly<Record<string, { readonly get: { readonly operationId: string } }>>
+}
+
+const decodeOpenApiSpec = (input: unknown): OpenApiSpec => {
+  if (typeof input !== "object" || input === null) {
+    throw new Error("OpenAPI response must be an object")
+  }
+  if (!("info" in input) || typeof input.info !== "object" || input.info === null) {
+    throw new Error("OpenAPI response must include info")
+  }
+  if (!("title" in input.info) || typeof input.info.title !== "string") {
+    throw new Error("OpenAPI response info must include title")
+  }
+  if (!("paths" in input) || typeof input.paths !== "object" || input.paths === null) {
+    throw new Error("OpenAPI response must include paths")
+  }
+  const paths: Record<string, { readonly get: { readonly operationId: string } }> = {}
+  for (const [path, value] of Object.entries(input.paths)) {
+    if (typeof value !== "object" || value === null) {
+      continue
+    }
+    if (!("get" in value) || typeof value.get !== "object" || value.get === null) {
+      continue
+    }
+    if (!("operationId" in value.get) || typeof value.get.operationId !== "string") {
+      continue
+    }
+    paths[path] = { get: { operationId: value.get.operationId } }
+  }
+  return { info: { title: input.info.title }, paths }
+}
 
 test("serves HTML with nonce injected into script tags and CSP header set", async () => {
   const response = await Effect.runPromise(
@@ -228,6 +262,7 @@ test("backslash traversal URLs are rejected before normalization", async () => {
 })
 
 test("streams CSP blocked decisions through AppCspInspector", async () => {
+  const timestamp = 1_710_000_123_456
   await Effect.runPromise(
     Effect.gen(function* () {
       const inspector = yield* makeAppCspInspector()
@@ -260,7 +295,9 @@ test("streams CSP blocked decisions through AppCspInspector", async () => {
       expect(events[0]?.kind).toBe("csp")
       expect(events[0]?.decision).toBe("blocked")
       expect(events[0]?.reason).toBe("path-traversal")
-    })
+      expect(events[0]?.timestamp).toBe(timestamp)
+      expect(events[0]?.traceId).toBe(`csp:${timestamp}`)
+    }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
   )
 })
 
@@ -290,4 +327,53 @@ test("mimeTypeForPath returns correct types for known extensions", () => {
   expect(mimeTypeForPath("/font.woff2")).toBe("font/woff2")
   expect(mimeTypeForPath("/unknown.xyz")).toBe("application/octet-stream")
   expect(mimeTypeForPath("/no-extension")).toBe("application/octet-stream")
+})
+
+test("AppAssetRoutes serves app assets through the generated HttpApi layer", async () => {
+  const { handler, dispose } = makeWebHandler()
+  try {
+    const response = await handler(new Request("http://localhost/app.js"))
+    const body = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(body).toBe("console.log('hello')")
+  } finally {
+    await dispose()
+  }
+})
+
+test("AppAssetRoutes exposes generated OpenAPI", async () => {
+  const { handler, dispose } = makeWebHandler()
+  try {
+    const response = await handler(new Request("http://localhost/openapi.json"))
+    const spec = decodeOpenApiSpec(await response.json())
+
+    expect(response.status).toBe(200)
+    expect(spec.info.title).toBe("Effect Desktop Local API")
+    expect(spec.paths["/*"]?.get.operationId).toBe("asset")
+  } finally {
+    await dispose()
+  }
+})
+
+test("AppAssetRoutes exposes Scalar documentation", async () => {
+  const { handler, dispose } = makeWebHandler()
+  try {
+    const response = await handler(new Request("http://localhost/docs"))
+    const body = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(body).toContain("Effect Desktop Local API")
+    expect(body).toContain('"openapi":"3.1.0"')
+  } finally {
+    await dispose()
+  }
+})
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.void
 })

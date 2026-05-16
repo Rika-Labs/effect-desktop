@@ -111,7 +111,7 @@ export class WorkflowInspectorEvent extends Schema.Class<WorkflowInspectorEvent>
 export class EventLogInspectorEvent extends Schema.Class<EventLogInspectorEvent>(
   "EventLogInspectorEvent"
 )({
-  kind: Schema.Literals(["append", "query", "recovery"]),
+  kind: Schema.Literals(["append", "query", "recovery", "read-only-transition"]),
   status: InspectorEventStatus,
   operation: Schema.String,
   event: OptionalString,

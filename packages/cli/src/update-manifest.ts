@@ -8,7 +8,7 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect, Schema } from "effect"
+import { Data, Effect, Option, Schema } from "effect"
 
 import {
   ReleaseFileSystem,
@@ -386,15 +386,14 @@ const readPackagedArtifacts = (
 ): Effect.Effect<readonly PackagedArtifact[], PublishFileError | PublishConfigError, never> =>
   Effect.gen(function* () {
     yield* statPath(plan.outputPath).pipe(
-      Effect.catch(() =>
-        Effect.fail(
+      Effect.mapError(
+        () =>
           new PublishFileError({
             operation: "discover",
             path: plan.outputPath,
             message: "no packaged artifacts found; run bun desktop package first",
             cause: undefined
           })
-        )
       )
     )
     const platforms =
@@ -404,20 +403,20 @@ const readPackagedArtifacts = (
     const artifacts: PackagedArtifact[] = []
     for (const platform of platforms.toSorted()) {
       const platformPath = join(plan.outputPath, platform)
-      const platformStat = yield* statPath(platformPath).pipe(
-        Effect.catch(() =>
-          plan.target === undefined
-            ? Effect.succeed(undefined)
-            : Effect.fail(
-                new PublishFileError({
-                  operation: "discover",
-                  path: platformPath,
-                  message: `no packaged artifacts found for ${plan.target}`,
-                  cause: undefined
-                })
+      const platformStat =
+        plan.target === undefined
+          ? Option.getOrUndefined(yield* Effect.option(statPath(platformPath)))
+          : yield* statPath(platformPath).pipe(
+              Effect.mapError(
+                () =>
+                  new PublishFileError({
+                    operation: "discover",
+                    path: platformPath,
+                    message: `no packaged artifacts found for ${plan.target}`,
+                    cause: undefined
+                  })
               )
-        )
-      )
+            )
       if (platformStat === undefined || !platformStat.isDirectory()) {
         continue
       }
@@ -1082,7 +1081,9 @@ const readJson = <A>(path: string): Effect.Effect<A, PublishFileError, never> =>
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
       const content = yield* fs.readFileString(path)
-      return JSON.parse(content) as A
+      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+        Effect.map((value) => value as A)
+      )
     })
   ).pipe(
     Effect.mapError(

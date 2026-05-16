@@ -3,26 +3,21 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
@@ -119,6 +114,14 @@ export const AppMethodNames = Object.freeze([
   "registerProtocol"
 ] as const)
 
+const AppCapabilityMethods = Object.freeze([
+  "quit",
+  "restart",
+  "focus",
+  "setOpenAtLogin",
+  "registerProtocol"
+] as const satisfies readonly (typeof AppMethodNames)[number][])
+
 export type AppError = HostProtocolError
 
 export interface AppClientApi {
@@ -145,14 +148,16 @@ export interface AppServiceApi extends Omit<AppClientApi, "quit" | "restart"> {
   readonly restart: (input?: AppRestartOptions) => Effect.Effect<void, AppError, never>
 }
 
-export class App extends Context.Service<App, AppServiceApi>()("@effect-desktop/native/App") {}
+export class App extends Context.Service<App, AppServiceApi>()("@effect-desktop/native/App") {
+  static readonly layer = Layer.effect(App)(
+    Effect.gen(function* () {
+      const client = yield* AppClient
+      return App.of(makeAppService(client))
+    })
+  )
+}
 
-export const AppLive = Layer.effect(App)(
-  Effect.gen(function* () {
-    const client = yield* AppClient
-    return makeAppService(client)
-  })
-)
+export const AppLive = App.layer
 
 export const makeAppClientLayer = (client: AppClientApi): Layer.Layer<AppClient> =>
   Layer.succeed(AppClient)(client)
@@ -173,7 +178,7 @@ export const makeAppBridgeClientLayer = (
 
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 
-export type AppRpcHandlers = Parameters<typeof AppRpcGroup.toLayer>[0]
+export type AppRpcHandlers = RpcGroup.HandlersFrom<AppRpc>
 
 export const AppHandlersLive = AppRpcGroup.toLayer({
   "App.getInfo": () =>
@@ -218,8 +223,9 @@ export const AppHandlersLive = AppRpcGroup.toLayer({
     })
 })
 
-export const AppSurface = DesktopRpc.surface("App", AppRpcGroup, {
+export const AppSurface = NativeSurface.make("App", AppRpcGroup, {
   service: AppClient,
+  capabilities: AppCapabilityMethods,
   handlers: AppHandlersLive,
   client: (client) => appClientFromRpcClient(client, undefined)
 })
@@ -227,8 +233,7 @@ export const AppSurface = DesktopRpc.surface("App", AppRpcGroup, {
 export const makeHostAppRpcRuntime = (
   handlers: AppRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(AppRpcGroup, AppRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => AppSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {
@@ -306,69 +311,7 @@ const subscribeAppEvent = <A>(
   exchange: BridgeClientExchange | undefined,
   method: "App.onSecondInstance" | "App.onOpenFile" | "App.onOpenUrl" | "App.onBeforeQuit",
   schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, AppError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeAppEventEnvelope(method, schema, envelope)))
-}
-
-const decodeAppEventEnvelope = <A>(
-  operation: string,
-  schema: Schema.Codec<A, unknown, never, never>,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<A, AppError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(schema)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
-}
-
-export const makeUnsupportedAppClient = (): AppClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, AppError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, AppError, never> =>
-    Stream.fail(unsupportedError(method))
-
-  const client: AppClientApi = {
-    getInfo: () => unsupportedEffect<AppInfo>("App.getInfo"),
-    getCommandLine: () => unsupportedEffect<AppCommandLine>("App.getCommandLine"),
-    quit: () => unsupportedEffect<void>("App.quit"),
-    restart: () => unsupportedEffect<void>("App.restart"),
-    focus: () => unsupportedEffect<void>("App.focus"),
-    requestSingleInstanceLock: () =>
-      unsupportedEffect<AppSingleInstanceResult>("App.requestSingleInstanceLock"),
-    setOpenAtLogin: () => unsupportedEffect<void>("App.setOpenAtLogin"),
-    registerProtocol: () => unsupportedEffect<void>("App.registerProtocol"),
-    onSecondInstance: () => unsupportedStream<AppSecondInstanceEvent>("App.onSecondInstance"),
-    onOpenFile: () => unsupportedStream<AppOpenFileEvent>("App.onOpenFile"),
-    onOpenUrl: () => unsupportedStream<AppOpenUrlEvent>("App.onOpenUrl"),
-    onBeforeQuit: () => unsupportedStream<AppBeforeQuitEvent>("App.onBeforeQuit")
-  }
-
-  return Object.freeze(client)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host App platform adapter is not implemented yet",
-    message: `unsupported App method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
+): Stream.Stream<A, AppError, never> => subscribeNativeEvent(exchange, method, schema)
 
 const decodeAppQuitInput = (
   input: unknown
@@ -406,11 +349,13 @@ function appRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`App.${method}` as const, {
+  return NativeSurface.rpc("App", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runAppRpc = <A, E>(

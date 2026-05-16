@@ -44,7 +44,7 @@ Use Bun 1.3.13, as pinned in `package.json`.
 
 TypeScript uses strict compiler settings and Ultracite with Oxlint/Oxfmt. Keep public effectful APIs as `Effect.Effect<A, E, R>` except at explicit integration edges. Import Effect symbols from `effect`, use `Schema.Class` for boundary data, and model expected failures with stable tagged errors. Prefer small, explicit modules and avoid shallow wrappers. Formatting is Ultracite-managed; do not hand-format vendored files.
 
-Public effectful capability design must follow the Layer-first contract in `docs/architecture/layer-first-contract.md`.
+Public effectful capability design must follow the Layer-first contract in `engineering/architecture/layer-first-contract.md`.
 
 ## Testing Guidelines
 

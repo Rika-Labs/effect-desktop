@@ -1,6 +1,6 @@
 # @effect-desktop/devtools
 
-> **Status:** Phase 19 runtime inspector projections. See `docs/SPEC.md`.
+> **Status:** Phase 19 runtime inspector projections. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -34,7 +34,7 @@ Runtime inspector projections for framework primitives: windows, bridge calls, s
 
 - `list()` returns startup phase rows, bridge p99 rows by contract tag, and the renderer frame row.
 - Each row includes the current p99 value, budget, ratio, status, and bounded samples for a sparkline.
-- Budgets follow `docs/SPEC.md` §21.2/§21.6; the overlay only projects metrics and does not record its own measurements.
+- Budgets follow `engineering/SPEC.md` §21.2/§21.6; the overlay only projects metrics and does not record its own measurements.
 
 `EmbeddedInspectorPanel` mounts the shared Inspector projections inside a development app:
 
@@ -52,7 +52,7 @@ The package depends on `@effect-desktop/core` because runtime services are the s
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+See `engineering/SPEC.md` for the package's normative non-goals.
 
 ## Usage
 

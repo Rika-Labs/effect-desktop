@@ -7,7 +7,7 @@ import {
   Worker,
   type WorkerSnapshot
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Option, Stream } from "effect"
+import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 export * from "./shell.js"
 export * from "./live-panels.js"
@@ -87,12 +87,7 @@ export const WorkersDevtoolsLive: Layer.Layer<
 
     return Object.freeze({
       list,
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep("16 millis").pipe(Effect.andThen(list())))
-          )
-        )
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced("16 millis"))
     } satisfies WorkersDevtoolsApi)
   })
 )

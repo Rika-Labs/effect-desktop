@@ -6,14 +6,15 @@ import {
   InspectorTelemetryEvent,
   makeEffectTelemetryCollector,
   makeTelemetry,
-  TelemetryInvalidArgumentError
+  TelemetryInvalidArgumentError,
+  withDesktopSpan
 } from "./telemetry.js"
 
 test("Telemetry records redacted structured logs and publishes bounded snapshots", async () => {
   const telemetry = await Effect.runPromise(makeTelemetry({ maxLogs: 1, now: () => 100 }))
 
   const observed = Effect.runFork(telemetry.observeLogs().pipe(Stream.take(2), Stream.runCollect))
-  await Bun.sleep(0)
+  await Effect.runPromise(Effect.yieldNow)
   await Effect.runPromise(
     telemetry.log({
       level: "info",
@@ -81,9 +82,7 @@ test("Telemetry applies configured redaction policy to structured logs", async (
 })
 
 test("Telemetry records trace spans in a bounded ring and can disable tracing explicitly", async () => {
-  const telemetry = await Effect.runPromise(
-    makeTelemetry({ traceRingSize: 1, nextSpanId: () => "generated-span" })
-  )
+  const telemetry = await Effect.runPromise(makeTelemetry({ traceRingSize: 1 }))
   await Effect.runPromise(
     telemetry.recordSpan({
       traceId: "trace-old",
@@ -109,8 +108,10 @@ test("Telemetry records trace spans in a bounded ring and can disable tracing ex
   )
 
   const spans = await Effect.runPromise(telemetry.listTraces())
-  expect(spans.map((span) => span.traceId)).toEqual(["trace-new"])
-  expect(spans[0]?.spanId).toBe("generated-span")
+  expect(spans[0]?.traceId).toEqual(expect.any(String))
+  expect(spans[0]?.traceId).not.toBe("trace-new")
+  expect(spans[0]?.spanId).toEqual(expect.any(String))
+  expect(spans[0]?.parentSpanId).toEqual(Option.some("root"))
   expect(spans[0]?.durationMs).toEqual(Option.some(15))
   expect(spans[0]?.attributes).toEqual(Option.some({ apiKey: "<redacted:redacted>" }))
   expect(spans[0]?.safety.redacted).toBeGreaterThan(0)
@@ -256,7 +257,7 @@ test("EffectTelemetryCollector captures Effect logs, spans, metrics, and causes 
     )
   )
   expect(Exit.isFailure(exit)).toBe(true)
-  await Bun.sleep(0)
+  await Effect.runPromise(Effect.yieldNow)
   await Effect.runPromise(telemetry.collectEffectMetrics())
 
   const snapshot = await Effect.runPromise(telemetry.snapshot())
@@ -287,6 +288,46 @@ test("EffectTelemetryCollector captures Effect logs, spans, metrics, and causes 
     tag: "InvalidArgument",
     message: "bad input"
   })
+})
+
+test("withDesktopSpan attaches Effect span and log annotations to telemetry snapshots", async () => {
+  const telemetry = await Effect.runPromise(makeTelemetry({ now: () => 2_000 }))
+  const collector = await Effect.runPromise(makeEffectTelemetryCollector(telemetry))
+
+  await Effect.runPromise(
+    collector.instrument(
+      Effect.logInfo("desktop operation").pipe(
+        withDesktopSpan("Desktop.Operation", {
+          resourceId: "resource-1",
+          windowId: "window-1",
+          traceId: "caller-trace"
+        })
+      )
+    )
+  )
+  await Effect.runPromise(Effect.yieldNow)
+
+  const snapshot = await Effect.runPromise(telemetry.snapshot())
+  const span = snapshot.traces.find((trace) => trace.name === "Desktop.Operation")
+  const log = snapshot.logs.find((record) => record.operation === "Desktop.Operation")
+
+  expect(span?.attributes).toEqual(
+    Option.some({
+      resourceId: "resource-1",
+      windowId: "window-1",
+      traceId: "caller-trace"
+    })
+  )
+  expect(log?.traceId).toBe(span?.traceId)
+  expect(log?.fields).toEqual(
+    Option.some({
+      fiberId: expect.any(Number),
+      spanId: span?.spanId,
+      resourceId: "resource-1",
+      windowId: "window-1",
+      traceId: "caller-trace"
+    })
+  )
 })
 
 test("Telemetry rejects invalid metric timestamps before mutating bounded metrics", async () => {
@@ -409,16 +450,7 @@ test("Telemetry recordSpan rejects control bytes in span identifiers", async () 
     )
   }
 
-  const generated = await Effect.runPromise(
-    makeTelemetry({ nextSpanId: () => `gen${String.fromCharCode(10)}forged` })
-  )
-  expectInvalid(
-    await Effect.runPromiseExit(generated.recordSpan({ ...baseInput, traceId: "trace-1" })),
-    "spanId"
-  )
-
   expect(await Effect.runPromise(telemetry.listTraces())).toEqual([])
-  expect(await Effect.runPromise(generated.listTraces())).toEqual([])
 })
 
 test("Telemetry rejects empty trace span identifiers", async () => {

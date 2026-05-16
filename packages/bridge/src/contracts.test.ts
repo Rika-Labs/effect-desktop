@@ -14,7 +14,6 @@ import {
   RpcSchema,
   RpcSupport,
   bridgeContractFromRpcGroup,
-  makeBridgeHandlerLayer,
   makeHostProtocolInvalidOutputError,
   rpcCapability,
   rpcEndpointKind,
@@ -25,6 +24,9 @@ import {
 test("bridge package no longer exports legacy bridge authoring DSL", () => {
   expect(`Bridge${"Rpc"}` in bridge).toBe(false)
   expect(`makeBridge${"Rpc"}Group` in bridge).toBe(false)
+  expect("Handlers" in bridge).toBe(false)
+  expect("Streams" in bridge).toBe(false)
+  expect("makeBridgeHandlerLayer" in bridge).toBe(false)
 })
 
 test("bridgeContractFromRpcGroup lowers a frozen Effect RpcGroup contract", () => {
@@ -191,39 +193,6 @@ test("bridge metadata validation rejects invalid annotations", () => {
   ).toThrow(InvalidBridgeMetadataError)
 })
 
-test("makeBridgeHandlerLayer binds handlers to derived bridge metadata", async () => {
-  const ProjectRpcs = makeProjectRpcs("Test.Layered")
-  const layer = makeBridgeHandlerLayer(ProjectRpcs)({
-    call: (input) => Effect.succeed(input.toUpperCase())
-  })
-
-  expect(layer.group).toBe(ProjectRpcs)
-  expect(await Effect.runPromise(layer.handlers.call("request"))).toBe("REQUEST")
-  expect(Object.isFrozen(layer)).toBe(true)
-  expect(Object.isFrozen(layer.handlers)).toBe(true)
-})
-
-test("makeBridgeHandlerLayer rejects missing handlers", () => {
-  const ProjectRpcs = makeProjectRpcs("Test.MissingHandler")
-
-  expect(() => makeBridgeHandlerLayer(ProjectRpcs)({} as never)).toThrow(InvalidBridgeMetadataError)
-  expect(() => makeBridgeHandlerLayer(ProjectRpcs)({ call: "not callable" } as never)).toThrow(
-    InvalidBridgeMetadataError
-  )
-})
-
-test("makeBridgeHandlerLayer accepts prototype handlers", async () => {
-  const ProjectRpcs = makeProjectRpcs("Test.PrototypeHandler")
-  class Handlers {
-    call(input: string): Effect.Effect<string, never, never> {
-      return Effect.succeed(input.toUpperCase())
-    }
-  }
-  const layer = makeBridgeHandlerLayer(ProjectRpcs)(new Handlers())
-
-  expect(await Effect.runPromise(layer.handlers.call("request"))).toBe("REQUEST")
-})
-
 test("canonical RpcGroup carries endpoint, capability, support, stream, and event metadata", () => {
   const List = Rpc.make("Test.Metadata.list", {
     success: Schema.Array(Schema.String)
@@ -294,15 +263,6 @@ test("bridgeContractFromRpcGroup requires pure Rpc schemas", () => {
   expect(compileOnly).toBeFunction()
   expect(ServicefulRpc._tag).toBe("Test.FromGroup.serviceful")
 })
-
-const makeProjectRpcs = <Tag extends string>(tag: Tag) => {
-  const Call = Rpc.make(`${tag}.call`, {
-    payload: Schema.String,
-    success: Schema.String,
-    error: Schema.Never
-  })
-  return bridgeContractFromRpcGroup(tag, RpcGroup.make(Call))
-}
 
 interface RpcWithSuccessSchema extends Rpc.Any {
   readonly successSchema: Schema.Top

@@ -256,7 +256,7 @@
     {
       "name": "ProductionCheckInput",
       "kind": "interface",
-      "signature": "export interface ProductionCheckInput { readonly config: ProductionSecurityConfig readonly configPath?: string readonly rendererFiles?: readonly ProductionCheckFile[] }"
+      "signature": "export interface ProductionCheckInput { readonly config: ProductionSecurityConfig readonly configPath?: string readonly rendererFiles?: readonly unknown[] }"
     },
     {
       "name": "ProductionCheckInvalidInput",
@@ -291,7 +291,7 @@
     {
       "name": "ProductionSecurityConfig",
       "kind": "interface",
-      "signature": "export interface ProductionSecurityConfig { readonly security?: { readonly requireTypedBridge?: boolean readonly rendererNativeAccess?: boolean readonly requirePermissions?: boolean readonly externalNavigation?: \"deny\" | \"ask\" readonly devtoolsInProd?: boolean readonly csp?: CspConfig | undefined readonly redaction?: RedactionPolicy } readonly permissions?: { readonly filesystem?: { readonly write?: FilesystemWritePolicy } readonly process?: { readonly spawn?: ProcessPermissionPolicy } readonly secrets?: SecretPermissionPolicy } readonly update?: { readonly install?: UpdateInstallPolicy } readonly appProtocol?: AppProtocolPolicy readonly resources?: ResourcePolicy readonly contracts?: readonly ContractCapabilityRequirement[] }"
+      "signature": "export interface ProductionSecurityConfig { readonly security?: { readonly requireTypedBridge?: boolean readonly rendererNativeAccess?: boolean readonly requirePermissions?: boolean readonly externalNavigation?: string readonly devtoolsInProd?: boolean readonly csp?: CspConfig | undefined readonly redaction?: RedactionPolicy } readonly permissions?: { readonly filesystem?: { readonly write?: FilesystemWritePolicy } readonly process?: { readonly spawn?: ProcessPermissionPolicy } readonly secrets?: SecretPermissionPolicy } readonly update?: { readonly install?: UpdateInstallPolicy } readonly appProtocol?: AppProtocolPolicy readonly resources?: ResourcePolicy readonly contracts?: readonly ContractCapabilityRequirement[] }"
     },
     {
       "name": "RedactionPolicy",
@@ -341,7 +341,7 @@
     {
       "name": "WebEngine",
       "kind": "type",
-      "signature": "const WebEngine: Schema.Literals<readonly [\"system\", \"chromium\"]>"
+      "signature": "const WebEngine: Schema.Literals<readonly [\"system\", \"chrome\", \"chromium\"]>"
     }
   ]
 }

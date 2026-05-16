@@ -141,7 +141,7 @@ export interface ProductionSecurityConfig {
     readonly requireTypedBridge?: boolean
     readonly rendererNativeAccess?: boolean
     readonly requirePermissions?: boolean
-    readonly externalNavigation?: "deny" | "ask"
+    readonly externalNavigation?: string
     readonly devtoolsInProd?: boolean
     readonly csp?: CspConfig | undefined
     readonly redaction?: RedactionPolicy
@@ -238,7 +238,7 @@ export interface DesktopConfig extends Omit<ProductionSecurityConfig, "permissio
 export const RuntimeEngine = Schema.Literals(["bun", "node"])
 export type RuntimeEngine = typeof RuntimeEngine.Type
 
-export const WebEngine = Schema.Literals(["system", "chromium"])
+export const WebEngine = Schema.Literals(["system", "chrome", "chromium"])
 export type WebEngine = typeof WebEngine.Type
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json)
@@ -458,6 +458,7 @@ export const decodeDesktopConfig = (
   operation = "DesktopConfig.decode"
 ): Effect.Effect<DesktopConfig, DesktopConfigDecodeError, never> =>
   Schema.decodeUnknownEffect(DesktopConfigSchema)(input).pipe(
+    Effect.map(normalizeDesktopConfig),
     Effect.mapError(
       (error) =>
         new DesktopConfigDecodeError({
@@ -494,7 +495,7 @@ export const mergeDesktopConfig = (shared: DesktopConfig, app: DesktopConfig): D
     ...(appMetadata === undefined ? {} : { app: appMetadata }),
     ...(runtime === undefined ? {} : { runtime }),
     ...(renderer === undefined ? {} : { renderer }),
-    ...(web === undefined ? {} : { web }),
+    ...(web === undefined ? {} : { web: normalizeWebConfig(web) }),
     ...(build === undefined ? {} : { build }),
     ...(security === undefined ? {} : { security }),
     ...(env === undefined ? {} : { env }),
@@ -543,7 +544,7 @@ const mergeRecordMap = (
 export interface ProductionCheckInput {
   readonly config: ProductionSecurityConfig
   readonly configPath?: string
-  readonly rendererFiles?: readonly ProductionCheckFile[]
+  readonly rendererFiles?: readonly unknown[]
 }
 
 interface RuleContext {
@@ -568,6 +569,21 @@ interface ParsedCspPolicy {
 }
 
 export const defineDesktopConfig = <Config extends DesktopConfig>(config: Config): Config => config
+
+const normalizeDesktopConfig = (config: DesktopConfig): DesktopConfig => ({
+  ...config,
+  ...(config.web === undefined ? {} : { web: normalizeWebConfig(config.web) })
+})
+
+const normalizeWebConfig = (
+  web: NonNullable<DesktopConfig["web"]>
+): NonNullable<DesktopConfig["web"]> =>
+  web.engine === undefined
+    ? { ...web }
+    : {
+        ...web,
+        engine: web.engine === "chromium" ? "chrome" : web.engine
+      }
 
 export const DEFAULT_CSP_NONCE_PLACEHOLDER = "{N}"
 
@@ -759,11 +775,13 @@ const decodeProductionCheckInput = (
       if (configPath.trim() === "") {
         throw new Error("configPath must be a non-empty string")
       }
-      const rendererFiles = input.rendererFiles ?? []
-      for (const [index, file] of rendererFiles.entries()) {
+      const rendererFileInputs = input.rendererFiles ?? []
+      const rendererFiles: ProductionCheckFile[] = []
+      for (const [index, file] of rendererFileInputs.entries()) {
         if (!isProductionCheckFile(file)) {
           throw new Error(`rendererFiles[${index}] must include string path and content`)
         }
+        rendererFiles.push(file)
       }
       return {
         config: input.config,

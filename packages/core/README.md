@@ -1,6 +1,6 @@
 # @effect-desktop/core
 
-> **Status:** Phase 2 runtime entry exists; the public API remains reserved for Phase 4+. See `docs/SPEC.md`.
+> **Status:** Phase 2 runtime entry exists; the public API remains reserved for Phase 4+. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -39,29 +39,33 @@ connection wrapper. Use `sql.withTransaction(effect)` for transactions and
 
 ### Settings
 
-`Settings` is a typed key/value store built on Effect `KeyValueStore`. `open`
-validates the database path, owner scope, namespace, and schema version before
-opening the store. `get`, `set`, `delete`, `keys`, and `update` validate values
-through Effect Schema and return typed `SettingsError` values instead of
-throwing.
+`Settings` is a typed preference/configuration store built on Effect
+`KeyValueStore`. Use `SqlClient` for app records and query-shaped data.
+`Settings.layer(...)` validates the database path, namespace, and schema version
+before opening the store. `Settings.window(...)` binds the same store to the
+current `Desktop.window(...)` context. `get`, `set`, `delete`, `keys`, and
+`update` validate values through Effect Schema and return typed `SettingsError`
+values instead of throwing.
 
 `set` is last-writer-wins. `update` runs inside a SQLite transaction, so
 read-modify-write calls for the same database connection serialize. Versioned
 migrations run in the same transaction as the metadata update and emit
-`SettingsMigrated` events. When opening detects a corrupt database and an
-explicit `backupPath` is provided, Settings replaces the corrupt file with the
-backup and reopens it; backup copy failures return
+`SettingsMigrated` events. When layer construction detects a corrupt database
+and an explicit `backupPath` is provided, Settings replaces the corrupt file
+with the backup and reopens it; backup copy failures return
 `SettingsRecoveredFromBackup`.
 
 The `changes()` stream emits `{ key, oldValue, newValue, source }` for writes,
 and `migrated()` replays recent migration events for observers that subscribe
-after open.
+after construction.
 
 ### EventLog
 
-Effect Desktop uses `effect/unstable/eventlog` directly for append-only event
-journals. The core package does not re-export a local `EventLog` wrapper;
-callers compose `EventLog`, `EventJournal`, and journal backends from Effect.
+Effect Desktop keeps the raw `effect/unstable/eventlog` primitive as the
+advanced dependency and exposes `@effect-desktop/core/runtime/event-log` for
+desktop policy. `DesktopEventLog` owns the closed desktop operation event
+schema, redaction before append, bounded query results, identity setup, and
+Inspector emission for append, query, recovery, and read-only transitions.
 
 ### AuditEvents
 
@@ -206,10 +210,10 @@ without reaching into raw host transport internals. `send`, `receive`, and
 ### WindowState
 
 `WindowState` persists per-window geometry and UI state across launches.
-`persist(windowId, state)` writes the window record atomically, `restore(windowId)`
-returns that one window when present, and `restoreAll()` restores every persisted
-window independently. `clear(windowId)` removes one window; `clear()` removes the
-full store.
+`WindowState.window(...)` binds the service to the current `Desktop.window(...)`
+context. `persist(state)` writes the current window record atomically,
+`restore()` returns that one window when present, and `clear()` removes the
+current window record while leaving other windows intact.
 
 Restore applies caller-provided bounds validation and display snapping. When the
 stored rectangle is off every configured display, it snaps to the primary
@@ -255,15 +259,20 @@ The runtime entry emits exactly one newline-terminated JSON ready event to stdou
 { "event": "runtime.ready", "version": "0.0.0" }
 ```
 
-After the ready line, the runtime uses the framed stdio transport to call the
-required `host.version` and `host.ping` handshake methods, then calls
-`Window.create`. When `EFFECT_DESKTOP_WINDOW_SMOKE_TEST` is an Effect Config
-boolean true value such as `1`, `true`, `yes`, or `on`, it also calls
-`Window.destroy` for the returned `WindowId` before exiting.
+Startup windows must be declared through `EFFECT_DESKTOP_APP_MODULE` or
+`EFFECT_DESKTOP_STARTUP_WINDOWS`. Launch fails before host negotiation when no
+startup window is declared; the runtime does not synthesize a default window.
+
+After the ready line and startup-window validation, the runtime uses the framed
+stdio transport to call the required `host.version` and `host.ping` handshake
+methods, then calls `Window.create` for each declared window. When
+`EFFECT_DESKTOP_WINDOW_SMOKE_TEST` is an Effect Config boolean true value such
+as `1`, `true`, `yes`, or `on`, it also calls `Window.destroy` for each returned
+`WindowId` before exiting.
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+See `engineering/SPEC.md` for the package's normative non-goals.
 
 ## Usage
 
@@ -305,19 +314,13 @@ import {
   PermissionRegistry,
   ResourceRegistryLive,
   Settings,
-  makePermissionRegistry,
-  makeSettingsLayer
+  makePermissionRegistry
 } from "@effect-desktop/core"
 
 const settingsPath = "settings.sqlite"
 
 const program = Effect.gen(function* () {
-  const settings = yield* Settings
-  const store = yield* settings.open({
-    path: settingsPath,
-    ownerScope: "window-main",
-    schemaVersion: 1
-  })
+  const store = yield* Settings
   yield* store.set("user.name", Schema.String, "alice")
   return yield* store.getOrDefault("user.name", Schema.String, "anonymous")
 })
@@ -333,7 +336,7 @@ const PermissionRegistryLive = Layer.unwrap(
 
 await Effect.runPromise(
   program.pipe(
-    Effect.provide(makeSettingsLayer(settingsPath, "window-main")),
+    Effect.provide(Settings.layer({ path: settingsPath, schemaVersion: 1 })),
     Effect.provide(PermissionRegistryLive),
     Effect.provide(ResourceRegistryLive),
     Effect.scoped

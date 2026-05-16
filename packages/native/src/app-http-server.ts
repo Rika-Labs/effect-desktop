@@ -6,8 +6,18 @@ import {
   type CspPolicy
 } from "@effect-desktop/config"
 import { cspInspectorEvent, type CspInspectorEvent } from "@effect-desktop/core"
-import { Context, Data, Effect, Layer, Option, PubSub, Scope, Stream } from "effect"
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Scope, Stream } from "effect"
+import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import {
+  HttpApi,
+  HttpApiBuilder,
+  HttpApiEndpoint,
+  HttpApiError,
+  HttpApiGroup,
+  HttpApiScalar,
+  HttpApiSchema,
+  OpenApi
+} from "effect/unstable/httpapi"
 
 const MIME_MAP: ReadonlyMap<string, string> = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -148,6 +158,45 @@ export class AppHttpServer extends Context.Service<AppHttpServer, AppHttpServerA
   "@effect-desktop/native/AppHttpServer"
 ) {}
 
+const AppAssetHeaders = Schema.Struct({
+  "if-none-match": Schema.optional(Schema.String)
+})
+
+const AppAssetBytes = Schema.Uint8Array.pipe(
+  HttpApiSchema.asUint8Array({ contentType: "application/octet-stream" })
+)
+
+export class AppAssetApiGroup extends HttpApiGroup.make("appAssets", { topLevel: true }).add(
+  HttpApiEndpoint.get("asset", "/*", {
+    headers: AppAssetHeaders,
+    success: [AppAssetBytes, HttpApiSchema.Empty(304)],
+    error: [HttpApiError.BadRequest, HttpApiError.NotFound]
+  }).annotateMerge(
+    OpenApi.annotations({
+      title: "App asset",
+      description: "Serves local desktop application assets with CSP and cache policy."
+    })
+  )
+) {}
+
+export class DesktopLocalApi extends HttpApi.make("DesktopLocalApi")
+  .add(AppAssetApiGroup)
+  .annotateMerge(
+    OpenApi.annotations({
+      title: "Effect Desktop Local API",
+      description: "Loopback-only local HTTP surfaces exposed by the desktop runtime."
+    })
+  ) {}
+
+export const DesktopLocalHandlers = HttpApiBuilder.group(
+  DesktopLocalApi,
+  "appAssets",
+  Effect.fn(function* (handlers) {
+    const server = yield* AppHttpServer
+    return handlers.handleRaw("asset", ({ request }) => Effect.scoped(server.handle(request)))
+  })
+)
+
 const buildAssetResponse = (
   asset: ResolvedAsset,
   ifNoneMatch: string | undefined,
@@ -156,6 +205,7 @@ const buildAssetResponse = (
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> =>
   Effect.gen(function* () {
     const nonce = yield* mintCspNonce
+    const timestamp = yield* Clock.currentTimeMillis
     const headers = cspHeaders(policy, nonce)
     yield* inspector.emit(
       cspInspectorEvent({
@@ -165,7 +215,7 @@ const buildAssetResponse = (
         source: "AppHttpServer",
         traceId: `csp:${nonce.value}`,
         outcome: headers["content-security-policy"] === undefined ? "disabled" : "applied",
-        timestamp: Date.now(),
+        timestamp,
         directives: policy.directives
       })
     )
@@ -241,14 +291,15 @@ export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolv
               })
 
             if (hasTraversal(request.url)) {
+              const timestamp = yield* Clock.currentTimeMillis
               yield* cspInspector.emit(
                 cspInspectorEvent({
                   kind: "csp",
                   decision: "blocked",
                   source: "AppHttpServer",
-                  traceId: `csp:${Date.now()}`,
+                  traceId: `csp:${timestamp}`,
                   outcome: "blocked",
-                  timestamp: Date.now(),
+                  timestamp,
                   resource: request.url,
                   reason: "path-traversal"
                 })
@@ -258,14 +309,15 @@ export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolv
 
             const url = new URL(request.url, "app://localhost")
             if (!ALLOWED_SCHEMES.has(url.protocol) || !ALLOWED_HOSTS.has(url.hostname)) {
+              const timestamp = yield* Clock.currentTimeMillis
               yield* cspInspector.emit(
                 cspInspectorEvent({
                   kind: "csp",
                   decision: "blocked",
                   source: "AppHttpServer",
-                  traceId: `csp:${Date.now()}`,
+                  traceId: `csp:${timestamp}`,
                   outcome: "blocked",
-                  timestamp: Date.now(),
+                  timestamp,
                   resource: request.url,
                   reason: "origin-not-allowed"
                 })
@@ -314,10 +366,12 @@ export const AppCspInspectorLive: Layer.Layer<AppCspInspector, never, never> = L
   makeAppCspInspector()
 )
 
-export const AppAssetRoutes: Layer.Layer<never, never, HttpRouter.HttpRouter | AppHttpServer> =
-  HttpRouter.use((router) =>
-    Effect.gen(function* () {
-      const server = yield* AppHttpServer
-      yield* router.add("GET", "/*", (req) => Effect.scoped(server.handle(req)))
-    })
-  )
+export const DesktopLocalApiRoutes = HttpApiBuilder.layer(DesktopLocalApi, {
+  openapiPath: "/openapi.json"
+}).pipe(Layer.provide(DesktopLocalHandlers))
+
+export const DesktopLocalApiDocs = HttpApiScalar.layer(DesktopLocalApi, {
+  path: "/docs"
+})
+
+export const AppAssetRoutes = Layer.mergeAll(DesktopLocalApiRoutes, DesktopLocalApiDocs)

@@ -1,7 +1,7 @@
-import { readdir, readFile } from "node:fs/promises"
+import { readdir, readFile, stat } from "node:fs/promises"
 import { isAbsolute, join, normalize, resolve } from "node:path"
 
-import { Data, Effect, Schema } from "effect"
+import { Data, Effect, Result, Schema } from "effect"
 
 import {
   PublicApiSnapshotMismatchError,
@@ -98,14 +98,39 @@ export type SemverGuardError =
   | SemverGuardPolicyError
   | PublicApiSnapshotError
 
+const VerificationMatrixCiCell = Schema.Struct({
+  cell: Schema.String,
+  runner: Schema.String,
+  headless: Schema.Boolean
+})
+
+const VerificationMatrixManualGateCell = Schema.Struct({
+  cell: Schema.String,
+  reason: Schema.String,
+  path: Schema.String
+})
+
+const VerificationMatrixDefaults = Schema.Struct({
+  cells: Schema.Array(Schema.String),
+  headless: Schema.Boolean,
+  requiresHardware: Schema.Boolean
+})
+
 export const VerificationMatrix = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  source: Schema.String,
+  requiredCells: Schema.Array(Schema.String),
+  optionalCells: Schema.Array(Schema.String),
+  ciCells: Schema.Array(VerificationMatrixCiCell),
+  manualGateCells: Schema.Array(VerificationMatrixManualGateCell),
+  defaults: VerificationMatrixDefaults,
   rows: Schema.Record(Schema.String, Schema.Unknown)
 })
 export type VerificationMatrix = typeof VerificationMatrix.Type
 
 const MANIFEST_PATH = "release/semver.json"
-const SPEC_SOURCE = "docs/SPEC.md §25.6"
-const BRIDGE_SOURCE = "docs/SPEC.md §9.3"
+const SPEC_SOURCE = "engineering/SPEC.md §25.6"
+const BRIDGE_SOURCE = "engineering/SPEC.md §9.3"
 const BRIDGE_ALLOWED_CHANGE =
   "fields may be added with defaults; fields may not be removed or reordered"
 const CANONICAL_RELEASE_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u
@@ -178,10 +203,15 @@ const readPublicApiReport = (
   const check =
     options.publicApiCheck ?? ((cwd, root) => runPublicApiCheck({ cwd, snapshotRoot: root }))
   return check(options.cwd, snapshotRoot).pipe(
-    Effect.catch((error) =>
-      error instanceof PublicApiSnapshotMismatchError
-        ? Effect.succeed(error.report)
-        : Effect.fail(error)
+    Effect.result,
+    Effect.flatMap((result) =>
+      Result.match(result, {
+        onFailure: (error) =>
+          error instanceof PublicApiSnapshotMismatchError
+            ? Effect.succeed(error.report)
+            : Effect.fail(error),
+        onSuccess: (report) => Effect.succeed(report)
+      })
     )
   )
 }
@@ -310,7 +340,11 @@ const readPackageVersions = (
     const versions: SemverPackageVersion[] = []
     for (const entry of entries.toSorted()) {
       const path = `packages/${entry}/package.json`
-      const manifest = yield* readJson<unknown>(join(cwd, path)).pipe(
+      const absolutePath = join(cwd, path)
+      if (!(yield* pathExists(absolutePath))) {
+        continue
+      }
+      const manifest = yield* readJson<unknown>(absolutePath).pipe(
         Effect.flatMap((value) => parsePackageManifest(value, path))
       )
       versions.push(manifest)
@@ -325,8 +359,13 @@ const parsePackageManifest = (
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return Effect.fail(new SemverGuardManifestError({ message: `${path} must be a JSON object` }))
   }
+  const record = value as Record<string, unknown>
   return Schema.decodeUnknownEffect(SemverPackageVersion)(
-    Object.assign({ path }, value),
+    {
+      name: record["name"],
+      version: record["version"],
+      path
+    },
     StrictParseOptions
   ).pipe(
     Effect.mapError(
@@ -383,18 +422,47 @@ const releaseKindForVersion = (release: string): SemverReleaseKind => {
 const readJson = <A>(path: string): Effect.Effect<A, SemverGuardFileError, never> =>
   readText(path).pipe(
     Effect.flatMap((body) =>
-      Effect.try({
-        try: () => JSON.parse(body) as A,
-        catch: (cause) =>
-          new SemverGuardFileError({
-            operation: "parse-json",
-            path,
-            message: `failed to parse JSON at ${path}`,
-            cause
-          })
-      })
+      Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+        Effect.map((value) => value as A),
+        Effect.mapError(
+          (cause) =>
+            new SemverGuardFileError({
+              operation: "parse-json",
+              path,
+              message: `failed to parse JSON at ${path}`,
+              cause
+            })
+        )
+      )
     )
   )
+
+const pathExists = (path: string): Effect.Effect<boolean, SemverGuardFileError, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      try {
+        await stat(path)
+        return true
+      } catch (cause) {
+        if (
+          typeof cause === "object" &&
+          cause !== null &&
+          "code" in cause &&
+          cause.code === "ENOENT"
+        ) {
+          return false
+        }
+        throw cause
+      }
+    },
+    catch: (cause) =>
+      new SemverGuardFileError({
+        operation: "stat",
+        path,
+        message: `failed to stat ${path}`,
+        cause
+      })
+  })
 
 const parseSemverPolicyManifest = (
   value: unknown

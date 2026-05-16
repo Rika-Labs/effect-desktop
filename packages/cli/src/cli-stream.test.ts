@@ -14,9 +14,8 @@ test("readCliStreamText decodes readable stream chunks", async () => {
     }
   })
 
-  await expect(
-    Effect.runPromise(readCliStreamText(stream, { operation: "test.stdout" }))
-  ).resolves.toBe("hello world")
+  const text = await Effect.runPromise(readCliStreamText(stream, { operation: "test.stdout" }))
+  expect(text).toBe("hello world")
 })
 
 test("readCliStreamText maps stream failures to typed values", async () => {
@@ -51,7 +50,8 @@ test("readCliStreamText applies an explicit output bound", async () => {
     }
   })
 
-  await expect(
-    Effect.runPromise(readCliStreamText(stream, { operation: "test.large", maxChars: 8 }))
-  ).resolves.toBe("abcdefgh\n[output truncated]")
+  const text = await Effect.runPromise(
+    readCliStreamText(stream, { operation: "test.large", maxChars: 8 })
+  )
+  expect(text).toBe("abcdefgh\n[output truncated]")
 })

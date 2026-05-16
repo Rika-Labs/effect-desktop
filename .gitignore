@@ -24,3 +24,9 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
+.zed/
+.agents/
+.claude/
+skills-lock.json
+
+.husky/_

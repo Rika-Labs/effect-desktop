@@ -3,27 +3,19 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidStateError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
   redactForJson,
-  Rpc,
-  RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
-import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { Clock, Context, Effect, Layer, Ref, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   CrashReporterBreadcrumbInput,
   CrashReporterFlushResult,
@@ -32,15 +24,9 @@ import {
 
 export type CrashReporterError = HostProtocolError
 
-export type CrashReporterStartOptions = Schema.Schema.Type<typeof CrashReporterStartInput> & {
-  readonly uploadHandler?: CrashReportUploadHandler
-}
+export type CrashReporterStartOptions = Schema.Schema.Type<typeof CrashReporterStartInput>
 
 export type CrashReporterBreadcrumb = Schema.Schema.Type<typeof CrashReporterBreadcrumbInput>
-
-export type CrashReportUploadHandler = (
-  breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>
-) => Effect.Effect<void, CrashReporterError, never>
 
 export const CrashReporterStart = crashReporterRpc(
   "start",
@@ -60,13 +46,6 @@ export const CrashReporterFlush = crashReporterRpc(
   CrashReporterFlushResult,
   P.nativeInvoke({ primitive: "CrashReporter", methods: ["flush"] })
 )
-export const CrashReporterSetUploadHandler = crashReporterRpc(
-  "setUploadHandler",
-  Schema.Void,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "CrashReporter", methods: ["setUploadHandler"] })
-)
-
 export const CrashReporterRpcEvents = Object.freeze({})
 
 export type CrashReporterRpcEvents = typeof CrashReporterRpcEvents
@@ -74,8 +53,7 @@ export type CrashReporterRpcEvents = typeof CrashReporterRpcEvents
 const CrashReporterRpcGroup = RpcGroup.make(
   CrashReporterStart,
   CrashReporterRecordBreadcrumb,
-  CrashReporterFlush,
-  CrashReporterSetUploadHandler
+  CrashReporterFlush
 )
 
 export const CrashReporterRpcs: RpcGroup.RpcGroup<CrashReporterRpc> = CrashReporterRpcGroup
@@ -83,8 +61,7 @@ export const CrashReporterRpcs: RpcGroup.RpcGroup<CrashReporterRpc> = CrashRepor
 export const CrashReporterMethodNames = Object.freeze([
   "start",
   "recordBreadcrumb",
-  "flush",
-  "setUploadHandler"
+  "flush"
 ] as const)
 
 export interface CrashReporterClientApi {
@@ -95,9 +72,6 @@ export interface CrashReporterClientApi {
     breadcrumb: CrashReporterBreadcrumb
   ) => Effect.Effect<void, CrashReporterError, never>
   readonly flush: () => Effect.Effect<CrashReporterFlushResult, CrashReporterError, never>
-  readonly setUploadHandler: (
-    handler: CrashReportUploadHandler
-  ) => Effect.Effect<void, CrashReporterError, never>
 }
 
 export class CrashReporterClient extends Context.Service<
@@ -109,19 +83,20 @@ export type CrashReporterServiceApi = CrashReporterClientApi
 
 export class CrashReporter extends Context.Service<CrashReporter, CrashReporterServiceApi>()(
   "@effect-desktop/native/CrashReporter"
-) {}
+) {
+  static readonly layer = Layer.effect(CrashReporter)(
+    Effect.gen(function* () {
+      const client = yield* CrashReporterClient
+      return CrashReporter.of({
+        start: (options) => client.start(options),
+        recordBreadcrumb: (breadcrumb) => client.recordBreadcrumb(breadcrumb),
+        flush: () => client.flush()
+      } satisfies CrashReporterServiceApi)
+    })
+  )
+}
 
-export const CrashReporterLive = Layer.effect(CrashReporter)(
-  Effect.gen(function* () {
-    const client = yield* CrashReporterClient
-    return Object.freeze({
-      start: (options) => client.start(options),
-      recordBreadcrumb: (breadcrumb) => client.recordBreadcrumb(breadcrumb),
-      flush: () => client.flush(),
-      setUploadHandler: (handler) => client.setUploadHandler(handler)
-    } satisfies CrashReporterServiceApi)
-  })
-)
+export const CrashReporterLive = CrashReporter.layer
 
 export const makeCrashReporterClientLayer = (
   client: CrashReporterClientApi
@@ -135,15 +110,11 @@ export const makeCrashReporterServiceLayer = (
 export const makeCrashReporterBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<CrashReporterClient> =>
-  Layer.provide(
-    CrashReporterSurface.clientLayer,
-    makeCrashReporterBridgeProtocolLayer(exchange, options)
-  )
+): Layer.Layer<CrashReporterClient> => CrashReporterSurface.bridgeClientLayer(exchange, options)
 
 export type CrashReporterRpc = RpcGroup.Rpcs<typeof CrashReporterRpcGroup>
 
-export type CrashReporterRpcHandlers = Parameters<typeof CrashReporterRpcGroup.toLayer>[0]
+export type CrashReporterRpcHandlers = RpcGroup.HandlersFrom<CrashReporterRpc>
 
 export const CrashReporterHandlersLive = CrashReporterRpcGroup.toLayer({
   "CrashReporter.start": (input) =>
@@ -160,13 +131,12 @@ export const CrashReporterHandlersLive = CrashReporterRpcGroup.toLayer({
     Effect.gen(function* () {
       const reporter = yield* CrashReporter
       return yield* reporter.flush()
-    }),
-  "CrashReporter.setUploadHandler": () =>
-    Effect.fail(unsupportedError("CrashReporter.setUploadHandler", "phase-22"))
+    })
 })
 
-export const CrashReporterSurface = DesktopRpc.surface("CrashReporter", CrashReporterRpcGroup, {
+export const CrashReporterSurface = NativeSurface.make("CrashReporter", CrashReporterRpcGroup, {
   service: CrashReporterClient,
+  capabilities: CrashReporterMethodNames,
   handlers: CrashReporterHandlersLive,
   client: (client) => crashReporterClientFromRpcClient(client)
 })
@@ -175,11 +145,7 @@ export const makeHostCrashReporterRpcRuntime = (
   handlers: CrashReporterRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    CrashReporterRpcGroup,
-    CrashReporterRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  CrashReporterSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeCrashReporterMemoryClient = (): Effect.Effect<
   CrashReporterClientApi,
@@ -194,13 +160,10 @@ export const makeCrashReporterMemoryClient = (): Effect.Effect<
     return Object.freeze({
       start: (options = {}) =>
         Ref.update(state, () => {
-          const next = {
+          return {
             breadcrumbs: [],
             started: options.enabled ?? true
           } satisfies CrashReporterState
-          return options.uploadHandler === undefined
-            ? next
-            : { ...next, uploadHandler: options.uploadHandler }
         }),
       recordBreadcrumb: (breadcrumb) =>
         Effect.gen(function* () {
@@ -209,41 +172,25 @@ export const makeCrashReporterMemoryClient = (): Effect.Effect<
           if (!current.started) {
             return yield* Effect.fail(notStartedError("CrashReporter.recordBreadcrumb"))
           }
+          const normalized = yield* normalizeBreadcrumb(validated)
           yield* Ref.update(state, (latest) => ({
             ...latest,
-            breadcrumbs: [...latest.breadcrumbs, normalizeBreadcrumb(validated)]
+            breadcrumbs: [...latest.breadcrumbs, normalized]
           }))
         }),
       flush: () =>
         Effect.gen(function* () {
           const drained = yield* Ref.modify(state, (current) => {
             if (!current.started) {
-              return [Option.none<CrashReporterFlushBatch>(), current]
+              return [undefined, current] as const
             }
-            const batch =
-              current.uploadHandler === undefined
-                ? { breadcrumbs: current.breadcrumbs }
-                : { breadcrumbs: current.breadcrumbs, uploadHandler: current.uploadHandler }
-            return [Option.some(batch), { ...current, breadcrumbs: [] }]
+            return [current.breadcrumbs, { ...current, breadcrumbs: [] }] as const
           })
-          if (Option.isNone(drained)) {
+          if (drained === undefined) {
             return yield* Effect.fail(notStartedError("CrashReporter.flush"))
           }
-          const batch = drained.value
-          if (batch.uploadHandler !== undefined && batch.breadcrumbs.length > 0) {
-            yield* batch.uploadHandler(batch.breadcrumbs).pipe(
-              Effect.tapError(() =>
-                Ref.update(state, (latest) => ({
-                  ...latest,
-                  breadcrumbs: [...batch.breadcrumbs, ...latest.breadcrumbs]
-                }))
-              )
-            )
-          }
-          return new CrashReporterFlushResult({ flushed: batch.breadcrumbs.length })
-        }),
-      setUploadHandler: (handler) =>
-        Ref.update(state, (latest) => ({ ...latest, uploadHandler: handler }))
+          return new CrashReporterFlushResult({ flushed: drained.length })
+        })
     } satisfies CrashReporterClientApi)
   })
 
@@ -252,21 +199,20 @@ const crashReporterClientFromRpcClient = (
 ): CrashReporterClientApi => {
   return Object.freeze({
     start: (input = {}) =>
-      input.uploadHandler !== undefined
-        ? Effect.fail(unsupportedError("CrashReporter.start", "phase-22"))
-        : input.enabled === undefined
-          ? runCrashReporterRpc(
-              client["CrashReporter.start"](new CrashReporterStartInput({})),
-              "CrashReporter.start"
-            )
-          : runCrashReporterRpc(
-              client["CrashReporter.start"](
-                new CrashReporterStartInput({ enabled: Boolean(input.enabled) })
-              ),
-              "CrashReporter.start"
+      input.enabled === undefined
+        ? runCrashReporterRpc(
+            client["CrashReporter.start"](new CrashReporterStartInput({})),
+            "CrashReporter.start"
+          )
+        : runCrashReporterRpc(
+            client["CrashReporter.start"](
+              new CrashReporterStartInput({ enabled: Boolean(input.enabled) })
             ),
+            "CrashReporter.start"
+          ),
     recordBreadcrumb: (input) =>
       validateBreadcrumb(input).pipe(
+        Effect.flatMap(normalizeBreadcrumb),
         Effect.flatMap((validated) =>
           runCrashReporterRpc(
             client["CrashReporter.recordBreadcrumb"](makeBreadcrumbInput(validated)),
@@ -275,44 +221,13 @@ const crashReporterClientFromRpcClient = (
         )
       ),
     flush: () =>
-      runCrashReporterRpc(client["CrashReporter.flush"](undefined), "CrashReporter.flush"),
-    setUploadHandler: () =>
-      Effect.fail(unsupportedError("CrashReporter.setUploadHandler", "phase-22"))
-  } satisfies CrashReporterClientApi)
-}
-
-const makeCrashReporterBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
-export const makeUnsupportedCrashReporterClient = (): CrashReporterClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, CrashReporterError, never> =>
-    Effect.fail(
-      unsupportedError(method, "host CrashReporter platform adapter is not implemented yet")
-    )
-  return Object.freeze({
-    start: () => unsupportedEffect<void>("CrashReporter.start"),
-    recordBreadcrumb: () => unsupportedEffect<void>("CrashReporter.recordBreadcrumb"),
-    flush: () => unsupportedEffect<CrashReporterFlushResult>("CrashReporter.flush"),
-    setUploadHandler: () => unsupportedEffect<void>("CrashReporter.setUploadHandler")
+      runCrashReporterRpc(client["CrashReporter.flush"](undefined), "CrashReporter.flush")
   } satisfies CrashReporterClientApi)
 }
 
 interface CrashReporterState {
   readonly breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>
   readonly started: boolean
-  readonly uploadHandler?: CrashReportUploadHandler
-}
-
-interface CrashReporterFlushBatch {
-  readonly breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>
-  readonly uploadHandler?: CrashReportUploadHandler
 }
 
 function crashReporterRpc<
@@ -320,11 +235,13 @@ function crashReporterRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`CrashReporter.${method}` as const, {
+  return NativeSurface.rpc("CrashReporter", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runCrashReporterRpc = <A, E>(
@@ -375,12 +292,18 @@ const validateBreadcrumb = (
     )
   )
 
-const normalizeBreadcrumb = (breadcrumb: CrashReporterBreadcrumb): CrashReporterBreadcrumb => ({
-  category: breadcrumb.category,
-  message: breadcrumb.message,
-  ...(breadcrumb.details === undefined ? {} : { details: breadcrumb.details }),
-  timestamp: breadcrumb.timestamp ?? Date.now()
-})
+const normalizeBreadcrumb = (
+  breadcrumb: CrashReporterBreadcrumb
+): Effect.Effect<CrashReporterBreadcrumb, never, never> =>
+  Effect.gen(function* () {
+    const timestamp = breadcrumb.timestamp ?? (yield* Clock.currentTimeMillis)
+    return {
+      category: breadcrumb.category,
+      message: breadcrumb.message,
+      ...(breadcrumb.details === undefined ? {} : { details: breadcrumb.details }),
+      timestamp
+    }
+  })
 
 const makeBreadcrumbInput = (breadcrumb: CrashReporterBreadcrumb): CrashReporterBreadcrumbInput =>
   breadcrumb.timestamp === undefined
@@ -417,15 +340,6 @@ const normalizeBreadcrumbDetails = (
 
 const notStartedError = (operation: string): CrashReporterError =>
   makeHostProtocolInvalidStateError("not-started", operation, operation)
-
-const unsupportedError = (method: string, reason: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason,
-    message: `unsupported CrashReporter method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) return error.message

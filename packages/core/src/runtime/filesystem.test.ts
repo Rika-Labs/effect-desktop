@@ -17,7 +17,18 @@ import {
   type HostProtocolSymlinkEscapesRootError
 } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
-import { Deferred, Effect, Exit, Fiber, FileSystem, Layer, Option, Queue, Stream } from "effect"
+import {
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  FileSystem,
+  Layer,
+  Option,
+  Queue,
+  Schedule,
+  Stream
+} from "effect"
 import * as PlatformError from "effect/PlatformError"
 
 import {
@@ -29,7 +40,16 @@ import {
   type FilesystemOptions,
   type FilesystemPermissionPolicy
 } from "./filesystem.js"
+import { PermissionActor } from "./permission-registry.js"
+import type { ResourceOwnerApi } from "./resource-owner.js"
 import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
 
 test("Filesystem reads and writes bytes through typed Effects", async () => {
   const directory = await tempDirectory()
@@ -57,10 +77,11 @@ test("Filesystem writeAtomic roundtrips a large payload", async () => {
 
 test("Filesystem writeAtomic preserves destination and removes temp on write failure", async () => {
   const calls: string[] = []
-  const path = "/workspace/config.json"
+  const root = mockWorkspaceRoot()
+  const path = join(root, "config.json")
   const service = await makeTestFilesystem(
     {
-      permissions: allowFilesystemRoot("/workspace")
+      permissions: allowFilesystemRoot(root)
     },
     failingOpenFileSystem(calls, "ENOSPC")
   )
@@ -70,16 +91,17 @@ test("Filesystem writeAtomic preserves destination and removes temp on write fai
   )
 
   expectFailureTag(exit, "DiskFull")
-  expect(calls.some((call) => call.startsWith("open:/workspace/config.json.tmp."))).toBe(true)
-  expect(calls.some((call) => call.startsWith("remove:/workspace/config.json.tmp."))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`open:${path}.tmp.`))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`remove:${path}.tmp.`))).toBe(true)
 })
 
 test("Filesystem writeAtomic preserves destination and removes temp on rename failure", async () => {
   const calls: string[] = []
-  const path = "/workspace/config.json"
+  const root = mockWorkspaceRoot()
+  const path = join(root, "config.json")
   const service = await makeTestFilesystem(
     {
-      permissions: allowFilesystemRoot("/workspace")
+      permissions: allowFilesystemRoot(root)
     },
     failingRenameFileSystem(calls, "EACCES")
   )
@@ -89,16 +111,17 @@ test("Filesystem writeAtomic preserves destination and removes temp on rename fa
   )
 
   expectFailureTag(exit, "PermissionDenied")
-  expect(calls.some((call) => call.startsWith("rename:/workspace/config.json.tmp."))).toBe(true)
-  expect(calls.some((call) => call.startsWith("remove:/workspace/config.json.tmp."))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`rename:${path}.tmp.`))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`remove:${path}.tmp.`))).toBe(true)
 })
 
 test("Filesystem writeAtomic preserves destination when temp cleanup fails", async () => {
   const calls: string[] = []
-  const path = "/workspace/config.json"
+  const root = mockWorkspaceRoot()
+  const path = join(root, "config.json")
   const service = await makeTestFilesystem(
     {
-      permissions: allowFilesystemRoot("/workspace")
+      permissions: allowFilesystemRoot(root)
     },
     failingRenameAndCleanupFileSystem(calls)
   )
@@ -108,7 +131,7 @@ test("Filesystem writeAtomic preserves destination when temp cleanup fails", asy
   )
 
   expectFailureTag(exit, "PermissionDenied")
-  expect(calls.some((call) => call.startsWith("remove:/workspace/config.json.tmp."))).toBe(true)
+  expect(calls.some((call) => call.startsWith(`remove:${path}.tmp.`))).toBe(true)
 })
 
 test("Filesystem writeAtomic consumes the write capability", async () => {
@@ -257,7 +280,7 @@ test("Filesystem rejects NUL path bytes before FileSystem calls", async () => {
     Effect.runPromiseExit(service.stat(path)),
     Effect.runPromiseExit(service.mkdir(path)),
     Effect.runPromiseExit(service.remove(path)),
-    Effect.runPromiseExit(service.watch(path, { ownerScope: "scope-main" }).pipe(Stream.runDrain))
+    Effect.runPromiseExit(service.watch(path).pipe(Stream.runDrain))
   ])
 
   for (const exit of exits) {
@@ -288,6 +311,30 @@ test("Filesystem maps Effect FileSystem unknown EPERM failures to PermissionDeni
   const exit = await Effect.runPromiseExit(
     service.write("/workspace/denied.txt", new Uint8Array([1]))
   )
+
+  expectFailureTag(exit, "PermissionDenied")
+})
+
+test("Filesystem stat treats readLink EINVAL as a non-symlink", async () => {
+  const root = mockWorkspaceRoot()
+  const service = await makeTestFilesystem(
+    { permissions: allowFilesystemRoot(root) },
+    readLinkFailureFileSystem("EINVAL")
+  )
+
+  const result = await Effect.runPromise(service.stat(join(root, "file.txt")))
+
+  expect(result.kind).toBe("file")
+})
+
+test("Filesystem stat maps readLink permission failures", async () => {
+  const root = mockWorkspaceRoot()
+  const service = await makeTestFilesystem(
+    { permissions: allowFilesystemRoot(root) },
+    readLinkFailureFileSystem("EACCES")
+  )
+
+  const exit = await Effect.runPromiseExit(service.stat(join(root, "file.txt")))
 
   expectFailureTag(exit, "PermissionDenied")
 })
@@ -391,10 +438,7 @@ test("Filesystem allows recursive remove with delete root and recursive capabili
 
   await Effect.runPromise(service.remove(path, { recursive: true }))
 
-  const exists = await nodeStat(path).then(
-    () => true,
-    () => false
-  )
+  const exists = await pathExists(path)
   expect(exists).toBe(false)
 })
 
@@ -410,7 +454,7 @@ test("Filesystem canonicalizes symlink targets before permission checks", async 
   const exit = await Effect.runPromiseExit(service.read(link))
 
   expectFailureTag(exit, "SymlinkEscapesRoot")
-  expectSymlinkEscapesRoot(exit, {
+  await expectSymlinkEscapesRoot(exit, {
     requested: link,
     resolved: await realpath(target),
     capabilityRoots: [await realpath(allowed)]
@@ -432,7 +476,7 @@ test("Filesystem reports SymlinkEscapesRoot for intermediate symlink escapes", a
   const exit = await Effect.runPromiseExit(service.read(linkPath))
 
   expectFailureTag(exit, "SymlinkEscapesRoot")
-  expectSymlinkEscapesRoot(exit, {
+  await expectSymlinkEscapesRoot(exit, {
     requested: linkPath,
     resolved: await realpath(target),
     capabilityRoots: [await realpath(allowed)]
@@ -449,7 +493,7 @@ test("Filesystem realpath returns the authorized canonical path", async () => {
 
   const resolved = await Effect.runPromise(service.realpath(link))
 
-  expect(resolved).toBe(await realpath(target))
+  await expectSameFilesystemEntry(resolved, await realpath(target))
 })
 
 test("Filesystem realpath returns SymlinkEscapesRoot for symlink escapes", async () => {
@@ -469,9 +513,8 @@ test("Filesystem realpath returns SymlinkEscapesRoot for symlink escapes", async
 test("Filesystem realpath validates capability input", async () => {
   const service = await makeTestFilesystem()
 
-  const exit = await Effect.runPromiseExit(
-    service.realpath("/tmp/project", "filesystem.delete" as never)
-  )
+  // @ts-expect-error intentionally invalid capability exercises runtime decoding.
+  const exit = await Effect.runPromiseExit(service.realpath("/tmp/project", "filesystem.delete"))
 
   expectFailureTag(exit, "InvalidArgument")
 })
@@ -493,9 +536,7 @@ test("Filesystem denies hard-linked files with SymlinkEscapesRoot", async () => 
 test("Filesystem watch emits typed events from Effect FileSystem", async () => {
   const fixture = await makeWatchFixture()
   const fiber = Effect.runFork(
-    fixture.service
-      .watch("/tmp/project", { ownerScope: "scope-main" })
-      .pipe(Stream.take(1), Stream.runCollect)
+    fixture.service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect)
   )
 
   await waitUntil(() => fixture.watchStarted)
@@ -531,9 +572,7 @@ test("Filesystem watch reclassifies Effect create and remove events from current
 
 test("Filesystem watch rejects control-byte filenames in FileSystem events", async () => {
   const fixture = await makeWatchFixture()
-  const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runCollect)
-  )
+  const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runCollect))
 
   await waitUntil(() => fixture.watchStarted)
   await fixture.emit({ _tag: "Update", path: "/tmp/project/audit\nlog.txt" })
@@ -542,21 +581,9 @@ test("Filesystem watch rejects control-byte filenames in FileSystem events", asy
   expectFailureTag(exit, "InvalidArgument")
 })
 
-test("Filesystem watch reports missing options as typed invalid input", async () => {
-  const service = await makeTestFilesystem()
-
-  const exit = await Effect.runPromiseExit(
-    service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect)
-  )
-
-  expectFailureTag(exit, "InvalidArgument")
-})
-
 test("Filesystem watch maps FileSystem errors into the stream failure channel", async () => {
   const fixture = await makeWatchFixture()
-  const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
-  )
+  const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runDrain))
 
   await waitUntil(() => fixture.watchStarted)
   await fixture.fail(makePermissionDeniedError())
@@ -567,9 +594,7 @@ test("Filesystem watch maps FileSystem errors into the stream failure channel", 
 
 test("Filesystem watch closes exactly once when the stream fiber is interrupted", async () => {
   const fixture = await makeWatchFixture()
-  const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
-  )
+  const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runDrain))
 
   await waitUntil(() => fixture.watchStarted)
   await Effect.runPromise(Fiber.interrupt(fiber))
@@ -585,7 +610,7 @@ test("Filesystem watch scope close does not wait for a busy downstream consumer"
   const consumerStarted = Effect.runSync(Deferred.make<void>())
   const releaseConsumer = Effect.runSync(Deferred.make<void>())
   const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(
+    fixture.service.watch("/tmp/project").pipe(
       Stream.mapEffect((event) =>
         Deferred.succeed(consumerStarted, undefined).pipe(
           Effect.andThen(Deferred.await(releaseConsumer)),
@@ -611,9 +636,7 @@ test("Filesystem watch scope close does not wait for a busy downstream consumer"
 
 test("Filesystem watch registers a scope-bound resource and closes on scope close", async () => {
   const fixture = await makeWatchFixture()
-  const fiber = Effect.runFork(
-    fixture.service.watch("/tmp/project", { ownerScope: "scope-main" }).pipe(Stream.runDrain)
-  )
+  const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runDrain))
 
   await waitUntil(() => fixture.watchStarted)
   const registered = await Effect.runPromise(fixture.registry.list())
@@ -629,6 +652,9 @@ test("Filesystem watch registers a scope-bound resource and closes on scope clos
 
 const tempDirectory = (): Promise<string> => mkdtemp(join(tmpdir(), "effect-desktop-fs-"))
 
+const mockWorkspaceRoot = (): string =>
+  process.platform === "win32" ? "C:\\workspace" : "/workspace"
+
 const BunFileSystemLayer: Layer.Layer<FileSystem.FileSystem> = BunFileSystem.layer
 
 async function makeTestFilesystem(
@@ -637,7 +663,7 @@ async function makeTestFilesystem(
 ): Promise<FilesystemApi> {
   const registry = await Effect.runPromise(makeResourceRegistry())
   return await Effect.runPromise(
-    makeFilesystem(registry, options).pipe(Effect.provide(fileSystemLayer))
+    makeFilesystem(registry, TEST_OWNER, options).pipe(Effect.provide(fileSystemLayer))
   )
 }
 
@@ -763,6 +789,16 @@ const failingWriteFileSystem = (code: string): Layer.Layer<FileSystem.FileSystem
       )
   })
 
+const readLinkFailureFileSystem = (code: string): Layer.Layer<FileSystem.FileSystem> =>
+  FileSystem.layerNoop({
+    realPath: (path) => Effect.succeed(path),
+    readLink: (path) =>
+      Effect.fail(
+        platformError(code === "EINVAL" ? "Unknown" : "PermissionDenied", "readLink", path, code)
+      ),
+    stat: () => Effect.succeed(testFileInfo())
+  })
+
 const failingRemoveFileSystem = (root: string, code: string): Layer.Layer<FileSystem.FileSystem> =>
   FileSystem.layerNoop({
     realPath: (path) => Effect.succeed(path),
@@ -866,9 +902,7 @@ async function collectOneWatchEvent(options: {
 }): Promise<FilesystemEvent> {
   const fixture = await makeWatchFixture({ existingPaths: options.existingPaths })
   const fiber = Effect.runFork(
-    fixture.service
-      .watch("/tmp/project", { ownerScope: "scope-main" })
-      .pipe(Stream.take(1), Stream.runCollect)
+    fixture.service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect)
   )
 
   await waitUntil(() => fixture.watchStarted)
@@ -901,7 +935,7 @@ async function makeWatchFixture(
   let closeCount = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
-    makeFilesystem(registry, {
+    makeFilesystem(registry, TEST_OWNER, {
       permissions: { readRoots: ["/tmp/project"] }
     }).pipe(
       Effect.provide(
@@ -948,13 +982,23 @@ function makePermissionDeniedError(): PlatformError.PlatformError {
 }
 
 async function waitUntil(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10))
+  await Effect.runPromise(
+    Effect.suspend(() =>
+      predicate() ? Effect.void : Effect.fail(new Error("condition was not met"))
+    ).pipe(
+      Effect.retry(Schedule.spaced("10 millis").pipe(Schedule.both(Schedule.recurs(50)))),
+      Effect.mapError(() => new Error("condition was not met"))
+    )
+  )
+}
+
+const pathExists = async (path: string): Promise<boolean> => {
+  try {
+    await nodeStat(path)
+    return true
+  } catch {
+    return false
   }
-  throw new Error("condition was not met")
 }
 
 function expectFailureTag(exit: Exit.Exit<unknown, unknown>, tag: string): void {
@@ -980,20 +1024,38 @@ const expectFailurePermissionDenied = (
   throw new Error("expected permission denied error")
 }
 
-function expectSymlinkEscapesRoot(
+async function expectSymlinkEscapesRoot(
   exit: Exit.Exit<unknown, unknown>,
   expected: {
     readonly requested: string
     readonly resolved: string
     readonly capabilityRoots: readonly string[]
   }
-): void {
+): globalThis.Promise<void> {
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
     const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
     const error = fail?.error as HostProtocolSymlinkEscapesRootError | undefined
     expect(error?.requested).toBe(expected.requested)
-    expect(error?.resolved).toBe(expected.resolved)
-    expect(error?.capabilityRoots).toEqual(expected.capabilityRoots)
+    if (error?.resolved !== undefined) {
+      await expectSameFilesystemEntry(error.resolved, expected.resolved)
+    }
+    expect(error?.capabilityRoots.length).toBe(expected.capabilityRoots.length)
+    for (let index = 0; index < expected.capabilityRoots.length; index += 1) {
+      const actualRoot = error?.capabilityRoots[index]
+      expect(actualRoot).toBeDefined()
+      if (actualRoot !== undefined) {
+        await expectSameFilesystemEntry(actualRoot, expected.capabilityRoots[index] ?? "")
+      }
+    }
   }
+}
+
+async function expectSameFilesystemEntry(
+  actual: string,
+  expected: string
+): globalThis.Promise<void> {
+  const [actualStat, expectedStat] = await Promise.all([nodeStat(actual), nodeStat(expected)])
+  expect(actualStat.dev).toBe(expectedStat.dev)
+  expect(actualStat.ino).toBe(expectedStat.ino)
 }

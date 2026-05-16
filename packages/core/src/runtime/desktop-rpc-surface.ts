@@ -10,8 +10,7 @@ import {
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
 import { Rpc, RpcClient, RpcClientError, RpcGroup, RpcSchema, RpcTest } from "effect/unstable/rpc"
 
-import { Rpcs, type DesktopRpcLayer } from "./desktop-app.js"
-import type { RpcGroupWithRequests } from "./rpc-group-metadata.js"
+import { rpc as desktopRpc, type DesktopRpcsLayer } from "./desktop-app.js"
 
 export type DesktopRpcClient<Rpcs extends Rpc.Any> = RpcClient.RpcClient<
   Rpcs,
@@ -27,9 +26,13 @@ export type SupportedRpc<R extends Rpc.Any> =
 
 export type SupportedDesktopRpcClient<Rpcs extends Rpc.Any> = DesktopRpcClient<SupportedRpc<Rpcs>>
 
-export type SupportedDesktopRpcGroup<Group extends RpcGroup.Any> = RpcGroup.RpcGroup<
+export type SupportedDesktopRpcGroup<Group extends RpcGroup.RpcGroup<Rpc.Any>> = RpcGroup.RpcGroup<
   SupportedRpc<RpcGroup.Rpcs<Group>>
 >
+
+type RpcGroupRequests = {
+  readonly requests: ReadonlyMap<string, Rpc.Any>
+}
 
 export interface DesktopRpcSchemaDoc {
   readonly name: string
@@ -84,7 +87,7 @@ export interface DesktopRpcSurfaceMappedOptions<
 
 export interface DesktopRpcSurface<
   Tag extends string,
-  Group extends RpcGroupWithRequests,
+  Group extends RpcGroup.RpcGroup<Rpcs>,
   Rpcs extends Rpc.Any,
   ServiceId,
   ServerE,
@@ -93,7 +96,7 @@ export interface DesktopRpcSurface<
   readonly _tag: "DesktopRpcSurface"
   readonly tag: Tag
   readonly group: Group
-  readonly serverLayer: DesktopRpcLayer<Rpcs, ServerE, ServerR>
+  readonly serverLayer: DesktopRpcsLayer<ServerE, ServerR>
   readonly clientLayer: Layer.Layer<
     ServiceId,
     never,
@@ -110,7 +113,7 @@ export interface DesktopRpcSurface<
 
 export function surface<
   const Tag extends string,
-  Group extends RpcGroup.Any & RpcGroupWithRequests,
+  Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>,
   ServiceId,
   ServerE,
   ServerR
@@ -121,7 +124,7 @@ export function surface<
 ): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
 export function surface<
   const Tag extends string,
-  Group extends RpcGroup.Any & RpcGroupWithRequests,
+  Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>,
   ServiceId,
   Service,
   ServerE,
@@ -139,7 +142,7 @@ export function surface<
 ): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
 export function surface<
   const Tag extends string,
-  Group extends RpcGroup.Any & RpcGroupWithRequests,
+  Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>,
   ServiceId,
   Service,
   ServerE,
@@ -152,7 +155,6 @@ export function surface<
     | DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR>
 ): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> {
   type Rpcs = RpcGroup.Rpcs<Group>
-  const rpcGroup = group as unknown as RpcGroup.RpcGroup<Rpcs>
   const service = options.service as Context.Key<ServiceId, DesktopRpcClient<Rpcs> | Service>
   const toService = (client: DesktopRpcClient<Rpcs>): DesktopRpcClient<Rpcs> | Service =>
     "client" in options ? options.client(client) : client
@@ -161,11 +163,11 @@ export function surface<
     _tag: "DesktopRpcSurface" as const,
     tag,
     group,
-    serverLayer: Rpcs.layer(rpcGroup, options.handlers),
-    clientLayer: Layer.effect(service, RpcClient.make(rpcGroup).pipe(Effect.map(toService))),
+    serverLayer: desktopRpc(group, options.handlers),
+    clientLayer: Layer.effect(service, RpcClient.make(group).pipe(Effect.map(toService))),
     testClientLayer: Layer.effect(
       service,
-      RpcTest.makeClient(rpcGroup).pipe(
+      RpcTest.makeClient(group).pipe(
         Effect.map((client) => toService(client as DesktopRpcClient<Rpcs>))
       )
     ).pipe(Layer.provide(options.handlers)),
@@ -187,7 +189,7 @@ export const DesktopRpc = Object.freeze({
 const isSupportedRpc = <R extends Rpc.Any>(rpc: R): rpc is SupportedRpc<R> =>
   rpcSupport(rpc).status === "supported"
 
-const schemaDocs = (group: RpcGroupWithRequests): readonly DesktopRpcSchemaDoc[] =>
+const schemaDocs = (group: RpcGroupRequests): readonly DesktopRpcSchemaDoc[] =>
   Object.freeze(
     Array.from(group.requests.values()).map((rpc) => {
       const withSchemas = rpc as Rpc.AnyWithProps
@@ -206,7 +208,7 @@ const schemaDocs = (group: RpcGroupWithRequests): readonly DesktopRpcSchemaDoc[]
     })
   )
 
-const contractLaws = (tag: string, group: RpcGroupWithRequests): readonly DesktopRpcContractLaw[] =>
+const contractLaws = (tag: string, group: RpcGroupRequests): readonly DesktopRpcContractLaw[] =>
   Object.freeze([
     Object.freeze({
       name: "bridge-compatible-tags",
@@ -226,7 +228,7 @@ const contractLaws = (tag: string, group: RpcGroupWithRequests): readonly Deskto
   ])
 
 const checkUniqueEndpointNames = (
-  group: RpcGroupWithRequests
+  group: RpcGroupRequests
 ): Effect.Effect<void, DesktopRpcSurfaceError, never> =>
   Effect.suspend(() => {
     const seen = new Map<string, string>()
@@ -249,7 +251,7 @@ const checkUniqueEndpointNames = (
 
 const checkBridgeCompatibleTags = (
   tag: string,
-  group: RpcGroupWithRequests
+  group: RpcGroupRequests
 ): Effect.Effect<void, DesktopRpcSurfaceError, never> =>
   Effect.suspend(() => {
     if (!isPrintableName(tag)) {
@@ -289,7 +291,7 @@ const checkBridgeCompatibleTags = (
   })
 
 const checkSchemaBackedEndpoints = (
-  group: RpcGroupWithRequests
+  group: RpcGroupRequests
 ): Effect.Effect<void, DesktopRpcSurfaceError, never> =>
   Effect.suspend(() => {
     for (const rpc of group.requests.values()) {

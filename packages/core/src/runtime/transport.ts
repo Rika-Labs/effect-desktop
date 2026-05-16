@@ -1,9 +1,7 @@
-import {
-  BridgeInspectorEvent,
-  type BridgeInspector
-} from "@effect-desktop/bridge"
+import { BridgeInspectorEvent, type BridgeInspector } from "@effect-desktop/bridge"
 import {
   Cause,
+  Clock,
   Context,
   Data,
   Deferred,
@@ -131,15 +129,11 @@ export interface InMemoryTransportPairOptions {
 }
 
 export interface TransportApi {
-  readonly frame: (input: TransportFrameInput) => Effect.Effect<Uint8Array, TransportError, never>
-  readonly unframe: (
-    input: TransportUnframeInput
-  ) => Effect.Effect<readonly Uint8Array[], TransportError, never>
-  readonly unframeStream: (
-    input: TransportUnframeStreamInput
-  ) => Stream.Stream<Uint8Array, TransportError, never>
+  readonly frame: (input: unknown) => Effect.Effect<Uint8Array, TransportError, never>
+  readonly unframe: (input: unknown) => Effect.Effect<readonly Uint8Array[], TransportError, never>
+  readonly unframeStream: (input: unknown) => Stream.Stream<Uint8Array, TransportError, never>
   readonly connect: (
-    input: TransportConnectInput
+    input: unknown
   ) => Effect.Effect<TransportConnection, TransportError, Socket.Socket | Scope.Scope>
 }
 
@@ -186,19 +180,19 @@ export interface FrameCodecOptions {
 export const makeTransport = (): Effect.Effect<TransportApi, never, never> =>
   Effect.sync(() =>
     Object.freeze({
-      frame: (input: TransportFrameInput) =>
+      frame: (input: unknown) =>
         Effect.gen(function* () {
           const decoded = yield* decodeFrameInput(input, "Transport.frame")
           return yield* framePayload(decoded.scheme, decoded.payload, decoded, "Transport.frame")
         }).pipe(Effect.withSpan("Transport.frame")),
-      unframe: (input: TransportUnframeInput) =>
+      unframe: (input: unknown) =>
         Effect.gen(function* () {
           const decoded = yield* decodeUnframeInput(input, "Transport.unframe")
           return yield* unframeBytes(decoded.scheme, decoded.bytes, decoded, "Transport.unframe")
         }).pipe(Effect.withSpan("Transport.unframe")),
-      unframeStream: (input: TransportUnframeStreamInput) =>
+      unframeStream: (input: unknown) =>
         makeUnframeStream(input).pipe(Stream.withSpan("Transport.unframeStream")),
-      connect: (input: TransportConnectInput) =>
+      connect: (input: unknown) =>
         Effect.gen(function* () {
           const decoded = yield* decodeConnectInput(input, "Transport.connect")
           const socket = yield* Socket.Socket.asEffect()
@@ -215,35 +209,47 @@ export const instrumentTransportConnection = (
   connection: TransportConnection,
   options: InstrumentTransportConnectionOptions
 ): TransportConnection => {
-  const now = options.now ?? Date.now
-
   return Object.freeze({
     send: (payload: Uint8Array) =>
       connection.send(payload).pipe(
         Effect.tap(() =>
-          emitTransportEvent(options.inspector, "transport.backpressure", options.target, now, {
-            bytes: payload.byteLength
-          })
+          emitTransportEvent(
+            options.inspector,
+            "transport.backpressure",
+            options.target,
+            options.now,
+            {
+              bytes: payload.byteLength
+            }
+          )
         )
       ),
     receive: connection.receive.pipe(
       Stream.tap((payload) =>
-        emitTransportEvent(options.inspector, "transport.connect", options.target, now, {
+        emitTransportEvent(options.inspector, "transport.connect", options.target, options.now, {
           bytes: payload.byteLength
         })
       ),
       Stream.tapError((error) =>
-        emitTransportEvent(options.inspector, "transport.disconnect", options.target, now, {
+        emitTransportEvent(options.inspector, "transport.disconnect", options.target, options.now, {
           errorTag: transportErrorTag(error)
         })
       )
     ),
     close: () =>
-      connection.close().pipe(
-        Effect.ensuring(
-          emitTransportEvent(options.inspector, "transport.disconnect", options.target, now, {})
+      connection
+        .close()
+        .pipe(
+          Effect.ensuring(
+            emitTransportEvent(
+              options.inspector,
+              "transport.disconnect",
+              options.target,
+              options.now,
+              {}
+            )
+          )
         )
-      )
   })
 }
 
@@ -251,23 +257,30 @@ const emitTransportEvent = (
   inspector: BridgeInspector | undefined,
   kind: "transport.connect" | "transport.backpressure" | "transport.disconnect",
   target: string,
-  now: () => number,
+  now: (() => number) | undefined,
   details: { readonly bytes?: number; readonly errorTag?: string | undefined }
 ): Effect.Effect<void, never, never> =>
   inspector === undefined
     ? Effect.void
-    : inspector.emit(
-        new BridgeInspectorEvent({
-          kind,
-          boundary: "host",
-          direction: kind === "transport.backpressure" ? "outbound" : "inbound",
-          method: target,
-          timestamp: now(),
-          frameKind: "transport",
-          errorTag: details.errorTag,
-          payload: details.bytes === undefined ? undefined : { bytes: details.bytes }
-        })
+    : currentTimeMillis(now).pipe(
+        Effect.flatMap((timestamp) =>
+          inspector.emit(
+            new BridgeInspectorEvent({
+              kind,
+              boundary: "host",
+              direction: kind === "transport.backpressure" ? "outbound" : "inbound",
+              method: target,
+              timestamp,
+              frameKind: "transport",
+              errorTag: details.errorTag,
+              payload: details.bytes === undefined ? undefined : { bytes: details.bytes }
+            })
+          )
+        )
       )
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
 
 const transportErrorTag = (error: unknown): string | undefined =>
   typeof error === "object" && error !== null
@@ -428,7 +441,10 @@ export const makeFramedSocketConnection = (
         Effect.fail(new TransportClosedError({ operation: receiveOperation }))
       )
       yield* Queue.end(queue)
-    }).pipe(Effect.catch((error: TransportError) => failOpenAndQueue(opened, queue, error)))
+    }).pipe(
+      Effect.tapError((error: TransportError) => failOpenAndQueue(opened, queue, error)),
+      Effect.ignore
+    )
 
     const reader = yield* socket
       .run<void, TransportError, never>(
@@ -480,9 +496,7 @@ export const makeFramedSocketConnection = (
           yield* Queue.fail(queue, new TransportClosedError({ operation: receiveOperation }))
           yield* write(new Socket.CloseEvent(1000)).pipe(
             Effect.mapError((error) => mapSocketCloseError(error, `${operation}.close`)),
-            Effect.catchTag("TransportCloseFailed", (error) =>
-              Fiber.interrupt(reader).pipe(Effect.andThen(Effect.fail(error)))
-            )
+            Effect.tapErrorTag("TransportCloseFailed", () => Fiber.interrupt(reader))
           )
           yield* Fiber.interrupt(reader)
         })
@@ -581,14 +595,12 @@ const unframeBytes = (
     catch: (error) => mapTransportError(error, operation)
   })
 
-const makeUnframeStream = (
-  input: TransportUnframeStreamInput
-): Stream.Stream<Uint8Array, TransportError, never> =>
+const makeUnframeStream = (input: unknown): Stream.Stream<Uint8Array, TransportError, never> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const decoded = yield* decodeUnframeStreamInput(input, "Transport.unframeStream")
       const queue = yield* Queue.bounded<Uint8Array, TransportError | Cause.Done>(
-        resolveQueueCapacity(input.frameQueueCapacity, DEFAULT_UNFRAME_STREAM_QUEUE_CAPACITY)
+        resolveQueueCapacity(decoded.frameQueueCapacity, DEFAULT_UNFRAME_STREAM_QUEUE_CAPACITY)
       )
       const decoder =
         decoded.scheme === "length-prefixed"
@@ -613,7 +625,8 @@ const makeUnframeStream = (
               yield* Queue.end(queue)
             })
           ),
-          Effect.catch((error: TransportError) => Queue.fail(queue, error))
+          Effect.tapError((error: TransportError) => Queue.fail(queue, error)),
+          Effect.ignore
         )
         .pipe(Effect.forkScoped)
 
@@ -885,10 +898,11 @@ const decodeConnectInput = (
   )
 
 const decodeUnframeStreamInput = (
-  input: TransportUnframeStreamInput,
+  input: unknown,
   operation: string
 ): Effect.Effect<TransportUnframeStreamInput, TransportInvalidArgumentError, never> =>
   Effect.gen(function* () {
+    const fields = isRecord(input) ? input : {}
     const decoded = yield* Schema.decodeUnknownEffect(
       Schema.Struct({
         scheme: TransportScheme,
@@ -896,14 +910,14 @@ const decodeUnframeStreamInput = (
         frameQueueCapacity: Schema.optionalKey(PositiveInt)
       })
     )({
-      scheme: input?.scheme,
-      ...(input?.maxFrameBytes === undefined ? {} : { maxFrameBytes: input.maxFrameBytes }),
-      ...(input?.frameQueueCapacity === undefined
+      scheme: fields["scheme"],
+      ...(fields["maxFrameBytes"] === undefined ? {} : { maxFrameBytes: fields["maxFrameBytes"] }),
+      ...(fields["frameQueueCapacity"] === undefined
         ? {}
-        : { frameQueueCapacity: input.frameQueueCapacity })
+        : { frameQueueCapacity: fields["frameQueueCapacity"] })
     }).pipe(Effect.mapError((error) => invalidArgument(operation, "input", error)))
 
-    if (!isStreamLike(input?.chunks)) {
+    if (!isStreamLike(fields["chunks"])) {
       return yield* Effect.fail(
         invalidArgument(operation, "chunks", "chunks must be an Effect Stream")
       )
@@ -911,9 +925,12 @@ const decodeUnframeStreamInput = (
 
     return {
       ...decoded,
-      chunks: input.chunks
+      chunks: fields["chunks"]
     } satisfies TransportUnframeStreamInput
   })
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
 
 const isStreamLike = (value: unknown): value is Stream.Stream<Uint8Array, TransportError, never> =>
   typeof value === "object" && value !== null && "pipe" in value && typeof value.pipe === "function"

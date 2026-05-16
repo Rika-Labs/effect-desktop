@@ -1,6 +1,6 @@
 import { resolve } from "node:path"
 import { NodeServices } from "@effect/platform-node"
-import { Effect, Fiber, Layer, ManagedRuntime, Semaphore, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Scope, Semaphore, Stream } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import type { TransportError } from "@effect-desktop/core/runtime/transport"
 import type { ChildProcessSpawner } from "effect/unstable/process"
@@ -16,9 +16,12 @@ export interface ViteDevRuntimeServer {
   readonly ws: {
     readonly send: (event: string, payload: unknown) => void
     readonly on: (event: string, handler: (payload: { readonly data: string }) => void) => void
+    readonly off: (event: string, handler: (payload: { readonly data: string }) => void) => void
   }
   readonly watcher: {
     readonly on: (event: "change", handler: (filePath: string) => void) => void
+    readonly off?: (event: "change", handler: (filePath: string) => void) => void
+    readonly removeListener?: (event: "change", handler: (filePath: string) => void) => void
   }
   readonly httpServer?: {
     readonly once: (event: "close", handler: () => void) => void
@@ -48,6 +51,7 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
   const runtime = options.runtime ?? ManagedRuntime.make(Layer.empty)
   const processLayer = options.processLayer ?? NodeServices.layer
   const lifecycle = Effect.runSync(Semaphore.make(1))
+  const listenerScope = Effect.runSync(Scope.make())
   let active: ActiveRuntime | undefined
   let disposed = false
 
@@ -69,8 +73,10 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
       ChildProcessSpawner.ChildProcessSpawner
     >
   ): void => {
-    runtime.runPromise(provideProcessLayer(effect)).catch((error: unknown) => {
-      reportRuntimeError(server, error)
+    void runtime.runCallback(provideProcessLayer(effect), {
+      onExit: (exit) => {
+        reportRuntimeExit(server, exit)
+      }
     })
   }
 
@@ -81,11 +87,11 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
       ChildProcessSpawner.ChildProcessSpawner
     >
   ): void => {
-    runtime
-      .runPromise(lifecycle.withPermit(provideProcessLayer(effect)))
-      .catch((error: unknown) => {
-        reportRuntimeError(server, error)
-      })
+    void runtime.runCallback(lifecycle.withPermit(provideProcessLayer(effect)), {
+      onExit: (exit) => {
+        reportRuntimeExit(server, exit)
+      }
+    })
   }
 
   const restart = (): void => {
@@ -100,19 +106,32 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
     )
   }
 
-  server.ws.on(FRAME_UP_EVENT, (data: { data: string }) => {
+  const handleFrameUp = (data: { readonly data: string }): void => {
     const bytes = Buffer.from(data.data, "base64")
     const current = active
     if (current) {
       run(current.process.send(new Uint8Array(bytes)))
     }
-  })
+  }
 
-  server.watcher.on("change", (filePath) => {
+  const handleFileChange = (filePath: string): void => {
     if (filePath === entryPath) {
       restart()
     }
-  })
+  }
+
+  Effect.runSync(
+    Scope.addFinalizer(
+      listenerScope,
+      Effect.sync(() => {
+        server.ws.off(FRAME_UP_EVENT, handleFrameUp)
+        const removeFileChange = server.watcher.off ?? server.watcher.removeListener
+        removeFileChange?.("change", handleFileChange)
+      })
+    )
+  )
+  server.ws.on(FRAME_UP_EVENT, handleFrameUp)
+  server.watcher.on("change", handleFileChange)
 
   runLifecycle(startRuntime())
 
@@ -123,11 +142,19 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
         return
       }
       disposed = true
-      void runtime.runPromise(lifecycle.withPermit(closeActive())).finally(() => {
-        if (!options.runtime) {
-          void runtime.dispose()
+      void runtime.runCallback(
+        lifecycle.withPermit(
+          closeActive().pipe(Effect.andThen(Scope.close(listenerScope, Exit.void)))
+        ),
+        {
+          onExit: (exit) => {
+            reportRuntimeExit(server, exit)
+            if (!options.runtime) {
+              void runtime.dispose()
+            }
+          }
         }
-      })
+      )
     }
   }
 
@@ -152,13 +179,14 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
             server.ws.send(FRAME_DOWN_EVENT, { data: Buffer.from(frame).toString("base64") })
           })
         ),
-        Effect.catch((error: TransportError) =>
+        Effect.tapError((error: TransportError) =>
           Effect.sync(() => {
             if (!disposed && active?.process === process) {
               reportRuntimeError(server, error)
             }
           })
         ),
+        Effect.ignore,
         Effect.forkDetach({ startImmediately: true })
       )
       const exitFiber = yield* process.exitCode.pipe(
@@ -207,4 +235,10 @@ interface ActiveRuntime {
 
 const reportRuntimeError = (server: ViteDevRuntimeServer, error: unknown): void => {
   server.config?.logger?.error(`[effect-desktop] runtime error: ${String(error)}`)
+}
+
+const reportRuntimeExit = (server: ViteDevRuntimeServer, exit: Exit.Exit<void, unknown>): void => {
+  if (Exit.isFailure(exit)) {
+    reportRuntimeError(server, Cause.squash(exit.cause))
+  }
 }

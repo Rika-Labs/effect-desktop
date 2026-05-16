@@ -410,14 +410,15 @@ const auditSecretAccessOrWarn = (
   }
 ): Effect.Effect<void, never, never> =>
   auditSecretAccess(audit, traceId, input).pipe(
-    Effect.catch((cause) =>
+    Effect.tapError((cause) =>
       Effect.logWarning("Secrets audit failed", {
         operation: input.operation,
         namespace: input.namespace,
         outcome: input.outcome,
-        reason: String(cause)
-      }).pipe(Effect.asVoid)
-    )
+        reason: formatUnknownError(cause)
+      })
+    ),
+    Effect.ignore
   )
 
 const mapSafeStorageError =

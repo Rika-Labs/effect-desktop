@@ -2,7 +2,8 @@ import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
 import type { WindowError } from "@effect-desktop/native"
 import type { WindowCreateOptions, WindowHandle } from "@effect-desktop/native/contracts"
 import { BrowserContext, type IndexedDb } from "@effect-desktop/platform-browser"
-import { Effect, Layer, ManagedRuntime, Option } from "effect"
+import { RegistryContext as DesktopAtomRegistryContext } from "@effect/atom-react"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
 import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"
 
@@ -30,12 +31,17 @@ export type CleanupErrorHandler = (error: unknown, context: string) => void
 export const disposeRuntime = (
   runtime: Pick<
     ManagedRuntime.ManagedRuntime<Reactivity.Reactivity | IndexedDb.IndexedDb, never>,
-    "dispose"
+    "disposeEffect"
   >,
   onCleanupError?: CleanupErrorHandler
 ): void => {
-  void Promise.resolve(runtime.dispose()).then(undefined, (cause) => {
-    if (cause !== undefined) {
+  void Effect.runCallback(runtime.disposeEffect, {
+    onExit: (exit) => {
+      if (!Exit.isFailure(exit)) {
+        return
+      }
+
+      const cause = Cause.squash(exit.cause)
       if (onCleanupError === undefined) {
         const reportable = cause instanceof Error ? cause : new Error("runtime cleanup failed")
         reportError(reportable)
@@ -100,7 +106,11 @@ export const DesktopProvider = ({
   }, [ctx, onCleanupError])
 
   const value = Option.some(ctx)
-  return createElement(DesktopContext.Provider, { value }, children)
+  return createElement(
+    DesktopContext.Provider,
+    { value },
+    createElement(DesktopAtomRegistryContext.Provider, { value: ctx.registry }, children)
+  )
 }
 
 export const useDesktopContext = (): Option.Option<DesktopRuntimeContext> =>

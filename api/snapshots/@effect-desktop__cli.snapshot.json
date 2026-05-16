@@ -96,7 +96,7 @@
     {
       "name": "BuildStepName",
       "kind": "type",
-      "signature": "export type BuildStepName = \"renderer\" | \"runtime\" | \"native-host\" | \"bridge\" | \"manifest\""
+      "signature": "export type BuildStepName = | \"renderer\" | \"runtime\" | \"native-host\" | \"webview-runtime\" | \"bridge\" | \"manifest\""
     },
     {
       "name": "BuildStepReport",
@@ -232,6 +232,11 @@
       "name": "DesktopPublishReport",
       "kind": "interface",
       "signature": "export interface DesktopPublishReport { readonly appId: string readonly version: string readonly channel: PublishChannel readonly keyVersion: number readonly manifestPath: string readonly canonicalBytes: string readonly artifacts: readonly UpdateArtifactManifest[] }"
+    },
+    {
+      "name": "DesktopReleaseReport",
+      "kind": "class",
+      "signature": "export class DesktopReleaseReport extends Schema.Class<DesktopReleaseReport>( \"DesktopReleaseReport\" )({ appId: Schema.String, appVersion: Schema.String, target: Schema.String, manifestPath: Schema.String, phases: Schema.Array(ReleasePhaseReport) }) {}"
     },
     {
       "name": "DesktopReproReport",
@@ -619,6 +624,16 @@
       "signature": "export class ReleaseChecklistGate extends Schema.Class<ReleaseChecklistGate>( \"ReleaseChecklistGate\" )({ id: Schema.NonEmptyString, title: Schema.NonEmptyString, kind: ReleaseGateEvidenceKind, evidence: Schema.Array(Schema.NonEmptyString) }) {}"
     },
     {
+      "name": "ReleaseConfig",
+      "kind": "class",
+      "signature": "export class ReleaseConfig extends Schema.Class<ReleaseConfig>(\"ReleaseConfig\")({ configPath: Schema.String, platform: Schema.optionalKey(Schema.String), artifact: Schema.optionalKey(Schema.String), version: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "ReleaseError",
+      "kind": "class",
+      "signature": "export class ReleaseError extends Schema.TaggedErrorClass<ReleaseError>()(\"ReleaseError\", { phase: Schema.Literals([\"package\", \"sign\", \"notarize\", \"publish\"]), message: Schema.String, cause: Schema.Unknown }) {}"
+    },
+    {
       "name": "ReleaseGateCheckReport",
       "kind": "interface",
       "signature": "export interface ReleaseGateCheckReport { readonly id: string readonly title: string readonly kind: ReleaseGateEvidenceKind readonly evidence: readonly string[] }"
@@ -659,6 +674,11 @@
       "signature": "export interface ReleaseGateReport { readonly passed: boolean readonly gates: readonly ReleaseGateCheckReport[] }"
     },
     {
+      "name": "ReleasePhase",
+      "kind": "type",
+      "signature": "export type ReleasePhase = \"package\" | \"sign\" | \"notarize\" | \"publish\""
+    },
+    {
       "name": "ReleaseToolRunner",
       "kind": "class",
       "signature": "export class ReleaseToolRunner extends Context.Service<ReleaseToolRunner, ReleaseToolRunnerApi>()( \"@effect-desktop/cli/ReleaseToolRunner\" ) {}"
@@ -672,6 +692,26 @@
       "name": "ReleaseToolRunnerLive",
       "kind": "value",
       "signature": "const ReleaseToolRunnerLive: Layer.Layer<ReleaseToolRunner, never, ChildProcessSpawner.ChildProcessSpawner>"
+    },
+    {
+      "name": "ReleaseWorkflow",
+      "kind": "value",
+      "signature": "const ReleaseWorkflow: Workflow.Workflow<\"DesktopRelease\", typeof ReleaseConfig, typeof DesktopReleaseReport, typeof ReleaseError>"
+    },
+    {
+      "name": "ReleaseWorkflowApi",
+      "kind": "interface",
+      "signature": "export interface ReleaseWorkflowApi { readonly package: ( config: ReleaseConfig ) => Effect.Effect<DesktopPackageReport, PackagePipelineError, never> readonly sign: ( config: ReleaseConfig ) => Effect.Effect<DesktopSignReport, SignPipelineError, never> readonly notarize: ( config: ReleaseConfig ) => Effect.Effect<DesktopNotarizeReport, NotarizePipelineError, never> readonly publish: ( config: ReleaseConfig ) => Effect.Effect<DesktopPublishReport, PublishPipelineError, never> }"
+    },
+    {
+      "name": "ReleaseWorkflowLayer",
+      "kind": "value",
+      "signature": "const ReleaseWorkflowLayer: Layer.Layer<never, never, WorkflowEngine.WorkflowEngine | ReleaseWorkflowServices>"
+    },
+    {
+      "name": "ReleaseWorkflowServices",
+      "kind": "class",
+      "signature": "export class ReleaseWorkflowServices extends Context.Service< ReleaseWorkflowServices, ReleaseWorkflowApi >()(\"@effect-desktop/cli/ReleaseWorkflowServices\") {}"
     },
     {
       "name": "ReproCheckError",
@@ -767,6 +807,11 @@
       "name": "runReleaseTool",
       "kind": "value",
       "signature": "const runReleaseTool: (invocation: ToolInvocation) => Effect.Effect<ToolResult, ToolError, never>"
+    },
+    {
+      "name": "runReleaseWorkflow",
+      "kind": "value",
+      "signature": "const runReleaseWorkflow: (config: ReleaseConfig, services: ReleaseWorkflowApi) => Effect.Effect<DesktopReleaseReport, ReleaseError, WorkflowEngine.WorkflowEngine>"
     },
     {
       "name": "runSemverGuard",

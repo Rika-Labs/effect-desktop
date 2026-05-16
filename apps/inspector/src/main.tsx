@@ -1,6 +1,6 @@
 import { makeInspectorTransport } from "@effect-desktop/core/inspector-transport"
 import { ReplayTransport, ReplayTransportFromSession } from "@effect-desktop/devtools/testing"
-import { Effect } from "effect"
+import { Cause, Effect, Exit } from "effect"
 import { StrictMode, useState } from "react"
 import { createRoot } from "react-dom/client"
 
@@ -45,12 +45,19 @@ const boot = Effect.gen(function* () {
 })
 
 if (root !== null) {
-  void Effect.runPromise(boot).then(({ service, snapshot }) => {
-    createRoot(root).render(
-      <StrictMode>
-        <InspectorRoot service={service} initialSnapshot={snapshot} />
-      </StrictMode>
-    )
+  const inspectorRoot = createRoot(root)
+  void Effect.runCallback(boot, {
+    onExit: (exit) => {
+      inspectorRoot.render(
+        <StrictMode>
+          {Exit.isSuccess(exit) ? (
+            <InspectorRoot service={exit.value.service} initialSnapshot={exit.value.snapshot} />
+          ) : (
+            <InspectorError error={Cause.squash(exit.cause)} />
+          )}
+        </StrictMode>
+      )
+    }
   })
 }
 
@@ -61,10 +68,41 @@ interface InspectorRootProps {
 
 function InspectorRoot({ initialSnapshot, service }: InspectorRootProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
+  const [snapshotError, setSnapshotError] = useState<unknown>()
 
   const selectSession = (sessionId: string): void => {
-    void Effect.runPromise(service.snapshot(sessionId)).then(setSnapshot)
+    void Effect.runCallback(service.snapshot(sessionId), {
+      onExit: (exit) => {
+        if (Exit.isSuccess(exit)) {
+          setSnapshot(exit.value)
+          setSnapshotError(undefined)
+        } else {
+          setSnapshotError(Cause.squash(exit.cause))
+        }
+      }
+    })
   }
 
-  return <App snapshot={snapshot} onSelectSession={selectSession} />
+  return (
+    <>
+      {snapshotError === undefined ? null : <InspectorError error={snapshotError} />}
+      <App snapshot={snapshot} onSelectSession={selectSession} />
+    </>
+  )
 }
+
+interface InspectorErrorProps {
+  readonly error: unknown
+}
+
+function InspectorError({ error }: InspectorErrorProps) {
+  return (
+    <div className="inspector-error" role="alert">
+      <strong>Inspector error</strong>
+      <span>{formatInspectorError(error)}</span>
+    </div>
+  )
+}
+
+const formatInspectorError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
