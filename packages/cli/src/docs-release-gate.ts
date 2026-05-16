@@ -132,7 +132,7 @@ const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = ne
   ["architecture-overview", ["HostProtocolRequestEnvelope", "Desktop"]],
   ["app-config", ["defineDesktopConfig"]],
   ["windows", ["WindowRpcs", "WindowMethodNames"]],
-  ["typed-apis", ["RpcGroup", "Handlers"]],
+  ["typed-apis", ["RpcGroup", "makeDesktopRpcHandlerRuntime"]],
   ["bridge", ["HostProtocolEnvelope", "Client"]],
   ["native-services", ["ClipboardRpcs", "DialogRpcs", "WindowRpcs"]],
   ["resources", ["ResourceRegistry", "ManagedResource"]],
