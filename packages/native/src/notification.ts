@@ -3,9 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeHostProtocolInternalError,
-  makeHostProtocolInvalidArgumentError,
-  makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -15,6 +12,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
+import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import {
   NotificationActionEvent,
   NotificationClickEvent,
@@ -28,8 +26,6 @@ import {
   type PermissionState
 } from "./contracts/notification.js"
 import type { WindowHandle } from "./window.js"
-
-const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type NotificationError = HostProtocolError
 
@@ -291,18 +287,7 @@ const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
 const decodeNotificationShowInput = (
   input: unknown
 ): Effect.Effect<NotificationShowInput, NotificationError, never> =>
-  decodeInput(NotificationShowInput, input, "Notification.show")
-
-const decodeInput = <A>(
-  schema: Schema.Codec<A, unknown, never, never>,
-  input: unknown,
-  operation: string
-): Effect.Effect<A, NotificationError, never> =>
-  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
-    )
-  )
+  decodeNativeInput(NotificationShowInput, input, "Notification.show")
 
 function notificationRpc<
   const Method extends string,
@@ -321,30 +306,4 @@ function notificationRpc<
 const runNotificationRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
-): Effect.Effect<A, NotificationError, never> =>
-  effect.pipe(
-    Effect.mapError(mapNotificationRpcClientError),
-    Effect.catchDefect((defect) =>
-      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
-    )
-  )
-
-const mapNotificationRpcClientError = (error: unknown): NotificationError =>
-  isNotificationError(error)
-    ? error
-    : makeHostProtocolInternalError("Notification RPC client failed", "Notification")
-
-const isNotificationError = (error: unknown): error is NotificationError =>
-  typeof error === "object" &&
-  error !== null &&
-  "tag" in error &&
-  "operation" in error &&
-  "recoverable" in error
-
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return String(error)
-}
+): Effect.Effect<A, NotificationError, never> => runNativeRpc(effect, operation, "Notification")

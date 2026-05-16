@@ -3,9 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeHostProtocolInternalError,
-  makeHostProtocolInvalidArgumentError,
-  makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -15,6 +12,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
+import { decodeNativeInput, runNativeRpc, StrictNativeParseOptions } from "./native-client.js"
 import {
   UpdaterCheckInput,
   UpdaterCheckResult,
@@ -200,7 +198,7 @@ export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
         exchange,
         "Updater.PreparingRestart",
         UpdaterPreparingRestartEvent,
-        StrictParseOptions
+        StrictNativeParseOptions
       )
     ),
   client: (client) =>
@@ -209,7 +207,7 @@ export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
         undefined,
         "Updater.PreparingRestart",
         UpdaterPreparingRestartEvent,
-        StrictParseOptions
+        StrictNativeParseOptions
       )
     )
 })
@@ -218,8 +216,6 @@ export const makeHostUpdaterRpcRuntime = (
   handlers: UpdaterRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> => UpdaterSurface.hostRuntime(handlers, runtimeOptions)
-
-const StrictParseOptions = { onExcessProperty: "error" } as const
 
 const updaterClientFromRpcClient = (
   client: DesktopRpcClient<UpdaterRpc>,
@@ -261,30 +257,19 @@ const decodeUpdaterCheckInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterCheckInput, UpdaterError, never> =>
-  decodeInput(UpdaterCheckInput, input, operation)
+  decodeNativeInput(UpdaterCheckInput, input, operation)
 
 const decodeUpdaterDownloadInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterDownloadInput, UpdaterError, never> =>
-  decodeInput(UpdaterDownloadInput, input, operation)
+  decodeNativeInput(UpdaterDownloadInput, input, operation)
 
 const decodeUpdaterInstallInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterInstallInput, UpdaterError, never> =>
-  decodeInput(UpdaterInstallInput, input, operation)
-
-const decodeInput = <A>(
-  schema: Schema.Codec<A, unknown, never, never>,
-  input: unknown,
-  operation: string
-): Effect.Effect<A, UpdaterError, never> =>
-  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
-    )
-  )
+  decodeNativeInput(UpdaterInstallInput, input, operation)
 
 function updaterRpc<
   const Method extends string,
@@ -303,30 +288,4 @@ function updaterRpc<
 const runUpdaterRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
-): Effect.Effect<A, UpdaterError, never> =>
-  effect.pipe(
-    Effect.mapError(mapUpdaterRpcClientError),
-    Effect.catchDefect((defect) =>
-      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
-    )
-  )
-
-const mapUpdaterRpcClientError = (error: unknown): UpdaterError =>
-  isUpdaterError(error)
-    ? error
-    : makeHostProtocolInternalError("Updater RPC client failed", "Updater")
-
-const isUpdaterError = (error: unknown): error is UpdaterError =>
-  typeof error === "object" &&
-  error !== null &&
-  "tag" in error &&
-  "operation" in error &&
-  "recoverable" in error
-
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return String(error)
-}
+): Effect.Effect<A, UpdaterError, never> => runNativeRpc(effect, operation, "Updater")

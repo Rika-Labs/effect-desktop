@@ -3,9 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeHostProtocolInternalError,
-  makeHostProtocolInvalidArgumentError,
-  makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -15,6 +12,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
+import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
@@ -34,8 +32,6 @@ import {
   AppSingleInstanceResult,
   AppOpenUrlEvent
 } from "./contracts/app.js"
-
-const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export const AppGetInfo = appRpc("getInfo", Schema.Void, AppInfo, { kind: "none" })
 export const AppGetCommandLine = appRpc("getCommandLine", Schema.Void, AppCommandLine, {
@@ -290,33 +286,22 @@ const appClientFromRpcClient = (
 const decodeAppQuitInput = (
   input: unknown
 ): Effect.Effect<AppQuitInput, HostProtocolError, never> =>
-  decodeInput(AppQuitInput, input, "App.quit")
+  decodeNativeInput(AppQuitInput, input, "App.quit")
 
 const decodeAppRestartInput = (
   input: unknown
 ): Effect.Effect<AppRestartInput, HostProtocolError, never> =>
-  decodeInput(AppRestartInput, input, "App.restart")
+  decodeNativeInput(AppRestartInput, input, "App.restart")
 
 const decodeAppOpenAtLoginInput = (
   input: unknown
 ): Effect.Effect<AppOpenAtLoginInput, HostProtocolError, never> =>
-  decodeInput(AppOpenAtLoginInput, input, "App.setOpenAtLogin")
+  decodeNativeInput(AppOpenAtLoginInput, input, "App.setOpenAtLogin")
 
 const decodeAppProtocolInput = (
   input: unknown
 ): Effect.Effect<AppProtocolInput, HostProtocolError, never> =>
-  decodeInput(AppProtocolInput, input, "App.registerProtocol")
-
-const decodeInput = <A>(
-  schema: Schema.Codec<A, unknown, never, never>,
-  input: unknown,
-  operation: string
-): Effect.Effect<A, HostProtocolError, never> =>
-  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
-    )
-  )
+  decodeNativeInput(AppProtocolInput, input, "App.registerProtocol")
 
 function appRpc<
   const Method extends string,
@@ -335,28 +320,4 @@ function appRpc<
 const runAppRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
-): Effect.Effect<A, AppError, never> =>
-  effect.pipe(
-    Effect.mapError(mapAppRpcClientError),
-    Effect.catchDefect((defect) =>
-      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
-    )
-  )
-
-const mapAppRpcClientError = (error: unknown): AppError =>
-  isAppError(error) ? error : makeHostProtocolInternalError("App RPC client failed", "App")
-
-const isAppError = (error: unknown): error is AppError =>
-  typeof error === "object" &&
-  error !== null &&
-  "tag" in error &&
-  "operation" in error &&
-  "recoverable" in error
-
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return String(error)
-}
+): Effect.Effect<A, AppError, never> => runNativeRpc(effect, operation, "App")
