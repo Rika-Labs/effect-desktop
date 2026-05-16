@@ -158,24 +158,26 @@ export interface GlobalShortcutServiceApi extends Omit<
 
 export class GlobalShortcut extends Context.Service<GlobalShortcut, GlobalShortcutServiceApi>()(
   "@effect-desktop/native/GlobalShortcut"
-) {}
+) {
+  static readonly layer = Layer.effect(GlobalShortcut)(
+    Effect.gen(function* () {
+      const client = yield* GlobalShortcutClient
+      return GlobalShortcut.of({
+        bindCommand: (accelerator, commandId, registrarWindow) =>
+          bindGlobalShortcutCommand(client, accelerator, commandId, registrarWindow),
+        register: (accelerator, registrarWindow) => client.register(accelerator, registrarWindow),
+        unregister: (accelerator) => client.unregister(accelerator),
+        unregisterAll: () => client.unregisterAll(),
+        isRegistered: (accelerator) =>
+          client.isRegistered(accelerator).pipe(Effect.map((result) => result.registered)),
+        isSupported: () => client.isSupported(),
+        onPressed: () => client.onPressed()
+      } satisfies GlobalShortcutServiceApi)
+    })
+  )
+}
 
-export const GlobalShortcutLive = Layer.effect(GlobalShortcut)(
-  Effect.gen(function* () {
-    const client = yield* GlobalShortcutClient
-    return Object.freeze({
-      bindCommand: (accelerator, commandId, registrarWindow) =>
-        bindGlobalShortcutCommand(client, accelerator, commandId, registrarWindow),
-      register: (accelerator, registrarWindow) => client.register(accelerator, registrarWindow),
-      unregister: (accelerator) => client.unregister(accelerator),
-      unregisterAll: () => client.unregisterAll(),
-      isRegistered: (accelerator) =>
-        client.isRegistered(accelerator).pipe(Effect.map((result) => result.registered)),
-      isSupported: () => client.isSupported(),
-      onPressed: () => client.onPressed()
-    } satisfies GlobalShortcutServiceApi)
-  })
-)
+export const GlobalShortcutLive = GlobalShortcut.layer
 
 const bindGlobalShortcutCommand = (
   client: GlobalShortcutClientApi,

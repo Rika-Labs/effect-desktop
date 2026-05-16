@@ -7,13 +7,12 @@ import {
 import { Clock, Context, Effect, Exit, Layer, Scope, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc"
 
-import type { DesktopAppManifest, DesktopRpcsLayer } from "./desktop-app.js"
-import {
-  DesktopRpcRegistry,
-  DesktopRpcRegistryLive,
-  type AnyDesktopRpcRegistration,
-  type DesktopRpcRegistrationGroup
-} from "./desktop-rpc-registry.js"
+import type {
+  AnyDesktopRpcRegistration,
+  DesktopAppManifest,
+  DesktopRpcRegistrationGroup,
+  DesktopRpcsLayer
+} from "./desktop-app.js"
 import {
   makeMissingDesktopRpcClientError,
   type DesktopFramework,
@@ -202,21 +201,7 @@ const acquireDesktopRendererRpcTestClients = (
 const snapshotRegistrations = (
   rpcs: DesktopRpcsLayer<never, never>
 ): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration<never, never>>, never, never> =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      // Desktop.rpc layers only do Effect.sync(register), so handler R/E are
-      // erased here for the build-and-snapshot path — they are reapplied at
-      // RpcTest.makeClient(...) time with Effect.provide(handlers) above.
-      const composed = Layer.provideMerge(rpcs, DesktopRpcRegistryLive)
-      const context = yield* Layer.build(composed)
-      const registry = Context.get(context, DesktopRpcRegistry)
-      const snapshot = yield* registry.snapshot
-      // The input declaration layer is `DesktopRpcsLayer<never, never>`, so all
-      // registrations built through it have no handler-layer failure or runtime
-      // requirement even though the registry stores a heterogeneous snapshot.
-      return snapshot as ReadonlyArray<AnyDesktopRpcRegistration<never, never>>
-    })
-  )
+  Effect.succeed(rpcs)
 
 const makeGroupClient = (
   group: DesktopRpcRegistrationGroup,

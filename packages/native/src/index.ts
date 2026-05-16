@@ -20,7 +20,6 @@ export {
   NativeCapabilitiesLive,
   NativeCapabilityLookupError,
   NativeCapabilityManifestError,
-  NativeCapabilityRegistryError,
   makeNativeCapabilities,
   makeNativeCapabilitiesLayer,
   makeNativeCapabilityManifest,
@@ -32,11 +31,11 @@ export {
 } from "./capabilities.js"
 export {
   Native,
+  Permissions,
   all,
   available,
-  capabilities,
   type NativeApi,
-  type NativeCapabilitySelection,
+  type NativePermissionsApi,
   type NativeSurfaceSelection
 } from "./native.js"
 export {

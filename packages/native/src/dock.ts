@@ -136,23 +136,25 @@ export interface DockServiceApi extends Omit<DockClientApi, "isSupported"> {
   readonly isSupported: (method: DockMethod) => Effect.Effect<boolean, DockError, never>
 }
 
-export class Dock extends Context.Service<Dock, DockServiceApi>()("@effect-desktop/native/Dock") {}
+export class Dock extends Context.Service<Dock, DockServiceApi>()("@effect-desktop/native/Dock") {
+  static readonly layer = Layer.effect(Dock)(
+    Effect.gen(function* () {
+      const client = yield* DockClient
+      return Dock.of({
+        setBadgeCount: (count) => client.setBadgeCount(count),
+        setBadgeText: (text) => client.setBadgeText(text),
+        setProgress: (value, options) => client.setProgress(value, options),
+        setMenu: (menu) => client.setMenu(menu),
+        setJumpList: (items) => client.setJumpList(items),
+        requestAttention: (options) => client.requestAttention(options),
+        isSupported: (method) =>
+          client.isSupported(method).pipe(Effect.map((result) => result.supported))
+      } satisfies DockServiceApi)
+    })
+  )
+}
 
-export const DockLive = Layer.effect(Dock)(
-  Effect.gen(function* () {
-    const client = yield* DockClient
-    return Object.freeze({
-      setBadgeCount: (count) => client.setBadgeCount(count),
-      setBadgeText: (text) => client.setBadgeText(text),
-      setProgress: (value, options) => client.setProgress(value, options),
-      setMenu: (menu) => client.setMenu(menu),
-      setJumpList: (items) => client.setJumpList(items),
-      requestAttention: (options) => client.requestAttention(options),
-      isSupported: (method) =>
-        client.isSupported(method).pipe(Effect.map((result) => result.supported))
-    } satisfies DockServiceApi)
-  })
-)
+export const DockLive = Dock.layer
 
 export const makeDockClientLayer = (client: DockClientApi): Layer.Layer<DockClient> =>
   Layer.succeed(DockClient)(client)

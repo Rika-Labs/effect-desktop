@@ -78,21 +78,23 @@ export interface PowerMonitorServiceApi extends Omit<PowerMonitorClientApi, "isS
 
 export class PowerMonitor extends Context.Service<PowerMonitor, PowerMonitorServiceApi>()(
   "@effect-desktop/native/PowerMonitor"
-) {}
+) {
+  static readonly layer = Layer.effect(PowerMonitor)(
+    Effect.gen(function* () {
+      const client = yield* PowerMonitorClient
+      return PowerMonitor.of({
+        onSuspend: () => client.onSuspend(),
+        onResume: () => client.onResume(),
+        onShutdown: () => client.onShutdown(),
+        onPowerSourceChanged: () => client.onPowerSourceChanged(),
+        isSupported: (method) =>
+          client.isSupported(method).pipe(Effect.map((result) => result.supported))
+      } satisfies PowerMonitorServiceApi)
+    })
+  )
+}
 
-export const PowerMonitorLive = Layer.effect(PowerMonitor)(
-  Effect.gen(function* () {
-    const client = yield* PowerMonitorClient
-    return Object.freeze({
-      onSuspend: () => client.onSuspend(),
-      onResume: () => client.onResume(),
-      onShutdown: () => client.onShutdown(),
-      onPowerSourceChanged: () => client.onPowerSourceChanged(),
-      isSupported: (method) =>
-        client.isSupported(method).pipe(Effect.map((result) => result.supported))
-    } satisfies PowerMonitorServiceApi)
-  })
-)
+export const PowerMonitorLive = PowerMonitor.layer
 
 export const makePowerMonitorClientLayer = (
   client: PowerMonitorClientApi

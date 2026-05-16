@@ -114,20 +114,22 @@ export type SafeStorageServiceApi = SafeStorageClientApi
 
 export class SafeStorage extends Context.Service<SafeStorage, SafeStorageServiceApi>()(
   "@effect-desktop/native/SafeStorage"
-) {}
+) {
+  static readonly layer = Layer.effect(SafeStorage)(
+    Effect.gen(function* () {
+      const client = yield* SafeStorageClient
+      return SafeStorage.of({
+        set: (key, value) => client.set(key, value),
+        get: (key) => client.get(key),
+        delete: (key) => client.delete(key),
+        list: () => client.list(),
+        isAvailable: () => client.isAvailable()
+      } satisfies SafeStorageServiceApi)
+    })
+  )
+}
 
-export const SafeStorageLive = Layer.effect(SafeStorage)(
-  Effect.gen(function* () {
-    const client = yield* SafeStorageClient
-    return Object.freeze({
-      set: (key, value) => client.set(key, value),
-      get: (key) => client.get(key),
-      delete: (key) => client.delete(key),
-      list: () => client.list(),
-      isAvailable: () => client.isAvailable()
-    } satisfies SafeStorageServiceApi)
-  })
-)
+export const SafeStorageLive = SafeStorage.layer
 
 export const makeSafeStorageClientLayer = (
   client: SafeStorageClientApi

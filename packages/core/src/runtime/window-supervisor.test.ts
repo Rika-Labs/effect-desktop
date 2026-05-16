@@ -42,11 +42,13 @@ test("openDeclaredWindows opens declared windows and smoke-test destroys them", 
         client,
         [
           {
+            _tag: "DesktopWindowRegistration",
             id: "main",
             spec: { title: "Notes", width: 960, height: 640, renderer: "/" },
             services: undefined
           },
           {
+            _tag: "DesktopWindowRegistration",
             id: "prefs",
             spec: { title: "Preferences" },
             services: undefined
@@ -135,11 +137,13 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
     Effect.scoped(
       openDeclaredWindows(client, [
         {
+          _tag: "DesktopWindowRegistration",
           id: "main",
           spec: { title: "Main" },
           services: mainServices
         },
         {
+          _tag: "DesktopWindowRegistration",
           id: "prefs",
           spec: { title: "Preferences" },
           services: prefsServices
@@ -182,7 +186,7 @@ test("openDeclaredWindows tears down a window when its services Layer fails to b
   }
 
   const failingServices = Layer.effectDiscard(
-    Effect.acquireRelease(Effect.fail(new ServicesBuildFailure()), () =>
+    Effect.acquireRelease(Effect.fail(new ServicesBuildFailure() as never), () =>
       Effect.sync(() => {
         released.push("released")
       })
@@ -193,6 +197,7 @@ test("openDeclaredWindows tears down a window when its services Layer fails to b
     Effect.scoped(
       openDeclaredWindows(client, [
         {
+          _tag: "DesktopWindowRegistration",
           id: "main",
           spec: { title: "Main" },
           services: failingServices
@@ -226,6 +231,7 @@ test("startup environment decodes declared window specs through Effect Config an
   expect(config.smokeTest).toBe(true)
   expect(windows).toEqual([
     {
+      _tag: "DesktopWindowRegistration",
       id: "main",
       spec: {
         title: "Terminal",
@@ -350,6 +356,7 @@ test("startup environment decodes module exports and gives app modules precedenc
 
     expect(windows).toEqual([
       {
+        _tag: "DesktopWindowRegistration",
         id: "module",
         spec: { title: "Module", width: 800 },
         services: undefined
@@ -389,6 +396,7 @@ test("startup environment defaults blank module export to default", async () => 
 
     expect(windows).toEqual([
       {
+        _tag: "DesktopWindowRegistration",
         id: "main",
         spec: { title: "Default Export" },
         services: undefined

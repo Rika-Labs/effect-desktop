@@ -83,18 +83,20 @@ export type CrashReporterServiceApi = CrashReporterClientApi
 
 export class CrashReporter extends Context.Service<CrashReporter, CrashReporterServiceApi>()(
   "@effect-desktop/native/CrashReporter"
-) {}
+) {
+  static readonly layer = Layer.effect(CrashReporter)(
+    Effect.gen(function* () {
+      const client = yield* CrashReporterClient
+      return CrashReporter.of({
+        start: (options) => client.start(options),
+        recordBreadcrumb: (breadcrumb) => client.recordBreadcrumb(breadcrumb),
+        flush: () => client.flush()
+      } satisfies CrashReporterServiceApi)
+    })
+  )
+}
 
-export const CrashReporterLive = Layer.effect(CrashReporter)(
-  Effect.gen(function* () {
-    const client = yield* CrashReporterClient
-    return Object.freeze({
-      start: (options) => client.start(options),
-      recordBreadcrumb: (breadcrumb) => client.recordBreadcrumb(breadcrumb),
-      flush: () => client.flush()
-    } satisfies CrashReporterServiceApi)
-  })
-)
+export const CrashReporterLive = CrashReporter.layer
 
 export const makeCrashReporterClientLayer = (
   client: CrashReporterClientApi
@@ -108,8 +110,7 @@ export const makeCrashReporterServiceLayer = (
 export const makeCrashReporterBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<CrashReporterClient> =>
-  CrashReporterSurface.bridgeClientLayer(exchange, options)
+): Layer.Layer<CrashReporterClient> => CrashReporterSurface.bridgeClientLayer(exchange, options)
 
 export type CrashReporterRpc = RpcGroup.Rpcs<typeof CrashReporterRpcGroup>
 

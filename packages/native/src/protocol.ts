@@ -92,19 +92,21 @@ export type ProtocolServiceApi = ProtocolClientApi
 
 export class Protocol extends Context.Service<Protocol, ProtocolServiceApi>()(
   "@effect-desktop/native/Protocol"
-) {}
+) {
+  static readonly layer = Layer.effect(Protocol)(
+    Effect.gen(function* () {
+      const client = yield* ProtocolClient
+      return Protocol.of({
+        registerAppProtocol: (input) => client.registerAppProtocol(input),
+        serveAsset: (input) => client.serveAsset(input),
+        serveRoute: (input) => client.serveRoute(input),
+        deny: (input) => client.deny(input)
+      } satisfies ProtocolServiceApi)
+    })
+  )
+}
 
-export const ProtocolLive = Layer.effect(Protocol)(
-  Effect.gen(function* () {
-    const client = yield* ProtocolClient
-    return Object.freeze({
-      registerAppProtocol: (input) => client.registerAppProtocol(input),
-      serveAsset: (input) => client.serveAsset(input),
-      serveRoute: (input) => client.serveRoute(input),
-      deny: (input) => client.deny(input)
-    } satisfies ProtocolServiceApi)
-  })
-)
+export const ProtocolLive = Protocol.layer
 
 export const makeProtocolClientLayer = (client: ProtocolClientApi): Layer.Layer<ProtocolClient> =>
   Layer.succeed(ProtocolClient)(client)

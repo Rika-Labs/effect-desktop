@@ -119,14 +119,16 @@ export interface DialogServiceApi {
 
 export class Dialog extends Context.Service<Dialog, DialogServiceApi>()(
   "@effect-desktop/native/Dialog"
-) {}
+) {
+  static readonly layer = Layer.effect(Dialog)(
+    Effect.gen(function* () {
+      const client = yield* DialogClient
+      return Dialog.of(makeDialogService(client))
+    })
+  )
+}
 
-export const DialogLive = Layer.effect(Dialog)(
-  Effect.gen(function* () {
-    const client = yield* DialogClient
-    return makeDialogService(client)
-  })
-)
+export const DialogLive = Dialog.layer
 
 export const makeDialogClientLayer = (client: DialogClientApi): Layer.Layer<DialogClient> =>
   Layer.succeed(DialogClient)(client)

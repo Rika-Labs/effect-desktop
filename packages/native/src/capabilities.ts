@@ -1,14 +1,8 @@
 import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
-import {
-  DesktopNativeRegistry,
-  DesktopNativeRegistryLive,
-  DesktopPermissionRegistryLive,
-  type DesktopNativeLayer,
-  type DesktopRpcSchemaDoc
-} from "@effect-desktop/core"
+import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
 import { Context, Data, Effect, Layer, Option } from "effect"
 
-import { all as NativeAll, capabilities as nativeCapabilities } from "./native.js"
+import { all as NativeAll, available as nativeAvailable } from "./native.js"
 
 export type NativeCapabilitySupport = RpcSupportMetadata
 
@@ -32,13 +26,6 @@ export class NativeCapabilityManifestError extends Data.TaggedError(
 )<{
   readonly tag: string
   readonly message: string
-}> {}
-
-export class NativeCapabilityRegistryError extends Data.TaggedError(
-  "NativeCapabilityRegistryError"
-)<{
-  readonly message: string
-  readonly cause: unknown
 }> {}
 
 export class UnsupportedCapability extends Data.TaggedError("UnsupportedCapability")<{
@@ -116,7 +103,7 @@ export const makeNativeCapabilities = (
   makeNativeCapabilityManifest(surfaces).pipe(Effect.map(capabilitiesFromManifest))
 
 export const makeNativeCapabilitiesLayer = (
-  nativeLayer: DesktopNativeLayer = nativeCapabilities(NativeAll)
+  nativeLayer: DesktopNativeLayer = nativeAvailable(NativeAll)
 ): Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never> =>
   Layer.effect(
     NativeCapabilities,
@@ -182,27 +169,5 @@ const unsupportedCapability = (
 function snapshotNativeCapabilitySurfacesSync(
   nativeLayer: DesktopNativeLayer
 ): readonly NativeCapabilitySurface[] {
-  const composed = Layer.provideMerge(
-    nativeLayer,
-    Layer.mergeAll(DesktopNativeRegistryLive, DesktopPermissionRegistryLive)
-  )
-  try {
-    return Effect.runSync(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const context = yield* Layer.build(composed)
-          const registry = Context.get(context, DesktopNativeRegistry)
-          const registrations = yield* registry.snapshot
-          return registrations.map((registration) =>
-            Object.freeze({ schemaDocs: registration.schemaDocs })
-          )
-        })
-      )
-    )
-  } catch (cause) {
-    throw new NativeCapabilityRegistryError({
-      message: "NativeCapabilities requires the native layer to build synchronously.",
-      cause
-    })
-  }
+  return nativeLayer.map((registration) => Object.freeze({ schemaDocs: registration.schemaDocs }))
 }

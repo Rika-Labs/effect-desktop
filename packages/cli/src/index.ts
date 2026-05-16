@@ -16,6 +16,7 @@ import { pathToFileURL } from "node:url"
 import { HOST_PROTOCOL_VERSION } from "@effect-desktop/bridge"
 import {
   provider,
+  providers,
   Provider,
   runtimeGraph,
   runtimeGraphSnapshot,
@@ -1477,7 +1478,7 @@ const normalizeBuildPlan = (
     const updateManifestInput = yield* readUpdateFields(config.update, appVersion)
     const layerGraph = yield* runtimeGraphSnapshot({
       id: appId,
-      windows: Layer.empty as DesktopWindowsLayer<never>,
+      windows: [] satisfies DesktopWindowsLayer<never>,
       providers: providerLayerForBuildConfig(runtimeEngine, webEngine)
     })
 
@@ -2061,7 +2062,7 @@ const providerBudgetForRuntime = (
 ): Effect.Effect<DesktopProviderBudget, BuildConfigError, never> =>
   runtimeGraph({
     id: plan.appId,
-    windows: Layer.empty as DesktopWindowsLayer<never>,
+    windows: [] satisfies DesktopWindowsLayer<never>,
     providers: providerLayerForBuildConfig(plan.runtimeEngine, "system")
   }).pipe(
     Effect.map((graph) => graph.providerBudgets[0]),
@@ -2085,7 +2086,7 @@ const providerBudgetForRuntime = (
   )
 
 const providerLayerForBuildConfig = (runtimeEngine: RuntimeEngine, webEngine: WebEngine) =>
-  Layer.mergeAll(
+  providers(
     provider(runtimeEngine === "node" ? Provider.Runtime.node : Provider.Runtime.bun),
     provider(webEngine === "chrome" ? Provider.WebView.chrome : Provider.WebView.system)
   )

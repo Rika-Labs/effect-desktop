@@ -141,14 +141,16 @@ export interface NotificationServiceApi {
 
 export class Notification extends Context.Service<Notification, NotificationServiceApi>()(
   "@effect-desktop/native/Notification"
-) {}
+) {
+  static readonly layer = Layer.effect(Notification)(
+    Effect.gen(function* () {
+      const client = yield* NotificationClient
+      return Notification.of(makeNotificationService(client))
+    })
+  )
+}
 
-export const NotificationLive = Layer.effect(Notification)(
-  Effect.gen(function* () {
-    const client = yield* NotificationClient
-    return makeNotificationService(client)
-  })
-)
+export const NotificationLive = Notification.layer
 
 export const makeNotificationClientLayer = (
   client: NotificationClientApi

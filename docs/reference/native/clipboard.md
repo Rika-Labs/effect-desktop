@@ -34,14 +34,15 @@ import { Clipboard, ClipboardError, ClipboardRpcs, Native } from "@effect-deskto
 Desktop.make({
   id: "com.acme.clipboard",
   windows: Desktop.window("main", { title: "Clipboard" }),
-  native: Desktop.native(Native.Clipboard.readText)
+  native: Desktop.native(Native.Clipboard),
+  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
 })
 ```
 
-`Native.Clipboard.readText` registers the clipboard surface and grants the read-text authority.
-`ClipboardLive` and `ClipboardHandlersLive` are runtime layers behind that selection.
+`Native.Clipboard` registers the clipboard surface. `Native.Permissions.clipboard.readText` grants read-text authority.
+`ClipboardLive` and `ClipboardHandlersLive` are runtime layers behind the native surface.
 
-Use `Native.Clipboard.all` only when the app grants every privileged clipboard method.
+Use `Native.Permissions.clipboard.all` only when the app grants every privileged clipboard method.
 
 ## Test layer
 

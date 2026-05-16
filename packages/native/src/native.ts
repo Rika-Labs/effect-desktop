@@ -24,11 +24,7 @@ import { TraySurface } from "./tray.js"
 import { UpdaterSurface } from "./updater.js"
 import { WebViewSurface } from "./webview.js"
 import { WindowSurface } from "./window.js"
-import {
-  allCapabilitySelection,
-  type NativeCapabilitySelection,
-  type NativeSurfaceSelection
-} from "./native-surface.js"
+import type { NativeSurfaceSelection } from "./native-surface.js"
 
 const BuiltInSurfaces = Object.freeze([
   AppSurface,
@@ -51,14 +47,14 @@ const BuiltInSurfaces = Object.freeze([
   UpdaterSurface,
   WebViewSurface,
   WindowSurface
+])
+
+const BuiltInRegistrations = Object.freeze([
+  ...BuiltInSurfaces
 ]) satisfies readonly AnyDesktopNativeRegistration[]
 
 export const available = (...selections: readonly NativeSurfaceSelection[]): DesktopNativeLayer =>
   Desktop.native(...selections)
-
-export const capabilities = (
-  ...selections: readonly NativeCapabilitySelection[]
-): DesktopNativeLayer => Desktop.native(...selections)
 
 const App = AppSurface.selection
 const Clipboard = ClipboardSurface.selection
@@ -81,7 +77,36 @@ const Updater = UpdaterSurface.selection
 const WebView = WebViewSurface.selection
 const Window = WindowSurface.selection
 
-export const all: NativeCapabilitySelection = allCapabilitySelection(BuiltInSurfaces)
+export const all: NativeSurfaceSelection = Object.freeze({
+  _tag: "NativeSurfaceSelection" as const,
+  surfaces: BuiltInRegistrations
+})
+
+const permissionAll = Object.freeze(BuiltInSurfaces.flatMap((surface) => surface.permissions.all))
+
+export const Permissions = Object.freeze({
+  app: AppSurface.permissions,
+  clipboard: ClipboardSurface.permissions,
+  contextMenu: ContextMenuSurface.permissions,
+  crashReporter: CrashReporterSurface.permissions,
+  dialog: DialogSurface.permissions,
+  dock: DockSurface.permissions,
+  globalShortcut: GlobalShortcutSurface.permissions,
+  menu: MenuSurface.permissions,
+  notification: NotificationSurface.permissions,
+  path: PathSurface.permissions,
+  powerMonitor: PowerMonitorSurface.permissions,
+  protocol: ProtocolSurface.permissions,
+  safeStorage: SafeStorageSurface.permissions,
+  screen: ScreenSurface.permissions,
+  shell: ShellSurface.permissions,
+  systemAppearance: SystemAppearanceSurface.permissions,
+  tray: TraySurface.permissions,
+  updater: UpdaterSurface.permissions,
+  webView: WebViewSurface.permissions,
+  window: WindowSurface.permissions,
+  all: permissionAll
+})
 
 export const Native = Object.freeze({
   App,
@@ -104,10 +129,10 @@ export const Native = Object.freeze({
   Updater,
   WebView,
   Window,
+  Permissions,
   all,
-  capabilities,
   available
 })
 
 export type NativeApi = typeof Native
-export type { NativeCapabilitySelection, NativeSurfaceSelection } from "./native-surface.js"
+export type { NativePermissionsApi, NativeSurfaceSelection } from "./native-surface.js"

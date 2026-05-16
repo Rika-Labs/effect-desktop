@@ -108,20 +108,22 @@ export interface ScreenServiceApi {
 
 export class Screen extends Context.Service<Screen, ScreenServiceApi>()(
   "@effect-desktop/native/Screen"
-) {}
+) {
+  static readonly layer = Layer.effect(Screen)(
+    Effect.gen(function* () {
+      const client = yield* ScreenClient
+      return Screen.of({
+        getDisplays: () => client.getDisplays().pipe(Effect.map((result) => result.displays)),
+        getPrimaryDisplay: () => client.getPrimaryDisplay(),
+        getPointerPoint: () => client.getPointerPoint(),
+        isSupported: (method) =>
+          client.isSupported(method).pipe(Effect.map((result) => result.supported))
+      } satisfies ScreenServiceApi)
+    })
+  )
+}
 
-export const ScreenLive = Layer.effect(Screen)(
-  Effect.gen(function* () {
-    const client = yield* ScreenClient
-    return Object.freeze({
-      getDisplays: () => client.getDisplays().pipe(Effect.map((result) => result.displays)),
-      getPrimaryDisplay: () => client.getPrimaryDisplay(),
-      getPointerPoint: () => client.getPointerPoint(),
-      isSupported: (method) =>
-        client.isSupported(method).pipe(Effect.map((result) => result.supported))
-    } satisfies ScreenServiceApi)
-  })
-)
+export const ScreenLive = Screen.layer
 
 export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
   "Screen.getDisplays": () =>

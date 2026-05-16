@@ -84,14 +84,16 @@ export interface WindowServiceApi extends Omit<WindowClientApi, "create"> {
 
 export class Window extends Context.Service<Window, WindowServiceApi>()(
   "@effect-desktop/native/Window"
-) {}
+) {
+  static readonly layer = Layer.effect(Window)(
+    Effect.gen(function* () {
+      const client = yield* WindowClient
+      return Window.of(makeWindowService(client))
+    })
+  )
+}
 
-export const WindowLive = Layer.effect(Window)(
-  Effect.gen(function* () {
-    const client = yield* WindowClient
-    return makeWindowService(client)
-  })
-)
+export const WindowLive = Window.layer
 
 export const makeWindowClientLayer = (client: WindowClientApi): Layer.Layer<WindowClient> =>
   Layer.succeed(WindowClient)(client)

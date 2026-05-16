@@ -128,22 +128,24 @@ export type UpdaterServiceApi = UpdaterClientApi
 
 export class Updater extends Context.Service<Updater, UpdaterServiceApi>()(
   "@effect-desktop/native/Updater"
-) {}
+) {
+  static readonly layer = Layer.effect(Updater)(
+    Effect.gen(function* () {
+      const client = yield* UpdaterClient
+      return Updater.of({
+        check: (options) => client.check(options),
+        download: (options) => client.download(options),
+        install: (options) => client.install(options),
+        installAndRestart: (options) => client.installAndRestart(options),
+        getStatus: () => client.getStatus(),
+        readyForRestart: () => client.readyForRestart(),
+        onPreparingRestart: () => client.onPreparingRestart()
+      } satisfies UpdaterServiceApi)
+    })
+  )
+}
 
-export const UpdaterLive = Layer.effect(Updater)(
-  Effect.gen(function* () {
-    const client = yield* UpdaterClient
-    return Object.freeze({
-      check: (options) => client.check(options),
-      download: (options) => client.download(options),
-      install: (options) => client.install(options),
-      installAndRestart: (options) => client.installAndRestart(options),
-      getStatus: () => client.getStatus(),
-      readyForRestart: () => client.readyForRestart(),
-      onPreparingRestart: () => client.onPreparingRestart()
-    } satisfies UpdaterServiceApi)
-  })
-)
+export const UpdaterLive = Updater.layer
 
 export const makeUpdaterClientLayer = (client: UpdaterClientApi): Layer.Layer<UpdaterClient> =>
   Layer.succeed(UpdaterClient)(client)

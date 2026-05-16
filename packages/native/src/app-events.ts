@@ -114,9 +114,13 @@ export interface AppEventRouterOptions {
 
 export class AppEventRouter extends Context.Service<AppEventRouter, AppEventRouterApi>()(
   "@effect-desktop/native/AppEventRouter"
-) {}
+) {
+  static readonly layer = Layer.effect(AppEventRouter)(
+    makeAppEventRouter().pipe(Effect.map(AppEventRouter.of))
+  )
+}
 
-export const AppEventRouterLive = Layer.effect(AppEventRouter)(makeAppEventRouter())
+export const AppEventRouterLive = AppEventRouter.layer
 
 export const firstResponderRoute: AppEventRoute = Object.freeze({ _tag: "firstResponder" })
 export const broadcastRoute: AppEventRoute = Object.freeze({ _tag: "broadcast" })

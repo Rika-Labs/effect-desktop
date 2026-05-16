@@ -33,23 +33,11 @@ import { Reactivity } from "effect/unstable/reactivity"
 import { WorkflowEngine } from "effect/unstable/workflow"
 import type * as RuntimeTransport from "@effect-desktop/core/runtime/transport"
 import type {
-  DesktopNativeLayer,
-  DesktopPermissionsLayer,
-  DesktopProvidersLayer,
-  DesktopProviderRegistry,
   DesktopRuntimeProviderDescriptor,
-  DesktopRpcsLayer,
   DesktopRuntimeProviderServices,
-  DesktopWindowsLayer,
   DesktopWorkflowEngineLayer,
-  DesktopWorkflowLayer,
-  DesktopWorkflowsLayer
+  DesktopWorkflowLayer
 } from "./runtime/desktop-app.js"
-import type { DesktopNativeRegistry } from "./runtime/desktop-native-registry.js"
-import type { DesktopPermissionRegistry } from "./runtime/desktop-permission-registry.js"
-import type { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
-import type { DesktopWindowRegistry } from "./runtime/desktop-window-registry.js"
-import type { DesktopWorkflowRegistry } from "./runtime/desktop-workflow-registry.js"
 import type { DesktopRpcClient, SupportedDesktopRpcClient } from "./runtime/desktop-rpc-surface.js"
 
 type IsEqual<A, B> =
@@ -78,61 +66,12 @@ type DurableWorkflowEngineContract = Assert<
     DesktopWorkflowEngineLayer<SqlClient, SqlError>
   >
 >
-interface WindowDependency {
-  readonly _tag: "WindowDependency"
-}
-interface RpcDependency {
-  readonly _tag: "RpcDependency"
-}
-interface WorkflowDependency {
-  readonly _tag: "WorkflowDependency"
-}
-type PermissionDeclarationServicesContract = Assert<
-  IsEqual<Layer.Services<DesktopPermissionsLayer>, DesktopPermissionRegistry>
->
-type ProviderDeclarationServicesContract = Assert<
-  IsEqual<Layer.Services<DesktopProvidersLayer>, DesktopProviderRegistry>
->
-type NativeDeclarationServicesContract = Assert<
-  IsEqual<Layer.Services<DesktopNativeLayer>, DesktopNativeRegistry | DesktopPermissionRegistry>
->
-type WindowDeclarationServicesContract = Assert<
-  IsEqual<Layer.Services<DesktopWindowsLayer<WindowDependency>>, DesktopWindowRegistry>
->
-type RpcDeclarationServicesContract = Assert<
-  IsEqual<Layer.Services<DesktopRpcsLayer<Error, RpcDependency>>, DesktopRpcRegistry>
->
-type WorkflowDeclarationServicesContract = Assert<
-  IsEqual<
-    Layer.Services<DesktopWorkflowLayer<WorkflowDependency, Error>>,
-    WorkflowDependency | WorkflowEngine.WorkflowEngine
-  >
->
-type WorkflowRegistrationServicesContract = Assert<
-  IsEqual<Layer.Services<DesktopWorkflowsLayer<WorkflowDependency, Error>>, DesktopWorkflowRegistry>
->
 const bunProviderServicesContract: BunProviderServicesContract = true
 const nodeProviderServicesContract: NodeProviderServicesContract = true
 const durableWorkflowEngineContract: DurableWorkflowEngineContract = true
-const permissionDeclarationServicesContract: PermissionDeclarationServicesContract = true
-const providerDeclarationServicesContract: ProviderDeclarationServicesContract = true
-const nativeDeclarationServicesContract: NativeDeclarationServicesContract = true
-const windowDeclarationServicesContract: WindowDeclarationServicesContract = true
-const rpcDeclarationServicesContract: RpcDeclarationServicesContract = true
-const workflowDeclarationServicesContract: WorkflowDeclarationServicesContract = true
-const workflowRegistrationServicesContract: WorkflowRegistrationServicesContract = true
 const runtimeProviderServicesContracts = [
   bunProviderServicesContract,
   nodeProviderServicesContract
-] as const
-const declarationLayerContracts = [
-  permissionDeclarationServicesContract,
-  providerDeclarationServicesContract,
-  nativeDeclarationServicesContract,
-  windowDeclarationServicesContract,
-  rpcDeclarationServicesContract,
-  workflowDeclarationServicesContract,
-  workflowRegistrationServicesContract
 ] as const
 // @ts-expect-error FramedTransport was removed from the public runtime transport subpath.
 type _RemovedFramedTransport = RuntimeTransport.FramedTransport
@@ -143,7 +82,6 @@ test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
 
   expect(runtimeProviderServicesContracts).toEqual([true, true])
-  expect(declarationLayerContracts).toEqual([true, true, true, true, true, true, true])
   expect(core.makeResourceRegistry).toBeFunction()
   expect(core.makeProcess).toBeFunction()
   expect(core.ProcessLive).toBeDefined()
@@ -287,7 +225,7 @@ test("framework boundary errors carry public diagnostic fields", async () => {
   expect(error.docsUrl).toContain("docs/typed-apis.md")
 })
 
-test("Desktop.make returns metadata descriptor and Desktop.app returns the runtime Layer", async () => {
+test("Desktop.make returns metadata descriptor and Desktop.layer returns the runtime Layer", async () => {
   const core = await import("./index.js")
   const app = core.Desktop.make({
     id: "notes",
@@ -299,16 +237,16 @@ test("Desktop.make returns metadata descriptor and Desktop.app returns the runti
   expect(app.id).toBe("notes")
   expect(core.Desktop.manifest(app).windows["main"]?.title).toBe("Notes")
   expect(core.Desktop.manifest(app).windows["main"]?.renderer).toBe("/")
-  expect(Layer.isLayer(app.providers)).toBe(true)
+  expect(app.providers).toEqual([core.Desktop.Provider.Runtime.test])
   expect("pipe" in app).toBe(false)
   expect("layers" in app).toBe(false)
-  expect(Layer.isLayer(core.Desktop.app(app))).toBe(true)
+  expect(Layer.isLayer(core.Desktop.layer(app))).toBe(true)
 
   const runtime = await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         return yield* core.DesktopRuntime
-      }).pipe(Effect.provide(core.Desktop.app(app)))
+      }).pipe(Effect.provide(core.Desktop.layer(app)))
     )
   )
   expect(runtime.providers).toEqual({ runtime: "test", webview: "system" })
@@ -391,7 +329,7 @@ test("Desktop.runtimeGraph exposes node runtime provider selection", async () =>
     core.Desktop.runtimeGraph({
       id: "notes",
       windows: core.Desktop.window("main", { title: "Notes" }),
-      providers: Layer.mergeAll(
+      providers: core.Desktop.providers(
         core.Desktop.provider(core.Desktop.Provider.Runtime.node),
         core.Desktop.provider(core.Desktop.Provider.WebView.chrome)
       )
@@ -446,7 +384,7 @@ test("Desktop.provider accepts custom provider descriptors through layer composi
     core.Desktop.runtimeGraph({
       id: "notes",
       windows: core.Desktop.window("main", { title: "Notes" }),
-      providers: Layer.mergeAll(
+      providers: core.Desktop.providers(
         core.Desktop.provider(customRuntime),
         core.Desktop.provider(customWebView)
       )
@@ -538,7 +476,7 @@ test("Desktop.runtime runs the same provider-backed app program under bun, node,
   expect(typeof test.cwdExists).toBe("boolean")
 })
 
-test("Desktop runtime accepts handler services provided around Desktop.app(App)", async () => {
+test("Desktop runtime accepts handler services provided around Desktop.layer(App)", async () => {
   const core = await import("./index.js")
   class Greeting extends Context.Service<Greeting, { readonly value: string }>()("Greeting") {}
   const GreetingLayer = Layer.succeed(Greeting)({ value: "hello" })
@@ -635,7 +573,7 @@ test("Desktop.runtime preserves lazy runtime provider load failures as typed sta
 
 test("Desktop.runtime rejects duplicate runtime providers as typed startup errors", async () => {
   const core = await import("./index.js")
-  const duplicateProviders = Layer.mergeAll(
+  const duplicateProviders = core.Desktop.providers(
     core.Desktop.provider(core.Desktop.Provider.Runtime.bun),
     core.Desktop.provider(core.Desktop.Provider.Runtime.node)
   )
@@ -714,7 +652,7 @@ test("Desktop.runtime rejects app ids that cannot become ResourceOwner ids", asy
 
 test("Desktop.runtimeGraphSnapshot preserves provider failure evidence", async () => {
   const core = await import("./index.js")
-  const duplicateProviders = Layer.mergeAll(
+  const duplicateProviders = core.Desktop.providers(
     core.Desktop.provider(core.Desktop.Provider.Runtime.bun),
     core.Desktop.provider(core.Desktop.Provider.Runtime.node)
   )
@@ -783,7 +721,7 @@ test("Desktop.native composes an empty native layer without adding runtime surfa
   })
   const graph = await Effect.runPromise(core.Desktop.runtimeGraph(app))
 
-  expect(Layer.isLayer(app.native)).toBe(true)
+  expect(app.native).toEqual([])
   expect(core.Desktop.manifest(app).rpcGroups).toEqual([])
   expect(graph.nodes.some((node) => node.kind === "native-surface")).toBe(false)
 })
@@ -878,23 +816,10 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
     }
   ])
   expect(surface.group).toBe(NotesRpcs)
-  expect(Layer.isLayer(surface.serverLayer)).toBe(true)
+  expect(Array.isArray(surface.serverLayer)).toBe(true)
   expect(Layer.isLayer(surface.clientLayer)).toBe(true)
   expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
-  // Identity assertion: build serverLayer against the registry, snapshot, and
-  // confirm the (group, handlers) pair was threaded through unchanged. Catches
-  // regressions where surface() loses the reference (the prior identity check
-  // used surface.serverLayer.group/.layer before the registry refactor).
-  const surfaceRegistrations = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const ctx = yield* Layer.build(
-          Layer.provideMerge(surface.serverLayer, core.DesktopRpcRegistryLive)
-        )
-        return yield* Context.get(ctx, core.DesktopRpcRegistry).snapshot
-      })
-    )
-  )
+  const surfaceRegistrations = surface.serverLayer
   expect(surfaceRegistrations).toHaveLength(1)
   expect(surfaceRegistrations[0]?.group).toBe(NotesRpcs)
   expect(Object.is(surfaceRegistrations[0]?.handlers, NotesLive)).toBe(true)
@@ -996,7 +921,7 @@ test("Desktop.Rpc.surface laws reject groups that cannot lower to bridge metadat
   })
 })
 
-test("Desktop.app binds RpcGroups into the runtime RpcServer protocol", async () => {
+test("Desktop.layer binds RpcGroups into the runtime RpcServer protocol", async () => {
   const core = await import("./index.js")
   let acquired = 0
   const Ping = Rpc.make("Notes.Ping", { success: Schema.String })
@@ -1022,14 +947,14 @@ test("Desktop.app binds RpcGroups into the runtime RpcServer protocol", async ()
   }
   const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
   const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.app(definition).pipe(Layer.provide(protocolLayer))))
+    Effect.scoped(Layer.build(core.Desktop.layer(definition).pipe(Layer.provide(protocolLayer))))
   )
 
   expect(Exit.isSuccess(exit)).toBe(true)
   expect(acquired).toBe(1)
 })
 
-test("Desktop.app rejects RpcGroup methods that declare known capability kinds without scoped fields", async () => {
+test("Desktop.layer rejects RpcGroup methods that declare known capability kinds without scoped fields", async () => {
   const core = await import("./index.js")
   const Connect = Rpc.make("Network.Connect").pipe(
     RpcCapability({
@@ -1048,7 +973,9 @@ test("Desktop.app rejects RpcGroup methods that declare known capability kinds w
     )
   })
 
-  const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(core.Desktop.app(definition))))
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(core.Desktop.layer(definition)))
+  )
 
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
@@ -1062,7 +989,7 @@ test("Desktop.app rejects RpcGroup methods that declare known capability kinds w
   }
 })
 
-test("Desktop.app rejects RpcGroup methods that require undeclared capabilities", async () => {
+test("Desktop.layer rejects RpcGroup methods that require undeclared capabilities", async () => {
   const core = await import("./index.js")
   const Connect = Rpc.make("Network.Connect").pipe(
     RpcCapability({
@@ -1084,7 +1011,9 @@ test("Desktop.app rejects RpcGroup methods that require undeclared capabilities"
     )
   })
 
-  const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(core.Desktop.app(definition))))
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(core.Desktop.layer(definition)))
+  )
 
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
@@ -1098,7 +1027,7 @@ test("Desktop.app rejects RpcGroup methods that require undeclared capabilities"
   }
 })
 
-test("Desktop.app validates RpcGroup capability scope coverage", async () => {
+test("Desktop.layer validates RpcGroup capability scope coverage", async () => {
   const core = await import("./index.js")
   const requiredCapability = {
     kind: "network.connect",
@@ -1136,10 +1065,10 @@ test("Desktop.app validates RpcGroup capability scope coverage", async () => {
   })
 
   const rejected = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.app(wrongScope)))
+    Effect.scoped(Layer.build(core.Desktop.layer(wrongScope)))
   )
   const accepted = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.app(coveredScope).pipe(Layer.provide(protocolLayer))))
+    Effect.scoped(Layer.build(core.Desktop.layer(coveredScope).pipe(Layer.provide(protocolLayer))))
   )
 
   expect(Exit.isFailure(rejected)).toBe(true)
@@ -1155,7 +1084,7 @@ test("Desktop.app validates RpcGroup capability scope coverage", async () => {
   expect(Exit.isSuccess(accepted)).toBe(true)
 })
 
-test("Desktop.app treats explicit none capability as permission-free metadata", async () => {
+test("Desktop.layer treats explicit none capability as permission-free metadata", async () => {
   const core = await import("./index.js")
   const IsSupported = Rpc.make("Screen.isSupported", {
     payload: Schema.Void,
@@ -1179,13 +1108,13 @@ test("Desktop.app treats explicit none capability as permission-free metadata", 
   const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
 
   const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.app(definition).pipe(Layer.provide(protocolLayer))))
+    Effect.scoped(Layer.build(core.Desktop.layer(definition).pipe(Layer.provide(protocolLayer))))
   )
 
   expect(Exit.isSuccess(exit)).toBe(true)
 })
 
-test("Desktop.app permission middleware declares app permissions for protected RPCs", async () => {
+test("Desktop.layer permission middleware declares app permissions for protected RPCs", async () => {
   const core = await import("./index.js")
   const requiredCapability = {
     kind: "network.connect",
@@ -1231,7 +1160,7 @@ test("Desktop.app permission middleware declares app permissions for protected R
   const envelope = await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        yield* Layer.build(core.Desktop.app(definition).pipe(Layer.provide(protocolLayer)))
+        yield* Layer.build(core.Desktop.layer(definition).pipe(Layer.provide(protocolLayer)))
         yield* Queue.offer(
           inbound,
           new HostProtocolRequestEnvelope({

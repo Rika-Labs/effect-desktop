@@ -24,11 +24,6 @@ import {
   CommandRegistry,
   Desktop,
   DesktopSpineConfigError,
-  DesktopRpcRegistry,
-  DesktopRpcRegistryLive,
-  DesktopNativeRegistryLive,
-  DesktopPermissionRegistry,
-  DesktopPermissionRegistryLive,
   type DesktopNativeLayer,
   type DesktopPermissionsLayer,
   type AnyDesktopRpcRegistration,
@@ -47,7 +42,6 @@ import {
 import {
   Cause,
   Clock,
-  Context,
   Deferred,
   Effect,
   Exit,
@@ -329,6 +323,7 @@ import {
 } from "./contracts/index.js"
 import {
   AppEventRouter,
+  AppEventRouterLive,
   broadcastRoute,
   firstResponderRoute,
   makeAppEventRouter,
@@ -349,19 +344,9 @@ const runScopedPromiseExit = <A, E>(
   effect: Effect.Effect<A, E, Scope.Scope>
 ): Promise<Exit.Exit<A, E>> => Effect.runPromiseExit(Effect.scoped(effect))
 
-// Snapshot helper: builds a surface's serverLayer against DesktopRpcRegistryLive
-// and returns the captured registrations.
 const snapshotSurfaceRegistrations = (
-  serverLayer: Layer.Layer<never, never, DesktopRpcRegistry>
-): Promise<ReadonlyArray<AnyDesktopRpcRegistration>> =>
-  Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const ctx = yield* Layer.build(Layer.provideMerge(serverLayer, DesktopRpcRegistryLive))
-        return yield* Context.get(ctx, DesktopRpcRegistry).snapshot
-      })
-    )
-  )
+  serverLayer: ReadonlyArray<AnyDesktopRpcRegistration>
+): Promise<ReadonlyArray<AnyDesktopRpcRegistration>> => Promise.resolve(serverLayer)
 
 test("native package root keeps contracts and implementation helpers behind subpaths", async () => {
   const native = await import("@effect-desktop/native")
@@ -371,11 +356,11 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect(native.ClipboardSurface).toBeDefined()
   expect(native.DialogSurface).toBeDefined()
   expect(native.Native.all).toBeDefined()
-  expect(native.Native.Clipboard.readText).toBeDefined()
-  expect(Layer.isLayer(native.Native.available(native.Native.Clipboard))).toBe(true)
-  expect(Layer.isLayer(native.Native.capabilities(native.Native.all))).toBe(true)
-  expect(Layer.isLayer(Desktop.native(native.Native.all))).toBe(true)
-  expect("Permissions" in native.Native).toBe(false)
+  expect(native.Native.Permissions.clipboard.readText).toBeDefined()
+  expect(Array.isArray(native.Native.available(native.Native.Clipboard))).toBe(true)
+  expect(Array.isArray(Desktop.native(native.Native.all))).toBe(true)
+  expect("readText" in native.Native.Clipboard).toBe(false)
+  expect("Permissions" in native.Native).toBe(true)
   expect(native.NativeCapabilities).toBeFunction()
   expect(native.NativeCapabilitiesLive).toBeDefined()
   expect(native.UnsupportedCapability).toBeFunction()
@@ -394,8 +379,32 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect("makeHostClipboardRpcRuntime" in native).toBe(false)
 })
 
-test("Native.capabilities Native.all declares every public native capability", async () => {
-  const declared = await nativePermissionTags(Native.capabilities(Native.all))
+test("native services expose canonical static layers", () => {
+  expect(AppLive).toBe(App.layer)
+  expect(ClipboardLive).toBe(Clipboard.layer)
+  expect(ContextMenuLive).toBe(ContextMenu.layer)
+  expect(CrashReporterLive).toBe(CrashReporter.layer)
+  expect(DialogLive).toBe(Dialog.layer)
+  expect(DockLive).toBe(Dock.layer)
+  expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
+  expect(MenuLive).toBe(Menu.layer)
+  expect(NotificationLive).toBe(Notification.layer)
+  expect(PathLive).toBe(Path.layer)
+  expect(PowerMonitorLive).toBe(PowerMonitor.layer)
+  expect(ProtocolLive).toBe(Protocol.layer)
+  expect(SafeStorageLive).toBe(SafeStorage.layer)
+  expect(ScreenLive).toBe(Screen.layer)
+  expect(ShellLive).toBe(Shell.layer)
+  expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
+  expect(TrayLive).toBe(Tray.layer)
+  expect(UpdaterLive).toBe(Updater.layer)
+  expect(WebViewLive).toBe(WebView.layer)
+  expect(WindowLive).toBe(Window.layer)
+  expect(AppEventRouterLive).toBe(AppEventRouter.layer)
+})
+
+test("Native.Permissions.all declares every public native capability", () => {
+  const declared = nativePermissionTags(Native.Permissions.all)
 
   expect(declared).toContain("App.quit")
   expect(declared).toContain("Clipboard.readText")
@@ -403,10 +412,10 @@ test("Native.capabilities Native.all declares every public native capability", a
   expect(declared).not.toContain("Clipboard.isSupported")
 })
 
-test("native capability groups declare only their native surface", async () => {
-  const windowPermissions = await nativePermissionTags(Native.capabilities(Native.Window.all))
-  const dialogPermissions = await nativePermissionTags(Native.capabilities(Native.Dialog.all))
-  const clipboardPermissions = await nativePermissionTags(Native.capabilities(Native.Clipboard.all))
+test("native capability groups declare only their native surface", () => {
+  const windowPermissions = nativePermissionTags(Native.Permissions.window.all)
+  const dialogPermissions = nativePermissionTags(Native.Permissions.dialog.all)
+  const clipboardPermissions = nativePermissionTags(Native.Permissions.clipboard.all)
 
   expect(windowPermissions).toContain("Window.create")
   expect(windowPermissions).toContain("Window.close")
@@ -417,50 +426,48 @@ test("native capability groups declare only their native surface", async () => {
   expect(clipboardPermissions).not.toContain("Clipboard.isSupported")
 })
 
-test("native capability constants can declare a selected method", async () => {
-  const declared = await nativePermissionTags(Desktop.native(Native.Clipboard.readText))
+test("native permission constants can declare a selected method", () => {
+  const declared = nativePermissionTags(Desktop.permission(Native.Permissions.clipboard.readText))
 
   expect(declared).toContain("Clipboard.readText")
   expect(declared).not.toContain("Clipboard.writeText")
 })
 
-test("native capability selections come from their surfaces", async () => {
-  const declared = await nativePermissionTags(
-    Native.capabilities(ClipboardSurface.selection.readText)
-  )
+test("native capability selections come from their surfaces", () => {
+  const declared = nativePermissionTags(Desktop.permission(ClipboardSurface.permissions.readText))
 
   expect(Native.Clipboard).toBe(ClipboardSurface.selection)
   expect(Native.Dialog).toBe(DialogSurface.selection)
-  expect(Native.Clipboard.readText.surfaces).toHaveLength(1)
-  expect(Native.Clipboard.readText.surfaces[0]?.tag).toBe(ClipboardSurface.tag)
-  expect(Native.Clipboard.readText.surfaces[0]?.serverLayer).toBe(ClipboardSurface.serverLayer)
+  expect(Native.Permissions.clipboard.readText).toEqual(ClipboardSurface.permissions.readText)
   expect("isSupported" in Native.Clipboard).toBe(false)
   expect("getInfo" in Native.App).toBe(false)
   expect(declared).toContain("Clipboard.readText")
 })
 
 test("native capability bundles dedupe repeated surfaces and permissions", async () => {
-  const native = Native.capabilities(
-    Native.Clipboard.readText,
-    Native.Clipboard.writeText,
-    Native.Clipboard.readText
+  const native = Desktop.native(Native.Clipboard)
+  const declaredPermissions = Desktop.permissions(
+    Desktop.permission(Native.Permissions.clipboard.readText),
+    Desktop.permission(Native.Permissions.clipboard.writeText),
+    Desktop.permission(Native.Permissions.clipboard.readText)
   )
   const graph = await Effect.runPromise(
     Desktop.runtimeGraph({
       id: "native-deduped-capabilities",
       windows: Desktop.window("main", { title: "Native Dedupe" }),
-      native
+      native,
+      permissions: declaredPermissions
     })
   )
-  const declared = await nativePermissionTagList(native)
+  const declared = nativePermissionTagList(declaredPermissions)
 
   expect(graph.nodes.filter((node) => node.id === "native:Clipboard")).toHaveLength(1)
   expect(declared.filter((tag) => tag === "Clipboard.readText")).toHaveLength(1)
   expect(declared.filter((tag) => tag === "Clipboard.writeText")).toHaveLength(1)
 })
 
-test("native availability selection does not grant authority", async () => {
-  const declared = await nativePermissionTags(Native.available(Native.Clipboard))
+test("native availability selection does not grant authority", () => {
+  const declared = nativePermissionTags(Native.available(Native.Clipboard))
 
   expect(declared.size).toBe(0)
 })
@@ -473,11 +480,11 @@ test("native contracts subpath exposes schema-coded payload contracts", async ()
   expect(contracts.DialogOpenResult).toBeFunction()
 })
 
-test("Native.capabilities registers selected native surfaces into app manifests", () => {
+test("Desktop.native registers selected native surfaces into app manifests", () => {
   const app = Desktop.make({
     id: "native-selected",
     windows: Desktop.window("main", { title: "Native Selected" }),
-    native: Native.capabilities(Native.Clipboard.readText, Native.Dialog.all)
+    native: Desktop.native(Native.Clipboard, Native.Dialog)
   })
   const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
     Array.from(group.group.requests.keys())
@@ -544,11 +551,11 @@ test("Desktop.native rejects duplicate RPC methods across native and app RPC lay
   }
 })
 
-test("Native.capabilities Native.all registers every built-in native surface", () => {
+test("Native.all registers every built-in native surface", () => {
   const app = Desktop.make({
     id: "native-all",
     windows: Desktop.window("main", { title: "Native All" }),
-    native: Native.capabilities(Native.all)
+    native: Desktop.native(Native.all)
   })
   const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
     Array.from(group.group.requests.keys())
@@ -577,30 +584,17 @@ const expectImportRejected = async (specifier: string): Promise<void> => {
   expect(rejected).toBe(true)
 }
 
-const nativePermissionTags = async (
+const nativePermissionTags = (
   nativeLayer: DesktopNativeLayer | DesktopPermissionsLayer
-): Promise<ReadonlySet<string>> => {
-  const tags = await nativePermissionTagList(nativeLayer)
+): ReadonlySet<string> => {
+  const tags = nativePermissionTagList(nativeLayer)
   return new Set(tags)
 }
 
-const nativePermissionTagList = async (
+const nativePermissionTagList = (
   nativeLayer: DesktopNativeLayer | DesktopPermissionsLayer
-): Promise<readonly string[]> => {
-  const capabilities = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(
-          Layer.provideMerge(
-            nativeLayer,
-            Layer.mergeAll(DesktopNativeRegistryLive, DesktopPermissionRegistryLive)
-          )
-        )
-        const permissions = Context.get(context, DesktopPermissionRegistry)
-        return yield* permissions.snapshot
-      })
-    )
-  )
+): readonly string[] => {
+  const capabilities = nativeLayer.filter((item): item is NormalizedCapability => "kind" in item)
   return capabilities.flatMap((capability) =>
     capability.kind === "native.invoke"
       ? [`${capability.primitive}.${capability.methods.join(",")}`]
@@ -4119,11 +4113,11 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
   }
 
   expect(ScreenSurface.group).toBe(ScreenRpcs)
-  expect(Layer.isLayer(ScreenSurface.serverLayer)).toBe(true)
+  expect(Array.isArray(ScreenSurface.serverLayer)).toBe(true)
   expect(Layer.isLayer(ScreenSurface.clientLayer)).toBe(true)
   expect(Layer.isLayer(ScreenSurface.testClientLayer)).toBe(true)
-  // Identity assertion: build serverLayer against the registry, snapshot, and
-  // confirm (group, handlers) was threaded through unchanged.
+  // Identity assertion: inspect the declaration data and confirm (group, handlers)
+  // was threaded through unchanged.
   const screenRegistrations = await snapshotSurfaceRegistrations(ScreenSurface.serverLayer)
   expect(screenRegistrations).toHaveLength(1)
   expect(screenRegistrations[0]?.group).toBe(ScreenRpcs)
@@ -4339,10 +4333,10 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
 
     expect(name).toBe(surface.tag)
     expect(surface.group).toBe(group)
-    expect(Layer.isLayer(surface.serverLayer)).toBe(true)
-    // Identity assertion: build serverLayer against the registry, snapshot, and
-    // confirm the (group, handlers) pair survived. Catches surface() regressions
-    // where the wrong group or handlers reference is captured.
+    expect(Array.isArray(surface.serverLayer)).toBe(true)
+    // Identity assertion: inspect declaration data and confirm the (group, handlers)
+    // pair survived. Catches surface() regressions where the wrong group or handlers
+    // reference is captured.
     const surfaceRegistrations = await snapshotSurfaceRegistrations(surface.serverLayer)
     expect(surfaceRegistrations).toHaveLength(1)
     expect(surfaceRegistrations[0]?.group).toBe(group)

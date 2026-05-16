@@ -21,27 +21,30 @@ Select only the native surfaces the app uses:
 Desktop.make({
   id: "com.acme.app",
   windows: Desktop.window("main", { title: "Acme" }),
-  native: Desktop.native(Native.Clipboard.readText)
+  native: Desktop.native(Native.Clipboard),
+  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
 })
 ```
 
-`Native.all` registers every built-in native surface and grants every privileged native method:
+`Native.all` registers every built-in native surface. Grant every native authority explicitly with `Native.Permissions.all`:
 
 ```ts
 Desktop.make({
   id: "com.acme.native",
   windows: Desktop.window("main", { title: "Native" }),
-  native: Desktop.native(Native.all)
+  native: Desktop.native(Native.all),
+  permissions: Desktop.permissions(...Native.Permissions.all.map(Desktop.permission))
 })
 ```
 
-Each native surface exposes grouped capability data when an app intentionally grants an entire surface:
+Each native surface exposes grouped permission data when an app intentionally grants an entire surface:
 
 ```ts
 Desktop.make({
   id: "com.acme.windows",
   windows: Desktop.window("main", { title: "Windows" }),
-  native: Desktop.native(Native.Window.all)
+  native: Desktop.native(Native.Window),
+  permissions: Desktop.permissions(...Native.Permissions.window.all.map(Desktop.permission))
 })
 ```
 
@@ -56,10 +59,10 @@ permission facts:
 - `<Name>Surface` — generated surface metadata.
 - `<Name>` — runtime Effect service.
 - `<Name>Client` — client service.
-- `Native.<Name>.<method>` — app-composition capability selection for one privileged native method.
-- `Native.<Name>.all` — app-composition capability selection for one native surface.
+- `Native.Permissions.<name>.<method>` — permission declaration for one privileged native method.
+- `Native.Permissions.<name>.all` — permission declarations for one native surface.
 - `Desktop.native(Native.<Name>)` — availability-only selection with no authority grant.
-- `Native.capabilities(...)`, `Native.available(...)` — lower-level helpers that return native declaration layers.
+- `Native.available(...)` — lower-level helper that returns native availability declarations.
 - `<Name>Live`, `<Name>HandlersLive` — runtime layers behind the native capability selection.
 - `make<Name>ClientLayer`, `make<Name>ServiceLayer` — deterministic test seams, not
   app-composition APIs.

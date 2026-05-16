@@ -106,19 +106,21 @@ export type ShellServiceApi = ShellClientApi
 
 export class Shell extends Context.Service<Shell, ShellServiceApi>()(
   "@effect-desktop/native/Shell"
-) {}
+) {
+  static readonly layer = Layer.effect(Shell)(
+    Effect.gen(function* () {
+      const client = yield* ShellClient
+      return Shell.of({
+        openExternal: (url, options) => client.openExternal(url, options),
+        showItemInFolder: (path) => client.showItemInFolder(path),
+        openPath: (path, options) => client.openPath(path, options),
+        trashItem: (path) => client.trashItem(path)
+      } satisfies ShellServiceApi)
+    })
+  )
+}
 
-export const ShellLive = Layer.effect(Shell)(
-  Effect.gen(function* () {
-    const client = yield* ShellClient
-    return Object.freeze({
-      openExternal: (url, options) => client.openExternal(url, options),
-      showItemInFolder: (path) => client.showItemInFolder(path),
-      openPath: (path, options) => client.openPath(path, options),
-      trashItem: (path) => client.trashItem(path)
-    } satisfies ShellServiceApi)
-  })
-)
+export const ShellLive = Shell.layer
 
 export const makeShellClientLayer = (client: ShellClientApi): Layer.Layer<ShellClient> =>
   Layer.succeed(ShellClient)(client)

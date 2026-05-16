@@ -7,6 +7,7 @@ import {
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   RpcCapability,
+  type RpcCapabilityMetadata,
   RpcEndpoint,
   type RpcEndpointKind,
   RpcSupport,
@@ -15,7 +16,6 @@ import {
 import {
   type AnyDesktopNativeRegistration,
   DesktopRpc,
-  type DesktopNativeCapabilitySelection,
   type DesktopNativeSurfaceSelection,
   type DesktopRpcSurface,
   type DesktopRpcSurfaceDirectOptions,
@@ -37,13 +37,13 @@ type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
 type NativeRpcHandlers<Group extends RpcGroup.Any> = RpcGroup.HandlersFrom<RpcGroup.Rpcs<Group>>
 
 export type NativeSurfaceSelection = DesktopNativeSurfaceSelection
-export type NativeCapabilitySelection = DesktopNativeCapabilitySelection
 
-export type NativeSurfaceApi<Method extends string = never> = Readonly<
-  NativeSurfaceSelection &
-    Record<Method, NativeCapabilitySelection> & {
-      readonly all: NativeCapabilitySelection
-    }
+export type NativeSurfaceApi = NativeSurfaceSelection
+
+export type NativePermissionsApi<Method extends string = never> = Readonly<
+  Record<Method, NormalizedCapability> & {
+    readonly all: readonly NormalizedCapability[]
+  }
 >
 
 export type NativeRpcAuthority =
@@ -83,7 +83,8 @@ export interface NativeRpcSurface<
   ServerR,
   Method extends string = never
 > extends DesktopRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR> {
-  readonly selection: NativeSurfaceApi<Method>
+  readonly selection: NativeSurfaceApi
+  readonly permissions: NativePermissionsApi<Method>
   readonly bridgeClientLayer: (
     exchange: BridgeClientExchange,
     options?: BridgeClientOptions
@@ -199,7 +200,8 @@ function make<
 
   return Object.freeze({
     ...surfaceWithoutSelection,
-    selection: nativeSurfaceSelection(surfaceWithoutSelection, options.capabilities ?? [])
+    selection: surfaceSelection(surfaceWithoutSelection),
+    permissions: nativeSurfacePermissions(surfaceWithoutSelection, options.capabilities ?? [])
   })
 }
 
@@ -213,22 +215,21 @@ const makeBridgeProtocolLayer = (
     )
   )
 
-const nativeSurfaceSelection = <const Method extends string>(
+const nativeSurfacePermissions = <const Method extends string>(
   registration: AnyDesktopNativeRegistration,
   capabilities: readonly Method[]
-): NativeSurfaceApi<Method> => {
-  const capabilitySelections: Record<Method, NativeCapabilitySelection> = {} as Record<
+): NativePermissionsApi<Method> => {
+  const permissions: Record<Method, NormalizedCapability> = {} as Record<
     Method,
-    NativeCapabilitySelection
+    NormalizedCapability
   >
   for (const method of capabilities) {
-    capabilitySelections[method] = surfaceCapability(registration, method)
+    permissions[method] = permissionCapability(registration, method)
   }
 
   return Object.freeze({
-    ...surfaceSelection(registration),
-    ...capabilitySelections,
-    all: capabilitySelection(registration, allPermissionCapabilities([registration]))
+    ...permissions,
+    all: allPermissionCapabilities([registration])
   })
 }
 
@@ -237,22 +238,6 @@ const surfaceSelection = (registration: AnyDesktopNativeRegistration): NativeSur
     _tag: "NativeSurfaceSelection" as const,
     surfaces: Object.freeze([registration])
   })
-
-const capabilitySelection = (
-  registration: AnyDesktopNativeRegistration,
-  permissions: readonly NormalizedCapability[]
-): NativeCapabilitySelection =>
-  Object.freeze({
-    _tag: "NativeCapabilitySelection" as const,
-    surfaces: Object.freeze([registration]),
-    permissions: Object.freeze([...permissions])
-  })
-
-const surfaceCapability = (
-  registration: AnyDesktopNativeRegistration,
-  method: string
-): NativeCapabilitySelection =>
-  capabilitySelection(registration, [permissionCapability(registration, method)])
 
 const permissionCapability = (
   registration: AnyDesktopNativeRegistration,
@@ -267,14 +252,11 @@ const permissionCapability = (
   return capability
 }
 
-export const allCapabilitySelection = (
-  surfaces: readonly AnyDesktopNativeRegistration[]
-): NativeCapabilitySelection =>
-  Object.freeze({
-    _tag: "NativeCapabilitySelection" as const,
-    surfaces: Object.freeze([...surfaces]),
-    permissions: allPermissionCapabilities(surfaces)
-  })
+const isRpcCapabilityMetadata = (value: unknown): value is RpcCapabilityMetadata =>
+  typeof value === "object" &&
+  value !== null &&
+  "kind" in value &&
+  typeof (value as { readonly kind?: unknown }).kind === "string"
 
 const allPermissionCapabilities = (
   surfaces: readonly AnyDesktopNativeRegistration[]
@@ -285,7 +267,15 @@ const allPermissionCapabilities = (
   for (const nativeSurface of surfaces) {
     for (const doc of nativeSurface.schemaDocs) {
       const capability = Option.getOrUndefined(doc.capability)
-      if (capability === undefined || capability.kind === "none") {
+      if (capability === undefined) {
+        continue
+      }
+      if (!isRpcCapabilityMetadata(capability)) {
+        throw new TypeError(
+          `Native.${nativeSurface.tag} cannot declare invalid capability metadata for ${doc.tag}`
+        )
+      }
+      if (capability.kind === "none") {
         continue
       }
 
@@ -316,7 +306,15 @@ const permissionCapabilitiesByMethod = (
   for (const doc of surfaceRegistration.schemaDocs) {
     const method = methodNameFromTag(surfaceRegistration.tag, doc.tag)
     const capability = Option.getOrUndefined(doc.capability)
-    if (capability === undefined || capability.kind === "none") {
+    if (capability === undefined) {
+      continue
+    }
+    if (!isRpcCapabilityMetadata(capability)) {
+      throw new TypeError(
+        `Native.${surfaceRegistration.tag} cannot declare invalid capability metadata for ${doc.tag}`
+      )
+    }
+    if (capability.kind === "none") {
       continue
     }
 
