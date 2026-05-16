@@ -31,7 +31,7 @@ function make<RIn = never, E = never>(
 | `id`          | `string`                       | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                                 |
 | `windows`     | `DesktopWindowsLayer<RIn>`     | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Desktop.windows(...)`. |
 | `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Desktop.rpcs(...)`.              |
-| `native`      | `DesktopNativeLayer`           | A single composed Layer of native selections. Build via `Desktop.native(Native.all)` or selected `Native.<Surface>.<method>` tokens.            |
+| `native`      | `DesktopNativeLayer`           | A single composed Layer of native selections. Build via `Desktop.native(Native.all)` or selected `Native.<Surface>.<method>` tokens.           |
 | `providers`   | `DesktopProvidersLayer`        | A single composed Layer of provider registrations. Build via `Desktop.provider(...)`; compose multiple via `Desktop.providers(...)`.           |
 | `permissions` | `DesktopPermissionsLayer`      | A single composed Layer of permission declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                      |
 | `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | A single composed Layer of workflow registrations. Build via `Desktop.workflow(layer)`; compose multiple via `Desktop.workflows(...)`.         |
