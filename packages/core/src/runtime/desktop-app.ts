@@ -67,6 +67,12 @@ import {
 import { ResourceOwner, makeAppResourceOwner } from "./resource-owner.js"
 import type { ResourceOwnerInvalidArgumentError } from "./resource-owner.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
+import {
+  declarationLayer,
+  emptyDeclarationLayer,
+  mergeDeclarationLayers,
+  type DesktopDeclarationLayer
+} from "./desktop-declaration.js"
 
 export interface WindowSpec {
   readonly title: string
@@ -75,55 +81,43 @@ export interface WindowSpec {
   readonly renderer?: string
 }
 
-export type DesktopRpcsLayer<E = never, RIn = never> = Layer.Layer<
-  never,
-  E,
-  RIn | DesktopRpcRegistry
+export type DesktopRpcsLayer<E = never, RIn = never> = DesktopDeclarationLayer<
+  DesktopRpcRegistry,
+  RIn,
+  E
 >
 
-export type DesktopWindowsLayer<RIn = never> = Layer.Layer<
-  never,
-  never,
-  RIn | DesktopWindowRegistry
->
+export type DesktopWindowsLayer<RIn = never> = DesktopDeclarationLayer<DesktopWindowRegistry, RIn>
 
-export type DesktopPermissionsLayer<RIn = never> = Layer.Layer<
-  never,
-  never,
-  RIn | DesktopPermissionRegistry
->
+export type DesktopPermissionsLayer = DesktopDeclarationLayer<DesktopPermissionRegistry>
 
-export type DesktopProvidersLayer<RIn = never> = Layer.Layer<
-  never,
-  never,
-  RIn | DesktopProviderRegistry
->
+export type DesktopProvidersLayer = DesktopDeclarationLayer<DesktopProviderRegistry>
 
-export type DesktopNativeLayer = Layer.Layer<never, never, DesktopNativeRegistry>
+export type DesktopNativeLayer = DesktopDeclarationLayer<DesktopNativeRegistry>
 
-export type DesktopWorkflowsLayer<RIn = never, E = never> = Layer.Layer<
-  never,
-  E,
-  RIn | DesktopWorkflowRegistry
+export type DesktopWorkflowsLayer<RIn = never, E = never> = DesktopDeclarationLayer<
+  DesktopWorkflowRegistry,
+  RIn,
+  E
 >
 
 export interface DesktopConfig<RIn = never, E = never> {
   readonly id: string
   readonly windows: DesktopWindowsLayer<RIn>
-  readonly providers?: DesktopProvidersLayer<RIn>
+  readonly providers?: DesktopProvidersLayer
   readonly native?: DesktopNativeLayer
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
-  readonly permissions?: DesktopPermissionsLayer<RIn>
+  readonly permissions?: DesktopPermissionsLayer
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
 }
 
 export interface DesktopMakeConfig<RIn = never, E = never> {
   readonly id?: string
   readonly windows: DesktopWindowsLayer<RIn>
-  readonly providers?: DesktopProvidersLayer<RIn>
+  readonly providers?: DesktopProvidersLayer
   readonly native?: DesktopNativeLayer
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
-  readonly permissions?: DesktopPermissionsLayer<RIn>
+  readonly permissions?: DesktopPermissionsLayer
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
 }
 
@@ -139,7 +133,7 @@ export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopCon
   readonly _tag: "DesktopAppDescriptor"
   readonly native: DesktopNativeLayer
   readonly rpcs: DesktopRpcsLayer<E, RIn>
-  readonly permissions: DesktopPermissionsLayer<RIn>
+  readonly permissions: DesktopPermissionsLayer
   readonly workflows: DesktopWorkflowsLayer<RIn, E>
   readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration>
 }
@@ -598,18 +592,18 @@ export const Provider = Object.freeze({
   })
 })
 
-export const provider = <RIn = never>(
-  descriptor: DesktopProviderDescriptor
-): Layer.Layer<never, never, RIn | DesktopProviderRegistry> =>
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const registry = yield* DesktopProviderRegistry
-      yield* registry.register(descriptor)
-    })
+export const provider = (descriptor: DesktopProviderDescriptor): DesktopProvidersLayer =>
+  declarationLayer(
+    Layer.effectDiscard(
+      Effect.gen(function* () {
+        const registry = yield* DesktopProviderRegistry
+        yield* registry.register(descriptor)
+      })
+    )
   )
 
 export const native = (...layers: readonly DesktopNativeLayer[]): DesktopNativeLayer =>
-  mergeLayerArray(layers.map((layer) => Layer.fresh(layer)))
+  mergeDeclarationLayers(layers.map((layer) => Layer.fresh(layer)))
 
 const DefaultProviders = Object.freeze({
   runtime: Provider.Runtime.bun,
@@ -628,10 +622,10 @@ export const make = <RIn = never, E = never>(
     id: config.id ?? "app",
     windows: config.windows,
     windowRegistrations,
-    native: config.native ?? (Layer.empty as DesktopNativeLayer),
-    rpcs: config.rpcs ?? (Layer.empty as DesktopRpcsLayer<E, RIn>),
-    permissions: config.permissions ?? (Layer.empty as DesktopPermissionsLayer<RIn>),
-    workflows: config.workflows ?? (Layer.empty as DesktopWorkflowsLayer<RIn, E>),
+    native: config.native ?? emptyDeclarationLayer<DesktopNativeRegistry>(),
+    rpcs: config.rpcs ?? emptyDeclarationLayer<DesktopRpcRegistry, RIn, E>(),
+    permissions: config.permissions ?? emptyDeclarationLayer<DesktopPermissionRegistry>(),
+    workflows: config.workflows ?? emptyDeclarationLayer<DesktopWorkflowRegistry, RIn, E>(),
     ...(config.providers === undefined ? {} : { providers: config.providers })
   })
 }
@@ -664,10 +658,10 @@ export const manifest = <RIn = never, E = never>(
  * Compose multiple registrations with `Layer.mergeAll(...)` and pass the result
  * as `rpcs:` to `Desktop.make`.
  *
- * The resulting layer's environment is `DesktopRpcRegistry` only — the handler's
- * own service requirements (`R`) are stored as data in the registration and
- * re-applied at `bindRegistration` time inside the runtime spine. The R
- * requirement is therefore not propagated through this layer's type.
+ * The resulting declaration layer builds synchronously and requires only
+ * `DesktopRpcRegistry`. The handler's service requirements (`R`) are stored in
+ * the registration and re-applied at `bindRegistration` time inside the runtime
+ * spine.
  *
  * **Sync-only constraint.** The body of this layer is `Effect.sync` (it only
  * calls `registry.register(...)`). `Desktop.manifest(...)` runs the user's
@@ -693,61 +687,67 @@ export const manifest = <RIn = never, E = never>(
 export const rpc = <Rpcs extends Rpc.Any, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-): Layer.Layer<never, never, DesktopRpcRegistry> =>
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const registry = yield* DesktopRpcRegistry
-      yield* registry.register({
-        group,
-        handlers: handlers as unknown as Layer.Layer<unknown, unknown, unknown>
+): DesktopRpcsLayer<E, R> =>
+  declarationLayer(
+    Layer.effectDiscard(
+      Effect.gen(function* () {
+        const registry = yield* DesktopRpcRegistry
+        yield* registry.register({
+          group,
+          handlers: handlers as unknown as Layer.Layer<unknown, unknown, unknown>
+        })
       })
-    })
+    )
   )
 
 export const desktopWindow = <RIn = never>(
   id: string,
   spec: WindowSpec,
   services?: Layer.Layer<never, never, RIn | Scope.Scope>
-): Layer.Layer<never, never, RIn | DesktopWindowRegistry> => {
+): DesktopWindowsLayer<RIn> => {
   if (!isSafeWindowId(id)) {
     throw new TypeError(
       `Desktop.window: window id ${JSON.stringify(id)} is reserved (cannot be empty, "__proto__", "constructor", or "prototype")`
     )
   }
-  return Layer.effectDiscard(
-    Effect.gen(function* () {
-      const registry = yield* DesktopWindowRegistry
-      yield* registry.register({
-        id,
-        spec,
-        services: services as unknown as Layer.Layer<never, unknown, unknown> | undefined
+  return declarationLayer(
+    Layer.effectDiscard(
+      Effect.gen(function* () {
+        const registry = yield* DesktopWindowRegistry
+        yield* registry.register({
+          id,
+          spec,
+          services: services as unknown as Layer.Layer<never, unknown, unknown> | undefined
+        })
       })
-    })
+    )
   )
 }
 
-export const permission = <RIn = never>(
-  capability: NormalizedCapability
-): Layer.Layer<never, never, RIn | DesktopPermissionRegistry> =>
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const registry = yield* DesktopPermissionRegistry
-      yield* registry.register(capability)
-    })
+export const permission = (capability: NormalizedCapability): DesktopPermissionsLayer =>
+  declarationLayer(
+    Layer.effectDiscard(
+      Effect.gen(function* () {
+        const registry = yield* DesktopPermissionRegistry
+        yield* registry.register(capability)
+      })
+    )
   )
 
-export const permissions = <RIn = never>(
-  ...layers: readonly DesktopPermissionsLayer<RIn>[]
-): DesktopPermissionsLayer<RIn> => mergeLayerArray(layers)
+export const permissions = (
+  ...layers: readonly DesktopPermissionsLayer[]
+): DesktopPermissionsLayer => mergeDeclarationLayers(layers)
 
 export const workflow = <RIn = never, E = never>(
   layer: DesktopWorkflowLayer<RIn, E>
-): Layer.Layer<never, never, DesktopWorkflowRegistry> =>
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const registry = yield* DesktopWorkflowRegistry
-      yield* registry.register(layer as unknown as AnyDesktopWorkflowRegistration)
-    })
+): DesktopWorkflowsLayer<RIn, E> =>
+  declarationLayer(
+    Layer.effectDiscard(
+      Effect.gen(function* () {
+        const registry = yield* DesktopWorkflowRegistry
+        yield* registry.register(layer as unknown as AnyDesktopWorkflowRegistration)
+      })
+    )
   )
 
 /**
@@ -801,10 +801,7 @@ export class DesktopNativeRegistryAsyncBuildError extends Data.TaggedError(
 const snapshotWindowRegistrationsSync = <RIn>(
   windows: DesktopWindowsLayer<RIn>
 ): ReadonlyArray<DesktopWindowRegistration> => {
-  const composed = Layer.provideMerge(
-    windows as unknown as Layer.Layer<never, never, DesktopWindowRegistry>,
-    DesktopWindowRegistryLive
-  )
+  const composed = Layer.provideMerge(windows, DesktopWindowRegistryLive)
   try {
     return Effect.runSync(
       Effect.scoped(
@@ -918,18 +915,7 @@ const snapshotRegistrationsSync = <RIn, E>(
   rpcs: DesktopConfig<RIn, E>["rpcs"]
 ): ReadonlyArray<AnyDesktopRpcRegistration> => {
   if (rpcs === undefined) return []
-  // Cast invariant: every Desktop.rpc(...) layer body is Effect.sync that only
-  // calls registry.register(...). Composing with DesktopRpcRegistryLive (also
-  // Effect.sync) makes the entire build sync. The user's RIn/E type parameters
-  // are erased here because they describe handler-execution requirements, not
-  // registration-time requirements; handler R is reapplied per-registration in
-  // bindRegistration. The DesktopRpcRegistryAsyncBuildError catch below
-  // converts the runtime crash into a typed framework error if the invariant
-  // is ever violated.
-  const composed = Layer.provideMerge(
-    rpcs as unknown as Layer.Layer<never, never, DesktopRpcRegistry>,
-    DesktopRpcRegistryLive
-  )
+  const composed = Layer.provideMerge(rpcs, DesktopRpcRegistryLive)
   try {
     return Effect.runSync(
       Effect.scoped(
@@ -988,16 +974,13 @@ const nativeRpcRegistrationsSync = (
 const mergeNativeServerLayers = (
   registrations: ReadonlyArray<AnyDesktopNativeRegistration>
 ): DesktopRpcsLayer<unknown, unknown> =>
-  mergeLayerArray(registrations.map((registration) => registration.serverLayer))
+  mergeDeclarationLayers(registrations.map((registration) => registration.serverLayer))
 
-const snapshotPermissionsSync = <RIn>(
-  permissions: DesktopConfig<RIn, never>["permissions"]
+const snapshotPermissionsSync = (
+  permissions: DesktopPermissionsLayer | undefined
 ): ReadonlyArray<NormalizedCapability> => {
   if (permissions === undefined) return []
-  const composed = Layer.provideMerge(
-    permissions as unknown as Layer.Layer<never, never, DesktopPermissionRegistry>,
-    DesktopPermissionRegistryLive
-  )
+  const composed = Layer.provideMerge(permissions, DesktopPermissionRegistryLive)
   try {
     return Effect.runSync(
       Effect.scoped(
@@ -1024,10 +1007,7 @@ const snapshotWorkflowsSync = <RIn, E>(
   workflows: DesktopConfig<RIn, E>["workflows"]
 ): ReadonlyArray<DesktopWorkflowRegistration<E, RIn>> => {
   if (workflows === undefined) return []
-  const composed = Layer.provideMerge(
-    workflows as unknown as Layer.Layer<never, never, DesktopWorkflowRegistry>,
-    DesktopWorkflowRegistryLive
-  )
+  const composed = Layer.provideMerge(workflows, DesktopWorkflowRegistryLive)
   try {
     return Effect.runSync(
       Effect.scoped(
@@ -1050,14 +1030,11 @@ const snapshotWorkflowsSync = <RIn, E>(
   }
 }
 
-const snapshotProvidersSync = <RIn>(
-  providers: DesktopProvidersLayer<RIn> | undefined
+const snapshotProvidersSync = (
+  providers: DesktopProvidersLayer | undefined
 ): ReadonlyArray<DesktopProviderDescriptor> => {
   if (providers === undefined) return []
-  const composed = Layer.provideMerge(
-    providers as Layer.Layer<never, never, DesktopProviderRegistry>,
-    DesktopProviderRegistryLive
-  )
+  const composed = Layer.provideMerge(providers, DesktopProviderRegistryLive)
   try {
     return Effect.runSync(
       Effect.scoped(
@@ -1085,30 +1062,12 @@ export const app = <RIn = never, E = never>(
 ): Layer.Layer<
   DesktopApp,
   DesktopConfigError | E,
-  Exclude<
-    RIn,
-    | DesktopRuntimeProviderServices
-    | DesktopNativeRegistry
-    | DesktopRpcRegistry
-    | DesktopWindowRegistry
-    | DesktopPermissionRegistry
-    | DesktopWorkflowRegistry
-    | ResourceOwner
-  >
+  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
 > =>
   runtime(config) as Layer.Layer<
     DesktopApp,
     DesktopConfigError | E,
-    Exclude<
-      RIn,
-      | DesktopRuntimeProviderServices
-      | DesktopNativeRegistry
-      | DesktopRpcRegistry
-      | DesktopWindowRegistry
-      | DesktopPermissionRegistry
-      | DesktopWorkflowRegistry
-      | ResourceOwner
-    >
+    Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
   >
 
 export const runtime = <RIn = never, E = never>(
@@ -1116,31 +1075,8 @@ export const runtime = <RIn = never, E = never>(
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
-  Exclude<
-    RIn,
-    | DesktopRuntimeProviderServices
-    | DesktopNativeRegistry
-    | DesktopRpcRegistry
-    | DesktopWindowRegistry
-    | DesktopPermissionRegistry
-    | DesktopWorkflowRegistry
-    | ResourceOwner
-  >
-> =>
-  buildSpine(config) as Layer.Layer<
-    DesktopRuntimeServices,
-    DesktopConfigError | E,
-    Exclude<
-      RIn,
-      | DesktopRuntimeProviderServices
-      | DesktopNativeRegistry
-      | DesktopRpcRegistry
-      | DesktopWindowRegistry
-      | DesktopPermissionRegistry
-      | DesktopWorkflowRegistry
-      | ResourceOwner
-    >
-  >
+  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
+> => buildSpine(config)
 
 export const DesktopRuntimeLive = runtime
 
@@ -1175,9 +1111,7 @@ export const runtimeGraphSnapshot = <RIn, E>(
     onFailure: (error) =>
       new LayerGraphSnapshot({
         appId: config.id,
-        providers: selectedProviderIdsFromLayer(
-          config.providers as DesktopProvidersLayer | undefined
-        ),
+        providers: selectedProviderIdsFromLayer(config.providers),
         nodes: [],
         providerFacts: [],
         failures: [layerFailureFromConfigError(config.id, error)]
@@ -1550,7 +1484,7 @@ const duplicateProviderSelection = (
   )
 
 const selectedProviderIdsFromLayer = (
-  providers: DesktopProvidersLayer<unknown> | undefined
+  providers: DesktopProvidersLayer | undefined
 ): DesktopRuntimeSelectedProviders => {
   const descriptors = snapshotProvidersSync(providers)
   let runtimeProvider: DesktopRuntimeProviderId = "bun"

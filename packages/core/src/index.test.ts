@@ -22,10 +22,22 @@ import { Reactivity } from "effect/unstable/reactivity"
 import { WorkflowEngine } from "effect/unstable/workflow"
 import type * as RuntimeTransport from "@effect-desktop/core/runtime/transport"
 import type {
+  DesktopNativeLayer,
+  DesktopPermissionsLayer,
+  DesktopProvidersLayer,
+  DesktopProviderRegistry,
+  DesktopRpcsLayer,
   DesktopRuntimeProviderServices,
+  DesktopWindowsLayer,
   DesktopWorkflowEngineLayer,
-  DesktopWorkflowLayer
+  DesktopWorkflowLayer,
+  DesktopWorkflowsLayer
 } from "./runtime/desktop-app.js"
+import type { DesktopNativeRegistry } from "./runtime/desktop-native-registry.js"
+import type { DesktopPermissionRegistry } from "./runtime/desktop-permission-registry.js"
+import type { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
+import type { DesktopWindowRegistry } from "./runtime/desktop-window-registry.js"
+import type { DesktopWorkflowRegistry } from "./runtime/desktop-workflow-registry.js"
 import type { DesktopRpcClient, SupportedDesktopRpcClient } from "./runtime/desktop-rpc-surface.js"
 
 type IsEqual<A, B> =
@@ -54,12 +66,61 @@ type DurableWorkflowEngineContract = Assert<
     DesktopWorkflowEngineLayer<SqlClient, SqlError>
   >
 >
+interface WindowDependency {
+  readonly _tag: "WindowDependency"
+}
+interface RpcDependency {
+  readonly _tag: "RpcDependency"
+}
+interface WorkflowDependency {
+  readonly _tag: "WorkflowDependency"
+}
+type PermissionDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopPermissionsLayer>, DesktopPermissionRegistry>
+>
+type ProviderDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopProvidersLayer>, DesktopProviderRegistry>
+>
+type NativeDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopNativeLayer>, DesktopNativeRegistry>
+>
+type WindowDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopWindowsLayer<WindowDependency>>, DesktopWindowRegistry>
+>
+type RpcDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopRpcsLayer<Error, RpcDependency>>, DesktopRpcRegistry>
+>
+type WorkflowDeclarationServicesContract = Assert<
+  IsEqual<
+    Layer.Services<DesktopWorkflowLayer<WorkflowDependency, Error>>,
+    WorkflowDependency | WorkflowEngine.WorkflowEngine
+  >
+>
+type WorkflowRegistrationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopWorkflowsLayer<WorkflowDependency, Error>>, DesktopWorkflowRegistry>
+>
 const bunProviderServicesContract: BunProviderServicesContract = true
 const nodeProviderServicesContract: NodeProviderServicesContract = true
 const durableWorkflowEngineContract: DurableWorkflowEngineContract = true
+const permissionDeclarationServicesContract: PermissionDeclarationServicesContract = true
+const providerDeclarationServicesContract: ProviderDeclarationServicesContract = true
+const nativeDeclarationServicesContract: NativeDeclarationServicesContract = true
+const windowDeclarationServicesContract: WindowDeclarationServicesContract = true
+const rpcDeclarationServicesContract: RpcDeclarationServicesContract = true
+const workflowDeclarationServicesContract: WorkflowDeclarationServicesContract = true
+const workflowRegistrationServicesContract: WorkflowRegistrationServicesContract = true
 const runtimeProviderServicesContracts = [
   bunProviderServicesContract,
   nodeProviderServicesContract
+] as const
+const declarationLayerContracts = [
+  permissionDeclarationServicesContract,
+  providerDeclarationServicesContract,
+  nativeDeclarationServicesContract,
+  windowDeclarationServicesContract,
+  rpcDeclarationServicesContract,
+  workflowDeclarationServicesContract,
+  workflowRegistrationServicesContract
 ] as const
 // @ts-expect-error FramedTransport was removed from the public runtime transport subpath.
 type _RemovedFramedTransport = RuntimeTransport.FramedTransport
@@ -70,6 +131,7 @@ test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
 
   expect(runtimeProviderServicesContracts).toEqual([true, true])
+  expect(declarationLayerContracts).toEqual([true, true, true, true, true, true, true])
   expect(core.makeResourceRegistry).toBeFunction()
   expect(core.makeProcess).toBeFunction()
   expect(core.ProcessLive).toBeDefined()

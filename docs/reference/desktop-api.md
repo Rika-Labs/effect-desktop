@@ -32,11 +32,13 @@ function make<RIn = never, E = never>(
 | `windows`     | `DesktopWindowsLayer<RIn>`     | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Layer.mergeAll`. |
 | `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`.           |
 | `native`      | `DesktopNativeLayer`           | A single composed Layer of native surface registrations. Build via `Desktop.native(Native.all)` or selected `Native.*` layers.           |
-| `providers`   | `DesktopProvidersLayer<RIn>`   | A single composed Layer of provider registrations. Build via `Desktop.provider(...)`; compose multiple via `Layer.mergeAll`.             |
-| `permissions` | `DesktopPermissionsLayer<RIn>` | A single composed Layer of permission declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                |
+| `providers`   | `DesktopProvidersLayer`        | A single composed Layer of provider registrations. Build via `Desktop.provider(...)`; compose multiple via `Layer.mergeAll`.             |
+| `permissions` | `DesktopPermissionsLayer`      | A single composed Layer of permission declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                |
 | `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | A single composed Layer of workflow registrations. Build via `Desktop.workflow(layer)`.                                                  |
 
 `WindowSpec` is `{ title, width?, height?, renderer? }`. The window id is the first argument to `Desktop.window(id, spec)` — there is no `id` field on the spec itself.
+
+The `windows`, `rpcs`, `native`, `providers`, `permissions`, and `workflows` fields are declaration layers: they build synchronously to register facts with the app spine. Runtime dependencies stay inside the declared window services, RPC handlers, workflow layers, or provider implementations and are applied when `Desktop.app(config)` builds the runtime.
 
 ## `Desktop.manifest(app)`
 
@@ -75,7 +77,7 @@ function window<RIn = never>(
   id: string,
   spec: WindowSpec,
   services?: Layer.Layer<never, never, RIn | Scope.Scope>
-): Layer.Layer<never, never, RIn | DesktopWindowRegistry>
+): DesktopWindowsLayer<RIn>
 
 interface WindowSpec {
   readonly title: string

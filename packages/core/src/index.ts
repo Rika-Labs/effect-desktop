@@ -22,8 +22,6 @@ import {
   WorkflowEngineDurable,
   WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
-import type { DesktopNativeRegistry } from "./runtime/desktop-native-registry.js"
-import type { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
 import {
   DesktopPermissionRegistry,
   DesktopPermissionRegistryLive
@@ -32,7 +30,6 @@ import {
   DesktopWorkflowRegistry,
   DesktopWorkflowRegistryLive
 } from "./runtime/desktop-workflow-registry.js"
-import type { DesktopWindowRegistry } from "./runtime/desktop-window-registry.js"
 import type {
   DesktopApp,
   DesktopConfig,
@@ -179,16 +176,7 @@ function app<RIn = never, E = never>(
 ): Layer.Layer<
   DesktopApp,
   DesktopConfigError | E,
-  Exclude<
-    RIn,
-    | DesktopRuntimeProviderServices
-    | DesktopNativeRegistry
-    | DesktopRpcRegistry
-    | DesktopWindowRegistry
-    | DesktopPermissionRegistry
-    | DesktopWorkflowRegistry
-    | ResourceOwner
-  >
+  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
 >
 function app<RIn = never, E = never>(
   options: DesktopAppOptionsWithPermissions<RIn, E>
@@ -205,19 +193,10 @@ function app<RIn = never, E = never>(
   | Layer.Layer<
       DesktopApp,
       DesktopConfigError | E,
-      Exclude<
-        RIn,
-        | DesktopRuntimeProviderServices
-        | DesktopNativeRegistry
-        | DesktopRpcRegistry
-        | DesktopWindowRegistry
-        | DesktopPermissionRegistry
-        | DesktopWorkflowRegistry
-        | ResourceOwner
-      >
+      Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
     > {
   if ("id" in options) {
-    return desktopApp(options as DesktopConfig)
+    return desktopApp(options)
   }
 
   const workflows = snapshotStandaloneWorkflows(options.workflows)
@@ -257,10 +236,7 @@ const snapshotStandalonePermissions = (
     Effect.scoped(
       Effect.gen(function* () {
         const context = yield* Layer.build(
-          Layer.provideMerge(
-            permissions as Layer.Layer<never, never, DesktopPermissionRegistry>,
-            DesktopPermissionRegistryLive
-          )
+          Layer.provideMerge(permissions, DesktopPermissionRegistryLive)
         )
         return yield* Context.get(context, DesktopPermissionRegistry).snapshot
       })
@@ -277,10 +253,7 @@ const snapshotStandaloneWorkflows = <RIn, E>(
     Effect.scoped(
       Effect.gen(function* () {
         const context = yield* Layer.build(
-          Layer.provideMerge(
-            workflows as unknown as Layer.Layer<never, never, DesktopWorkflowRegistry>,
-            DesktopWorkflowRegistryLive
-          )
+          Layer.provideMerge(workflows, DesktopWorkflowRegistryLive)
         )
         return yield* Context.get(context, DesktopWorkflowRegistry).snapshot
       })
