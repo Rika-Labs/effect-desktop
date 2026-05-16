@@ -1,4 +1,0 @@
-interface:
-  display_name: "SDK Framework Design"
-  short_description: "Design durable SDK APIs."
-  default_prompt: "Use this skill to pressure-test an Effect Desktop SDK or framework abstraction for developer experience, stability, compatibility, observability, testability, and fit with Effect primitives."

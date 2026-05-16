@@ -1,10 +1,12 @@
-import { Effect, Exit, Schema } from "effect"
+import { Clock, Effect, Exit, Schema } from "effect"
 import { DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "effect/unstable/workflow"
+
+import { makeSecretString } from "@effect-desktop/bridge"
 
 import { approvalAuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
-  type NormalizedCapability,
-  type PermissionActor,
+  NormalizedCapability,
+  PermissionActor,
   type PermissionRegistryApi
 } from "./permission-registry.js"
 
@@ -23,8 +25,8 @@ export const PermissionApprovalWorkflow = Workflow.make({
   name: "PermissionApproval",
   payload: {
     traceId: Schema.NonEmptyString,
-    capability: Schema.Unknown,
-    actor: Schema.Unknown,
+    capability: NormalizedCapability,
+    actor: PermissionActor,
     resource: Schema.optionalKey(Schema.NonEmptyString),
     ttlMs: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0)))
   },
@@ -56,12 +58,10 @@ export interface PermissionApprovalWorkflowOptions {
 }
 
 export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalWorkflowOptions) => {
-  const now = options.now ?? Date.now
-
   return PermissionApprovalWorkflow.toLayer((payload, _executionId) =>
     Effect.gen(function* () {
-      const capability = payload.capability as NormalizedCapability
-      const actor = payload.actor as PermissionActor
+      const capability = payload.capability
+      const actor = payload.actor
 
       yield* options.registry
         .declare(capability, {
@@ -78,7 +78,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
           source: "PermissionApprovalWorkflow",
           traceId: payload.traceId,
           outcome: "requested",
-          actor: JSON.stringify(actor),
+          actor,
           ...(payload.resource === undefined ? {} : { resource: payload.resource }),
           details: { capability }
         })
@@ -100,7 +100,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
             source: "PermissionApprovalWorkflow",
             traceId: payload.traceId,
             outcome: "denied",
-            actor: JSON.stringify(actor),
+            actor,
             ...(payload.resource === undefined ? {} : { resource: payload.resource })
           })
         ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
@@ -112,7 +112,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
         })
       }
 
-      const grantedAt = now()
+      const grantedAt = yield* currentTimeMillis(options.now)
       const expiresAt = payload.ttlMs !== undefined ? grantedAt + payload.ttlMs : undefined
 
       const grant = yield* options.registry
@@ -137,9 +137,9 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
           source: "PermissionApprovalWorkflow",
           traceId: payload.traceId,
           outcome: "granted",
-          actor: JSON.stringify(actor),
+          actor,
           ...(payload.resource === undefined ? {} : { resource: payload.resource }),
-          details: { token: grant.token, grantedAt, expiresAt }
+          details: { token: grantAuditToken(grant.token), grantedAt, expiresAt }
         })
       ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
 
@@ -160,9 +160,9 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
             source: "PermissionApprovalWorkflow",
             traceId: payload.traceId,
             outcome: "expired",
-            actor: JSON.stringify(actor),
+            actor,
             ...(payload.resource === undefined ? {} : { resource: payload.resource }),
-            details: { token: grant.token, expiredAt: expiresAt }
+            details: { token: grantAuditToken(grant.token), expiredAt: expiresAt }
           })
         ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
       }
@@ -176,6 +176,12 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
     })
   )
 }
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
+
+const grantAuditToken = (token: string) =>
+  makeSecretString(token, { label: "PermissionGrantToken" })
 
 const approvalFailed = (
   traceId: string,
@@ -200,6 +206,6 @@ export const resolveApprovalDeferred = (
   approved: boolean
 ): Effect.Effect<void, never, WorkflowEngine.WorkflowEngine> =>
   DurableDeferred.done(approvalPrompt, {
-    token: rawToken as DurableDeferred.Token,
+    token: DurableDeferred.Token.make(rawToken),
     exit: Exit.succeed(approved)
   })

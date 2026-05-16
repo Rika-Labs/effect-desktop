@@ -1,6 +1,6 @@
 [test]
 pathIgnorePatterns = [
-  "vendor/**",
+  "repos/**",
   "**/dist/**",
   "**/.next/**",
   "**/.astro/**",

@@ -1,21 +1,35 @@
 import { RedactionFilter, RpcCapability, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import { Effect, Layer } from "effect"
+import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
-  Rpcs,
-  app as desktopApp,
   launch,
+  layer as desktopLayer,
   make,
   manifest,
-  provide,
-  toLayer
+  native,
+  permission,
+  permissions,
+  provider,
+  providers,
+  Provider,
+  providerLayerFor,
+  rpc,
+  rpcs,
+  runtime,
+  runtimeGraph,
+  runtimeGraphSnapshot,
+  desktopWindow,
+  windows,
+  workflow,
+  workflows,
+  WorkflowEngineDurable,
+  WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
-import type { DesktopApp, DesktopConfig, DesktopConfigError } from "./runtime/desktop-app.js"
-import type { NormalizedCapability } from "./runtime/permission-registry.js"
+import type { DesktopPermissionsLayer, DesktopWorkflowsLayer } from "./runtime/desktop-app.js"
+import { DesktopRpc } from "./runtime/desktop-rpc-surface.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
 import { describeRpcs } from "./runtime/rpc-descriptors.js"
-import type { WorkflowLayer } from "./runtime/workflow.js"
-import { WorkflowEngine, WorkflowEngineLive } from "./runtime/workflow.js"
 
 export {
   RedactionFilter,
@@ -35,113 +49,155 @@ export type {
   RpcSupportMetadata
 } from "@effect-desktop/bridge"
 export * from "./runtime/desktop-env-config.js"
+export * from "./runtime/desktop-schedules.js"
 export * from "./runtime/logger.js"
 export * from "./runtime/resources.js"
-export * from "./runtime/platform.js"
 export * from "./runtime/filesystem.js"
-export * from "./runtime/event-log.js"
 export * from "./runtime/audit-events.js"
 export * from "./runtime/approval-broker.js"
 export * from "./runtime/commands.js"
 export * from "./runtime/process.js"
+export * from "./runtime/sidecar.js"
 export * from "./runtime/pty.js"
 export * from "./runtime/worker.js"
-export * from "./runtime/workflow.js"
 export * from "./runtime/permission-registry.js"
 export * from "./runtime/permission-interceptor.js"
 export * from "./runtime/permission-approval-workflow.js"
+export * from "./runtime/provider-registry.js"
 export * from "./runtime/secrets.js"
 export * from "./runtime/settings.js"
 export * from "./runtime/sqlite.js"
-export * from "./runtime/transport.js"
-export * from "./runtime/stdio-socket.js"
-export * from "./runtime/postmessage-socket.js"
 export * from "./runtime/telemetry.js"
-export * from "./runtime/telemetry-otel.js"
-export * from "./runtime/framework-metrics.js"
-export * from "./runtime/window-state.js"
-export * from "./runtime/window-supervisor.js"
+export * from "./runtime/inspector-events.js"
+export * from "./runtime/desktop-devtools.js"
+export * from "./runtime/inspector-safety-policy.js"
+export * from "./runtime/inspector-security-events.js"
+export * from "./runtime/desktop-observability.js"
+export * from "./runtime/inspector-transport.js"
 export * from "./runtime/desktop-errors.js"
-export * from "./runtime/reactivity.js"
-export * from "./runtime/rpc-descriptors.js"
-export * from "./runtime/renderer-rpc-client.js"
-export * from "./runtime/rpc-group-metadata.js"
+export * from "./runtime/desktop-rpc-surface.js"
+export * from "./runtime/resource-owner.js"
+export * from "./runtime/window-context.js"
 export {
   DesktopApp,
-  app as desktopApp,
   launch,
+  layer,
+  layerGraphSnapshotFromGraph,
   make,
   manifest,
-  provide,
-  Rpcs,
-  toLayer,
-  type AnyDesktopRpcLayer,
+  native,
+  permission,
+  permissions,
+  provider,
+  providers,
+  Provider,
+  providerLayerFor,
+  rpc,
+  rpcs,
+  runtime,
+  runtimeGraph,
+  runtimeGraphSnapshot,
+  desktopWindow,
+  windows,
+  workflow,
+  workflows,
   type DesktopAppApi,
-  type DesktopAppDefinition,
+  type DesktopAppDescriptor,
   type DesktopAppManifest,
+  type AnyDesktopNativeRegistration,
+  type AnyDesktopRpcRegistration,
   type DesktopConfig,
   type DesktopMakeConfig,
+  type DesktopManifestSource,
+  type DesktopProviderDescriptor,
+  type DesktopProviderBudget,
+  type DesktopProvidersLayer,
   type DesktopRpcGroupDescriptor,
-  type DesktopRpcLayer,
+  type DesktopRpcsLayer,
+  type DesktopWindowsLayer,
+  type DesktopRuntimeApi,
+  type DesktopRuntimeGraph,
+  type DesktopRuntimeGraphNode,
+  type DesktopRuntimeGraphNodeKind,
+  type DesktopRuntimeProviderDescriptor,
+  type DesktopRuntimeProviderId,
+  type DesktopRuntimeProviderOptions,
+  type DesktopWebViewHostEngine,
+  type DesktopWebViewProviderDescriptor,
+  type DesktopWebViewProviderId,
+  type DesktopWebViewProviderOptions,
+  type DesktopRuntimeProviderServices,
+  type DesktopRuntimeSelectedProviders,
+  type DesktopRuntimeServices,
+  type DesktopNativeDeclaration,
+  type DesktopNativeLayer,
+  type DesktopNativeSurfaceSelection,
+  type DesktopPermissionsLayer,
+  type DesktopWorkflowEngineLayer,
+  type DesktopWorkflowLayer,
+  type DesktopWorkflowsLayer,
+  WorkflowEngineDurable,
+  WorkflowEngineMemory,
+  LayerFailurePayload,
+  LayerGraphNodeSnapshot,
+  LayerGraphSnapshot,
+  ProviderFact,
   type WindowSpec
 } from "./runtime/desktop-app.js"
+export { DesktopRuntime, DesktopRuntimeLive } from "./runtime/desktop-app.js"
 export { DesktopConfigError as DesktopSpineConfigError } from "./runtime/desktop-app.js"
-export * from "./runtime/workflows/auto-save.js"
-export * from "./runtime/workflows/backup.js"
-export * from "./runtime/workflows/restore.js"
 
-export interface DesktopAppOptions {
-  readonly workflows?: readonly WorkflowLayer[]
-  readonly permissions?: readonly NormalizedCapability[]
+export interface DesktopWorkflowEngineOptions<RIn = never, E = never> {
+  readonly workflows?: DesktopWorkflowsLayer<RIn, E>
+  readonly permissions?: DesktopPermissionsLayer
 }
 
-interface DesktopAppOptionsWithPermissions extends DesktopAppOptions {
-  readonly permissions: readonly NormalizedCapability[]
+interface DesktopWorkflowEngineOptionsWithPermissions<
+  RIn = never,
+  E = never
+> extends DesktopWorkflowEngineOptions<RIn, E> {
+  readonly permissions: DesktopPermissionsLayer
 }
 
-function app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
-function app(
-  options: DesktopAppOptionsWithPermissions
-): Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
-function app<RIn = never, E = never>(
-  config: DesktopConfig<RIn, E>
-): Layer.Layer<DesktopApp, DesktopConfigError | E, RIn>
-function app<RIn = never, E = never>(
-  options: DesktopAppOptions | DesktopConfig<RIn, E> = {}
+function workflowEngine(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
+function workflowEngine<RIn = never, E = never>(
+  options: DesktopWorkflowEngineOptionsWithPermissions<RIn, E>
+): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>
+function workflowEngine<RIn = never, E = never>(
+  options: DesktopWorkflowEngineOptions<RIn, E>
+): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>
+function workflowEngine<RIn = never, E = never>(
+  options: DesktopWorkflowEngineOptions<RIn, E> = {}
 ):
   | Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
-  | Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
-  | Layer.Layer<DesktopApp, DesktopConfigError | E, RIn> {
-  if ("id" in options) {
-    return desktopApp(options as DesktopConfig)
-  }
-
-  const wfs = options.workflows ?? []
-  const permissions = options.permissions ?? []
+  | Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>
+  | Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry> {
+  const workflowLayers = options.workflows ?? []
+  const declaredPermissions = options.permissions ?? []
 
   const declareLayer =
-    permissions.length === 0
+    declaredPermissions.length === 0
       ? Layer.empty
       : Layer.effectDiscard(
           Effect.gen(function* () {
             const registry = yield* PermissionRegistry
-            for (const capability of permissions) {
+            for (const capability of declaredPermissions) {
               yield* registry
-                .declare(capability, { source: "Desktop.app", effect: "allow" })
+                .declare(capability, { source: "Desktop.workflowEngine", effect: "allow" })
                 .pipe(Effect.orDie)
             }
           })
         )
 
-  if (wfs.length === 0) {
-    return Layer.merge(WorkflowEngineLive, declareLayer)
+  if (workflowLayers.length === 0) {
+    return Layer.merge(WorkflowEngineMemory, declareLayer)
   }
 
-  const merged = wfs.reduce<Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>>(
+  const merged = workflowLayers.reduce<Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>>(
     (acc, wf) => Layer.merge(acc, wf),
-    Layer.empty as Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>
+    Layer.empty as Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>
   )
-  return Layer.merge(Layer.provideMerge(merged, WorkflowEngineLive), declareLayer)
+  return Layer.merge(Layer.provideMerge(merged, WorkflowEngineMemory), declareLayer)
 }
 
 export const Desktop = Object.freeze({
@@ -149,12 +205,29 @@ export const Desktop = Object.freeze({
   RpcCapability,
   RpcEndpoint,
   RpcSupport,
-  app,
+  layer: desktopLayer,
+  workflowEngine,
+  WorkflowEngineDurable,
+  WorkflowEngineMemory,
   launch,
   make,
   manifest,
-  provide,
-  Rpcs,
-  toLayer,
+  native,
+  permission,
+  permissions,
+  provider,
+  providers,
+  Provider,
+  providerLayerFor,
+  rpc,
+  rpcs,
+  window: desktopWindow,
+  windows,
+  workflow,
+  workflows,
+  Rpc: DesktopRpc,
+  runtime,
+  runtimeGraph,
+  runtimeGraphSnapshot,
   describeRpcs
 })

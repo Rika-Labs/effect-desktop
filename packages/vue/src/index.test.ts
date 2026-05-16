@@ -1,18 +1,8 @@
 import { expect, test } from "bun:test"
-import {
-  HostProtocolResponseEnvelope,
-  HostProtocolStreamByRequestEnvelope,
-  makeHostProtocolInvalidOutputError,
-  RpcEndpoint,
-  type HostProtocolEnvelope,
-  type HostProtocolError
-} from "@effect-desktop/bridge"
-import {
-  Desktop,
-  MissingDesktopRpcClientError,
-  type DesktopRendererRpcTransport
-} from "@effect-desktop/core"
-import { Cause, Deferred, Effect, Exit, Fiber, Queue, Schema, Stream } from "effect"
+import { readFileSync } from "node:fs"
+import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
+import { Desktop, MissingDesktopRpcClientError } from "@effect-desktop/core"
+import { Deferred, Effect, Schedule, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createApp, effectScope } from "vue"
 
@@ -24,6 +14,17 @@ const Root = {
   }
 }
 
+test("VueDesktop adapter runtime uses Effect disposal primitives", () => {
+  const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8")
+
+  expect(source).toContain("makeFrameworkRuntime(runtime)")
+  expect(source).toContain("Effect.runCallback(runtime.disposeEffect)")
+  expect(source).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(source).not.toContain("void runtime.dispose()")
+  expect(source).not.toContain("await frameworkRuntime.dispose()")
+  expect(source).not.toContain("runFrameworkPromiseExit")
+})
+
 test("VueDesktop.from exposes app-scoped composables from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
     RpcEndpoint.query
@@ -33,32 +34,19 @@ test("VueDesktop.from exposes app-scoped composables from provided groups", () =
     success: Schema.String
   })
   const NotesRpcs = RpcGroup.make(ListNotes, CreateNote)
-  const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.List": () => Effect.succeed(["inbox"]),
-          "Notes.Create": ({ title }) => Effect.succeed(`note:${title}`)
-        })
-      )
-    )
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.List": () => Effect.succeed(["inbox"]),
+      "Notes.Create": ({ title }) => Effect.succeed(`note:${title}`)
+    })
   )
-  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
-  const transport = makeRpcTransport({
-    "Notes.List": () => Effect.succeed(["inbox"]),
-    "Notes.Create": (input) => {
-      const title = (input as { readonly title?: unknown }).title
-      return Effect.succeed(`note:${typeof title === "string" ? title : "untitled"}`)
-    }
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
-  const app = NotesVue.createApp(Root, { transport })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const app = NotesVue.createApp(Root, { rpcs: NotesLayer })
   app.config.warnHandler = () => undefined
 
   app.runWithContext(() => {
@@ -78,33 +66,24 @@ test("VueDesktop.from exposes app-scoped composables from provided groups", () =
 test("VueDesktop.useDesktop keeps reserved endpoint names as own properties", () => {
   const Reserved = Rpc.make("Notes.__proto__", { success: Schema.String }).pipe(RpcEndpoint.query)
   const NotesRpcs = RpcGroup.make(Reserved)
-  const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.__proto__": () => Effect.succeed("ok")
-        })
-      )
-    )
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.__proto__": () => Effect.succeed("ok")
+    })
   )
-  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
-  const transport = makeRpcTransport({
-    "Notes.__proto__": () => Effect.succeed("ok")
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
-  const app = NotesVue.createApp(Root, { transport })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const app = NotesVue.createApp(Root, { rpcs: NotesLayer })
   app.config.warnHandler = () => undefined
 
   app.runWithContext(() => {
     const scope = effectScope()
     scope.run(() => {
-      const notes = NotesVue.useDesktop(NotesRpcs) as unknown as Record<string, unknown>
+      const notes = NotesVue.useDesktop(NotesRpcs)
       expect(Object.getPrototypeOf(notes)).toBeNull()
       expect(Object.prototype.hasOwnProperty.call(notes, "__proto__")).toBe(true)
     })
@@ -116,27 +95,19 @@ test("VueDesktop query effects are interrupted when the scope is disposed", asyn
   const interrupted = await Effect.runPromise(Deferred.make<void>())
   const Slow = Rpc.make("Notes.Slow", { success: Schema.String }).pipe(RpcEndpoint.query)
   const NotesRpcs = RpcGroup.make(Slow)
-  const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.Slow": () => Effect.succeed("unused")
-        })
-      )
-    )
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Slow": () =>
+        Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+    })
   )
-  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
-  const transport = makeRpcTransport({
-    "Notes.Slow": () => Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
-  const app = NotesVue.createApp(Root, { transport })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const app = NotesVue.createApp(Root, { rpcs: NotesLayer })
   app.config.warnHandler = () => undefined
 
   app.runWithContext(() => {
@@ -144,6 +115,39 @@ test("VueDesktop query effects are interrupted when the scope is disposed", asyn
     scope.run(() => {
       const notes = NotesVue.useDesktop(NotesRpcs)
       notes.slow.useQuery()
+    })
+    scope.stop()
+  })
+
+  await Effect.runPromise(Deferred.await(interrupted))
+})
+
+test("VueDesktop mutation effects are interrupted when the scope is disposed", async () => {
+  const interrupted = await Effect.runPromise(Deferred.make<void>())
+  const Slow = Rpc.make("Notes.SlowCreate", { success: Schema.String })
+  const NotesRpcs = RpcGroup.make(Slow)
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.SlowCreate": () =>
+        Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
+  })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const app = NotesVue.createApp(Root, { rpcs: NotesLayer })
+  app.config.warnHandler = () => undefined
+
+  app.runWithContext(() => {
+    const scope = effectScope()
+    scope.run(() => {
+      const notes = NotesVue.useDesktop(NotesRpcs)
+      const mutation = notes.slowCreate.useMutation()
+      mutation.run()
+      expect(mutation.state.value.status).toBe("running")
     })
     scope.stop()
   })
@@ -169,32 +173,21 @@ test("VueDesktop stream composables emit values, close, fail, and interrupt on d
     stream: true
   })
   const NotesRpcs = RpcGroup.make(Tail, Failing, Slow)
-  const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.Tail": () => Stream.make("a", "b"),
-          "Notes.Failing": () => Stream.fail("boom"),
-          "Notes.SlowTail": () => Stream.never
-        })
-      )
-    )
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Tail": () => Stream.make("a", "b"),
+      "Notes.Failing": () => Stream.fail("boom"),
+      "Notes.SlowTail": () =>
+        Stream.never.pipe(Stream.ensuring(Deferred.succeed(interrupted, undefined)))
+    })
   )
-  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
-  const transport = makeRpcTransport({
-    "Notes.Tail": () => Stream.make("a", "b"),
-    "Notes.Failing": () => Stream.fail(makeHostProtocolInvalidOutputError("Notes.Failing", "boom")),
-    "Notes.SlowTail": () =>
-      Stream.never.pipe(Stream.ensuring(Deferred.succeed(interrupted, undefined)))
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
-  const app = NotesVue.createApp(Root, { transport })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const app = NotesVue.createApp(Root, { rpcs: NotesLayer })
   app.config.warnHandler = () => undefined
 
   let tail:
@@ -220,25 +213,67 @@ test("VueDesktop stream composables emit values, close, fail, and interrupt on d
   await Effect.runPromise(Deferred.await(interrupted))
 })
 
+test("VueDesktop stream composables retain bounded data and support callback-only consumption", async () => {
+  const Tail = Rpc.make("Notes.Tail", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  })
+  const NotesRpcs = RpcGroup.make(Tail)
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Tail": () => Stream.make("a", "b", "c")
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
+  })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const app = NotesVue.createApp(Root, { rpcs: NotesLayer })
+  app.config.warnHandler = () => undefined
+
+  const observed: string[] = []
+  let bounded:
+    | { readonly value: { readonly status: string; readonly data: readonly unknown[] } }
+    | undefined
+  let callbackOnly:
+    | { readonly value: { readonly status: string; readonly data: readonly unknown[] } }
+    | undefined
+  const scope = effectScope()
+  app.runWithContext(() => {
+    scope.run(() => {
+      const notes = NotesVue.useDesktop(NotesRpcs)
+      bounded = notes.tail.useStream({ capacity: 2 })
+      callbackOnly = notes.tail.useStream({
+        capacity: 0,
+        onItem: (item) => {
+          observed.push(item)
+        }
+      })
+    })
+  })
+
+  await waitFor(() => bounded?.value.status === "closed" && callbackOnly?.value.status === "closed")
+  expect(bounded?.value.data).toEqual(["b", "c"])
+  expect(callbackOnly?.value.data).toEqual([])
+  expect(observed).toEqual(["a", "b", "c"])
+  scope.stop()
+})
+
 test("VueDesktop.useDesktop fails loudly without provide/inject context or an installed client", () => {
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.Ping": () => Effect.void
-        })
-      )
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: Desktop.rpc(
+      NotesRpcs,
+      NotesRpcs.toLayer({
+        "Notes.Ping": () => Effect.void
+      })
     )
-  )
+  })
   const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
 
   const bareApp = createApp(Root)
@@ -249,110 +284,51 @@ test("VueDesktop.useDesktop fails loudly without provide/inject context or an in
   expect(() => NotesVue.createApp(Root)).toThrow(MissingDesktopRpcClientError)
 })
 
-type RpcTransportHandler = (
-  payload: unknown
-) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>
-
-const makeRpcTransport = (
-  handlers: Readonly<Record<string, RpcTransportHandler>>
-): DesktopRendererRpcTransport => {
-  const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
-  const fibers = new Map<string, Fiber.Fiber<void, unknown>>()
-  return {
-    send: (envelope) => {
-      if (envelope.kind === "cancel" && envelope.id !== undefined) {
-        const fiber = fibers.get(envelope.id)
-        if (fiber === undefined) {
-          return Effect.void
-        }
-        fibers.delete(envelope.id)
-        return Fiber.interrupt(fiber).pipe(Effect.asVoid)
-      }
-      if (envelope.kind !== "request") {
-        return Effect.void
-      }
-      const handler = handlers[envelope.method]
-      if (handler === undefined) {
-        return Queue.offer(
-          queue,
-          responseEnvelope(envelope, {
-            error: makeHostProtocolInvalidOutputError(envelope.method, "missing test handler")
-          })
-        )
-      }
-      const result = handler(envelope.payload)
-      if (Stream.isStream(result)) {
-        return Effect.gen(function* () {
-          const fiber = yield* Effect.forkDetach(
-            Effect.exit(
-              Stream.runForEach(result, (item) =>
-                Queue.offer(queue, streamEnvelope(envelope, item))
-              )
-            ).pipe(
-              Effect.flatMap((exit) => Queue.offer(queue, responseFromExit(envelope, exit))),
-              Effect.asVoid
-            ),
-            { startImmediately: true }
-          )
-          fibers.set(envelope.id, fiber)
-        })
-      }
-      return Effect.exit(result).pipe(
-        Effect.flatMap((exit) => Queue.offer(queue, responseFromExit(envelope, exit)))
-      )
-    },
-    run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+test("VueDesktop.useDesktop exposes RpcSupport metadata on generated endpoints", () => {
+  type SupportedQueryEndpoint = {
+    readonly useQuery: unknown
+    readonly support: { readonly status: string }
+    readonly isSupported: boolean
   }
-}
-
-const responseFromExit = (
-  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
-  exit: Exit.Exit<unknown, unknown>
-): HostProtocolResponseEnvelope =>
-  Exit.isSuccess(exit)
-    ? responseEnvelope(request, { payload: exit.value === undefined ? null : exit.value })
-    : responseEnvelope(request, { error: hostProtocolErrorFromCause(request.method, exit.cause) })
-
-const responseEnvelope = (
-  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
-  fields: { readonly payload?: unknown; readonly error?: HostProtocolError }
-): HostProtocolResponseEnvelope =>
-  new HostProtocolResponseEnvelope({
-    kind: "response",
-    id: request.id,
-    timestamp: 0,
-    traceId: request.traceId,
-    ...fields
+  const Unsupported = Rpc.make("Notes.Unsupported", { success: Schema.String }).pipe(
+    RpcEndpoint.query,
+    RpcSupport.unsupported("host method is unavailable")
+  )
+  const NotesRpcs = RpcGroup.make(Unsupported)
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Unsupported": () => Effect.succeed("unused")
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
+  const NotesVue = VueDesktop.from(Desktop.manifest(NotesApp))
+  const app = NotesVue.createApp(Root, { rpcs: NotesLayer })
+  app.config.warnHandler = () => undefined
 
-const streamEnvelope = (
-  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
-  payload: unknown
-): HostProtocolStreamByRequestEnvelope =>
-  new HostProtocolStreamByRequestEnvelope({
-    kind: "stream",
-    id: request.id,
-    timestamp: 0,
-    traceId: request.traceId,
-    payload
+  app.runWithContext(() => {
+    const scope = effectScope()
+    scope.run(() => {
+      const notes = NotesVue.useDesktop(NotesRpcs)
+      const endpoint: SupportedQueryEndpoint = notes.unsupported
+
+      expect(endpoint.isSupported).toBe(false)
+      expect(endpoint.support.status).toBe("unsupported")
+    })
+    scope.stop()
   })
-
-const hostProtocolErrorFromCause = (
-  method: string,
-  cause: Cause.Cause<unknown>
-): HostProtocolError => {
-  const failure = cause.reasons.find(Cause.isFailReason)
-  return failure?.error instanceof Error || typeof failure?.error === "string"
-    ? makeHostProtocolInvalidOutputError(method, String(failure.error))
-    : makeHostProtocolInvalidOutputError(method, String(cause))
-}
+})
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
-  for (let index = 0; index < 100; index += 1) {
-    if (predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
-  expect(predicate()).toBe(true)
+  await Effect.runPromise(
+    Effect.suspend(() =>
+      predicate() ? Effect.void : Effect.fail(new Error("condition not met"))
+    ).pipe(
+      Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(100)))),
+      Effect.mapError(() => new Error("timed out waiting for condition"))
+    )
+  )
 }

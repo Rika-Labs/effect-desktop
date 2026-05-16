@@ -1,26 +1,41 @@
 import { readdir, readFile } from "node:fs/promises"
 import { join } from "node:path"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
 export interface ReleaseGateOptions {
   readonly cwd: string
 }
 
-export interface ReleaseChecklist {
-  readonly schemaVersion: 1
-  readonly source: string
-  readonly gates: readonly ReleaseChecklistGate[]
-}
+export const ReleaseGateEvidenceKind = Schema.Literals([
+  "workflow-step",
+  "policy-document",
+  "repository-setting"
+])
+export type ReleaseGateEvidenceKind = typeof ReleaseGateEvidenceKind.Type
 
-export type ReleaseGateEvidenceKind = "workflow-step" | "policy-document" | "repository-setting"
+export class ReleaseChecklistGate extends Schema.Class<ReleaseChecklistGate>(
+  "ReleaseChecklistGate"
+)({
+  id: Schema.NonEmptyString,
+  title: Schema.NonEmptyString,
+  kind: ReleaseGateEvidenceKind,
+  evidence: Schema.Array(Schema.NonEmptyString)
+}) {}
 
-export interface ReleaseChecklistGate {
-  readonly id: string
-  readonly title: string
-  readonly kind: ReleaseGateEvidenceKind
-  readonly evidence: readonly string[]
-}
+export class ReleaseSubject extends Schema.Class<ReleaseSubject>("ReleaseSubject")({
+  id: Schema.NonEmptyString,
+  configPath: Schema.NonEmptyString,
+  distDir: Schema.NonEmptyString,
+  requiredCommands: Schema.Array(Schema.NonEmptyString)
+}) {}
+
+export class ReleaseChecklist extends Schema.Class<ReleaseChecklist>("ReleaseChecklist")({
+  schemaVersion: Schema.Literal(1),
+  source: Schema.NonEmptyString,
+  subjects: Schema.Array(ReleaseSubject),
+  gates: Schema.Array(ReleaseChecklistGate)
+}) {}
 
 export interface ReleaseGateReport {
   readonly passed: boolean
@@ -58,14 +73,11 @@ export type ReleaseGateError =
 const CHECKLIST_PATH = "release/checklist.json"
 const CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml"
-const KEY_MANAGEMENT_PATH = "docs/security/key-management.md"
-const RELEASE_SETTINGS_PATH = "docs/security/release-settings.md"
-const EXEMPTIONS_PATH = "docs/security/exemptions"
-const SPEC_SOURCE = "docs/SPEC.md §25.4"
-const PLAYGROUND_BUILD_COMMAND =
-  "bun packages/cli/src/bin.ts build --config apps/playground/desktop.config.ts"
-const PLAYGROUND_PACKAGE_COMMAND =
-  "bun packages/cli/src/bin.ts package --config apps/playground/desktop.config.ts"
+const KEY_MANAGEMENT_PATH = "engineering/security/key-management.md"
+const RELEASE_SETTINGS_PATH = "engineering/security/release-settings.md"
+const EXEMPTIONS_PATH = "engineering/security/exemptions"
+const SPEC_SOURCE = "engineering/SPEC.md §25.4"
+const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
 
 const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
   ["spdx-sbom", "workflow-step"],
@@ -80,15 +92,11 @@ const REQUIRED_GATES: ReadonlyMap<string, ReleaseGateEvidenceKind> = new Map([
 
 const RELEASE_WORKFLOW_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["spdx-sbom", ["anchore/sbom-action", "format: spdx-json", "sbom-artifacts", "sbom-path"]],
-  ["cvss-scan", ["anchore/scan-action", "severity-cutoff: high", "docs/security/exemptions"]],
   [
-    "reproducible-build",
-    [
-      PLAYGROUND_BUILD_COMMAND,
-      PLAYGROUND_PACKAGE_COMMAND,
-      "bun packages/cli/src/bin.ts check --repro"
-    ]
+    "cvss-scan",
+    ["anchore/scan-action", "severity-cutoff: high", "engineering/security/exemptions"]
   ],
+  ["reproducible-build", ["bun packages/cli/src/bin.ts check --repro"]],
   [
     "slsa-provenance",
     ["actions/attest", "subject-path", "dist/desktop", "attestations: write", "id-token: write"]
@@ -111,7 +119,7 @@ const RELEASE_GATE_EVIDENCE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
     "cvss-scan",
     new Set([
       ".github/workflows/release.yml#Scan release SBOM for high vulnerabilities",
-      "docs/security/release-settings.md#docs/security/exemptions"
+      "engineering/security/release-settings.md#engineering/security/exemptions"
     ])
   ],
   ["reproducible-build", new Set([".github/workflows/release.yml#Reproducible build gate"])],
@@ -119,26 +127,28 @@ const RELEASE_GATE_EVIDENCE: ReadonlyMap<string, ReadonlySet<string>> = new Map(
   [
     "hsm-signing",
     new Set([
-      "docs/security/key-management.md#HSM-backed",
-      "docs/security/key-management.md#runner-local keys are forbidden"
+      "engineering/security/key-management.md#HSM-backed",
+      "engineering/security/key-management.md#runner-local keys are forbidden"
     ])
   ],
   [
     "secret-scanning",
-    new Set(["docs/security/release-settings.md#Secret scanning is enabled for every branch"])
+    new Set([
+      "engineering/security/release-settings.md#Secret scanning is enabled for every branch"
+    ])
   ],
   [
     "ephemeral-runners",
     new Set([
-      "docs/security/release-settings.md#GitHub-hosted runners",
-      "docs/security/release-settings.md#persistent self-hosted runners are forbidden"
+      "engineering/security/release-settings.md#GitHub-hosted runners",
+      "engineering/security/release-settings.md#persistent self-hosted runners are forbidden"
     ])
   ],
   [
     "branch-protection",
     new Set([
-      "docs/security/release-settings.md#main requires at least one review",
-      "docs/security/release-settings.md#release branches require at least two reviews"
+      "engineering/security/release-settings.md#main requires at least one review",
+      "engineering/security/release-settings.md#release branches require at least two reviews"
     ])
   ]
 ])
@@ -189,7 +199,7 @@ export const runReleaseGate = (
     yield* validateWorkflowActionPins(RELEASE_WORKFLOW_PATH, releaseWorkflow)
     yield* validateWorkflowActionPins(CI_WORKFLOW_PATH, ciWorkflow)
     yield* validateReleaseRunnerPosture(releaseWorkflow)
-    yield* validatePlaygroundBuildBeforePackage(releaseWorkflow)
+    yield* validateReleaseSubjectWorkflow(checklist.subjects, releaseWorkflow)
     yield* validatePolicyDocuments({ keyManagement, releaseSettings })
     yield* validateExemptions(join(options.cwd, EXEMPTIONS_PATH))
 
@@ -242,6 +252,13 @@ const validateChecklist = (
       new ReleaseGateManifestError({ message: `release checklist source must be ${SPEC_SOURCE}` })
     )
   }
+  if (checklist.subjects.length === 0) {
+    return Effect.fail(
+      new ReleaseGateManifestError({
+        message: "release checklist must declare at least one release subject"
+      })
+    )
+  }
   if (checklist.gates.length !== REQUIRED_GATES.size) {
     return Effect.fail(
       new ReleaseGateManifestError({
@@ -276,6 +293,23 @@ const validateChecklist = (
     ids.add(gate.id)
   }
 
+  const subjectIds = new Set<string>()
+  for (const subject of checklist.subjects) {
+    if (subject.requiredCommands.length === 0) {
+      return Effect.fail(
+        new ReleaseGateManifestError({
+          message: `release subject ${subject.id} must declare required commands`
+        })
+      )
+    }
+    if (subjectIds.has(subject.id)) {
+      return Effect.fail(
+        new ReleaseGateManifestError({ message: `duplicate release subject ${subject.id}` })
+      )
+    }
+    subjectIds.add(subject.id)
+  }
+
   for (const id of REQUIRED_GATES.keys()) {
     if (!ids.has(id)) {
       return Effect.fail(
@@ -288,76 +322,15 @@ const validateChecklist = (
 
 const decodeReleaseChecklist = (
   value: unknown
-): Effect.Effect<ReleaseChecklist, ReleaseGateManifestError, never> => {
-  if (!isRecord(value)) {
-    return releaseManifestError("release checklist must be an object")
-  }
-  const rawGates = value["gates"]
-  if (!Array.isArray(rawGates)) {
-    return releaseManifestError("release checklist gates must be an array")
-  }
-  if (value["schemaVersion"] !== 1) {
-    return releaseManifestError("release checklist schemaVersion must be 1")
-  }
-  if (typeof value["source"] !== "string") {
-    return releaseManifestError("release checklist source must be a string")
-  }
-  const gates: ReleaseChecklistGate[] = []
-  for (const [index, gate] of rawGates.entries()) {
-    if (!isRecord(gate)) {
-      return releaseManifestError(`release checklist gates[${index}] must be an object`)
-    }
-    const decoded = decodeReleaseChecklistGate(gate, index)
-    if (decoded._tag === "Left") {
-      return Effect.fail(decoded.error)
-    }
-    gates.push(decoded.value)
-  }
-  return Effect.succeed({
-    schemaVersion: 1,
-    source: value["source"],
-    gates
-  })
-}
-
-const decodeReleaseChecklistGate = (
-  gate: Readonly<Record<string, unknown>>,
-  index: number
-):
-  | { readonly _tag: "Right"; readonly value: ReleaseChecklistGate }
-  | { readonly _tag: "Left"; readonly error: ReleaseGateManifestError } => {
-  const id = gate["id"]
-  if (typeof id !== "string") {
-    return releaseDecodeError(`release checklist gates[${index}].id must be a string`)
-  }
-  const title = gate["title"]
-  if (typeof title !== "string") {
-    return releaseDecodeError(`release checklist gates[${index}].title must be a string`)
-  }
-  const kind = gate["kind"]
-  if (!isReleaseGateEvidenceKind(kind)) {
-    return releaseDecodeError(`release checklist gates[${index}].kind is invalid`)
-  }
-  const evidence = gate["evidence"]
-  if (!Array.isArray(evidence) || !evidence.every((entry) => typeof entry === "string")) {
-    return releaseDecodeError(
-      `release checklist gates[${index}].evidence must be an array of strings`
+): Effect.Effect<ReleaseChecklist, ReleaseGateManifestError, never> =>
+  Schema.decodeUnknownEffect(ReleaseChecklist)(value, StrictParseOptions).pipe(
+    Effect.mapError(
+      (error) =>
+        new ReleaseGateManifestError({
+          message: `release checklist schema validation failed: ${error.message}`
+        })
     )
-  }
-  return { _tag: "Right", value: { id, title, kind, evidence } }
-}
-
-const releaseDecodeError = (
-  message: string
-): { readonly _tag: "Left"; readonly error: ReleaseGateManifestError } => ({
-  _tag: "Left",
-  error: new ReleaseGateManifestError({ message })
-})
-
-const releaseManifestError = (
-  message: string
-): Effect.Effect<never, ReleaseGateManifestError, never> =>
-  Effect.fail(new ReleaseGateManifestError({ message }))
+  )
 
 const releaseEvidenceError = (
   gate: ReleaseChecklistGate,
@@ -366,12 +339,6 @@ const releaseEvidenceError = (
   _tag: "Left",
   error: new ReleaseGateEvidenceError({ gate: gate.id, message })
 })
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
-const isReleaseGateEvidenceKind = (value: unknown): value is ReleaseGateEvidenceKind =>
-  value === "workflow-step" || value === "policy-document" || value === "repository-setting"
 
 const validateGateEvidence = (
   gate: ReleaseChecklistGate,
@@ -508,25 +475,40 @@ const validateReleaseRunnerPosture = (
   return Effect.void
 }
 
-const validatePlaygroundBuildBeforePackage = (
-  body: string
+const validateReleaseSubjectWorkflow = (
+  subjects: readonly ReleaseSubject[],
+  releaseWorkflow: string
 ): Effect.Effect<void, ReleaseGateEvidenceError, never> => {
-  const packageIndex = body.indexOf(PLAYGROUND_PACKAGE_COMMAND)
-  if (packageIndex === -1) {
-    return Effect.void
-  }
+  for (const subject of subjects) {
+    for (const command of subject.requiredCommands) {
+      if (!releaseWorkflow.includes(command)) {
+        return Effect.fail(
+          new ReleaseGateEvidenceError({
+            gate: "release-workflow",
+            message: `release subject ${subject.id} is missing workflow command ${command}`
+          })
+        )
+      }
+    }
 
-  const buildIndex = body.indexOf(PLAYGROUND_BUILD_COMMAND)
-  if (buildIndex !== -1 && buildIndex < packageIndex) {
-    return Effect.void
-  }
+    const packageCommand = `bun packages/cli/src/bin.ts package --config ${subject.configPath}`
+    const packageIndex = releaseWorkflow.indexOf(packageCommand)
+    if (packageIndex === -1) {
+      continue
+    }
 
-  return Effect.fail(
-    new ReleaseGateEvidenceError({
-      gate: "reproducible-build",
-      message: "release workflow must run desktop build for apps/playground before desktop package"
-    })
-  )
+    const buildCommand = `bun packages/cli/src/bin.ts build --config ${subject.configPath}`
+    const buildIndex = releaseWorkflow.indexOf(buildCommand)
+    if (buildIndex === -1 || buildIndex > packageIndex) {
+      return Effect.fail(
+        new ReleaseGateEvidenceError({
+          gate: "reproducible-build",
+          message: `release subject ${subject.id} must run ${buildCommand} before ${packageCommand}`
+        })
+      )
+    }
+  }
+  return Effect.void
 }
 
 const validatePolicyDocuments = (files: {
@@ -597,16 +579,18 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 const readJson = <A>(path: string): Effect.Effect<A, ReleaseGateFileError, never> =>
   Effect.gen(function* () {
     const body = yield* readText(path)
-    return yield* Effect.try({
-      try: () => JSON.parse(body) as A,
-      catch: (cause) =>
-        new ReleaseGateFileError({
-          operation: "parse",
-          path,
-          message: `failed to parse ${path}`,
-          cause
-        })
-    })
+    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+      Effect.map((value) => value as A),
+      Effect.mapError(
+        (cause) =>
+          new ReleaseGateFileError({
+            operation: "parse",
+            path,
+            message: `failed to parse ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const readText = (path: string): Effect.Effect<string, ReleaseGateFileError, never> =>

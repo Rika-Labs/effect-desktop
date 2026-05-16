@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect"
 
 import { EventJournal } from "effect/unstable/eventlog"
 
@@ -107,6 +107,45 @@ test("ApprovalBroker rejects the ninth distinct queued request for one actor", a
   }
 })
 
+test("ApprovalBroker starts queued prompts after the active prompt completes", async () => {
+  const activeStarted = await Effect.runPromise(Deferred.make<void>())
+  const releaseActive = await Effect.runPromise(Deferred.make<void>())
+  const promptCalls: string[] = []
+  const prompt: ApprovalPromptPort = {
+    prompt: (request) =>
+      Effect.gen(function* () {
+        promptCalls.push(request.id)
+        if (request.id === "active") {
+          yield* Deferred.succeed(activeStarted, undefined)
+          yield* Deferred.await(releaseActive)
+        }
+        return outcome(request, "approved-once", 1_100)
+      })
+  }
+  const broker = await Effect.runPromise(makeApprovalBroker({ prompt, now: () => 1_000 }))
+  const active = Effect.runFork(
+    broker.ask(approvalRequest("active", "operation.active", "window-main", "active"))
+  )
+
+  await Effect.runPromise(Deferred.await(activeStarted))
+  const queued = Effect.runFork(
+    broker.ask(approvalRequest("queued", "operation.queued", "window-main", "queued"))
+  )
+  await Effect.runPromise(Effect.yieldNow)
+  expect(promptCalls).toEqual(["active"])
+
+  await Effect.runPromise(Deferred.succeed(releaseActive, undefined))
+  const results = await Effect.runPromise(
+    Effect.all([Fiber.join(active), Fiber.join(queued)]).pipe(Effect.timeoutOption("50 millis"))
+  )
+
+  expect(Option.isSome(results)).toBe(true)
+  if (Option.isSome(results)) {
+    expect(results.value.map((current) => current.requestId)).toEqual(["active", "queued"])
+  }
+  expect(promptCalls).toEqual(["active", "queued"])
+})
+
 test("ApprovalBroker continues coalesced prompts after starter fiber interruption", async () => {
   const promptStarted = await Effect.runPromise(Deferred.make<void>())
   const releasePrompt = await Effect.runPromise(Deferred.make<void>())
@@ -132,6 +171,40 @@ test("ApprovalBroker continues coalesced prompts after starter fiber interruptio
   if (Option.isSome(result)) {
     expect(result.value.outcome).toBe("approved-once")
   }
+})
+
+test("ApprovalBroker shutdown interrupts active prompt loops and fails waiters", async () => {
+  const promptStarted = await Effect.runPromise(Deferred.make<void>())
+  const promptInterrupted = await Effect.runPromise(Deferred.make<void>())
+  const prompt: ApprovalPromptPort = {
+    prompt: () =>
+      Effect.gen(function* () {
+        yield* Deferred.succeed(promptStarted, undefined)
+        return yield* Effect.never.pipe(
+          Effect.as(
+            new ApprovalOutcome({
+              requestId: "never",
+              outcome: "canceled",
+              traceId: "trace-never",
+              decidedAt: 1_000,
+              source: "never"
+            })
+          )
+        )
+      }).pipe(Effect.onInterrupt(() => Deferred.succeed(promptInterrupted, undefined)))
+  }
+  const broker = await Effect.runPromise(makeApprovalBroker({ prompt, now: () => 1_000 }))
+  const request = approvalRequest("request-1", "filesystem.write", "window-main", "/tmp/app")
+  const waiter = Effect.runFork(broker.ask(request))
+
+  await Effect.runPromise(Deferred.await(promptStarted))
+  await Effect.runPromise(broker.shutdown)
+  await Effect.runPromise(Deferred.await(promptInterrupted))
+  const exit = await Effect.runPromise(Fiber.await(waiter))
+
+  expectFailure(exit, ApprovalBrokerPromptFailedError, (error) => {
+    expect(error.operation).toBe("ApprovalBroker.shutdown")
+  })
 })
 
 test("ApprovalBroker dev bypass grants without touching the host prompt", async () => {
@@ -173,7 +246,7 @@ test("ApprovalBroker returns typed failures for invalid input and audit failure"
   )
 
   const invalid = await Effect.runPromiseExit(
-    broker.ask({ id: "", operation: "x", actor: "window-main" } as never)
+    broker.ask({ id: "", operation: "x", actor: "window-main" })
   )
   const audit = await Effect.runPromiseExit(
     broker.ask(approvalRequest("request-1", "network.connect", "window-main", "api.example.com"))
@@ -339,8 +412,7 @@ test("ApprovalBroker ask rejects prompt outcomes containing control bytes", asyn
       ).pipe(
         Effect.map(
           (good) =>
-            ({
-              ...good,
+            Object.assign({}, good, {
               source: `host${String.fromCharCode(10)}forged`
             }) as ApprovalOutcome
         )
@@ -436,7 +508,8 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
     Effect.sync(() => {
       rows.push(event)
-    })
+    }),
+  observe: () => Stream.empty
 })
 
 const failingAudit = (): AuditEventsApi => ({
@@ -446,7 +519,8 @@ const failingAudit = (): AuditEventsApi => ({
         method: "EventJournal.write",
         cause: new Error("journal full")
       })
-    )
+    ),
+  observe: () => Stream.empty
 })
 
 const expectFailure = <ErrorClass extends abstract new (...args: never[]) => unknown>(

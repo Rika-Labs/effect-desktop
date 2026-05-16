@@ -1,0 +1,137 @@
+import { expect, test } from "bun:test"
+
+import { Effect } from "effect"
+
+import {
+  DesktopTarget,
+  DesktopTargetIds,
+  appImageArch,
+  artifactKindsForTarget,
+  debArch,
+  decodeDesktopTarget,
+  desktopArtifactExtension,
+  desktopArtifactsForTarget,
+  desktopPlatformDirectory,
+  desktopTargetId,
+  detectDesktopHostTarget,
+  hostBinaryName,
+  isDesktopTargetId,
+  isMacosDesktopTargetId,
+  parseDesktopTargetId,
+  resolveDesktopHostTarget,
+  resolveDesktopTarget,
+  resolveMacosDesktopHostTarget,
+  rpmArch,
+  wixArch
+} from "./targets.js"
+
+test("release targets decode every supported target id", () => {
+  for (const id of DesktopTargetIds) {
+    const target = parseDesktopTargetId(id)
+    expect(target).toBeInstanceOf(DesktopTarget)
+    expect(target.id).toBe(id)
+    expect(desktopTargetId(target)).toBe(id)
+    expect(isDesktopTargetId(id)).toBe(true)
+  }
+})
+
+test("release targets reject unsupported target ids", () => {
+  expect(isDesktopTargetId("freebsd-x64")).toBe(false)
+  expect(isDesktopTargetId("linux-ia32")).toBe(false)
+  expect(isDesktopTargetId("macos")).toBe(false)
+})
+
+test("release targets normalize host platform aliases", () => {
+  expect(detectDesktopHostTarget("darwin", "arm64")).toBe("macos-arm64")
+  expect(detectDesktopHostTarget("win32", "x64")).toBe("windows-x64")
+  expect(detectDesktopHostTarget("linux", "x64")).toBe("linux-x64")
+  expect(detectDesktopHostTarget("freebsd", "x64")).toBeUndefined()
+  expect(detectDesktopHostTarget("linux", "ia32")).toBeUndefined()
+})
+
+test("release target policy owns platform artifacts and binary names", () => {
+  const matrix = {
+    "linux-arm64": {
+      artifacts: ["appimage", "deb", "rpm"],
+      binary: "host",
+      os: "linux"
+    },
+    "linux-x64": {
+      artifacts: ["appimage", "deb", "rpm"],
+      binary: "host",
+      os: "linux"
+    },
+    "macos-arm64": {
+      artifacts: ["app", "dmg", "zip"],
+      binary: "host",
+      os: "macos"
+    },
+    "macos-x64": {
+      artifacts: ["app", "dmg", "zip"],
+      binary: "host",
+      os: "macos"
+    },
+    "windows-arm64": { artifacts: ["msi"], binary: "host.exe", os: "windows" },
+    "windows-x64": { artifacts: ["msi"], binary: "host.exe", os: "windows" }
+  } as const
+
+  for (const target of DesktopTargetIds) {
+    const expected = matrix[target]
+    expect(desktopPlatformDirectory(target)).toBe(expected.os)
+    expect(artifactKindsForTarget(target)).toEqual([...expected.artifacts])
+    expect(desktopArtifactsForTarget(target).map((artifact) => artifact.kind)).toEqual([
+      ...expected.artifacts
+    ])
+    expect(desktopArtifactsForTarget(target)[0]?.target.id).toBe(target)
+    expect(hostBinaryName(target)).toBe(expected.binary)
+  }
+})
+
+test("release target policy owns artifact extensions and arch renderers", () => {
+  expect(desktopArtifactExtension("appimage")).toBe("AppImage")
+  expect(desktopArtifactExtension("rpm")).toBe("rpm")
+  expect(wixArch("windows-arm64")).toBe("arm64")
+  expect(wixArch("windows-x64")).toBe("x64")
+  expect(appImageArch("linux-arm64")).toBe("aarch64")
+  expect(appImageArch("linux-x64")).toBe("x86_64")
+  expect(debArch("linux-arm64")).toBe("arm64")
+  expect(debArch("linux-x64")).toBe("amd64")
+  expect(rpmArch("linux-arm64")).toBe("aarch64")
+  expect(rpmArch("linux-x64")).toBe("x86_64")
+})
+
+test("release target policy exposes the macOS-only subset", () => {
+  expect(isMacosDesktopTargetId("macos-arm64")).toBe(true)
+  expect(isMacosDesktopTargetId("macos-x64")).toBe(true)
+  expect(isMacosDesktopTargetId("linux-x64")).toBe(false)
+  expect(isMacosDesktopTargetId("windows-x64")).toBe(false)
+})
+
+test("release target schema reports decode failures as Effect errors", async () => {
+  const exit = await Effect.runPromiseExit(decodeDesktopTarget("linux-ia32"))
+
+  expect(exit._tag).toBe("Failure")
+})
+
+test("release target resolution decodes defaults and rejects mismatches", async () => {
+  const host = await Effect.runPromise(resolveDesktopHostTarget(undefined, "linux", "x64"))
+  expect(host.id).toBe("linux-x64")
+  expect(await Effect.runPromise(resolveDesktopTarget(undefined, host))).toEqual(host)
+  const requestedTarget = await Effect.runPromise(resolveDesktopTarget("linux-x64", host))
+  expect(requestedTarget.id).toBe("linux-x64")
+
+  const unsupported = await Effect.runPromiseExit(resolveDesktopTarget("linux-ia32", host))
+  expect(unsupported._tag).toBe("Failure")
+
+  const mismatch = await Effect.runPromiseExit(resolveDesktopTarget("windows-x64", host))
+  expect(mismatch._tag).toBe("Failure")
+})
+
+test("release target resolution keeps macOS host requirements centralized", async () => {
+  const macosHost = await Effect.runPromise(
+    resolveMacosDesktopHostTarget(undefined, "darwin", "arm64")
+  )
+  expect(macosHost.id).toBe("macos-arm64")
+  const exit = await Effect.runPromiseExit(resolveMacosDesktopHostTarget(undefined, "linux", "x64"))
+  expect(exit._tag).toBe("Failure")
+})

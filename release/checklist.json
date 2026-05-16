@@ -1,6 +1,19 @@
 {
   "schemaVersion": 1,
-  "source": "docs/SPEC.md §25.4",
+  "source": "engineering/SPEC.md §25.4",
+  "subjects": [
+    {
+      "id": "inspector",
+      "configPath": "apps/inspector/desktop.config.ts",
+      "distDir": "apps/inspector/dist",
+      "requiredCommands": [
+        "bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts",
+        "bun packages/cli/src/bin.ts package --config apps/inspector/desktop.config.ts",
+        "bun packages/cli/src/bin.ts check --repro --config apps/inspector/desktop.config.ts",
+        "bun packages/cli/src/bin.ts sign --config apps/inspector/desktop.config.ts"
+      ]
+    }
+  ],
   "gates": [
     {
       "id": "spdx-sbom",
@@ -14,7 +27,7 @@
       "kind": "workflow-step",
       "evidence": [
         ".github/workflows/release.yml#Scan release SBOM for high vulnerabilities",
-        "docs/security/release-settings.md#docs/security/exemptions"
+        "engineering/security/release-settings.md#engineering/security/exemptions"
       ]
     },
     {
@@ -34,23 +47,25 @@
       "title": "HSM-backed release signing",
       "kind": "policy-document",
       "evidence": [
-        "docs/security/key-management.md#HSM-backed",
-        "docs/security/key-management.md#runner-local keys are forbidden"
+        "engineering/security/key-management.md#HSM-backed",
+        "engineering/security/key-management.md#runner-local keys are forbidden"
       ]
     },
     {
       "id": "secret-scanning",
       "title": "Secret scanning on every branch",
       "kind": "repository-setting",
-      "evidence": ["docs/security/release-settings.md#Secret scanning is enabled for every branch"]
+      "evidence": [
+        "engineering/security/release-settings.md#Secret scanning is enabled for every branch"
+      ]
     },
     {
       "id": "ephemeral-runners",
       "title": "GitHub-hosted ephemeral runner posture",
       "kind": "repository-setting",
       "evidence": [
-        "docs/security/release-settings.md#GitHub-hosted runners",
-        "docs/security/release-settings.md#persistent self-hosted runners are forbidden"
+        "engineering/security/release-settings.md#GitHub-hosted runners",
+        "engineering/security/release-settings.md#persistent self-hosted runners are forbidden"
       ]
     },
     {
@@ -58,8 +73,8 @@
       "title": "Branch protection review requirements",
       "kind": "repository-setting",
       "evidence": [
-        "docs/security/release-settings.md#main requires at least one review",
-        "docs/security/release-settings.md#release branches require at least two reviews"
+        "engineering/security/release-settings.md#main requires at least one review",
+        "engineering/security/release-settings.md#release branches require at least two reviews"
       ]
     }
   ]

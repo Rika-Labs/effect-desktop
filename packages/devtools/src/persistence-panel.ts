@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Stream } from "effect"
+import { Context, Effect, Layer, Option, Result, Schedule, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import { positiveFrameInterval } from "./panel-options.js"
@@ -36,27 +36,25 @@ export const makePersistencePanel = (
 
     const list = (): Effect.Effect<PersistencePanelSnapshot, never, never> =>
       kv.size.pipe(
-        Effect.map((size: number) => ({
-          kvSize: Option.some(size),
-          kvHealthy: true,
-          kvError: Option.none()
-        })),
-        Effect.catch((error: KeyValueStore.KeyValueStoreError) =>
-          Effect.succeed({
-            kvSize: Option.none(),
-            kvHealthy: false,
-            kvError: Option.some(`${error.method}: ${error.message}`)
+        Effect.result,
+        Effect.map((result) =>
+          Result.match(result, {
+            onFailure: (error: KeyValueStore.KeyValueStoreError) => ({
+              kvSize: Option.none(),
+              kvHealthy: false,
+              kvError: Option.some(`${error.method}: ${error.message}`)
+            }),
+            onSuccess: (size) => ({
+              kvSize: Option.some(size),
+              kvHealthy: true,
+              kvError: Option.none()
+            })
           })
         )
       )
 
     return Object.freeze({
       list,
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep(frameInterval).pipe(Effect.andThen(list())))
-          )
-        )
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced(frameInterval))
     } satisfies PersistencePanelApi)
   })

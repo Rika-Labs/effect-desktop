@@ -4,6 +4,16 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
+      "name": "DesktopAtomRegistryContext",
+      "kind": "value",
+      "signature": "const RegistryContext: import(\"solid-js\").Context<AtomRegistry.AtomRegistry>"
+    },
+    {
+      "name": "DesktopAtomRegistryProvider",
+      "kind": "value",
+      "signature": "const RegistryProvider: (options: { readonly children?: JSX.Element | undefined; readonly initialValues?: Iterable<readonly [Atom.Atom<any>, any]> | undefined; readonly scheduleTask?: ((f: () => void) => () => void) | undefined; readonly timeoutResolution?: number | undefined; readonly defaultIdleTTL?: number | undefined; }) => JSX.Element"
+    },
+    {
       "name": "MissingDesktopContextError",
       "kind": "class",
       "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
@@ -29,39 +39,24 @@
       "signature": "export interface SolidDesktopAdapter<App extends DesktopAppManifest> { readonly app: App readonly DesktopRoot: (props: SolidDesktopRootProps) => JSX.Element readonly render: ( children: () => JSX.Element, mount: HTMLElement, options?: SolidDesktopRenderOptions ) => () => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group> }"
     },
     {
-      "name": "SolidDesktopClientMap",
-      "kind": "type",
-      "signature": "export type SolidDesktopClientMap = DesktopRendererRpcClientMap"
-    },
-    {
       "name": "SolidDesktopRenderOptions",
       "kind": "interface",
-      "signature": "export interface SolidDesktopRenderOptions { readonly transport?: SolidDesktopRootProps[\"transport\"] }"
+      "signature": "export interface SolidDesktopRenderOptions { readonly transport?: SolidDesktopRootProps[\"transport\"] readonly rpcs?: SolidDesktopRootProps[\"rpcs\"] }"
     },
     {
       "name": "SolidDesktopRootProps",
       "kind": "interface",
-      "signature": "export interface SolidDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly children?: JSX.Element }"
-    },
-    {
-      "name": "SolidDesktopRpcClient",
-      "kind": "type",
-      "signature": "export type SolidDesktopRpcClient = DesktopRendererRpcClient"
-    },
-    {
-      "name": "SolidDesktopRpcClientMethod",
-      "kind": "type",
-      "signature": "export type SolidDesktopRpcClientMethod = DesktopRendererRpcClientMethod"
+      "signature": "export interface SolidDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcs?: DesktopRpcsLayer<never, never> | undefined readonly children?: JSX.Element }"
     },
     {
       "name": "SolidDesktopRpcs",
       "kind": "type",
-      "signature": "export type SolidDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: SolidRpcEndpoint<Current> }"
+      "signature": "export type SolidDesktopRpcs<Group extends RpcGroup.Any> = Readonly< Record<string, SolidEndpoint & SolidDesktopSupport> > & { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: SolidRpcEndpoint<Current> }"
     },
     {
       "name": "SolidDesktopSupport",
       "kind": "interface",
-      "signature": "export interface SolidDesktopSupport { readonly support: RpcSupportMetadata readonly isSupported: boolean }"
+      "signature": "export interface SolidDesktopSupport extends DesktopEndpointSupport {}"
     },
     {
       "name": "SolidMutation",
@@ -86,12 +81,72 @@
     {
       "name": "SolidStreamEndpoint",
       "kind": "interface",
-      "signature": "export interface SolidStreamEndpoint<I, A, E> { readonly createStream: SolidPrimitive<I, Accessor<SolidStreamState<A, E>>> }"
+      "signature": "export interface SolidStreamEndpoint<I, A, E> { readonly createStream: SolidStreamPrimitive<I, A, E> }"
+    },
+    {
+      "name": "SolidStreamPrimitive",
+      "kind": "type",
+      "signature": "export type SolidStreamPrimitive<I, A, E> = [I] extends [void] ? (options?: DesktopStreamOptions<A>) => Accessor<SolidStreamState<A, E>> : undefined extends I ? (input?: I, options?: DesktopStreamOptions<A>) => Accessor<SolidStreamState<A, E>> : (input: I, options?: DesktopStreamOptions<A>) => Accessor<SolidStreamState<A, E>>"
     },
     {
       "name": "SolidStreamState",
       "kind": "interface",
       "signature": "export interface SolidStreamState<A, E> { readonly status: \"idle\" | \"running\" | \"closed\" | \"failure\" readonly data: readonly A[] readonly cause: Cause.Cause<E> | undefined }"
+    },
+    {
+      "name": "useAtom",
+      "kind": "value",
+      "signature": "const useAtom: <R, W, const Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: () => Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => readonly [value: Accessor<R>, write: \"promise\" extends Mode ? ((value: W) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)]"
+    },
+    {
+      "name": "useAtomInitialValues",
+      "kind": "value",
+      "signature": "const useAtomInitialValues: (initialValues: Iterable<readonly [Atom.Atom<any>, any]>) => void"
+    },
+    {
+      "name": "useAtomMount",
+      "kind": "value",
+      "signature": "const useAtomMount: <A>(atom: () => Atom.Atom<A>) => void"
+    },
+    {
+      "name": "useAtomRef",
+      "kind": "value",
+      "signature": "const useAtomRef: <A>(ref: () => AtomRef.ReadonlyRef<A>) => Accessor<A>"
+    },
+    {
+      "name": "useAtomRefProp",
+      "kind": "value",
+      "signature": "const useAtomRefProp: <A, K extends keyof A>(ref: () => AtomRef.AtomRef<A>, prop: K) => Accessor<AtomRef.AtomRef<A[K]>>"
+    },
+    {
+      "name": "useAtomRefPropValue",
+      "kind": "value",
+      "signature": "const useAtomRefPropValue: <A, K extends keyof A>(ref: () => AtomRef.AtomRef<A>, prop: K) => Accessor<A[K]>"
+    },
+    {
+      "name": "useAtomRefresh",
+      "kind": "value",
+      "signature": "const useAtomRefresh: <A>(atom: () => Atom.Atom<A>) => () => void"
+    },
+    {
+      "name": "useAtomResource",
+      "kind": "value",
+      "signature": "const useAtomResource: <A, E>(atom: () => Atom.Atom<AsyncResult.AsyncResult<A, E>>, options?: ResourceOptions<A> & { readonly suspendOnWaiting?: boolean | undefined; }) => ResourceReturn<A, void>"
+    },
+    {
+      "name": "useAtomSet",
+      "kind": "value",
+      "signature": "const useAtomSet: <R, W, Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: () => Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => \"promise\" extends Mode ? ((value: W) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)"
+    },
+    {
+      "name": "useAtomSubscribe",
+      "kind": "value",
+      "signature": "const useAtomSubscribe: <A>(atom: () => Atom.Atom<A>, f: (_: A) => void, options?: { readonly immediate?: boolean; }) => void"
+    },
+    {
+      "name": "useAtomValue",
+      "kind": "value",
+      "signature": "const useAtomValue: { <A>(atom: () => Atom.Atom<A>): Accessor<A>; <A, B>(atom: () => Atom.Atom<A>, f: (_: A) => B): Accessor<B>; }"
     }
   ]
 }

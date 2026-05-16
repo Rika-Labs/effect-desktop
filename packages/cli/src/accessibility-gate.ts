@@ -1,49 +1,59 @@
 import { readdir, readFile, stat } from "node:fs/promises"
 import { isAbsolute, relative, resolve } from "node:path"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
 export interface AccessibilityGateOptions {
   readonly cwd: string
 }
 
-export interface AccessibilityManifest {
-  readonly schemaVersion: 1
-  readonly source: string
-  readonly release: string
-  readonly templates: readonly AccessibilityTemplate[]
-}
+export class AccessibilityAuditMode extends Schema.Class<AccessibilityAuditMode>(
+  "AccessibilityAuditMode"
+)({
+  id: Schema.String,
+  direction: Schema.Literals(["ltr", "rtl"]),
+  colorScheme: Schema.Literals(["light", "dark"]),
+  axe: Schema.String,
+  pa11y: Schema.String
+}) {}
 
-export interface AccessibilityTemplate {
-  readonly id: string
-  readonly root: string
-  readonly sourceFiles: readonly string[]
-  readonly i18nFiles: readonly string[]
-  readonly auditDir: string
-  readonly auditModes: readonly AccessibilityAuditMode[]
-  readonly contrastPairs: readonly AccessibilityContrastPair[]
-  readonly requiredTokens: readonly AccessibilityRequiredToken[]
-}
+export class AccessibilityContrastPair extends Schema.Class<AccessibilityContrastPair>(
+  "AccessibilityContrastPair"
+)({
+  id: Schema.String,
+  foreground: Schema.String,
+  background: Schema.String,
+  minimumRatio: Schema.Number
+}) {}
 
-export interface AccessibilityAuditMode {
-  readonly id: string
-  readonly direction: "ltr" | "rtl"
-  readonly colorScheme: "light" | "dark"
-  readonly axe: string
-  readonly pa11y: string
-}
+export class AccessibilityRequiredToken extends Schema.Class<AccessibilityRequiredToken>(
+  "AccessibilityRequiredToken"
+)({
+  file: Schema.String,
+  token: Schema.String
+}) {}
 
-export interface AccessibilityContrastPair {
-  readonly id: string
-  readonly foreground: string
-  readonly background: string
-  readonly minimumRatio: number
-}
+export class AccessibilityTemplate extends Schema.Class<AccessibilityTemplate>(
+  "AccessibilityTemplate"
+)({
+  id: Schema.String,
+  root: Schema.String,
+  sourceFiles: Schema.Array(Schema.String),
+  i18nFiles: Schema.Array(Schema.String),
+  auditDir: Schema.String,
+  auditModes: Schema.Array(AccessibilityAuditMode),
+  contrastPairs: Schema.Array(AccessibilityContrastPair),
+  requiredTokens: Schema.Array(AccessibilityRequiredToken)
+}) {}
 
-export interface AccessibilityRequiredToken {
-  readonly file: string
-  readonly token: string
-}
+export class AccessibilityManifest extends Schema.Class<AccessibilityManifest>(
+  "AccessibilityManifest"
+)({
+  schemaVersion: Schema.Literal(1),
+  source: Schema.String,
+  release: Schema.String,
+  templates: Schema.Array(AccessibilityTemplate)
+}) {}
 
 export interface AccessibilityGateReport {
   readonly passed: true
@@ -117,8 +127,7 @@ interface ResolvedAccessibilityRequiredToken extends AccessibilityRequiredToken 
 }
 
 const MANIFEST_PATH = "release/accessibility.json"
-const SPEC_SOURCE = "docs/SPEC.md §25.5"
-const REQUIRED_TEMPLATE_ID = "basic-react-tailwind"
+const SPEC_SOURCE = "engineering/SPEC.md §25.5"
 const REQUIRED_AUDIT_MODES = new Map<
   string,
   { readonly direction: "ltr" | "rtl"; readonly colorScheme: "light" | "dark" }
@@ -130,6 +139,7 @@ const REQUIRED_AUDIT_MODES = new Map<
 ])
 const USER_VISIBLE_TEXT_PATTERN =
   /(?:"([^"]*[A-Za-z][A-Za-z ]{3,}[^"]*)"|'([^']*[A-Za-z][A-Za-z ]{3,}[^']*)'|>([^<>{}]*[A-Za-z][A-Za-z ]{3,}[^<{}]*)<)/g
+const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
 
 export const runAccessibilityGate = (
   options: AccessibilityGateOptions
@@ -215,242 +225,20 @@ const validateManifest = (
     }
     ids.add(template.id)
   }
-  if (!ids.has(REQUIRED_TEMPLATE_ID)) {
-    return Effect.fail(
-      new AccessibilityGateManifestError({
-        message: `accessibility manifest is missing required template ${REQUIRED_TEMPLATE_ID}`
-      })
-    )
-  }
   return Effect.void
 }
 
-const decodeAccessibilityManifest = (
+export const decodeAccessibilityManifest = (
   value: unknown
-): Effect.Effect<AccessibilityManifest, AccessibilityGateManifestError, never> => {
-  if (!isRecord(value)) {
-    return manifestShapeError("accessibility manifest must be an object")
-  }
-  const rawTemplates = value["templates"]
-  if (!Array.isArray(rawTemplates)) {
-    return manifestShapeError("accessibility manifest templates must be an array")
-  }
-
-  const templates: AccessibilityTemplate[] = []
-  for (const [index, template] of rawTemplates.entries()) {
-    if (!isRecord(template)) {
-      return manifestShapeError(`accessibility manifest templates[${index}] must be an object`)
-    }
-    const decodedTemplate = decodeTemplate(template, index)
-    if (decodedTemplate._tag === "Left") {
-      return Effect.fail(decodedTemplate.left)
-    }
-    templates.push(decodedTemplate.right)
-  }
-
-  if (value["schemaVersion"] !== 1) {
-    return manifestShapeError("accessibility manifest schemaVersion must be 1")
-  }
-  if (typeof value["source"] !== "string") {
-    return manifestShapeError("accessibility manifest source must be a string")
-  }
-  if (typeof value["release"] !== "string") {
-    return manifestShapeError("accessibility manifest release must be a string")
-  }
-
-  return Effect.succeed({
-    schemaVersion: value["schemaVersion"],
-    source: value["source"],
-    release: value["release"],
-    templates
-  })
-}
-
-const decodeTemplate = (
-  template: Readonly<Record<string, unknown>>,
-  index: number
-):
-  | { readonly _tag: "Right"; readonly right: AccessibilityTemplate }
-  | { readonly _tag: "Left"; readonly left: AccessibilityGateManifestError } => {
-  const id = readString(template, `templates[${index}].id`)
-  const root = readString(template, `templates[${index}].root`)
-  const auditDir = readString(template, `templates[${index}].auditDir`)
-  const sourceFiles = readStringArray(template, `templates[${index}].sourceFiles`)
-  const i18nFiles = readStringArray(template, `templates[${index}].i18nFiles`)
-  const auditModes = readArray(template, `templates[${index}].auditModes`, decodeAuditMode)
-  const contrastPairs = readArray(template, `templates[${index}].contrastPairs`, decodeContrastPair)
-  const requiredTokens = readArray(
-    template,
-    `templates[${index}].requiredTokens`,
-    decodeRequiredToken
+): Effect.Effect<AccessibilityManifest, AccessibilityGateManifestError, never> =>
+  Schema.decodeUnknownEffect(AccessibilityManifest)(value, StrictParseOptions).pipe(
+    Effect.mapError(
+      (error) =>
+        new AccessibilityGateManifestError({
+          message: `accessibility manifest schema validation failed: ${error.message}`
+        })
+    )
   )
-  if (id._tag === "Left") return { _tag: "Left", left: id.failure }
-  if (root._tag === "Left") return { _tag: "Left", left: root.failure }
-  if (auditDir._tag === "Left") return { _tag: "Left", left: auditDir.failure }
-  if (sourceFiles._tag === "Left") return { _tag: "Left", left: sourceFiles.failure }
-  if (i18nFiles._tag === "Left") return { _tag: "Left", left: i18nFiles.failure }
-  if (auditModes._tag === "Left") return { _tag: "Left", left: auditModes.failure }
-  if (contrastPairs._tag === "Left") return { _tag: "Left", left: contrastPairs.failure }
-  if (requiredTokens._tag === "Left") return { _tag: "Left", left: requiredTokens.failure }
-  return {
-    _tag: "Right",
-    right: {
-      id: id.value,
-      root: root.value,
-      auditDir: auditDir.value,
-      sourceFiles: sourceFiles.value,
-      i18nFiles: i18nFiles.value,
-      auditModes: auditModes.value,
-      contrastPairs: contrastPairs.value,
-      requiredTokens: requiredTokens.value
-    }
-  }
-}
-
-const decodeAuditMode = (value: unknown, path: string): DecodeResult<AccessibilityAuditMode> => {
-  if (!isRecord(value)) {
-    return decodeFailure(`${path} must be an object`)
-  }
-  const id = readString(value, `${path}.id`)
-  const direction = readEnum(value, `${path}.direction`, ["ltr", "rtl"] as const)
-  const colorScheme = readEnum(value, `${path}.colorScheme`, ["light", "dark"] as const)
-  const axe = readString(value, `${path}.axe`)
-  const pa11y = readString(value, `${path}.pa11y`)
-  if (id._tag === "Left") return id
-  if (direction._tag === "Left") return direction
-  if (colorScheme._tag === "Left") return colorScheme
-  if (axe._tag === "Left") return axe
-  if (pa11y._tag === "Left") return pa11y
-  return {
-    _tag: "Right",
-    value: {
-      id: id.value,
-      direction: direction.value,
-      colorScheme: colorScheme.value,
-      axe: axe.value,
-      pa11y: pa11y.value
-    }
-  }
-}
-
-const decodeContrastPair = (
-  value: unknown,
-  path: string
-): DecodeResult<AccessibilityContrastPair> => {
-  if (!isRecord(value)) {
-    return decodeFailure(`${path} must be an object`)
-  }
-  const id = readString(value, `${path}.id`)
-  const foreground = readString(value, `${path}.foreground`)
-  const background = readString(value, `${path}.background`)
-  const minimumRatio = readNumber(value, `${path}.minimumRatio`)
-  if (id._tag === "Left") return id
-  if (foreground._tag === "Left") return foreground
-  if (background._tag === "Left") return background
-  if (minimumRatio._tag === "Left") return minimumRatio
-  return {
-    _tag: "Right",
-    value: {
-      id: id.value,
-      foreground: foreground.value,
-      background: background.value,
-      minimumRatio: minimumRatio.value
-    }
-  }
-}
-
-const decodeRequiredToken = (
-  value: unknown,
-  path: string
-): DecodeResult<AccessibilityRequiredToken> => {
-  if (!isRecord(value)) {
-    return decodeFailure(`${path} must be an object`)
-  }
-  const file = readString(value, `${path}.file`)
-  const token = readString(value, `${path}.token`)
-  if (file._tag === "Left") return file
-  if (token._tag === "Left") return token
-  return { _tag: "Right", value: { file: file.value, token: token.value } }
-}
-
-type DecodeResult<A> =
-  | { readonly _tag: "Right"; readonly value: A }
-  | { readonly _tag: "Left"; readonly failure: AccessibilityGateManifestError }
-
-const readString = (
-  record: Readonly<Record<string, unknown>>,
-  path: string
-): DecodeResult<string> => {
-  const value = record[path.slice(path.lastIndexOf(".") + 1)]
-  return typeof value === "string"
-    ? { _tag: "Right", value }
-    : decodeFailure(`${path} must be a string`)
-}
-
-const readNumber = (
-  record: Readonly<Record<string, unknown>>,
-  path: string
-): DecodeResult<number> => {
-  const value = record[path.slice(path.lastIndexOf(".") + 1)]
-  return typeof value === "number"
-    ? { _tag: "Right", value }
-    : decodeFailure(`${path} must be a number`)
-}
-
-const readEnum = <const A extends readonly string[]>(
-  record: Readonly<Record<string, unknown>>,
-  path: string,
-  values: A
-): DecodeResult<A[number]> => {
-  const value = record[path.slice(path.lastIndexOf(".") + 1)]
-  return typeof value === "string" && values.includes(value)
-    ? { _tag: "Right", value }
-    : decodeFailure(`${path} must be one of ${values.join(", ")}`)
-}
-
-const readStringArray = (
-  record: Readonly<Record<string, unknown>>,
-  path: string
-): DecodeResult<readonly string[]> => {
-  const value = record[path.slice(path.lastIndexOf(".") + 1)]
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
-    return decodeFailure(`${path} must be an array of strings`)
-  }
-  return { _tag: "Right", value }
-}
-
-const readArray = <A>(
-  record: Readonly<Record<string, unknown>>,
-  path: string,
-  decode: (value: unknown, path: string) => DecodeResult<A>
-): DecodeResult<readonly A[]> => {
-  const value = record[path.slice(path.lastIndexOf(".") + 1)]
-  if (!Array.isArray(value)) {
-    return decodeFailure(`${path} must be an array`)
-  }
-  const decoded: A[] = []
-  for (const [index, item] of value.entries()) {
-    const result = decode(item, `${path}[${index}]`)
-    if (result._tag === "Left") {
-      return { _tag: "Left", failure: result.failure }
-    }
-    decoded.push(result.value)
-  }
-  return { _tag: "Right", value: decoded }
-}
-
-const decodeFailure = (message: string): DecodeResult<never> => ({
-  _tag: "Left",
-  failure: new AccessibilityGateManifestError({ message })
-})
-
-const manifestShapeError = (
-  message: string
-): Effect.Effect<never, AccessibilityGateManifestError, never> =>
-  Effect.fail(new AccessibilityGateManifestError({ message }))
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
 
 const resolveTemplatePaths = (
   cwd: string,
@@ -487,14 +275,14 @@ const resolveTemplatePaths = (
             template,
             "pa11y"
           )
-          return { ...mode, axePath, pa11yPath }
+          return Object.assign({}, mode, { axePath, pa11yPath })
         })
       )
     )
     const requiredTokens = yield* Effect.all(
       template.requiredTokens.map((required) =>
         containedPath(workspaceRoot, root, required.file, template, "requiredTokens.file").pipe(
-          Effect.map((filePath) => ({ ...required, filePath }))
+          Effect.map((filePath) => Object.assign({}, required, { filePath }))
         )
       )
     )
@@ -844,16 +632,18 @@ const linearize = (channel: number): number => {
 const readJson = <A>(path: string): Effect.Effect<A, AccessibilityGateFileError, never> =>
   readText(path).pipe(
     Effect.flatMap((body) =>
-      Effect.try({
-        try: () => JSON.parse(body) as A,
-        catch: (cause) =>
-          new AccessibilityGateFileError({
-            operation: "parse-json",
-            path,
-            message: `failed to parse JSON at ${path}`,
-            cause
-          })
-      })
+      Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+        Effect.map((value) => value as A),
+        Effect.mapError(
+          (cause) =>
+            new AccessibilityGateFileError({
+              operation: "parse-json",
+              path,
+              message: `failed to parse JSON at ${path}`,
+              cause
+            })
+        )
+      )
     )
   )
 

@@ -1,18 +1,31 @@
 import {
+  bindRendererEndpoints,
   describeRpcs,
-  makeDesktopRendererRpcRuntime,
+  getGlobalDesktopRendererRpcTransport,
+  appendBounded,
+  interruptFrameworkFiber,
+  isDesktopStreamOptions,
+  makeDesktopRendererRpcLayer,
+  makeFrameworkRuntime,
+  makeFrameworkScopedOperation,
+  type DesktopRpcsLayer,
   makeMissingDesktopContextError,
-  makeMissingDesktopRpcClientError,
   makeMissingDesktopRpcsError,
+  normalizeDesktopStreamCapacity,
+  observeFrameworkFiber,
+  RendererRpcClients,
+  runRendererStream,
   type DesktopAppManifest,
-  type DesktopRendererRpcClient,
+  type DesktopEndpointSupport,
+  type DesktopStreamOptions,
   type DesktopRendererRpcClientMap,
-  type DesktopRendererRpcClientMethod,
   type DesktopRendererRpcTransport,
-  type RpcGroupWithRequests
+  type FrameworkRuntime,
+  type MissingDesktopRpcClientError,
+  type DesktopRpcRegistrationGroup as RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
-import type { RpcSupportMetadata, WithRpcEndpointKind } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Fiber, Stream } from "effect"
+import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
+import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createApp as createVueApp,
@@ -26,6 +39,16 @@ import {
   type Ref
 } from "vue"
 
+export {
+  defaultRegistry as desktopAtomDefaultRegistry,
+  injectRegistry as injectDesktopAtomRegistry,
+  registryKey as desktopAtomRegistryKey,
+  useAtom,
+  useAtomRef,
+  useAtomSet,
+  useAtomValue
+} from "@effect/atom-vue"
+
 type EndpointName<Tag extends string> = Tag extends `${string}.${infer Rest}`
   ? EndpointName<Rest>
   : Uncapitalize<Tag>
@@ -38,7 +61,9 @@ type VueRpcEndpoint<R extends Rpc.Any> = WithSupport<
       : VueMutationEndpoint<Rpc.PayloadConstructor<R>, Rpc.Success<R>, Rpc.Error<R>>
 >
 
-export type VueDesktopRpcs<Group extends RpcGroup.Any> = {
+export type VueDesktopRpcs<Group extends RpcGroup.Any> = Readonly<
+  Record<string, VueEndpoint & VueDesktopSupport>
+> & {
   readonly [Current in RpcGroup.Rpcs<Group> as EndpointName<
     Current["_tag"]
   >]: VueRpcEndpoint<Current>
@@ -62,6 +87,12 @@ export type VueComposable<I, A> = [I] extends [void]
     ? (input?: I) => A
     : (input: I) => A
 
+export type VueStreamComposable<I, A, E> = [I] extends [void]
+  ? (options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>>
+  : undefined extends I
+    ? (input?: I, options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>>
+    : (input: I, options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>>
+
 export interface VueMutation<I, A, E> {
   readonly state: Readonly<Ref<VueAsyncState<A, E>>>
   readonly run: VueComposable<I, void>
@@ -78,22 +109,21 @@ export interface VueQueryEndpoint<I, A, E> {
 }
 
 export interface VueStreamEndpoint<I, A, E> {
-  readonly useStream: VueComposable<I, Readonly<Ref<VueStreamState<A, E>>>>
+  readonly useStream: VueStreamComposable<I, A, E>
 }
 
-export interface VueDesktopSupport {
-  readonly support: RpcSupportMetadata
-  readonly isSupported: boolean
-}
+export interface VueDesktopSupport extends DesktopEndpointSupport {}
 
 type WithSupport<Endpoint> = Endpoint & VueDesktopSupport
 
-export type VueDesktopRpcClientMethod = DesktopRendererRpcClientMethod
-export type VueDesktopRpcClient = DesktopRendererRpcClient
-export type VueDesktopClientMap = DesktopRendererRpcClientMap
+type VueEndpoint =
+  | VueMutationEndpoint<unknown, unknown, unknown>
+  | VueQueryEndpoint<unknown, unknown, unknown>
+  | VueStreamEndpoint<unknown, unknown, unknown>
 
 export interface VueDesktopOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
 }
 
 export interface VueDesktopAdapter<App extends DesktopAppManifest> {
@@ -109,7 +139,14 @@ export {
 } from "@effect-desktop/core/renderer"
 
 interface VueDesktopContext {
-  readonly clients: VueDesktopClientMap
+  readonly clients: DesktopRendererRpcClientMap
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+}
+
+interface VueDesktopRuntime {
+  readonly clients: DesktopRendererRpcClientMap
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly disposeEffect: Effect.Effect<void, never, never>
 }
 
 const VueDesktopKey: InjectionKey<VueDesktopContext> = Symbol("VueDesktop")
@@ -118,13 +155,10 @@ const MissingVueDesktopContext = Symbol("MissingVueDesktopContext")
 export const VueDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): VueDesktopAdapter<App> => {
     const provideDesktop = (options?: VueDesktopOptions): void => {
-      const runtime = makeDesktopRendererRpcRuntime(app, {
-        framework: "vue",
-        transport: options?.transport
-      })
-      provide(VueDesktopKey, { clients: runtime.clients })
+      const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcs)
+      provide(VueDesktopKey, { clients: runtime.clients, runtime: runtime.runtime })
       onScopeDispose(() => {
-        void Effect.runPromiseExit(runtime.dispose())
+        void Effect.runCallback(runtime.disposeEffect)
       })
     }
 
@@ -150,22 +184,40 @@ export const VueDesktop = Object.freeze({
         )
       }
 
-      return makeEndpoints(describeRpcs(app, group), client) as VueDesktopRpcs<Group>
+      return bindRendererEndpoints<VueEndpoint>(describeRpcs(app, group), client, "vue", {
+        query: (run) => ({
+          useQuery: ((input?: unknown) => runQuery(context.runtime, run(input))) as VueComposable<
+            unknown,
+            Readonly<Ref<VueAsyncState<unknown, unknown>>>
+          >
+        }),
+        mutation: (run) => ({
+          useMutation: () => useMutation(context.runtime, (input) => run(input))
+        }),
+        stream: (run, descriptor) => ({
+          useStream: ((inputOrOptions?: unknown, streamOptions?: DesktopStreamOptions<unknown>) => {
+            const input = descriptor.hasPayload ? inputOrOptions : undefined
+            const options = descriptor.hasPayload
+              ? streamOptions
+              : isDesktopStreamOptions(inputOrOptions)
+                ? inputOrOptions
+                : streamOptions
+            return runStream(context.runtime, run(input), options)
+          }) as VueStreamComposable<unknown, unknown, unknown>
+        })
+      }) as VueDesktopRpcs<Group>
     }
 
     return Object.freeze({
       app,
       createApp: (rootComponent: Component, options?: VueDesktopOptions) => {
         const vueApp = createVueApp(rootComponent)
-        const runtime = makeDesktopRendererRpcRuntime(app, {
-          framework: "vue",
-          transport: options?.transport
-        })
-        vueApp.provide(VueDesktopKey, { clients: runtime.clients })
+        const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcs)
+        vueApp.provide(VueDesktopKey, { clients: runtime.clients, runtime: runtime.runtime })
         const unmount = vueApp.unmount.bind(vueApp)
         vueApp.unmount = () => {
           unmount()
-          void Effect.runPromiseExit(runtime.dispose())
+          void Effect.runCallback(runtime.disposeEffect)
         }
         return vueApp
       },
@@ -175,109 +227,53 @@ export const VueDesktop = Object.freeze({
   }
 })
 
-const makeEndpoints = (
-  descriptors: ReturnType<typeof describeRpcs>,
-  client: VueDesktopRpcClient
-): Readonly<
-  Record<
-    string,
-    | VueMutationEndpoint<unknown, unknown, unknown>
-    | VueQueryEndpoint<unknown, unknown, unknown>
-    | VueStreamEndpoint<unknown, unknown, unknown>
-  >
-> => {
-  const endpoints: Record<
-    string,
-    | VueMutationEndpoint<unknown, unknown, unknown>
-    | VueQueryEndpoint<unknown, unknown, unknown>
-    | VueStreamEndpoint<unknown, unknown, unknown>
-  > = Object.create(null) as Record<
-    string,
-    | VueMutationEndpoint<unknown, unknown, unknown>
-    | VueQueryEndpoint<unknown, unknown, unknown>
-    | VueStreamEndpoint<unknown, unknown, unknown>
-  >
-
-  for (const descriptor of descriptors) {
-    const invoke = (input: unknown): ReturnType<VueDesktopRpcClientMethod> => {
-      const method = client[descriptor.tag]
-      if (method === undefined) {
-        throw makeMissingDesktopRpcClientError(
-          "vue",
-          descriptor.tag,
-          `No renderer RPC client method is installed for ${descriptor.tag}`
-        )
-      }
-      return method(input)
-    }
-
-    const endpoint =
-      descriptor.kind === "stream"
-        ? {
-            useStream: ((input?: unknown) =>
-              runStream(asStream(invoke(input), descriptor.tag))) as VueComposable<
-              unknown,
-              Readonly<Ref<VueStreamState<unknown, unknown>>>
-            >
-          }
-        : descriptor.kind === "query"
-          ? {
-              useQuery: ((input?: unknown) =>
-                runQuery(asEffect(invoke(input), descriptor.tag))) as VueComposable<
-                unknown,
-                Readonly<Ref<VueAsyncState<unknown, unknown>>>
-              >
-            }
-          : {
-              useMutation: () => useMutation((input) => asEffect(invoke(input), descriptor.tag))
-            }
-
-    endpoints[descriptor.name] = withSupport(endpoint, descriptor.support)
+const makeVueDesktopRuntime = (
+  app: DesktopAppManifest,
+  transport: DesktopRendererRpcTransport | undefined,
+  rpcs: DesktopRpcsLayer<never, never> | undefined
+): VueDesktopRuntime => {
+  const runtime = ManagedRuntime.make(
+    makeDesktopRendererRpcLayer(app, {
+      framework: "vue",
+      transport: transport ?? getGlobalDesktopRendererRpcTransport(),
+      rpcs
+    })
+  )
+  let clients: DesktopRendererRpcClientMap
+  try {
+    clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
+  } catch (error) {
+    void Effect.runCallback(runtime.disposeEffect)
+    throw error
   }
-
-  return Object.freeze(endpoints)
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
+  return Object.freeze({
+    clients,
+    runtime: frameworkRuntime,
+    disposeEffect: frameworkRuntime.disposeEffect.pipe(Effect.andThen(runtime.disposeEffect))
+  })
 }
 
-const withSupport = <
-  Endpoint extends
-    | VueMutationEndpoint<unknown, unknown, unknown>
-    | VueQueryEndpoint<unknown, unknown, unknown>
-    | VueStreamEndpoint<unknown, unknown, unknown>
->(
-  endpoint: Endpoint,
-  support: RpcSupportMetadata
-): Endpoint & VueDesktopSupport =>
-  Object.freeze({
-    ...endpoint,
-    support,
-    isSupported: support.status === "supported"
-  }) as unknown as Endpoint & VueDesktopSupport
-
-const useMutation = <I, A, E>(
-  makeEffect: (input: I) => Effect.Effect<A, E, never>
-): VueMutation<I, A, E> => {
-  const state = shallowRef<VueAsyncState<A, E>>({ status: "idle" })
-  let runId = 0
-  let active = true
+const useMutation = <R, ER, I, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  makeEffect: (input: I) => Effect.Effect<A, E, R>
+): VueMutation<I, A, E | ER> => {
+  const state = shallowRef<VueAsyncState<A, E | ER>>({ status: "idle" })
+  const operation = makeFrameworkScopedOperation(runtime)
 
   onScopeDispose(() => {
-    active = false
-    runId += 1
+    operation.dispose()
   })
 
-  const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E>> => {
-    const currentRun = runId + 1
-    runId = currentRun
+  const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
     state.value = { status: "running" }
+    const [exit, isLatest] = await operation.runLatestPromiseExit(makeEffect(input as I))
 
-    const exit = await Effect.runPromiseExit(makeEffect(input as I))
-    if (!active || runId !== currentRun) {
-      return exit
+    if (isLatest) {
+      state.value = Exit.isSuccess(exit)
+        ? { status: "success", value: exit.value }
+        : { status: "failure", cause: exit.cause }
     }
-
-    state.value = Exit.isSuccess(exit)
-      ? { status: "success", value: exit.value }
-      : { status: "failure", cause: exit.cause }
     return exit
   }
 
@@ -286,97 +282,65 @@ const useMutation = <I, A, E>(
     run: ((input?: I) => {
       void runPromiseImpl(input)
     }) as VueComposable<I, void>,
-    runPromise: runPromiseImpl as VueComposable<I, Promise<Exit.Exit<A, E>>>,
+    runPromise: runPromiseImpl as VueComposable<I, Promise<Exit.Exit<A, E | ER>>>,
     reset: () => {
-      runId += 1
+      operation.reset()
       state.value = { status: "idle" }
     }
   }
 }
 
-const runQuery = <A, E>(effect: Effect.Effect<A, E, never>): Readonly<Ref<VueAsyncState<A, E>>> => {
-  const state = shallowRef<VueAsyncState<A, E>>({ status: "running" })
-  let active = true
+const runQuery = <R, ER, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  effect: Effect.Effect<A, E, R>
+): Readonly<Ref<VueAsyncState<A, E | ER>>> => {
+  const state = shallowRef<VueAsyncState<A, E | ER>>({ status: "running" })
 
-  const fiber = Effect.runFork(effect)
-
-  void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
-    if (!active) {
-      return
-    }
+  const fiber = runtime.runFork(effect)
+  observeFrameworkFiber(fiber, (exit) => {
     state.value = Exit.isSuccess(exit)
       ? { status: "success", value: exit.value }
       : { status: "failure", cause: exit.cause }
   })
 
   onScopeDispose(() => {
-    active = false
-    void Effect.runPromiseExit(Fiber.interrupt(fiber))
+    interruptFrameworkFiber(fiber)
   })
 
   return state
 }
 
-const runStream = <A, E>(
-  stream: Stream.Stream<A, E, never>
-): Readonly<Ref<VueStreamState<A, E>>> => {
-  const state = shallowRef<VueStreamState<A, E>>({
+const runStream = <R, ER, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  stream: Stream.Stream<A, E, R>,
+  options: DesktopStreamOptions<A> = {}
+): Readonly<Ref<VueStreamState<A, E | ER>>> => {
+  const capacity = normalizeDesktopStreamCapacity(options.capacity)
+  const state = shallowRef<VueStreamState<A, E | ER>>({
     status: "running",
     data: [],
     cause: undefined
   })
-  let active = true
-  const fiber = Effect.runFork(
-    Stream.runForEach(stream, (item) =>
-      Effect.sync(() => {
-        if (active) {
-          state.value = { ...state.value, data: [...state.value.data, item] }
-        }
-      })
-    )
+  const dispose = runRendererStream(
+    runtime,
+    stream,
+    options,
+    (item) => {
+      state.value = {
+        ...state.value,
+        data: appendBounded(state.value.data, item, capacity)
+      }
+    },
+    (exit) => {
+      state.value = Exit.isSuccess(exit)
+        ? { ...state.value, status: "closed", cause: undefined }
+        : { ...state.value, status: "failure", cause: exit.cause }
+    }
   )
 
-  void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
-    if (!active) {
-      return
-    }
-    state.value = Exit.isSuccess(exit)
-      ? { ...state.value, status: "closed", cause: undefined }
-      : { ...state.value, status: "failure", cause: exit.cause }
-  })
-
   onScopeDispose(() => {
-    active = false
-    void Effect.runPromiseExit(Fiber.interrupt(fiber))
+    dispose()
   })
 
   return state
-}
-
-const asEffect = (
-  value: ReturnType<VueDesktopRpcClientMethod>,
-  tag: string
-): Effect.Effect<unknown, unknown, never> => {
-  if (Effect.isEffect(value)) {
-    return value as Effect.Effect<unknown, unknown, never>
-  }
-  throw makeMissingDesktopRpcClientError(
-    "vue",
-    tag,
-    `Renderer RPC client method ${tag} returned a Stream where an Effect was expected`
-  )
-}
-
-const asStream = (
-  value: ReturnType<VueDesktopRpcClientMethod>,
-  tag: string
-): Stream.Stream<unknown, unknown, never> => {
-  if (Stream.isStream(value)) {
-    return value as Stream.Stream<unknown, unknown, never>
-  }
-  throw makeMissingDesktopRpcClientError(
-    "vue",
-    tag,
-    `Renderer RPC client method ${tag} returned an Effect where a Stream was expected`
-  )
 }

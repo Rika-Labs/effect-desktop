@@ -1,28 +1,6 @@
-export {
-  BrowserHttpClient,
-  BrowserKeyValueStore,
-  IndexedDb,
-  IndexedDbDatabase,
-  IndexedDbQueryBuilder,
-  IndexedDbTable,
-  IndexedDbVersion
-} from "./platform-browser.js"
-export {
-  RendererSqliteMemoryLive,
-  RendererSqliteWorkerLive,
-  SqliteWasmClient,
-  SqlClient,
-  SqlError,
-  SqlModel,
-  type RendererSqliteClient,
-  type RendererSqliteMemoryOptions,
-  type RendererSqliteWorkerOptions
-} from "./sqlite-wasm.js"
-
-export * as indexedDbStorage from "./storage/idb.js"
-export * as keyValueStorage from "./storage/kv.js"
 export type { HostProtocolError } from "@effect-desktop/bridge"
-export type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
+export type { WindowError } from "@effect-desktop/native"
+export type { WindowCreateOptions, WindowHandle } from "@effect-desktop/native/contracts"
 
 export { AsyncResult, Atom } from "effect/unstable/reactivity"
 
@@ -66,25 +44,30 @@ export {
   useCloseCurrentWindowMutation,
   useCurrentWindow,
   useCurrentWindowId,
-  useSetCurrentWindowTitleMutation,
-  type CurrentWindowCloseMutation,
-  type CurrentWindowSetTitleInput,
-  type CurrentWindowSetTitleMutation
+  type CurrentWindowCloseMutation
 } from "./current-window.js"
 
 export {
   windows,
   useCloseWindowMutation,
   useCreateWindowMutation,
-  useSetWindowTitleMutation,
   type WindowCloseInput,
   type WindowCloseMutation,
-  type WindowCreateMutation,
-  type WindowSetTitleInput,
-  type WindowSetTitleMutation
+  type WindowCreateMutation
 } from "./windows.js"
 
-export { useAtom, useAtomValue, useAtomSet } from "./atoms.js"
+export {
+  RegistryContext as DesktopAtomRegistryContext,
+  RegistryProvider as DesktopAtomRegistryProvider,
+  useAtom,
+  useAtomInitialValues,
+  useAtomMount,
+  useAtomRefresh,
+  useAtomSet,
+  useAtomSubscribe,
+  useAtomSuspense,
+  useAtomValue
+} from "@effect/atom-react"
 
 export {
   useDesktopStream,
@@ -131,8 +114,8 @@ export {
   PermissionApprovalQueue,
   useApprovalNotifications,
   usePermissionApproval,
-  type ApprovalDecision,
   type ApprovalResolver,
+  type ApprovalResolution,
   type PendingApproval,
   type PermissionApprovalPromptProps,
   type PermissionApprovalQueueProps,

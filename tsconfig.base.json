@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
+  "$schema": "https://raw.githubusercontent.com/Effect-TS/tsgo/refs/heads/main/schema.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "NodeNext",
@@ -30,6 +30,21 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "includeSuggestionsInTsc": false,
+        "diagnosticSeverity": {
+          "globalErrorInEffectCatch": "suggestion",
+          "globalErrorInEffectFailure": "suggestion",
+          "layerMergeAllWithDependencies": "suggestion",
+          "multipleEffectProvide": "suggestion",
+          "unknownInEffectCatch": "suggestion"
+        },
+        "ignoreEffectWarningsInTscExitCode": true,
+        "ignoreEffectErrorsInTscExitCode": true
+      }
+    ]
   }
 }

@@ -5,21 +5,40 @@ import {
   sign as cryptoSign,
   verify as cryptoVerify
 } from "node:crypto"
-import { lstat, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Option, Schema } from "effect"
+
+import {
+  ReleaseFileSystem,
+  runReleaseFileSystem,
+  type ReleaseFileInfo
+} from "./release-file-system.js"
+import { decodeDesktopTarget, desktopPlatformDirectory } from "./targets.js"
+import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
 export type PublishChannel = "stable" | "beta" | "canary"
-export type PublishTarget =
-  | "macos-arm64"
-  | "macos-x64"
-  | "windows-x64"
-  | "linux-x64"
-  | "windows-arm64"
-  | "linux-arm64"
-export type PublishArtifactKind = "app" | "dmg" | "zip" | "msi" | "appimage" | "deb" | "rpm"
+export type PublishTarget = DesktopTargetId
+export type PublishArtifactKind = DesktopArtifactKind
+export const PublishChannel = Schema.Literals(["stable", "beta", "canary"])
+const DecodeDesktopTargetIdSchema = Schema.Literals([
+  "linux-arm64",
+  "linux-x64",
+  "macos-arm64",
+  "macos-x64",
+  "windows-arm64",
+  "windows-x64"
+])
+const PublishArtifactKindSchema = Schema.Literals([
+  "app",
+  "appimage",
+  "deb",
+  "dmg",
+  "msi",
+  "rpm",
+  "zip"
+])
 
 export class PublishConfigError extends Data.TaggedError("PublishConfigError")<{
   readonly field: string
@@ -46,30 +65,33 @@ export interface DesktopPublishOptions {
   readonly configPath: string
   readonly platform: string | undefined
   readonly now: () => number
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
-export interface UpdateArtifactManifest {
-  readonly platform: PublishTarget
-  readonly kind: PublishArtifactKind
-  readonly url: string
-  readonly sizeBytes: number
-  readonly sha256: string
-  readonly signature: string
-}
+export class UpdateArtifactManifest extends Schema.Class<UpdateArtifactManifest>(
+  "UpdateArtifactManifest"
+)({
+  platform: DecodeDesktopTargetIdSchema,
+  kind: PublishArtifactKindSchema,
+  url: Schema.String,
+  sizeBytes: Schema.Number,
+  sha256: Schema.String,
+  signature: Schema.String
+}) {}
 
-export interface UpdateManifest {
-  readonly schemaVersion: 1
-  readonly appId: string
-  readonly version: string
-  readonly channel: PublishChannel
-  readonly keyVersion: number
-  readonly publishedAt: string
-  readonly rollback?: boolean
-  readonly minVersion?: string
-  readonly maxVersion?: string
-  readonly artifacts: readonly UpdateArtifactManifest[]
-  readonly signature: string
-}
+export class UpdateManifest extends Schema.Class<UpdateManifest>("UpdateManifest")({
+  schemaVersion: Schema.Literal(1),
+  appId: Schema.String,
+  version: Schema.String,
+  channel: PublishChannel,
+  keyVersion: Schema.Number,
+  publishedAt: Schema.String,
+  rollback: Schema.optionalKey(Schema.Boolean),
+  minVersion: Schema.optionalKey(Schema.String),
+  maxVersion: Schema.optionalKey(Schema.String),
+  artifacts: Schema.Array(UpdateArtifactManifest),
+  signature: Schema.String
+}) {}
 
 export interface DesktopPublishReport {
   readonly appId: string
@@ -128,6 +150,45 @@ interface PackagedArtifact {
 }
 
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex")
+const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
+
+class PackageArtifactMetadata extends Schema.Class<PackageArtifactMetadata>(
+  "PackageArtifactMetadata"
+)({
+  kind: PublishArtifactKindSchema,
+  target: DecodeDesktopTargetIdSchema,
+  fileName: Schema.String,
+  sizeBytes: Schema.Number,
+  sha256: Schema.String,
+  appId: Schema.String,
+  appName: Schema.String,
+  appVersion: Schema.String
+}) {}
+
+export const decodeUpdateManifest = (
+  value: unknown
+): Effect.Effect<UpdateManifest, Schema.SchemaError, never> =>
+  Schema.decodeUnknownEffect(UpdateManifest)(value, StrictParseOptions)
+
+export const encodeUpdateManifest = (
+  value: UpdateManifest
+): Effect.Effect<unknown, Schema.SchemaError, never> =>
+  Schema.encodeUnknownEffect(UpdateManifest)(value, StrictParseOptions)
+
+const decodePackageArtifactMetadata = (
+  value: unknown,
+  path: string
+): Effect.Effect<PackageArtifactMetadata, PublishConfigError, never> =>
+  Schema.decodeUnknownEffect(PackageArtifactMetadata)(value, StrictParseOptions).pipe(
+    Effect.mapError(
+      (error) =>
+        new PublishConfigError({
+          field: path,
+          message: `package artifact metadata schema validation failed: ${error.message}`,
+          remediation: "Regenerate package metadata with `bun desktop package`."
+        })
+    )
+  )
 
 export const runDesktopPublish = (
   options: DesktopPublishOptions
@@ -140,7 +201,7 @@ export const runDesktopPublish = (
       platform: options.platform
     })
     const artifacts = yield* readPackagedArtifacts(plan)
-    const privateKey = yield* resolvePrivateKey(plan.privateKeyEnv)
+    const privateKey = yield* resolvePrivateKey(plan.privateKeyEnv, options.env ?? {})
     const manifestArtifacts: UpdateArtifactManifest[] = []
     for (const artifact of artifacts) {
       const payload = yield* readArtifactPayload(artifact.artifactPath)
@@ -325,38 +386,37 @@ const readPackagedArtifacts = (
 ): Effect.Effect<readonly PackagedArtifact[], PublishFileError | PublishConfigError, never> =>
   Effect.gen(function* () {
     yield* statPath(plan.outputPath).pipe(
-      Effect.catch(() =>
-        Effect.fail(
+      Effect.mapError(
+        () =>
           new PublishFileError({
             operation: "discover",
             path: plan.outputPath,
             message: "no packaged artifacts found; run bun desktop package first",
             cause: undefined
           })
-        )
       )
     )
     const platforms =
       plan.target === undefined
         ? yield* readDirectory(plan.outputPath)
-        : [platformDirectory(plan.target)]
+        : [desktopPlatformDirectory(plan.target)]
     const artifacts: PackagedArtifact[] = []
     for (const platform of platforms.toSorted()) {
       const platformPath = join(plan.outputPath, platform)
-      const platformStat = yield* statPath(platformPath).pipe(
-        Effect.catch(() =>
-          plan.target === undefined
-            ? Effect.succeed(undefined)
-            : Effect.fail(
-                new PublishFileError({
-                  operation: "discover",
-                  path: platformPath,
-                  message: `no packaged artifacts found for ${plan.target}`,
-                  cause: undefined
-                })
+      const platformStat =
+        plan.target === undefined
+          ? Option.getOrUndefined(yield* Effect.option(statPath(platformPath)))
+          : yield* statPath(platformPath).pipe(
+              Effect.mapError(
+                () =>
+                  new PublishFileError({
+                    operation: "discover",
+                    path: platformPath,
+                    message: `no packaged artifacts found for ${plan.target}`,
+                    cause: undefined
+                  })
               )
-        )
-      )
+            )
       if (platformStat === undefined || !platformStat.isDirectory()) {
         continue
       }
@@ -368,16 +428,11 @@ const readPackagedArtifacts = (
           continue
         }
         const metadataPath = join(rootPath, "artifact.json")
-        const metadata = yield* readJson<{
-          readonly kind?: unknown
-          readonly target?: unknown
-          readonly fileName?: unknown
-          readonly sizeBytes?: unknown
-          readonly sha256?: unknown
-          readonly appId?: unknown
-          readonly appName?: unknown
-          readonly appVersion?: unknown
-        }>(metadataPath)
+        const rawMetadata = yield* readJson<unknown>(metadataPath)
+        const metadata = yield* decodePackageArtifactMetadata(
+          rawMetadata,
+          relative(plan.outputPath, metadataPath)
+        )
         const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
         const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
         const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
@@ -423,11 +478,8 @@ const readPackagedArtifacts = (
             })
           )
         }
-        const target = yield* readTarget(
-          metadata.target,
-          `${relative(plan.outputPath, metadataPath)}#target`
-        )
-        if (platformDirectory(target) !== platform) {
+        const target = metadata.target
+        if (desktopPlatformDirectory(target) !== platform) {
           return yield* Effect.fail(
             new PublishConfigError({
               field: `${relative(plan.outputPath, metadataPath)}#target`,
@@ -439,10 +491,7 @@ const readPackagedArtifacts = (
         if (plan.target !== undefined && target !== plan.target) {
           continue
         }
-        const kind = yield* readArtifactKind(
-          metadata.kind,
-          `${relative(plan.outputPath, metadataPath)}#kind`
-        )
+        const kind = metadata.kind
         const fileNameField = `${relative(plan.outputPath, metadataPath)}#fileName`
         const fileName = yield* readContainedFileName(metadata.fileName, fileNameField)
         const sizeBytes = yield* readNonNegativeInteger(
@@ -482,11 +531,12 @@ const readPackagedArtifacts = (
   })
 
 const resolvePrivateKey = (
-  envName: string
+  envName: string,
+  env: Readonly<Record<string, string | undefined>>
 ): Effect.Effect<ReturnType<typeof createPrivateKey>, PublishConfigError, never> =>
   Effect.try({
     try: () => {
-      const value = process.env[envName]
+      const value = env[envName]
       if (value === undefined || value.length === 0) {
         throw new Error(`${envName} is not set`)
       }
@@ -989,71 +1039,18 @@ const readOptionalTarget = (
   if (value === undefined) {
     return Effect.succeed(undefined)
   }
-  return isPublishTarget(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
+  return decodeDesktopTarget(value).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      () =>
         new PublishConfigError({
           field: "--platform",
           message: `unsupported publish target ${value}`,
           remediation:
             "Use macos-arm64, macos-x64, windows-x64, windows-arm64, linux-x64, or linux-arm64."
         })
-      )
-}
-
-const readTarget = (
-  value: unknown,
-  field: string
-): Effect.Effect<PublishTarget, PublishConfigError, never> =>
-  typeof value === "string" && isPublishTarget(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new PublishConfigError({
-          field,
-          message: `${field} must be a supported publish target`,
-          remediation: "Regenerate package metadata."
-        })
-      )
-
-const readArtifactKind = (
-  value: unknown,
-  field: string
-): Effect.Effect<PublishArtifactKind, PublishConfigError, never> =>
-  typeof value === "string" && isPublishArtifactKind(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new PublishConfigError({
-          field,
-          message: `${field} must be a supported artifact kind`,
-          remediation: "Regenerate package metadata."
-        })
-      )
-
-const isPublishTarget = (value: string): value is PublishTarget =>
-  value === "macos-arm64" ||
-  value === "macos-x64" ||
-  value === "windows-x64" ||
-  value === "linux-x64" ||
-  value === "windows-arm64" ||
-  value === "linux-arm64"
-
-const isPublishArtifactKind = (value: string): value is PublishArtifactKind =>
-  value === "app" ||
-  value === "dmg" ||
-  value === "zip" ||
-  value === "msi" ||
-  value === "appimage" ||
-  value === "deb" ||
-  value === "rpm"
-
-const platformDirectory = (target: PublishTarget): "linux" | "macos" | "windows" => {
-  if (target.startsWith("macos-")) {
-    return "macos"
-  }
-  if (target.startsWith("windows-")) {
-    return "windows"
-  }
-  return "linux"
+    )
+  )
 }
 
 const loadConfig = (path: string): Effect.Effect<unknown, PublishConfigError, never> =>
@@ -1080,52 +1077,80 @@ const loadConfig = (path: string): Effect.Effect<unknown, PublishConfigError, ne
   })
 
 const readJson = <A>(path: string): Effect.Effect<A, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: async () => JSON.parse(await readFile(path, "utf8")) as A,
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "read-json",
-        path,
-        message: `failed to read JSON ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const content = yield* fs.readFileString(path)
+      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+        Effect.map((value) => value as A)
+      )
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "read-json",
+          path,
+          message: `failed to read JSON ${path}`,
+          cause
+        })
+    )
+  )
 
 const writeJson = (path: string, value: unknown): Effect.Effect<void, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => writeFile(path, `${JSON.stringify(value, null, 2)}\n`),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "write",
-        path,
-        message: `failed to write ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.writeFileString(path, `${JSON.stringify(value, null, 2)}\n`)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "write",
+          path,
+          message: `failed to write ${path}`,
+          cause
+        })
+    )
+  )
 
 const readBytes = (path: string): Effect.Effect<Buffer, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const bytes = yield* fs.readFile(path)
+      return Buffer.from(bytes)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => readdir(path),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "readdir",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readDirectory(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "readdir",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
 type DirectoryEntryKind = "directory" | "file"
 
@@ -1182,33 +1207,41 @@ const walkDirectoryEntries = (
     return files
   })
 
-const statPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof stat>>, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => stat(path),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "stat",
-        path,
-        message: `failed to stat ${path}`,
-        cause
-      })
-  })
+const statPath = (path: string): Effect.Effect<ReleaseFileInfo, PublishFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.stat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "stat",
+          path,
+          message: `failed to stat ${path}`,
+          cause
+        })
+    )
+  )
 
-const lstatPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof lstat>>, PublishFileError, never> =>
-  Effect.tryPromise({
-    try: () => lstat(path),
-    catch: (cause) =>
-      new PublishFileError({
-        operation: "lstat",
-        path,
-        message: `failed to lstat ${path}`,
-        cause
-      })
-  })
+const lstatPath = (path: string): Effect.Effect<ReleaseFileInfo, PublishFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.lstat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PublishFileError({
+          operation: "lstat",
+          path,
+          message: `failed to lstat ${path}`,
+          cause
+        })
+    )
+  )
 
 const resolvePath = (cwd: string, path: string): string =>
   isAbsolute(path) ? path : resolve(cwd, path)

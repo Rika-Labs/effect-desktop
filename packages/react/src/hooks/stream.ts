@@ -1,6 +1,16 @@
-import { Cause, Effect, Exit, Fiber, Option, Stream, SubscriptionRef } from "effect"
+import {
+  appendBounded,
+  makeFrameworkScopedOperation,
+  normalizeDesktopStreamCapacity,
+  runRendererStream,
+  type DesktopStreamOptions,
+  type FrameworkRuntime
+} from "@effect-desktop/core/renderer"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Stream, SubscriptionRef } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
-import { useEffect, useRef, useState, type DependencyList } from "react"
+import { useEffect, useMemo, useRef, useState, type DependencyList } from "react"
+
+import { asyncResultFromExit, runAsyncResult } from "./effect-runner.js"
 
 export type StreamStatus = "idle" | "running" | "closed" | "failure"
 
@@ -10,10 +20,9 @@ export interface StreamState<A, E> {
   readonly error: Option.Option<Cause.Cause<E>>
 }
 
-export interface DesktopStreamOptions<A> {
-  readonly capacity?: number | undefined
-  readonly onItem?: ((item: A) => void) | undefined
-}
+export type { DesktopStreamOptions }
+
+const defaultRuntime: FrameworkRuntime = ManagedRuntime.make(Layer.empty)
 
 const idle = <A, E>(): StreamState<A, E> => ({
   status: "idle",
@@ -27,53 +36,44 @@ const running = <A, E>(): StreamState<A, E> => ({
   error: Option.none()
 })
 
-export const useDesktopStream = <A, E>(
-  stream: Stream.Stream<A, E, never>,
-  options: DesktopStreamOptions<A> = {}
-): StreamState<A, E> => {
-  const capacity = normalizeCapacity(options.capacity)
-  const [state, setState] = useState<StreamState<A, E>>(idle<A, E>)
-  const streamRef = useRef<Stream.Stream<A, E, never>>(stream)
+export const useDesktopStream = <A, E, R = never, ER = never>(
+  stream: Stream.Stream<A, E, R>,
+  options: DesktopStreamOptions<A> = {},
+  runtime: FrameworkRuntime<R, ER> = defaultRuntime as FrameworkRuntime<R, ER>
+): StreamState<A, E | ER> => {
+  const capacity = normalizeDesktopStreamCapacity(options.capacity)
+  const [state, setState] = useState<StreamState<A, E | ER>>(idle<A, E | ER>)
+  const streamRef = useRef<Stream.Stream<A, E, R>>(stream)
   const onItemRef = useRef<((item: A) => void) | undefined>(options.onItem)
   streamRef.current = stream
   onItemRef.current = options.onItem
 
   useEffect(() => {
-    let active = true
     setState(running<A, E>())
 
-    const fiber = Effect.runFork(
-      Stream.runForEach(streamRef.current, (item) =>
-        Effect.sync(() => {
-          onItemRef.current?.(item)
-          if (active) {
-            setState((prev) => ({
-              ...prev,
-              data: capacity === 0 ? prev.data : [...prev.data, item].slice(-capacity)
-            }))
-          }
-        })
-      )
-    )
-
-    void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
-      if (!active) return
-      if (Exit.isSuccess(exit)) {
-        setState((prev) => ({ ...prev, status: "closed" as const, error: Option.none() }))
-      } else {
+    return runRendererStream(
+      runtime,
+      streamRef.current,
+      { capacity, onItem: (item) => onItemRef.current?.(item) },
+      (item) => {
         setState((prev) => ({
           ...prev,
-          status: "failure" as const,
-          error: Option.some(exit.cause)
+          data: appendBounded(prev.data, item, capacity)
         }))
+      },
+      (exit) => {
+        if (Exit.isSuccess(exit)) {
+          setState((prev) => ({ ...prev, status: "closed" as const, error: Option.none() }))
+        } else {
+          setState((prev) => ({
+            ...prev,
+            status: "failure" as const,
+            error: Option.some(exit.cause)
+          }))
+        }
       }
-    })
-
-    return () => {
-      active = false
-      void Effect.runPromiseExit(Fiber.interrupt(fiber))
-    }
-  }, [stream, capacity])
+    )
+  }, [stream, capacity, runtime])
 
   return state
 }
@@ -81,67 +81,65 @@ export const useDesktopStream = <A, E>(
 export const useSubscribable = <A>(ref: SubscriptionRef.SubscriptionRef<A>): A | undefined => {
   const [value, setValue] = useState<A | undefined>(undefined)
   const refRef = useRef<SubscriptionRef.SubscriptionRef<A>>(ref)
+  const operation = useMemo(() => makeFrameworkScopedOperation(defaultRuntime), [])
   refRef.current = ref
 
   useEffect(() => {
-    let active = true
-
-    const fiber = Effect.runFork(
+    operation.runLatest(
       Stream.runForEach(SubscriptionRef.changes(refRef.current), (v) =>
         Effect.sync(() => {
-          if (active) setValue(v)
+          setValue(v)
         })
-      )
+      ),
+      () => undefined
     )
 
     return () => {
-      active = false
-      void Effect.runPromiseExit(Fiber.interrupt(fiber))
+      operation.reset()
     }
-  }, [ref])
+  }, [operation, ref])
+
+  useEffect(() => {
+    return () => {
+      operation.dispose()
+    }
+  }, [operation])
 
   return value
 }
 
-export const useEffectResult = <A, E>(
-  effect: Effect.Effect<A, E, never>,
-  deps?: DependencyList
-): AsyncResult.AsyncResult<A, E> => {
-  const [result, setResult] = useState<AsyncResult.AsyncResult<A, E>>(AsyncResult.initial<A, E>)
-  const effectRef = useRef<Effect.Effect<A, E, never>>(effect)
+export const useEffectResult = <A, E, R = never, ER = never>(
+  effect: Effect.Effect<A, E, R>,
+  deps?: DependencyList,
+  runtime: FrameworkRuntime<R, ER> = defaultRuntime as FrameworkRuntime<R, ER>
+): AsyncResult.AsyncResult<A, E | ER> => {
+  const [result, setResult] = useState<AsyncResult.AsyncResult<A, E | ER>>(
+    AsyncResult.initial<A, E | ER>
+  )
+  const effectRef = useRef<Effect.Effect<A, E, R>>(effect)
+  const operation = useMemo(() => makeFrameworkScopedOperation(runtime), [runtime])
   effectRef.current = effect
+
+  useEffect(() => {
+    return () => {
+      operation.dispose()
+    }
+  }, [operation])
 
   useEffect(
     () => {
-      let active = true
-      setResult(AsyncResult.initial<A, E>(true))
+      setResult(AsyncResult.initial<A, E | ER>(true))
 
-      const fiber = Effect.runFork(effectRef.current)
-
-      void Effect.runPromiseExit(Fiber.join(fiber)).then((exit) => {
-        if (!active) return
-        if (Exit.isSuccess(exit)) {
-          setResult(AsyncResult.success(exit.value))
-        } else {
-          setResult(AsyncResult.failure(exit.cause))
-        }
+      operation.runLatest(runAsyncResult(effectRef.current), (exit) => {
+        setResult(asyncResultFromExit(exit))
       })
 
       return () => {
-        active = false
-        void Effect.runPromiseExit(Fiber.interrupt(fiber))
+        operation.reset()
       }
     },
-    deps ?? [effect]
+    deps ?? [effect, operation]
   )
 
   return result
-}
-
-const normalizeCapacity = (capacity: number | undefined): number => {
-  const resolved = capacity ?? 1_024
-  if (!Number.isSafeInteger(resolved) || resolved < 0) {
-    throw new RangeError("desktop stream capacity must be a non-negative safe integer")
-  }
-  return resolved
 }

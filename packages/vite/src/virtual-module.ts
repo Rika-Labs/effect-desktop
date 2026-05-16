@@ -8,11 +8,14 @@ export const RUNTIME_RESTART_EVENT = "effect-desktop:runtime-restart"
 
 export const buildVirtualModuleSource = (): string => `
 import { Socket } from "effect/unstable/socket"
-import { Deferred, Effect, Layer, Queue } from "effect"
+import { Deferred, Effect, Layer, Queue, Stream } from "effect"
 
 const FRAME_DOWN = ${JSON.stringify(FRAME_DOWN_EVENT)}
 const FRAME_UP = ${JSON.stringify(FRAME_UP_EVENT)}
 const RUNTIME_READY = ${JSON.stringify(RUNTIME_READY_EVENT)}
+const RUNTIME_RESTART = ${JSON.stringify(RUNTIME_RESTART_EVENT)}
+const HMR_BUFFER_SIZE = 1024
+let runtimeReady = false
 
 const fromBase64 = (b64) => {
   const bin = atob(b64)
@@ -29,39 +32,57 @@ const toBase64 = (bytes) => {
 
 const makeDevSocket = () =>
   Effect.gen(function* () {
-    const inbound = yield* Queue.unbounded()
     const closeSignal = yield* Deferred.make()
+
+    const awaitRuntimeReady = runtimeReady || !import.meta.hot
+      ? Effect.void
+      : Effect.callback((resume) => {
+          const onReady = () => {
+            runtimeReady = true
+            import.meta.hot?.off?.(RUNTIME_READY, onReady)
+            resume(Effect.void)
+          }
+          import.meta.hot.on(RUNTIME_READY, onReady)
+          return Effect.sync(() => import.meta.hot?.off?.(RUNTIME_READY, onReady))
+        })
+
+    const inbound = Stream.callback((queue) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          const onFrame = ({ data }) => {
+            Queue.offerUnsafe(queue, fromBase64(data))
+          }
+          import.meta.hot?.on(FRAME_DOWN, onFrame)
+          return onFrame
+        }),
+        (onFrame) => Effect.sync(() => import.meta.hot?.off?.(FRAME_DOWN, onFrame))
+      ),
+      { bufferSize: HMR_BUFFER_SIZE, strategy: "sliding" }
+    )
 
     const runRaw = (handler, opts) =>
       Effect.gen(function* () {
-        if (import.meta.hot) {
-          const ready = yield* Effect.async((resume) => {
-            import.meta.hot.on(RUNTIME_READY, () => resume(Effect.void))
-            import.meta.hot.on(FRAME_DOWN, ({ data }) => {
-              const bytes = fromBase64(data)
-              Effect.runFork(Queue.offer(inbound, bytes))
-            })
-          })
-        }
+        yield* awaitRuntimeReady
 
         if (opts?.onOpen) yield* opts.onOpen
 
-        while (true) {
-          const item = yield* Effect.race(
-            Queue.take(inbound),
-            Deferred.await(closeSignal).pipe(
-              Effect.flatMap(() =>
-                Effect.fail(
-                  new Socket.SocketError({
-                    reason: new Socket.SocketCloseError({ code: 1000 })
-                  })
-                )
+        yield* Effect.race(
+          inbound.pipe(
+            Stream.runForEach((item) => {
+              const result = handler(item)
+              return Effect.isEffect(result) ? result : Effect.void
+            })
+          ),
+          Deferred.await(closeSignal).pipe(
+            Effect.flatMap(() =>
+              Effect.fail(
+                new Socket.SocketError({
+                  reason: new Socket.SocketCloseError({ code: 1000 })
+                })
               )
             )
           )
-          const result = handler(item)
-          if (Effect.isEffect(result)) yield* result
-        }
+        )
       })
 
     const write = (chunk) => {
@@ -84,8 +105,20 @@ const makeDevSocket = () =>
 export const layerDevSocket = Layer.effect(Socket.Socket, makeDevSocket())
 
 if (import.meta.hot) {
-  import.meta.hot.on(${JSON.stringify(RUNTIME_RESTART_EVENT)}, () => {
+  const onRuntimeReady = () => {
+    runtimeReady = true
+  }
+
+  const onRuntimeRestart = () => {
     import.meta.hot?.invalidate()
+  }
+
+  import.meta.hot.on(RUNTIME_READY, onRuntimeReady)
+  import.meta.hot.on(RUNTIME_RESTART, onRuntimeRestart)
+
+  import.meta.hot.dispose(() => {
+    import.meta.hot?.off?.(RUNTIME_READY, onRuntimeReady)
+    import.meta.hot?.off?.(RUNTIME_RESTART, onRuntimeRestart)
   })
 }
 `

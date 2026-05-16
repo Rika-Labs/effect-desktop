@@ -1,6 +1,6 @@
 {
   "generated_at": "2026-05-08T23:45:53.628Z",
-  "spec": "docs/SPEC.md §24 (Implementation Milestones)",
+  "spec": "engineering/SPEC.md §24 (Implementation Milestones)",
   "repo": "https://github.com/Rika-Labs/effect-desktop",
   "ordering": "Phases follow the §24.0.1 dependency graph. Sub-issues within each phase are ordered by GitHub issue number, which preserves the slicing-plan order in which they were created.",
   "legend": {
@@ -26,7 +26,7 @@
       "completed": true,
       "epic": null,
       "issues": [],
-      "notes": "Shipped before issues were created. Tracked via docs/milestones/phase-0-bootstrap.md and learning at docs/learnings/2026-05-04-phase-0-repository-bootstrap.md."
+      "notes": "Shipped before issues were created. Tracked via engineering/milestones/phase-0-bootstrap.md and learning at engineering/learnings/2026-05-04-phase-0-repository-bootstrap.md."
     },
     {
       "phase": "1",
