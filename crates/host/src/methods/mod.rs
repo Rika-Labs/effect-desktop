@@ -1,6 +1,7 @@
 mod diagnostics_bundle;
 mod dock;
 mod egress_policy;
+mod execution_sandbox;
 pub(crate) mod handshake;
 mod menu;
 mod realtime_media_session;
@@ -103,6 +104,12 @@ impl HostMethodRouter {
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
             host_protocol::EGRESS_POLICY_RECORD_METHOD => egress_policy::record(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
+            host_protocol::EXECUTION_SANDBOX_CREATE_METHOD => execution_sandbox::create(payload),
+            host_protocol::EXECUTION_SANDBOX_RUN_METHOD => execution_sandbox::run(payload),
+            host_protocol::EXECUTION_SANDBOX_DESTROY_METHOD => execution_sandbox::destroy(payload),
+            host_protocol::EXECUTION_SANDBOX_IS_SUPPORTED_METHOD => {
+                execution_sandbox::is_supported()
+            }
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
                 menu::set_application_menu(&*self.window, payload)
             }
@@ -732,6 +739,106 @@ mod tests {
         );
     }
 
+    #[test]
+    fn execution_sandbox_create_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-execution-sandbox-create",
+                    host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
+                    execution_sandbox_create_payload(),
+                ),
+                1710000000121,
+            )
+            .expect("execution sandbox request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-execution-sandbox-create".to_string(),
+                timestamp: 1710000000121,
+                trace_id: "trace-request-execution-sandbox-create".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::EXECUTION_SANDBOX_UNSUPPORTED_REASON,
+                    host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn execution_sandbox_invalid_payload_returns_invalid_argument_before_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-execution-sandbox-invalid",
+                    host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "policy": {
+                            "cwd": "/tmp/app",
+                            "budgets": {
+                                "cpuMillis": 0,
+                                "memoryBytes": 67108864,
+                                "wallClockMillis": 1000,
+                                "stdoutBytes": 1024,
+                                "stderrBytes": 1024
+                            },
+                            "cleanup": {
+                                "killProcessTree": true,
+                                "removeWorkingDirectory": true
+                            }
+                        }
+                    }),
+                ),
+                1710000000122,
+            )
+            .expect("execution sandbox request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-execution-sandbox-invalid".to_string(),
+                timestamp: 1710000000122,
+                trace_id: "trace-request-execution-sandbox-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "policy.budgets.cpuMillis",
+                    "must be greater than zero",
+                    host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn execution_sandbox_is_supported_reports_unimplemented_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-execution-sandbox-supported",
+                    host_protocol::EXECUTION_SANDBOX_IS_SUPPORTED_METHOD,
+                ),
+                1710000000123,
+            )
+            .expect("execution sandbox support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-execution-sandbox-supported".to_string(),
+                timestamp: 1710000000123,
+                trace_id: "trace-request-execution-sandbox-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::EXECUTION_SANDBOX_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
+    }
+
     fn request(id: &str, method: &str) -> HostProtocolEnvelope {
         request_with_payload(id, method, serde_json::Value::Null)
     }
@@ -761,6 +868,35 @@ mod tests {
             Ok(WindowCreateResponse::new("window-test")),
             Ok(()),
         )))
+    }
+
+    fn execution_sandbox_create_payload() -> serde_json::Value {
+        serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "policy": {
+                "cwd": "/tmp/app",
+                "filesystem": {
+                    "readRoots": ["/tmp/app"],
+                    "writeRoots": ["/tmp/app/out"]
+                },
+                "network": {
+                    "hosts": ["api.example.test"]
+                },
+                "budgets": {
+                    "cpuMillis": 500,
+                    "memoryBytes": 67108864,
+                    "wallClockMillis": 1000,
+                    "stdoutBytes": 1024,
+                    "stderrBytes": 1024
+                },
+                "cleanup": {
+                    "killProcessTree": true,
+                    "removeWorkingDirectory": true
+                }
+            },
+            "sandboxId": "sandbox-1",
+            "traceId": "trace-sandbox"
+        })
     }
 
     struct FakeWindowHandler {

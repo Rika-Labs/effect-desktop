@@ -103,6 +103,9 @@ import {
   DockLive,
   DockMethodNames,
   DockSurface,
+  ExecutionSandbox,
+  ExecutionSandboxLive,
+  ExecutionSandboxSurface,
   GlobalShortcut,
   GlobalShortcutHandlersLive,
   GlobalShortcutRpcs,
@@ -386,6 +389,7 @@ test("native services expose canonical static layers", () => {
   expect(CrashReporterLive).toBe(CrashReporter.layer)
   expect(DialogLive).toBe(Dialog.layer)
   expect(DockLive).toBe(Dock.layer)
+  expect(ExecutionSandboxLive).toBe(ExecutionSandbox.layer)
   expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
   expect(MenuLive).toBe(Menu.layer)
   expect(NotificationLive).toBe(Notification.layer)
@@ -438,6 +442,7 @@ test("native capability selections come from their surfaces", () => {
 
   expect(Native.Clipboard).toBe(ClipboardSurface.selection)
   expect(Native.Dialog).toBe(DialogSurface.selection)
+  expect(Native.ExecutionSandbox).toBe(ExecutionSandboxSurface.selection)
   expect(Native.Permissions.clipboard.readText).toEqual(ClipboardSurface.permissions.readText)
   expect("isSupported" in Native.Clipboard).toBe(false)
   expect("getInfo" in Native.App).toBe(false)

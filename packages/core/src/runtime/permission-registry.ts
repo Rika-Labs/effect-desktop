@@ -437,7 +437,13 @@ export const capabilityCovers = (
     case "pty.spawn":
       return (
         declared.kind === requested.kind &&
-        requested.commands.every((command) => declared.commands.includes(command))
+        requested.commands.every((command) => declared.commands.includes(command)) &&
+        (requested.cwd ?? []).every((cwd) =>
+          (declared.cwd ?? []).some((declaredCwd) => rootCovers(declaredCwd, cwd))
+        ) &&
+        environmentCovers(declared.environment, requested.environment) &&
+        declared.shell === requested.shell &&
+        declared.audit === requested.audit
       )
     case "network.connect":
       return (
@@ -463,6 +469,11 @@ export const capabilityCovers = (
       )
   }
 }
+
+const environmentCovers = (
+  declared: "none" | "allowlist",
+  requested: "none" | "allowlist"
+): boolean => declared === "allowlist" || requested === "none"
 
 const rootCovers = (declaredRoot: string, requestedRoot: string): boolean => {
   const declared = normalizeRootPath(declaredRoot)

@@ -174,6 +174,29 @@ export {
   type EgressPolicyServiceOptions
 } from "./egress-policy.js"
 export {
+  ExecutionSandbox,
+  ExecutionSandboxClient,
+  ExecutionSandboxHandlersLive,
+  ExecutionSandboxLive,
+  ExecutionSandboxMethodNames,
+  ExecutionSandboxRpcEvents,
+  ExecutionSandboxRpcs,
+  ExecutionSandboxSurface,
+  makeExecutionSandboxBridgeClientLayer,
+  makeExecutionSandboxClientLayer,
+  makeExecutionSandboxMemoryClient,
+  makeExecutionSandboxServiceLayer,
+  makeExecutionSandboxUnsupportedClient,
+  makeHostExecutionSandboxRpcRuntime,
+  type ExecutionSandboxClientApi,
+  type ExecutionSandboxError,
+  type ExecutionSandboxMemoryClientOptions,
+  type ExecutionSandboxRpc,
+  type ExecutionSandboxRpcHandlers,
+  type ExecutionSandboxServiceApi,
+  type ExecutionSandboxServiceOptions
+} from "./execution-sandbox.js"
+export {
   Dock,
   DockClient,
   DockHandlersLive,

@@ -49,6 +49,11 @@ pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
 pub const EGRESS_POLICY_DECISION_RECORDED_EVENT: &str = "EgressPolicy.DecisionRecorded";
+pub const EXECUTION_SANDBOX_CREATE_METHOD: &str = "ExecutionSandbox.create";
+pub const EXECUTION_SANDBOX_RUN_METHOD: &str = "ExecutionSandbox.run";
+pub const EXECUTION_SANDBOX_DESTROY_METHOD: &str = "ExecutionSandbox.destroy";
+pub const EXECUTION_SANDBOX_IS_SUPPORTED_METHOD: &str = "ExecutionSandbox.isSupported";
+pub const EXECUTION_SANDBOX_EVENT: &str = "ExecutionSandbox.Event";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
@@ -60,6 +65,7 @@ pub const DEFAULT_MAX_BACKFILL_EVENTS: u64 = 1_024;
 pub const REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1087,6 +1093,520 @@ impl EgressPolicySupportedPayload {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExecutionSandboxActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExecutionSandboxRunStatus {
+    Completed,
+    Failed,
+    Timeout,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExecutionSandboxEventPhase {
+    Created,
+    RunStarted,
+    RunCompleted,
+    Destroyed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxActorPayload {
+    kind: ExecutionSandboxActorKind,
+    id: String,
+}
+
+impl ExecutionSandboxActorPayload {
+    pub fn new(kind: ExecutionSandboxActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn kind(&self) -> ExecutionSandboxActorKind {
+        self.kind
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxEnvironmentEntryPayload {
+    name: String,
+    value: String,
+}
+
+impl ExecutionSandboxEnvironmentEntryPayload {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxFilesystemPolicyPayload {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    read_roots: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    write_roots: Vec<String>,
+}
+
+impl ExecutionSandboxFilesystemPolicyPayload {
+    pub fn new(read_roots: Vec<String>, write_roots: Vec<String>) -> Self {
+        Self {
+            read_roots,
+            write_roots,
+        }
+    }
+
+    pub fn read_roots(&self) -> &[String] {
+        &self.read_roots
+    }
+
+    pub fn write_roots(&self) -> &[String] {
+        &self.write_roots
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxNetworkPolicyPayload {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    hosts: Vec<String>,
+}
+
+impl ExecutionSandboxNetworkPolicyPayload {
+    pub fn new(hosts: Vec<String>) -> Self {
+        Self { hosts }
+    }
+
+    pub fn hosts(&self) -> &[String] {
+        &self.hosts
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxBudgetPolicyPayload {
+    cpu_millis: u64,
+    memory_bytes: u64,
+    wall_clock_millis: u64,
+    stdout_bytes: u64,
+    stderr_bytes: u64,
+}
+
+impl ExecutionSandboxBudgetPolicyPayload {
+    pub fn new(
+        cpu_millis: u64,
+        memory_bytes: u64,
+        wall_clock_millis: u64,
+        stdout_bytes: u64,
+        stderr_bytes: u64,
+    ) -> Self {
+        Self {
+            cpu_millis,
+            memory_bytes,
+            wall_clock_millis,
+            stdout_bytes,
+            stderr_bytes,
+        }
+    }
+
+    pub fn cpu_millis(&self) -> u64 {
+        self.cpu_millis
+    }
+
+    pub fn memory_bytes(&self) -> u64 {
+        self.memory_bytes
+    }
+
+    pub fn wall_clock_millis(&self) -> u64 {
+        self.wall_clock_millis
+    }
+
+    pub fn stdout_bytes(&self) -> u64 {
+        self.stdout_bytes
+    }
+
+    pub fn stderr_bytes(&self) -> u64 {
+        self.stderr_bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxCleanupPolicyPayload {
+    kill_process_tree: bool,
+    remove_working_directory: bool,
+}
+
+impl ExecutionSandboxCleanupPolicyPayload {
+    pub fn new(kill_process_tree: bool, remove_working_directory: bool) -> Self {
+        Self {
+            kill_process_tree,
+            remove_working_directory,
+        }
+    }
+
+    pub fn kill_process_tree(&self) -> bool {
+        self.kill_process_tree
+    }
+
+    pub fn remove_working_directory(&self) -> bool {
+        self.remove_working_directory
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxPolicyPayload {
+    cwd: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    environment: Vec<ExecutionSandboxEnvironmentEntryPayload>,
+    #[serde(
+        default,
+        skip_serializing_if = "ExecutionSandboxFilesystemPolicyPayload::is_empty"
+    )]
+    filesystem: ExecutionSandboxFilesystemPolicyPayload,
+    #[serde(
+        default,
+        skip_serializing_if = "ExecutionSandboxNetworkPolicyPayload::is_empty"
+    )]
+    network: ExecutionSandboxNetworkPolicyPayload,
+    budgets: ExecutionSandboxBudgetPolicyPayload,
+    cleanup: ExecutionSandboxCleanupPolicyPayload,
+}
+
+impl ExecutionSandboxFilesystemPolicyPayload {
+    fn is_empty(&self) -> bool {
+        self.read_roots.is_empty() && self.write_roots.is_empty()
+    }
+}
+
+impl ExecutionSandboxNetworkPolicyPayload {
+    fn is_empty(&self) -> bool {
+        self.hosts.is_empty()
+    }
+}
+
+impl ExecutionSandboxPolicyPayload {
+    pub fn new(
+        cwd: impl Into<String>,
+        environment: Vec<ExecutionSandboxEnvironmentEntryPayload>,
+        filesystem: ExecutionSandboxFilesystemPolicyPayload,
+        network: ExecutionSandboxNetworkPolicyPayload,
+        budgets: ExecutionSandboxBudgetPolicyPayload,
+        cleanup: ExecutionSandboxCleanupPolicyPayload,
+    ) -> Self {
+        Self {
+            cwd: cwd.into(),
+            environment,
+            filesystem,
+            network,
+            budgets,
+            cleanup,
+        }
+    }
+
+    pub fn cwd(&self) -> &str {
+        &self.cwd
+    }
+
+    pub fn environment(&self) -> &[ExecutionSandboxEnvironmentEntryPayload] {
+        &self.environment
+    }
+
+    pub fn filesystem(&self) -> &ExecutionSandboxFilesystemPolicyPayload {
+        &self.filesystem
+    }
+
+    pub fn network(&self) -> &ExecutionSandboxNetworkPolicyPayload {
+        &self.network
+    }
+
+    pub fn budgets(&self) -> &ExecutionSandboxBudgetPolicyPayload {
+        &self.budgets
+    }
+
+    pub fn cleanup(&self) -> &ExecutionSandboxCleanupPolicyPayload {
+        &self.cleanup
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxCreatePayload {
+    actor: ExecutionSandboxActorPayload,
+    policy: ExecutionSandboxPolicyPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sandbox_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ExecutionSandboxCreatePayload {
+    pub fn new(
+        actor: ExecutionSandboxActorPayload,
+        policy: ExecutionSandboxPolicyPayload,
+        sandbox_id: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            policy,
+            sandbox_id,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &ExecutionSandboxActorPayload {
+        &self.actor
+    }
+
+    pub fn policy(&self) -> &ExecutionSandboxPolicyPayload {
+        &self.policy
+    }
+
+    pub fn sandbox_id(&self) -> Option<&str> {
+        self.sandbox_id.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxCreateResultPayload {
+    sandbox_id: String,
+    policy: ExecutionSandboxPolicyPayload,
+    state: String,
+}
+
+impl ExecutionSandboxCreateResultPayload {
+    pub fn created(sandbox_id: impl Into<String>, policy: ExecutionSandboxPolicyPayload) -> Self {
+        Self {
+            sandbox_id: sandbox_id.into(),
+            policy,
+            state: "created".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxRunPayload {
+    sandbox_id: String,
+    command: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    args: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ExecutionSandboxRunPayload {
+    pub fn new(
+        sandbox_id: impl Into<String>,
+        command: impl Into<String>,
+        args: Vec<String>,
+        run_id: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            sandbox_id: sandbox_id.into(),
+            command: command.into(),
+            args,
+            run_id,
+            trace_id,
+        }
+    }
+
+    pub fn sandbox_id(&self) -> &str {
+        &self.sandbox_id
+    }
+
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    pub fn args(&self) -> &[String] {
+        &self.args
+    }
+
+    pub fn run_id(&self) -> Option<&str> {
+        self.run_id.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxRunResultPayload {
+    sandbox_id: String,
+    run_id: String,
+    status: ExecutionSandboxRunStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exit_code: Option<u32>,
+    stdout: String,
+    stderr: String,
+}
+
+impl ExecutionSandboxRunResultPayload {
+    pub fn new(
+        sandbox_id: impl Into<String>,
+        run_id: impl Into<String>,
+        status: ExecutionSandboxRunStatus,
+        exit_code: Option<u32>,
+        stdout: impl Into<String>,
+        stderr: impl Into<String>,
+    ) -> Self {
+        Self {
+            sandbox_id: sandbox_id.into(),
+            run_id: run_id.into(),
+            status,
+            exit_code,
+            stdout: stdout.into(),
+            stderr: stderr.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxDestroyPayload {
+    sandbox_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ExecutionSandboxDestroyPayload {
+    pub fn new(sandbox_id: impl Into<String>, trace_id: Option<String>) -> Self {
+        Self {
+            sandbox_id: sandbox_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn sandbox_id(&self) -> &str {
+        &self.sandbox_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxDestroyResultPayload {
+    sandbox_id: String,
+    destroyed: bool,
+}
+
+impl ExecutionSandboxDestroyResultPayload {
+    pub fn destroyed(sandbox_id: impl Into<String>) -> Self {
+        Self {
+            sandbox_id: sandbox_id.into(),
+            destroyed: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ExecutionSandboxSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionSandboxEventPayload {
+    r#type: String,
+    timestamp: u64,
+    sandbox_id: String,
+    phase: ExecutionSandboxEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<ExecutionSandboxRunStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ExecutionSandboxEventPayload {
+    pub fn new(
+        timestamp: u64,
+        sandbox_id: impl Into<String>,
+        phase: ExecutionSandboxEventPhase,
+        run_id: Option<String>,
+        status: Option<ExecutionSandboxRunStatus>,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            r#type: "sandbox-event".to_string(),
+            timestamp,
+            sandbox_id: sandbox_id.into(),
+            phase,
+            run_id,
+            status,
+            reason,
+        }
+    }
+}
+
 impl WindowDestroyPayload {
     pub fn new(window_id: impl Into<String>) -> Self {
         Self {
@@ -1649,8 +2169,14 @@ mod tests {
         EgressPolicyDecisionPayload, EgressPolicyDecisionResultPayload,
         EgressPolicyDestinationPayload, EgressPolicyOutcome, EgressPolicyProtocol,
         EgressPolicyRecordPayload, EgressPolicyRecordResultPayload, EgressPolicyRuleEffect,
-        EgressPolicyRulePayload, EgressPolicySupportedPayload, HostProtocolEnvelope,
-        HostProtocolError, HostVersionPayload, RealtimeMediaDeviceKind,
+        EgressPolicyRulePayload, EgressPolicySupportedPayload, ExecutionSandboxActorKind,
+        ExecutionSandboxActorPayload, ExecutionSandboxBudgetPolicyPayload,
+        ExecutionSandboxCleanupPolicyPayload, ExecutionSandboxCreatePayload,
+        ExecutionSandboxEnvironmentEntryPayload, ExecutionSandboxEventPayload,
+        ExecutionSandboxEventPhase, ExecutionSandboxFilesystemPolicyPayload,
+        ExecutionSandboxNetworkPolicyPayload, ExecutionSandboxPolicyPayload,
+        ExecutionSandboxRunPayload, ExecutionSandboxRunStatus, ExecutionSandboxSupportedPayload,
+        HostProtocolEnvelope, HostProtocolError, HostVersionPayload, RealtimeMediaDeviceKind,
         RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
         RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
         RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
@@ -1662,7 +2188,8 @@ mod tests {
         WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights,
         DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
-        HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION, REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
+        EXECUTION_SANDBOX_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
+        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -2231,6 +2758,111 @@ mod tests {
             serde_json::to_string(&supported).expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
+    }
+
+    #[test]
+    fn execution_sandbox_payloads_serialize_canonically() {
+        let actor =
+            ExecutionSandboxActorPayload::new(ExecutionSandboxActorKind::Extension, "extension-1");
+        let policy = execution_sandbox_policy();
+        let create = ExecutionSandboxCreatePayload::new(
+            actor.clone(),
+            policy,
+            Some("sandbox-1".to_string()),
+            Some("trace-sandbox".to_string()),
+        );
+
+        assert_eq!(actor.kind(), ExecutionSandboxActorKind::Extension);
+        assert_eq!(actor.id(), "extension-1");
+        assert_eq!(create.policy().cwd(), "/tmp/app");
+        assert_eq!(
+            serde_json::to_string(&create).expect("create payload should encode"),
+            r#"{"actor":{"kind":"extension","id":"extension-1"},"policy":{"cwd":"/tmp/app","environment":[{"name":"PATH","value":"/usr/bin"}],"filesystem":{"readRoots":["/tmp/app"],"writeRoots":["/tmp/app/out"]},"network":{"hosts":["api.example.test"]},"budgets":{"cpuMillis":500,"memoryBytes":67108864,"wallClockMillis":1000,"stdoutBytes":1024,"stderrBytes":1024},"cleanup":{"killProcessTree":true,"removeWorkingDirectory":true}},"sandboxId":"sandbox-1","traceId":"trace-sandbox"}"#
+        );
+
+        let run = ExecutionSandboxRunPayload::new(
+            "sandbox-1",
+            "/usr/bin/node",
+            vec!["--version".to_string()],
+            Some("run-1".to_string()),
+            Some("trace-run".to_string()),
+        );
+        assert_eq!(run.sandbox_id(), "sandbox-1");
+        assert_eq!(run.command(), "/usr/bin/node");
+        assert_eq!(run.args(), &["--version".to_string()]);
+        assert_eq!(run.run_id(), Some("run-1"));
+        assert_eq!(run.trace_id(), Some("trace-run"));
+        assert_eq!(
+            serde_json::to_string(&run).expect("run payload should encode"),
+            r#"{"sandboxId":"sandbox-1","command":"/usr/bin/node","args":["--version"],"runId":"run-1","traceId":"trace-run"}"#
+        );
+
+        let event = ExecutionSandboxEventPayload::new(
+            1_710_000_000_000,
+            "sandbox-1",
+            ExecutionSandboxEventPhase::RunCompleted,
+            Some("run-1".to_string()),
+            Some(ExecutionSandboxRunStatus::Completed),
+            None,
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("event payload should encode"),
+            r#"{"type":"sandbox-event","timestamp":1710000000000,"sandboxId":"sandbox-1","phase":"run-completed","runId":"run-1","status":"completed"}"#
+        );
+
+        let supported =
+            ExecutionSandboxSupportedPayload::unsupported(EXECUTION_SANDBOX_UNSUPPORTED_REASON);
+        assert!(!supported.supported());
+        assert_eq!(
+            supported.reason(),
+            Some(EXECUTION_SANDBOX_UNSUPPORTED_REASON)
+        );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn execution_sandbox_create_rejects_excess_fields() {
+        let value = serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "policy": {
+                "cwd": "/tmp/app",
+                "budgets": {
+                    "cpuMillis": 500,
+                    "memoryBytes": 67108864,
+                    "wallClockMillis": 1000,
+                    "stdoutBytes": 1024,
+                    "stderrBytes": 1024
+                },
+                "cleanup": {
+                    "killProcessTree": true,
+                    "removeWorkingDirectory": true
+                }
+            },
+            "rules": []
+        });
+
+        let error = serde_json::from_value::<ExecutionSandboxCreatePayload>(value)
+            .expect_err("excess field should be rejected");
+        assert!(error.to_string().contains("unknown field `rules`"));
+    }
+
+    fn execution_sandbox_policy() -> ExecutionSandboxPolicyPayload {
+        ExecutionSandboxPolicyPayload::new(
+            "/tmp/app",
+            vec![ExecutionSandboxEnvironmentEntryPayload::new(
+                "PATH", "/usr/bin",
+            )],
+            ExecutionSandboxFilesystemPolicyPayload::new(
+                vec!["/tmp/app".to_string()],
+                vec!["/tmp/app/out".to_string()],
+            ),
+            ExecutionSandboxNetworkPolicyPayload::new(vec!["api.example.test".to_string()]),
+            ExecutionSandboxBudgetPolicyPayload::new(500, 67_108_864, 1_000, 1_024, 1_024),
+            ExecutionSandboxCleanupPolicyPayload::new(true, true),
+        )
     }
 
     #[test]

@@ -187,6 +187,33 @@ test("PermissionRegistry does not let narrower network policy cover ask-unknown 
   expect(granted.token).toBe("grant-1")
 })
 
+test("PermissionRegistry scopes process spawn grants by cwd and environment policy", async () => {
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
+  )
+
+  await Effect.runPromise(
+    registry.declare(processSpawn(["node"], ["/workspace/app"], "none"), { source: "manifest" })
+  )
+  const granted = await Effect.runPromise(
+    registry.check(processSpawn(["node"], ["/workspace/app/tasks"], "none"), context("window-main"))
+  )
+  const wrongCwd = await Effect.runPromiseExit(
+    registry.check(processSpawn(["node"], ["/tmp/app"], "none"), context("window-main"))
+  )
+  const wrongEnvironment = await Effect.runPromiseExit(
+    registry.check(processSpawn(["node"], ["/workspace/app"], "allowlist"), context("window-main"))
+  )
+
+  expect(granted.token).toBe("grant-1")
+  expectDenied(wrongCwd, (error) => {
+    expect(error.reason).toBe("default-deny")
+  })
+  expectDenied(wrongEnvironment, (error) => {
+    expect(error.reason).toBe("default-deny")
+  })
+})
+
 test("PermissionRegistry exposes decision history and live decision events for devtools", async () => {
   const registry = await Effect.runPromise(
     makePermissionRegistry({ traceId: () => "trace-devtools", nextToken: () => "grant-1" })
@@ -659,6 +686,19 @@ const networkConnect = (
   kind: "network.connect",
   hosts,
   askUnknownHosts,
+  audit: "always"
+})
+
+const processSpawn = (
+  commands: readonly string[],
+  cwd: readonly string[],
+  environment: "none" | "allowlist"
+): NormalizedCapability => ({
+  kind: "process.spawn",
+  commands,
+  cwd,
+  environment,
+  shell: false,
   audit: "always"
 })
 

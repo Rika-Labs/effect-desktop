@@ -83,6 +83,8 @@ Native service authors should use the internal native surface authoring path, no
 | `DiagnosticsBundle`    | Diagnostics export          | [native/diagnostics-bundle](reference/native/diagnostics-bundle.md)         |
 | `Dialog`               | File, save, message dialogs | [native/dialog](reference/native/dialog.md)                                 |
 | `Dock`                 | macOS dock                  | [native/dock](reference/native/dock.md)                                     |
+| `EgressPolicy`         | Network egress decisions    | [native/egress-policy](reference/native/egress-policy.md)                   |
+| `ExecutionSandbox`     | Isolated execution policy   | [native/execution-sandbox](reference/native/execution-sandbox.md)           |
 | `GlobalShortcut`       | OS keyboard shortcuts       | [native/global-shortcut](reference/native/global-shortcut.md)               |
 | `Menu`                 | App and window menus        | [native/menu](reference/native/menu.md)                                     |
 | `Notification`         | System notifications        | [native/notification](reference/native/notification.md)                     |
