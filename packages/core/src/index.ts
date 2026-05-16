@@ -30,6 +30,7 @@ import {
   DesktopWorkflowRegistry,
   DesktopWorkflowRegistryLive
 } from "./runtime/desktop-workflow-registry.js"
+import { snapshotDeclarationLayerSync } from "./runtime/desktop-declaration.js"
 import type {
   DesktopApp,
   DesktopConfig,
@@ -232,16 +233,12 @@ const snapshotStandalonePermissions = (
 ): ReadonlyArray<NormalizedCapability> => {
   if (permissions === undefined) return []
 
-  return Effect.runSync(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(
-          Layer.provideMerge(permissions, DesktopPermissionRegistryLive)
-        )
-        return yield* Context.get(context, DesktopPermissionRegistry).snapshot
-      })
-    )
-  )
+  return snapshotDeclarationLayerSync({
+    layer: permissions,
+    live: DesktopPermissionRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopPermissionRegistry).snapshot,
+    onAsyncBuild: (cause) => cause
+  })
 }
 
 const snapshotStandaloneWorkflows = <RIn, E>(
@@ -249,16 +246,12 @@ const snapshotStandaloneWorkflows = <RIn, E>(
 ): ReadonlyArray<DesktopWorkflowLayer<RIn, E>> => {
   if (workflows === undefined) return []
 
-  const snapshot = Effect.runSync(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(
-          Layer.provideMerge(workflows, DesktopWorkflowRegistryLive)
-        )
-        return yield* Context.get(context, DesktopWorkflowRegistry).snapshot
-      })
-    )
-  )
+  const snapshot = snapshotDeclarationLayerSync({
+    layer: workflows,
+    live: DesktopWorkflowRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopWorkflowRegistry).snapshot,
+    onAsyncBuild: (cause) => cause
+  })
 
   return snapshot as ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }

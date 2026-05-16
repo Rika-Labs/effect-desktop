@@ -71,6 +71,7 @@ import {
   declarationLayer,
   emptyDeclarationLayer,
   mergeDeclarationLayers,
+  snapshotDeclarationLayerSync,
   type DesktopDeclarationLayer
 } from "./desktop-declaration.js"
 
@@ -800,30 +801,22 @@ export class DesktopNativeRegistryAsyncBuildError extends Data.TaggedError(
 
 const snapshotWindowRegistrationsSync = <RIn>(
   windows: DesktopWindowsLayer<RIn>
-): ReadonlyArray<DesktopWindowRegistration> => {
-  const composed = Layer.provideMerge(windows, DesktopWindowRegistryLive)
-  try {
-    return Effect.runSync(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const context = yield* Layer.build(composed)
-          const registry = Context.get(context, DesktopWindowRegistry)
-          return yield* registry.snapshot
-        })
-      )
-    )
-  } catch (cause) {
-    throw new DesktopWindowRegistryAsyncBuildError({
-      message:
-        "Desktop.make(...) / Desktop.manifest(...) requires the windows layer to build " +
-        "synchronously. A layer composed into Desktop.make({ windows }) requires async work " +
-        "to construct (e.g. Layer.scoped(Effect.promise(...))) — move async work inside each " +
-        "window's `services` layer (which is built inside the per-window scope at open time) " +
-        "instead. See `Desktop.window` for the sync-only constraint on registration.",
-      cause
-    })
-  }
-}
+): ReadonlyArray<DesktopWindowRegistration> =>
+  snapshotDeclarationLayerSync({
+    layer: windows,
+    live: DesktopWindowRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopWindowRegistry).snapshot,
+    onAsyncBuild: (cause) =>
+      new DesktopWindowRegistryAsyncBuildError({
+        message:
+          "Desktop.make(...) / Desktop.manifest(...) requires the windows layer to build " +
+          "synchronously. A layer composed into Desktop.make({ windows }) requires async work " +
+          "to construct (e.g. Layer.scoped(Effect.promise(...))) — move async work inside each " +
+          "window's `services` layer (which is built inside the per-window scope at open time) " +
+          "instead. See `Desktop.window` for the sync-only constraint on registration.",
+        cause
+      })
+  })
 
 const projectWindowRecord = (
   registrations: ReadonlyArray<DesktopWindowRegistration>
@@ -915,55 +908,41 @@ const snapshotRegistrationsSync = <RIn, E>(
   rpcs: DesktopConfig<RIn, E>["rpcs"]
 ): ReadonlyArray<AnyDesktopRpcRegistration> => {
   if (rpcs === undefined) return []
-  const composed = Layer.provideMerge(rpcs, DesktopRpcRegistryLive)
-  try {
-    return Effect.runSync(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const context = yield* Layer.build(composed)
-          const registry = Context.get(context, DesktopRpcRegistry)
-          return yield* registry.snapshot
-        })
-      )
-    )
-  } catch (cause) {
-    throw new DesktopRpcRegistryAsyncBuildError({
-      message:
-        "Desktop.manifest(...) requires the rpcs layer to build synchronously. " +
-        "A layer composed into Desktop.make({ rpcs }) requires async work to construct " +
-        "(e.g. Layer.scoped(Effect.promise(...))) — move async work inside handler bodies " +
-        "(e.g. Effect.tryPromise inside RpcGroup.toLayer({ ... })) instead. " +
-        "See `Desktop.rpc` for the sync-only constraint.",
-      cause
-    })
-  }
+  return snapshotDeclarationLayerSync({
+    layer: rpcs,
+    live: DesktopRpcRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopRpcRegistry).snapshot,
+    onAsyncBuild: (cause) =>
+      new DesktopRpcRegistryAsyncBuildError({
+        message:
+          "Desktop.manifest(...) requires the rpcs layer to build synchronously. " +
+          "A layer composed into Desktop.make({ rpcs }) requires async work to construct " +
+          "(e.g. Layer.scoped(Effect.promise(...))) — move async work inside handler bodies " +
+          "(e.g. Effect.tryPromise inside RpcGroup.toLayer({ ... })) instead. " +
+          "See `Desktop.rpc` for the sync-only constraint.",
+        cause
+      })
+  })
 }
 
 const snapshotNativeRegistrationsSync = (
   nativeLayer: DesktopNativeLayer | undefined
 ): ReadonlyArray<AnyDesktopNativeRegistration> => {
   if (nativeLayer === undefined) return []
-  const composed = Layer.provideMerge(nativeLayer, DesktopNativeRegistryLive)
-  try {
-    return Effect.runSync(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const context = yield* Layer.build(composed)
-          const registry = Context.get(context, DesktopNativeRegistry)
-          return yield* registry.snapshot
-        })
-      )
-    )
-  } catch (cause) {
-    throw new DesktopNativeRegistryAsyncBuildError({
-      message:
-        "Desktop.make(...) / Desktop.manifest(...) requires the native layer to build " +
-        "synchronously. A layer composed into Desktop.make({ native }) requires async work " +
-        "to construct (e.g. Layer.scoped(Effect.promise(...))) — register native surfaces " +
-        "through Desktop.native(...) and keep async work inside native handlers instead.",
-      cause
-    })
-  }
+  return snapshotDeclarationLayerSync({
+    layer: nativeLayer,
+    live: DesktopNativeRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopNativeRegistry).snapshot,
+    onAsyncBuild: (cause) =>
+      new DesktopNativeRegistryAsyncBuildError({
+        message:
+          "Desktop.make(...) / Desktop.manifest(...) requires the native layer to build " +
+          "synchronously. A layer composed into Desktop.make({ native }) requires async work " +
+          "to construct (e.g. Layer.scoped(Effect.promise(...))) — register native surfaces " +
+          "through Desktop.native(...) and keep async work inside native handlers instead.",
+        cause
+      })
+  })
 }
 
 const nativeRpcRegistrationsSync = (
@@ -980,81 +959,60 @@ const snapshotPermissionsSync = (
   permissions: DesktopPermissionsLayer | undefined
 ): ReadonlyArray<NormalizedCapability> => {
   if (permissions === undefined) return []
-  const composed = Layer.provideMerge(permissions, DesktopPermissionRegistryLive)
-  try {
-    return Effect.runSync(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const context = yield* Layer.build(composed)
-          const registry = Context.get(context, DesktopPermissionRegistry)
-          return yield* registry.snapshot
-        })
-      )
-    )
-  } catch (cause) {
-    throw new DesktopPermissionRegistryAsyncBuildError({
-      message:
-        "Desktop.make(...) requires the permissions layer to build synchronously. " +
-        "A layer composed into Desktop.make({ permissions }) requires async work to construct " +
-        "(e.g. Layer.scoped(Effect.promise(...))) — pass capabilities through `Desktop.permission(...)` " +
-        "and keep async policy work inside runtime services instead.",
-      cause
-    })
-  }
+  return snapshotDeclarationLayerSync({
+    layer: permissions,
+    live: DesktopPermissionRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopPermissionRegistry).snapshot,
+    onAsyncBuild: (cause) =>
+      new DesktopPermissionRegistryAsyncBuildError({
+        message:
+          "Desktop.make(...) requires the permissions layer to build synchronously. " +
+          "A layer composed into Desktop.make({ permissions }) requires async work to construct " +
+          "(e.g. Layer.scoped(Effect.promise(...))) — pass capabilities through `Desktop.permission(...)` " +
+          "and keep async policy work inside runtime services instead.",
+        cause
+      })
+  })
 }
 
 const snapshotWorkflowsSync = <RIn, E>(
   workflows: DesktopConfig<RIn, E>["workflows"]
 ): ReadonlyArray<DesktopWorkflowRegistration<E, RIn>> => {
   if (workflows === undefined) return []
-  const composed = Layer.provideMerge(workflows, DesktopWorkflowRegistryLive)
-  try {
-    return Effect.runSync(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const context = yield* Layer.build(composed)
-          const registry = Context.get(context, DesktopWorkflowRegistry)
-          return yield* registry.snapshot
-        })
-      )
-    ) as ReadonlyArray<DesktopWorkflowRegistration<E, RIn>>
-  } catch (cause) {
-    throw new DesktopWorkflowRegistryAsyncBuildError({
-      message:
-        "Desktop.make(...) requires the workflows layer to build synchronously. " +
-        "A layer composed into Desktop.make({ workflows }) requires async work to construct " +
-        "(e.g. Layer.scoped(Effect.promise(...))) — pass workflow layers through `Desktop.workflow(...)` " +
-        "and keep async work inside workflow effects instead.",
-      cause
-    })
-  }
+  return snapshotDeclarationLayerSync({
+    layer: workflows,
+    live: DesktopWorkflowRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopWorkflowRegistry).snapshot,
+    onAsyncBuild: (cause) =>
+      new DesktopWorkflowRegistryAsyncBuildError({
+        message:
+          "Desktop.make(...) requires the workflows layer to build synchronously. " +
+          "A layer composed into Desktop.make({ workflows }) requires async work to construct " +
+          "(e.g. Layer.scoped(Effect.promise(...))) — pass workflow layers through `Desktop.workflow(...)` " +
+          "and keep async work inside workflow effects instead.",
+        cause
+      })
+  }) as ReadonlyArray<DesktopWorkflowRegistration<E, RIn>>
 }
 
 const snapshotProvidersSync = (
   providers: DesktopProvidersLayer | undefined
 ): ReadonlyArray<DesktopProviderDescriptor> => {
   if (providers === undefined) return []
-  const composed = Layer.provideMerge(providers, DesktopProviderRegistryLive)
-  try {
-    return Effect.runSync(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const context = yield* Layer.build(composed)
-          const registry = Context.get(context, DesktopProviderRegistry)
-          return yield* registry.snapshot
-        })
-      )
-    )
-  } catch (cause) {
-    throw new DesktopProviderRegistryAsyncBuildError({
-      message:
-        "Desktop.make(...) requires the providers layer to build synchronously. " +
-        "A layer composed into Desktop.make({ providers }) requires async work to construct " +
-        "(e.g. Layer.scoped(Effect.promise(...))) — pass provider descriptors through `Desktop.provider(...)` " +
-        "and keep async work inside provider layers instead.",
-      cause
-    })
-  }
+  return snapshotDeclarationLayerSync({
+    layer: providers,
+    live: DesktopProviderRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopProviderRegistry).snapshot,
+    onAsyncBuild: (cause) =>
+      new DesktopProviderRegistryAsyncBuildError({
+        message:
+          "Desktop.make(...) requires the providers layer to build synchronously. " +
+          "A layer composed into Desktop.make({ providers }) requires async work to construct " +
+          "(e.g. Layer.scoped(Effect.promise(...))) — pass provider descriptors through `Desktop.provider(...)` " +
+          "and keep async work inside provider layers instead.",
+        cause
+      })
+  })
 }
 
 export const app = <RIn = never, E = never>(

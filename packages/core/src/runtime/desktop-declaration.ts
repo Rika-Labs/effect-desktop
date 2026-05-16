@@ -1,4 +1,4 @@
-import { Layer } from "effect"
+import { Context, Effect, Layer } from "effect"
 
 export declare const DesktopDeclarationLayerTypeId: unique symbol
 
@@ -30,4 +30,25 @@ export const mergeDeclarationLayers = <Registry, RIn = never, E = never>(
   return firstLayer === undefined
     ? emptyDeclarationLayer<Registry, RIn, E>()
     : declarationLayer(Layer.mergeAll(firstLayer, ...remainingLayers))
+}
+
+export const snapshotDeclarationLayerSync = <Registry, RIn, E, Snapshot>(options: {
+  readonly layer: DesktopDeclarationLayer<Registry, RIn, E>
+  readonly live: Layer.Layer<Registry>
+  readonly snapshot: (context: Context.Context<Registry>) => Effect.Effect<Snapshot>
+  readonly onAsyncBuild: (cause: unknown) => unknown
+}): Snapshot => {
+  const composed = Layer.provideMerge(options.layer, options.live)
+  try {
+    return Effect.runSync(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(composed)
+          return yield* options.snapshot(context)
+        })
+      )
+    )
+  } catch (cause) {
+    throw options.onAsyncBuild(cause)
+  }
 }
