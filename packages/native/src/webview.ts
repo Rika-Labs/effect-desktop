@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
@@ -14,6 +13,7 @@ import {
 import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 export * from "./contracts/webview.js"
 import {
@@ -392,42 +392,11 @@ const webViewClientFromRpcClient = (
           runWebViewRpc(client["WebView.destroy"](decoded), "WebView.destroy")
         )
       ),
-    onNavigationBlocked: () => subscribeWebViewEvent(exchange, "WebView.NavigationBlocked")
+    onNavigationBlocked: () =>
+      subscribeNativeEvent(exchange, "WebView.NavigationBlocked", WebViewNavigationBlockedEvent)
   }
 
   return Object.freeze(webViewClient)
-}
-
-const subscribeWebViewEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: "WebView.NavigationBlocked"
-): Stream.Stream<WebViewNavigationBlockedEvent, WebViewError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeWebViewEventEnvelope(method, envelope)))
-}
-
-const decodeWebViewEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<WebViewNavigationBlockedEvent, WebViewError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(WebViewNavigationBlockedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
 }
 
 const defaultWebViewCreateOptions = (): WebViewCreateOptions => ({

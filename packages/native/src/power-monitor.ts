@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   RpcGroup,
@@ -12,6 +11,7 @@ import {
 import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 import {
   PowerMonitorIsSupportedInput,
@@ -38,7 +38,7 @@ export const PowerMonitorRpcEvents = Object.freeze({
   Resume: { payload: PowerMonitorResumeEvent },
   Shutdown: { payload: PowerMonitorShutdownEvent },
   PowerSourceChanged: { payload: PowerMonitorSourceChangedEvent }
-})
+}) satisfies Record<string, { readonly payload: Schema.Codec<unknown, unknown, never, never> }>
 
 export type PowerMonitorRpcEvents = typeof PowerMonitorRpcEvents
 
@@ -136,13 +136,12 @@ const powerMonitorClientFromRpcClient = (
 ): PowerMonitorClientApi => {
   return Object.freeze({
     onSuspend: () =>
-      subscribePowerMonitorEvent(exchange, "PowerMonitor.Suspend", PowerMonitorSuspendEvent),
-    onResume: () =>
-      subscribePowerMonitorEvent(exchange, "PowerMonitor.Resume", PowerMonitorResumeEvent),
+      subscribeNativeEvent(exchange, "PowerMonitor.Suspend", PowerMonitorSuspendEvent),
+    onResume: () => subscribeNativeEvent(exchange, "PowerMonitor.Resume", PowerMonitorResumeEvent),
     onShutdown: () =>
-      subscribePowerMonitorEvent(exchange, "PowerMonitor.Shutdown", PowerMonitorShutdownEvent),
+      subscribeNativeEvent(exchange, "PowerMonitor.Shutdown", PowerMonitorShutdownEvent),
     onPowerSourceChanged: () =>
-      subscribePowerMonitorEvent(
+      subscribeNativeEvent(
         exchange,
         "PowerMonitor.PowerSourceChanged",
         PowerMonitorSourceChangedEvent
@@ -153,40 +152,6 @@ const powerMonitorClientFromRpcClient = (
         "PowerMonitor.isSupported"
       )
   } satisfies PowerMonitorClientApi)
-}
-
-const subscribePowerMonitorEvent = <A>(
-  exchange: BridgeClientExchange | undefined,
-  method: string,
-  schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, PowerMonitorError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodePowerMonitorEventEnvelope(method, schema, envelope)))
-}
-
-const decodePowerMonitorEventEnvelope = <A>(
-  operation: string,
-  schema: Schema.Codec<A, unknown, never, never>,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<A, PowerMonitorError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(schema)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
 }
 
 const runPowerMonitorRpc = <A, E>(

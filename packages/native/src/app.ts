@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -14,6 +13,7 @@ import {
 import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 export * from "./contracts/app.js"
 import {
@@ -278,47 +278,13 @@ const appClientFromRpcClient = (
         )
       ),
     onSecondInstance: () =>
-      subscribeAppEvent(exchange, "App.onSecondInstance", AppSecondInstanceEvent),
-    onOpenFile: () => subscribeAppEvent(exchange, "App.onOpenFile", AppOpenFileEvent),
-    onOpenUrl: () => subscribeAppEvent(exchange, "App.onOpenUrl", AppOpenUrlEvent),
-    onBeforeQuit: () => subscribeAppEvent(exchange, "App.onBeforeQuit", AppBeforeQuitEvent)
+      subscribeNativeEvent(exchange, "App.onSecondInstance", AppSecondInstanceEvent),
+    onOpenFile: () => subscribeNativeEvent(exchange, "App.onOpenFile", AppOpenFileEvent),
+    onOpenUrl: () => subscribeNativeEvent(exchange, "App.onOpenUrl", AppOpenUrlEvent),
+    onBeforeQuit: () => subscribeNativeEvent(exchange, "App.onBeforeQuit", AppBeforeQuitEvent)
   }
 
   return Object.freeze(appClient)
-}
-
-const subscribeAppEvent = <A>(
-  exchange: BridgeClientExchange | undefined,
-  method: "App.onSecondInstance" | "App.onOpenFile" | "App.onOpenUrl" | "App.onBeforeQuit",
-  schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, AppError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeAppEventEnvelope(method, schema, envelope)))
-}
-
-const decodeAppEventEnvelope = <A>(
-  operation: string,
-  schema: Schema.Codec<A, unknown, never, never>,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<A, AppError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(schema)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
 }
 
 const decodeAppQuitInput = (

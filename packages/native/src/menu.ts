@@ -15,7 +15,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -26,6 +25,7 @@ import {
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 export * from "./contracts/menu.js"
 import { bindScopedCommand } from "./command-binding.js"
@@ -325,42 +325,10 @@ const menuClientFromRpcClient = (
           runMenuRpc(client["Menu.capability"](decoded), "Menu.capability")
         )
       ),
-    onActivated: () => subscribeMenuEvent(exchange, "Menu.Activated")
+    onActivated: () => subscribeNativeEvent(exchange, "Menu.Activated", MenuActivatedEvent)
   }
 
   return Object.freeze(menuClient)
-}
-
-const subscribeMenuEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: "Menu.Activated"
-): Stream.Stream<MenuActivatedEvent, MenuError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeMenuEventEnvelope(method, envelope)))
-}
-
-const decodeMenuEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<MenuActivatedEvent, MenuError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(MenuActivatedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
 }
 
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>

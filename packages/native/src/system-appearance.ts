@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
@@ -13,6 +12,7 @@ import {
 import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 import {
   type SystemAppearanceColor,
@@ -224,15 +224,18 @@ export const SystemAppearanceSurface = NativeSurface.make(
     handlers: SystemAppearanceHandlersLive,
     bridgeClient: (client, exchange) =>
       systemAppearanceClientFromRpcClient(client, () =>
-        subscribeSystemAppearanceEvent(exchange, "SystemAppearance.AppearanceChanged")
+        subscribeNativeEvent(
+          exchange,
+          "SystemAppearance.AppearanceChanged",
+          SystemAppearanceChangedEvent
+        )
       ),
     client: (client) =>
       systemAppearanceClientFromRpcClient(client, () =>
-        Stream.fail(
-          makeHostProtocolInvalidOutputError(
-            "SystemAppearance.AppearanceChanged",
-            "event exchange does not support subscriptions"
-          )
+        subscribeNativeEvent(
+          undefined,
+          "SystemAppearance.AppearanceChanged",
+          SystemAppearanceChangedEvent
         )
       )
   }
@@ -280,38 +283,6 @@ const systemAppearanceClientFromRpcClient = (
         "SystemAppearance.isSupported"
       )
   } satisfies SystemAppearanceClientApi)
-}
-
-const subscribeSystemAppearanceEvent = (
-  exchange: BridgeClientExchange,
-  method: "SystemAppearance.AppearanceChanged"
-): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> => {
-  if (exchange.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeSystemAppearanceEventEnvelope(method, envelope)))
-}
-
-const decodeSystemAppearanceEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<SystemAppearanceChangedEvent, SystemAppearanceError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(SystemAppearanceChangedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
 }
 
 function systemAppearanceRpc<

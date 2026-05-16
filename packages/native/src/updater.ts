@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -14,6 +13,7 @@ import {
 import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 import {
   UpdaterCheckInput,
@@ -196,15 +196,20 @@ export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
   handlers: UpdaterHandlersLive,
   bridgeClient: (client, exchange) =>
     updaterClientFromRpcClient(client, () =>
-      subscribeUpdaterEvent(exchange, "Updater.PreparingRestart")
+      subscribeNativeEvent(
+        exchange,
+        "Updater.PreparingRestart",
+        UpdaterPreparingRestartEvent,
+        StrictParseOptions
+      )
     ),
   client: (client) =>
     updaterClientFromRpcClient(client, () =>
-      Stream.fail(
-        makeHostProtocolInvalidOutputError(
-          "Updater.PreparingRestart",
-          "event exchange does not support subscriptions"
-        )
+      subscribeNativeEvent(
+        undefined,
+        "Updater.PreparingRestart",
+        UpdaterPreparingRestartEvent,
+        StrictParseOptions
       )
     )
 })
@@ -250,37 +255,6 @@ const updaterClientFromRpcClient = (
       runUpdaterRpc(client["Updater.readyForRestart"](undefined), "Updater.readyForRestart"),
     onPreparingRestart
   } satisfies UpdaterClientApi)
-}
-
-const subscribeUpdaterEvent = (
-  exchange: BridgeClientExchange,
-  method: "Updater.PreparingRestart"
-): Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never> => {
-  if (exchange.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeUpdaterEventEnvelope(method, envelope)))
-}
-
-const decodeUpdaterEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<UpdaterPreparingRestartEvent, UpdaterError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(UpdaterPreparingRestartEvent)(envelope.payload, StrictParseOptions),
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-  )
 }
 
 const decodeUpdaterCheckInput = (

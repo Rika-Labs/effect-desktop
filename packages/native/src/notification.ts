@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -14,6 +13,7 @@ import {
 import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 import {
   NotificationActionEvent,
@@ -254,47 +254,11 @@ const notificationClientFromRpcClient = (
         client["Notification.getPermissionStatus"](undefined),
         "Notification.getPermissionStatus"
       ),
-    onClick: () =>
-      subscribeNotificationEvent(exchange, "Notification.Click", NotificationClickEvent),
-    onAction: () =>
-      subscribeNotificationEvent(exchange, "Notification.Action", NotificationActionEvent)
+    onClick: () => subscribeNativeEvent(exchange, "Notification.Click", NotificationClickEvent),
+    onAction: () => subscribeNativeEvent(exchange, "Notification.Action", NotificationActionEvent)
   }
 
   return Object.freeze(notificationClient)
-}
-
-const subscribeNotificationEvent = <A>(
-  exchange: BridgeClientExchange | undefined,
-  method: string,
-  schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, NotificationError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeNotificationEventEnvelope(method, schema, envelope)))
-}
-
-const decodeNotificationEventEnvelope = <A>(
-  operation: string,
-  schema: Schema.Codec<A, unknown, never, never>,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<A, NotificationError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(schema)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
 }
 
 const toNotificationShowInput = (input: NotificationShowOptions): unknown => ({

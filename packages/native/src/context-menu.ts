@@ -15,7 +15,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -26,6 +25,7 @@ import {
 } from "@effect-desktop/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
@@ -246,42 +246,11 @@ const contextMenuClientFromRpcClient = (
           runContextMenuRpc(client["ContextMenu.bindCommand"](decoded), "ContextMenu.bindCommand")
         )
       ),
-    onActivated: () => subscribeContextMenuEvent(exchange, "ContextMenu.Activated")
+    onActivated: () =>
+      subscribeNativeEvent(exchange, "ContextMenu.Activated", ContextMenuActivatedEvent)
   }
 
   return Object.freeze(contextMenuClient)
-}
-
-const subscribeContextMenuEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: "ContextMenu.Activated"
-): Stream.Stream<ContextMenuActivatedEvent, ContextMenuError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeContextMenuEventEnvelope(method, envelope)))
-}
-
-const decodeContextMenuEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<ContextMenuActivatedEvent, ContextMenuError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(ContextMenuActivatedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
 }
 
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>

@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -14,6 +13,7 @@ import {
 import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 import {
   TrayActivatedEvent,
@@ -228,43 +228,11 @@ const trayClientFromRpcClient = (
       decodeTrayDestroyInput({ tray: toTrayHandle(tray) }).pipe(
         Effect.flatMap((decoded) => runTrayRpc(client["Tray.destroy"](decoded), "Tray.destroy"))
       ),
-    onActivated: () => subscribeTrayEvent(exchange, "Tray.Activated"),
+    onActivated: () => subscribeNativeEvent(exchange, "Tray.Activated", TrayActivatedEvent),
     isSupported: () => runTrayRpc(client["Tray.isSupported"](undefined), "Tray.isSupported")
   }
 
   return Object.freeze(trayClient)
-}
-
-const subscribeTrayEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: "Tray.Activated"
-): Stream.Stream<TrayActivatedEvent, TrayError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeTrayEventEnvelope(method, envelope)))
-}
-
-const decodeTrayEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<TrayActivatedEvent, TrayError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(TrayActivatedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
 }
 
 const toTrayHandle = (handle: TrayHandle): TrayHandle =>
