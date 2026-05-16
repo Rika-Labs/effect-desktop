@@ -198,14 +198,16 @@ export interface WebViewServiceApi extends Omit<WebViewClientApi, "create" | "ca
 
 export class WebView extends Context.Service<WebView, WebViewServiceApi>()(
   "@effect-desktop/native/WebView"
-) {}
+) {
+  static readonly layer = Layer.effect(WebView)(
+    Effect.gen(function* () {
+      const client = yield* WebViewClient
+      return WebView.of(makeWebViewService(client))
+    })
+  )
+}
 
-export const WebViewLive = Layer.effect(WebView)(
-  Effect.gen(function* () {
-    const client = yield* WebViewClient
-    return makeWebViewService(client)
-  })
-)
+export const WebViewLive = WebView.layer
 
 export const makeWebViewClientLayer = (client: WebViewClientApi): Layer.Layer<WebViewClient> =>
   Layer.succeed(WebViewClient)(client)

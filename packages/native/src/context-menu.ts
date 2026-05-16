@@ -113,19 +113,21 @@ export interface ContextMenuServiceApi extends Omit<ContextMenuClientApi, "bindC
 
 export class ContextMenu extends Context.Service<ContextMenu, ContextMenuServiceApi>()(
   "@effect-desktop/native/ContextMenu"
-) {}
+) {
+  static readonly layer = Layer.effect(ContextMenu)(
+    Effect.gen(function* () {
+      const client = yield* ContextMenuClient
+      return ContextMenu.of({
+        show: (input) => client.show(input),
+        buildFromTemplate: (input) => client.buildFromTemplate(input),
+        bindCommand: (itemId, commandId) => bindContextMenuCommand(client, itemId, commandId),
+        onActivated: () => client.onActivated()
+      } satisfies ContextMenuServiceApi)
+    })
+  )
+}
 
-export const ContextMenuLive = Layer.effect(ContextMenu)(
-  Effect.gen(function* () {
-    const client = yield* ContextMenuClient
-    return Object.freeze({
-      show: (input) => client.show(input),
-      buildFromTemplate: (input) => client.buildFromTemplate(input),
-      bindCommand: (itemId, commandId) => bindContextMenuCommand(client, itemId, commandId),
-      onActivated: () => client.onActivated()
-    } satisfies ContextMenuServiceApi)
-  })
-)
+export const ContextMenuLive = ContextMenu.layer
 
 const bindContextMenuCommand = (
   client: ContextMenuClientApi,

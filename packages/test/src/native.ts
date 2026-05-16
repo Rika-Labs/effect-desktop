@@ -3,9 +3,6 @@ import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
 import {
   makePermissionRegistry,
   NormalizedCapability,
-  DesktopNativeRegistry,
-  DesktopNativeRegistryLive,
-  DesktopPermissionRegistryLive,
   PermissionRegistry,
   ResourceRegistry,
   ResourceRegistryLive,
@@ -370,20 +367,7 @@ function testNativeSurface(surface: {
 }
 
 function snapshotTestNativeSurfaces(): readonly TestNativeSurface[] {
-  const nativeLayer = Layer.provideMerge(
-    Native.capabilities(Native.all),
-    Layer.mergeAll(DesktopNativeRegistryLive, DesktopPermissionRegistryLive)
-  )
-  const registrations = Effect.runSync(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(nativeLayer)
-        const registry = Context.get(context, DesktopNativeRegistry)
-        return yield* registry.snapshot
-      })
-    )
-  )
-  return Object.freeze(registrations.map(testNativeSurface))
+  return Object.freeze(Native.all.surfaces.map(testNativeSurface))
 }
 
 const nativeInvokeCapabilities = (): Effect.Effect<

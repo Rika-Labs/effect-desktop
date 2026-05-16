@@ -4,8 +4,7 @@ import { pathToFileURL } from "node:url"
 import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
 import { Config, ConfigProvider, Data, Effect, Exit, Layer, Option, Schema, Scope } from "effect"
 
-import type { WindowSpec } from "./desktop-app.js"
-import type { DesktopWindowRegistration } from "./desktop-window-registry.js"
+import type { DesktopWindowRegistration, WindowSpec } from "./desktop-app.js"
 import { ResourceOwner } from "./resource-owner.js"
 import { makeWindowContext, windowContextLayer } from "./window-context.js"
 
@@ -185,13 +184,10 @@ const openSingleWindow = (
         registration.services,
         Layer.merge(windowContext, resourceOwner)
       )
-      yield* (
-        Layer.buildWithScope(services, windowScope) as Effect.Effect<
-          unknown,
-          HostProtocolError,
-          never
-        >
-      ).pipe(Effect.tapError(() => closeWindowAndScope(windows, windowScope, opened.windowId)))
+      const buildServices = trustWindowServicesBuild(Layer.buildWithScope(services, windowScope))
+      yield* buildServices.pipe(
+        Effect.tapError(() => closeWindowAndScope(windows, windowScope, opened.windowId))
+      )
     }
 
     yield* Scope.addFinalizer(windowScope, windows.destroy(opened.windowId).pipe(Effect.ignore))
@@ -206,6 +202,14 @@ const openSingleWindow = (
       spec: registration.spec
     } as const
   })
+
+const trustWindowServicesBuild = (
+  effect: Effect.Effect<unknown, unknown, unknown>
+): Effect.Effect<unknown, HostProtocolError, never> =>
+  // Window service layers are authored by Desktop.window(..., services) and scoped by
+  // this supervisor. The public supervisor contract has historically exposed host
+  // protocol startup failures only, so keep the recovery boundary local.
+  effect as Effect.Effect<unknown, HostProtocolError, never>
 
 const closeWindowAndScope = (
   windows: HostWindowClient,
@@ -222,7 +226,12 @@ const recordToRegistrations = (
 ): ReadonlyArray<DesktopWindowRegistration> =>
   Object.freeze(
     Object.entries(windows).map(([id, spec]) =>
-      Object.freeze({ id, spec, services: undefined } satisfies DesktopWindowRegistration)
+      Object.freeze({
+        _tag: "DesktopWindowRegistration",
+        id,
+        spec,
+        services: undefined
+      } satisfies DesktopWindowRegistration)
     )
   )
 
@@ -295,6 +304,7 @@ const projectRegistrationsWithServices = (
   return Object.freeze(
     validated.map((reg, index) =>
       Object.freeze({
+        _tag: "DesktopWindowRegistration",
         id: reg.id,
         spec: Object.freeze({ ...reg.spec }),
         services: (raw[index]?.services ?? undefined) as DesktopWindowRegistration["services"]

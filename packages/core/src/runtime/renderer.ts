@@ -58,4 +58,4 @@ export {
   type DesktopFramework
 } from "./desktop-errors.js"
 export type { DesktopAppManifest, DesktopRpcsLayer } from "./desktop-app.js"
-export type { DesktopRpcRegistration, DesktopRpcRegistrationGroup } from "./desktop-rpc-registry.js"
+export type { DesktopRpcRegistration, DesktopRpcRegistrationGroup } from "./desktop-app.js"

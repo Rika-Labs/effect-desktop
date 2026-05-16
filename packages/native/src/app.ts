@@ -148,14 +148,16 @@ export interface AppServiceApi extends Omit<AppClientApi, "quit" | "restart"> {
   readonly restart: (input?: AppRestartOptions) => Effect.Effect<void, AppError, never>
 }
 
-export class App extends Context.Service<App, AppServiceApi>()("@effect-desktop/native/App") {}
+export class App extends Context.Service<App, AppServiceApi>()("@effect-desktop/native/App") {
+  static readonly layer = Layer.effect(App)(
+    Effect.gen(function* () {
+      const client = yield* AppClient
+      return App.of(makeAppService(client))
+    })
+  )
+}
 
-export const AppLive = Layer.effect(App)(
-  Effect.gen(function* () {
-    const client = yield* AppClient
-    return makeAppService(client)
-  })
-)
+export const AppLive = App.layer
 
 export const makeAppClientLayer = (client: AppClientApi): Layer.Layer<AppClient> =>
   Layer.succeed(AppClient)(client)

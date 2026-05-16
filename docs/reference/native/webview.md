@@ -38,11 +38,12 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 Desktop.make({
   id: "com.acme.webview",
   windows: Desktop.window("main", { title: "WebView" }),
-  native: Desktop.native(Native.WebView.all)
+  native: Desktop.native(Native.WebView),
+  permissions: Desktop.permissions(...Native.Permissions.webView.all.map(Desktop.permission))
 })
 ```
 
-`Native.WebView.all` registers the WebView surface and grants WebView authority.
+`Native.WebView` registers the WebView surface. `Native.Permissions.webView.all` grants WebView authority.
 `webViewCapability(...)` is a platform and runtime-mode support helper; it does not grant permission.
 
 ## Errors

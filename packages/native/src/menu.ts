@@ -150,14 +150,16 @@ export interface MenuServiceApi extends Omit<MenuClientApi, "bindCommand" | "cap
   ) => Effect.Effect<boolean, MenuError, never>
 }
 
-export class Menu extends Context.Service<Menu, MenuServiceApi>()("@effect-desktop/native/Menu") {}
+export class Menu extends Context.Service<Menu, MenuServiceApi>()("@effect-desktop/native/Menu") {
+  static readonly layer = Layer.effect(Menu)(
+    Effect.gen(function* () {
+      const client = yield* MenuClient
+      return Menu.of(makeMenuService(client))
+    })
+  )
+}
 
-export const MenuLive = Layer.effect(Menu)(
-  Effect.gen(function* () {
-    const client = yield* MenuClient
-    return makeMenuService(client)
-  })
-)
+export const MenuLive = Menu.layer
 
 export const makeMenuClientLayer = (client: MenuClientApi): Layer.Layer<MenuClient> =>
   Layer.succeed(MenuClient)(client)

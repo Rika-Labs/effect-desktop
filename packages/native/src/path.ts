@@ -76,14 +76,16 @@ export interface PathServiceApi {
   readonly downloads: () => Effect.Effect<string, PathError, never>
 }
 
-export class Path extends Context.Service<Path, PathServiceApi>()("@effect-desktop/native/Path") {}
+export class Path extends Context.Service<Path, PathServiceApi>()("@effect-desktop/native/Path") {
+  static readonly layer = Layer.effect(Path)(
+    Effect.gen(function* () {
+      const client = yield* PathClient
+      return Path.of(makePathService(client))
+    })
+  )
+}
 
-export const PathLive = Layer.effect(Path)(
-  Effect.gen(function* () {
-    const client = yield* PathClient
-    return makePathService(client)
-  })
-)
+export const PathLive = Path.layer
 
 export const makePathClientLayer = (client: PathClientApi): Layer.Layer<PathClient> =>
   Layer.succeed(PathClient)(client)

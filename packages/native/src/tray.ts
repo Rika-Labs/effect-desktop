@@ -125,22 +125,24 @@ export interface TrayServiceApi extends Omit<TrayClientApi, "isSupported"> {
   readonly isSupported: () => Effect.Effect<boolean, TrayError, never>
 }
 
-export class Tray extends Context.Service<Tray, TrayServiceApi>()("@effect-desktop/native/Tray") {}
+export class Tray extends Context.Service<Tray, TrayServiceApi>()("@effect-desktop/native/Tray") {
+  static readonly layer = Layer.effect(Tray)(
+    Effect.gen(function* () {
+      const client = yield* TrayClient
+      return Tray.of({
+        create: (input) => client.create(input),
+        setIcon: (tray, icon) => client.setIcon(tray, icon),
+        setTooltip: (tray, tooltip) => client.setTooltip(tray, tooltip),
+        setMenu: (tray, menu) => client.setMenu(tray, menu),
+        destroy: (tray) => client.destroy(tray),
+        onActivated: () => client.onActivated(),
+        isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported))
+      } satisfies TrayServiceApi)
+    })
+  )
+}
 
-export const TrayLive = Layer.effect(Tray)(
-  Effect.gen(function* () {
-    const client = yield* TrayClient
-    return Object.freeze({
-      create: (input) => client.create(input),
-      setIcon: (tray, icon) => client.setIcon(tray, icon),
-      setTooltip: (tray, tooltip) => client.setTooltip(tray, tooltip),
-      setMenu: (tray, menu) => client.setMenu(tray, menu),
-      destroy: (tray) => client.destroy(tray),
-      onActivated: () => client.onActivated(),
-      isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported))
-    } satisfies TrayServiceApi)
-  })
-)
+export const TrayLive = Tray.layer
 
 export const makeTrayClientLayer = (client: TrayClientApi): Layer.Layer<TrayClient> =>
   Layer.succeed(TrayClient)(client)

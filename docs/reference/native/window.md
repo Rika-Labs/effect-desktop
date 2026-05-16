@@ -50,12 +50,13 @@ App code selects the capability through the native composition layer:
 Desktop.make({
   id: "com.acme.windows",
   windows: Desktop.window("main", { title: "Windows" }),
-  native: Desktop.native(Native.Window.all)
+  native: Desktop.native(Native.Window),
+  permissions: Desktop.permissions(...Native.Permissions.window.all.map(Desktop.permission))
 })
 ```
 
-- `Native.Window.all` — app-composition capability selection for every privileged Window method.
-- `WindowLive` and `WindowHandlersLive` — runtime layers behind that selection.
+- `Native.Permissions.window.all` — permission declarations for every privileged Window method.
+- `WindowLive` and `WindowHandlersLive` — runtime layers behind the native surface.
 - `WindowSurface.bridgeClientLayer(exchange, options)` — bridge adapter artifact used by renderer adapters and tests.
 - `makeWindowClientLayer(client)` and `makeWindowServiceLayer(client)` — deterministic test seams, not app-composition API.
 

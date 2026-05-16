@@ -147,24 +147,26 @@ export interface SystemAppearanceServiceApi {
 export class SystemAppearance extends Context.Service<
   SystemAppearance,
   SystemAppearanceServiceApi
->()("@effect-desktop/native/SystemAppearance") {}
+>()("@effect-desktop/native/SystemAppearance") {
+  static readonly layer = Layer.effect(SystemAppearance)(
+    Effect.gen(function* () {
+      const client = yield* SystemAppearanceClient
+      return SystemAppearance.of({
+        getAppearance: () => client.getAppearance().pipe(Effect.map((result) => result.appearance)),
+        getAccentColor: () => client.getAccentColor().pipe(Effect.map((result) => result.color)),
+        getReducedMotion: () =>
+          client.getReducedMotion().pipe(Effect.map((result) => result.enabled)),
+        getReducedTransparency: () =>
+          client.getReducedTransparency().pipe(Effect.map((result) => result.enabled)),
+        onAppearanceChanged: () => client.onAppearanceChanged(),
+        isSupported: (method) =>
+          client.isSupported(method).pipe(Effect.map((result) => result.supported))
+      } satisfies SystemAppearanceServiceApi)
+    })
+  )
+}
 
-export const SystemAppearanceLive = Layer.effect(SystemAppearance)(
-  Effect.gen(function* () {
-    const client = yield* SystemAppearanceClient
-    return Object.freeze({
-      getAppearance: () => client.getAppearance().pipe(Effect.map((result) => result.appearance)),
-      getAccentColor: () => client.getAccentColor().pipe(Effect.map((result) => result.color)),
-      getReducedMotion: () =>
-        client.getReducedMotion().pipe(Effect.map((result) => result.enabled)),
-      getReducedTransparency: () =>
-        client.getReducedTransparency().pipe(Effect.map((result) => result.enabled)),
-      onAppearanceChanged: () => client.onAppearanceChanged(),
-      isSupported: (method) =>
-        client.isSupported(method).pipe(Effect.map((result) => result.supported))
-    } satisfies SystemAppearanceServiceApi)
-  })
-)
+export const SystemAppearanceLive = SystemAppearance.layer
 
 export const makeSystemAppearanceClientLayer = (
   client: SystemAppearanceClientApi

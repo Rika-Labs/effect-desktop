@@ -21,11 +21,15 @@ import { Native } from "@effect-desktop/native"
 export const App = Desktop.make({
   id: "com.acme.app",
   windows: Desktop.window("main", { title: "Acme" }),
-  native: Desktop.native(Native.Clipboard.readText, Native.Dialog.openFile)
+  native: Desktop.native(Native.Clipboard, Native.Dialog),
+  permissions: Desktop.permissions(
+    Desktop.permission(Native.Permissions.clipboard.readText),
+    Desktop.permission(Native.Permissions.dialog.openFile)
+  )
 })
 ```
 
-`Desktop.native(...)` registers the required native surfaces and grants only the selected privileged calls.
+`Desktop.native(...)` registers the required native surfaces. `Desktop.permissions(...)` grants only the selected privileged calls.
 
 ## The pattern
 
@@ -127,7 +131,7 @@ Don't assume support — check it and degrade gracefully.
 
 ## Permissions
 
-`native.invoke` capabilities cover native services. Declare allowed native calls with method selections such as `Native.Clipboard.readText`. Pass `Native.Clipboard` directly to `Desktop.native(...)` only for support checks that need the surface without granting authority. Privileged calls such as `SafeStorage`, `Updater.install`, and `Protocol.register` should stay explicit and reviewable.
+`native.invoke` capabilities cover native services. Declare allowed native calls with permission constants such as `Native.Permissions.clipboard.readText`. Pass `Native.Clipboard` directly to `Desktop.native(...)` for availability. Privileged calls such as `SafeStorage`, `Updater.install`, and `Protocol.register` should stay explicit and reviewable.
 
 ## Related
 

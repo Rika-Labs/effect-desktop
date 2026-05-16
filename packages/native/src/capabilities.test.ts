@@ -1,10 +1,6 @@
 import { expect, test } from "bun:test"
 import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
-import {
-  DesktopNativeRegistry,
-  type DesktopNativeLayer,
-  type DesktopRpcSchemaDoc
-} from "@effect-desktop/core"
+import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect"
 
 import {
@@ -193,16 +189,13 @@ const testSurfaceWithoutCapability = () =>
 const testNativeLayer = (
   ...surfaces: readonly { readonly schemaDocs: readonly DesktopRpcSchemaDoc[] }[]
 ): DesktopNativeLayer =>
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const registry = yield* DesktopNativeRegistry
-      for (const [index, capabilitySurface] of surfaces.entries()) {
-        yield* registry.register({
-          tag: `TestSurface${index}`,
-          serverLayer: Layer.empty,
-          schemaDocs: capabilitySurface.schemaDocs,
-          contractLaws: []
-        })
-      }
-    })
+  Object.freeze(
+    surfaces.map((capabilitySurface, index) =>
+      Object.freeze({
+        tag: `TestSurface${index}`,
+        serverLayer: Object.freeze([]),
+        schemaDocs: capabilitySurface.schemaDocs,
+        contractLaws: Object.freeze([])
+      })
+    )
   )

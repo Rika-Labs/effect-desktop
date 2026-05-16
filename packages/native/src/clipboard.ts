@@ -125,14 +125,16 @@ export interface ClipboardServiceApi {
 
 export class Clipboard extends Context.Service<Clipboard, ClipboardServiceApi>()(
   "@effect-desktop/native/Clipboard"
-) {}
+) {
+  static readonly layer = Layer.effect(Clipboard)(
+    Effect.gen(function* () {
+      const client = yield* ClipboardClient
+      return Clipboard.of(makeClipboardService(client))
+    })
+  )
+}
 
-export const ClipboardLive = Layer.effect(Clipboard)(
-  Effect.gen(function* () {
-    const client = yield* ClipboardClient
-    return makeClipboardService(client)
-  })
-)
+export const ClipboardLive = Clipboard.layer
 
 export const makeClipboardClientLayer = (
   client: ClipboardClientApi
