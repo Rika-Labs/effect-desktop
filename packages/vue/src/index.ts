@@ -3,14 +3,16 @@ import {
   describeRpcs,
   getGlobalDesktopRendererRpcTransport,
   appendBounded,
+  interruptFrameworkFiber,
   isDesktopStreamOptions,
   makeDesktopRendererRpcLayer,
-  type AnyDesktopRpcLayer,
+  makeFrameworkRuntime,
+  makeFrameworkScopedOperation,
+  type DesktopRpcsLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
   normalizeDesktopStreamCapacity,
-  runFrameworkEffect,
-  runFrameworkPromiseExit,
+  observeFrameworkFiber,
   RendererRpcClients,
   runRendererStream,
   type DesktopAppManifest,
@@ -20,7 +22,7 @@ import {
   type DesktopRendererRpcTransport,
   type FrameworkRuntime,
   type MissingDesktopRpcClientError,
-  type RpcGroupWithRequests
+  type DesktopRpcRegistrationGroup as RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
@@ -121,7 +123,7 @@ type VueEndpoint =
 
 export interface VueDesktopOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
 }
 
 export interface VueDesktopAdapter<App extends DesktopAppManifest> {
@@ -138,13 +140,13 @@ export {
 
 interface VueDesktopContext {
   readonly clients: DesktopRendererRpcClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
 }
 
 interface VueDesktopRuntime {
   readonly clients: DesktopRendererRpcClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
-  readonly dispose: () => Promise<void>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly disposeEffect: Effect.Effect<void, never, never>
 }
 
 const VueDesktopKey: InjectionKey<VueDesktopContext> = Symbol("VueDesktop")
@@ -153,10 +155,10 @@ const MissingVueDesktopContext = Symbol("MissingVueDesktopContext")
 export const VueDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): VueDesktopAdapter<App> => {
     const provideDesktop = (options?: VueDesktopOptions): void => {
-      const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcLayers)
+      const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcs)
       provide(VueDesktopKey, { clients: runtime.clients, runtime: runtime.runtime })
       onScopeDispose(() => {
-        void runtime.dispose()
+        void Effect.runCallback(runtime.disposeEffect)
       })
     }
 
@@ -210,12 +212,12 @@ export const VueDesktop = Object.freeze({
       app,
       createApp: (rootComponent: Component, options?: VueDesktopOptions) => {
         const vueApp = createVueApp(rootComponent)
-        const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcLayers)
+        const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcs)
         vueApp.provide(VueDesktopKey, { clients: runtime.clients, runtime: runtime.runtime })
         const unmount = vueApp.unmount.bind(vueApp)
         vueApp.unmount = () => {
           unmount()
-          void runtime.dispose()
+          void Effect.runCallback(runtime.disposeEffect)
         }
         return vueApp
       },
@@ -228,26 +230,27 @@ export const VueDesktop = Object.freeze({
 const makeVueDesktopRuntime = (
   app: DesktopAppManifest,
   transport: DesktopRendererRpcTransport | undefined,
-  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
+  rpcs: DesktopRpcsLayer<never, never> | undefined
 ): VueDesktopRuntime => {
   const runtime = ManagedRuntime.make(
     makeDesktopRendererRpcLayer(app, {
       framework: "vue",
       transport: transport ?? getGlobalDesktopRendererRpcTransport(),
-      rpcLayers
+      rpcs
     })
   )
   let clients: DesktopRendererRpcClientMap
   try {
     clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
   } catch (error) {
-    void runtime.dispose()
+    void Effect.runCallback(runtime.disposeEffect)
     throw error
   }
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
   return Object.freeze({
     clients,
-    runtime,
-    dispose: runtime.dispose
+    runtime: frameworkRuntime,
+    disposeEffect: frameworkRuntime.disposeEffect.pipe(Effect.andThen(runtime.disposeEffect))
   })
 }
 
@@ -256,27 +259,21 @@ const useMutation = <R, ER, I, A, E>(
   makeEffect: (input: I) => Effect.Effect<A, E, R>
 ): VueMutation<I, A, E | ER> => {
   const state = shallowRef<VueAsyncState<A, E | ER>>({ status: "idle" })
-  let runId = 0
-  let active = true
+  const operation = makeFrameworkScopedOperation(runtime)
 
   onScopeDispose(() => {
-    active = false
-    runId += 1
+    operation.dispose()
   })
 
   const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
-    const currentRun = runId + 1
-    runId = currentRun
     state.value = { status: "running" }
+    const [exit, isLatest] = await operation.runLatestPromiseExit(makeEffect(input as I))
 
-    const exit = await runFrameworkPromiseExit(runtime, makeEffect(input as I))
-    if (!active || runId !== currentRun) {
-      return exit
+    if (isLatest) {
+      state.value = Exit.isSuccess(exit)
+        ? { status: "success", value: exit.value }
+        : { status: "failure", cause: exit.cause }
     }
-
-    state.value = Exit.isSuccess(exit)
-      ? { status: "success", value: exit.value }
-      : { status: "failure", cause: exit.cause }
     return exit
   }
 
@@ -287,7 +284,7 @@ const useMutation = <R, ER, I, A, E>(
     }) as VueComposable<I, void>,
     runPromise: runPromiseImpl as VueComposable<I, Promise<Exit.Exit<A, E | ER>>>,
     reset: () => {
-      runId += 1
+      operation.reset()
       state.value = { status: "idle" }
     }
   }
@@ -298,20 +295,16 @@ const runQuery = <R, ER, A, E>(
   effect: Effect.Effect<A, E, R>
 ): Readonly<Ref<VueAsyncState<A, E | ER>>> => {
   const state = shallowRef<VueAsyncState<A, E | ER>>({ status: "running" })
-  let active = true
 
-  const interrupt = runFrameworkEffect(runtime, effect, (exit) => {
-    if (!active) {
-      return
-    }
+  const fiber = runtime.runFork(effect)
+  observeFrameworkFiber(fiber, (exit) => {
     state.value = Exit.isSuccess(exit)
       ? { status: "success", value: exit.value }
       : { status: "failure", cause: exit.cause }
   })
 
   onScopeDispose(() => {
-    active = false
-    interrupt()
+    interruptFrameworkFiber(fiber)
   })
 
   return state

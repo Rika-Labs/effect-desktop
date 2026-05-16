@@ -3,7 +3,7 @@ import {
   type InspectorSafetyPolicyApi,
   type InspectorSafetySummary
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Logger, LogLevel, Option, Ref, Stream } from "effect"
+import { Context, Effect, Layer, Logger, LogLevel, Option, Ref, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
 
@@ -104,12 +104,7 @@ export const makeLogsPanel = (
     return Object.freeze({
       list,
       setLevelFilter: (level) => Ref.set(levelRef, level),
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep(frameInterval).pipe(Effect.andThen(list())))
-          )
-        ),
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced(frameInterval)),
       layer: () => Logger.layer([captureLogger])
     } satisfies LogsPanelApi)
   })
@@ -128,6 +123,9 @@ const logLevelToPanel = (level: LogLevel.LogLevel): LogsPanelLevel | undefined =
       return "Error"
     case "Fatal":
       return "Fatal"
+    case "All":
+    case "None":
+      return undefined
     default:
       return undefined
   }

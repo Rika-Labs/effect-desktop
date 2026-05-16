@@ -8,10 +8,7 @@ import {
 } from "./inspector-safety-policy.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 
-export type DesktopObservabilityModeName =
-  | "off"
-  | "embedded-devtools"
-  | "standalone-inspector"
+export type DesktopObservabilityModeName = "off" | "embedded-devtools" | "standalone-inspector"
 
 export class ObservabilityMode extends Schema.Class<ObservabilityMode>("ObservabilityMode")({
   mode: Schema.Literals(["off", "embedded-devtools", "standalone-inspector"])
@@ -54,9 +51,16 @@ export interface DesktopObservabilityTransport {
 }
 
 export interface DesktopObservabilityLayerOptions {
-  readonly mode: DesktopObservabilityModeName
+  readonly mode: string
   readonly webSocketUrl?: string | undefined
   readonly inspectorSafetyPolicy?: InspectorSafetyPolicyOptions
+}
+
+interface DecodedDesktopObservabilityLayerOptions extends Omit<
+  DesktopObservabilityLayerOptions,
+  "mode"
+> {
+  readonly mode: DesktopObservabilityModeName
 }
 
 export class DesktopObservabilityConfigError extends Data.TaggedError(
@@ -185,7 +189,7 @@ export namespace DesktopObservability {
 
 const decodeOptions = (
   options: DesktopObservabilityLayerOptions
-): Effect.Effect<DesktopObservabilityLayerOptions, DesktopObservabilityConfigError, never> =>
+): Effect.Effect<DecodedDesktopObservabilityLayerOptions, DesktopObservabilityConfigError, never> =>
   Schema.decodeUnknownEffect(ObservabilityMode)(options).pipe(
     Effect.mapError(
       () =>
@@ -194,17 +198,21 @@ const decodeOptions = (
           message: "must be one of off, embedded-devtools, standalone-inspector"
         })
     ),
-    Effect.flatMap(() =>
-      options.mode === "standalone-inspector" &&
-      (options.webSocketUrl === undefined || options.webSocketUrl.length === 0)
+    Effect.flatMap((decodedMode) => {
+      const decoded: DecodedDesktopObservabilityLayerOptions = {
+        ...options,
+        mode: decodedMode.mode
+      }
+      return decoded.mode === "standalone-inspector" &&
+        (decoded.webSocketUrl === undefined || decoded.webSocketUrl.length === 0)
         ? Effect.fail(
             new DesktopObservabilityConfigError({
               field: "webSocketUrl",
               message: "standalone inspector mode requires an explicit WebSocket URL"
             })
           )
-        : Effect.succeed(options)
-    )
+        : Effect.succeed(decoded)
+    })
   )
 
 const decodeCollectorRegistration = (
@@ -222,7 +230,7 @@ const decodeCollectorRegistration = (
   )
 
 const transportFor = (
-  options: DesktopObservabilityLayerOptions
+  options: DecodedDesktopObservabilityLayerOptions
 ): Option.Option<DesktopObservabilityTransport> => {
   if (options.mode === "off") {
     return Option.none()

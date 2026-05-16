@@ -56,12 +56,12 @@
     {
       "name": "DesktopAsyncState",
       "kind": "type",
-      "signature": "export type DesktopAsyncState<A, E> = | { readonly _tag: \"Idle\" } | { readonly _tag: \"Running\" } | { readonly _tag: \"Success\"; readonly value: A } | { readonly _tag: \"Failure\"; readonly cause: Cause.Cause<E>; readonly message: string } | { readonly _tag: \"Canceled\" } | { readonly _tag: \"Unavailable\"; readonly message: string }"
+      "signature": "export type DesktopAsyncState<A, E> = AsyncResult.AsyncResult<A, E>"
     },
     {
       "name": "DesktopAsyncStatus",
       "kind": "type",
-      "signature": "export type DesktopAsyncStatus = | \"idle\" | \"running\" | \"success\" | \"failure\" | \"canceled\" | \"unavailable\""
+      "signature": "export type DesktopAsyncStatus = AsyncResultStatus"
     },
     {
       "name": "DesktopAtomRegistryContext",
@@ -156,12 +156,12 @@
     {
       "name": "MutationState",
       "kind": "type",
-      "signature": "export type MutationState<A, E> = | { readonly status: \"idle\" } | { readonly status: \"running\" } | { readonly status: \"success\"; readonly value: A } | { readonly status: \"failure\"; readonly cause: Cause.Cause<E> }"
+      "signature": "export type MutationState<A, E> = AsyncResult.AsyncResult<A, E>"
     },
     {
       "name": "MutationStatus",
       "kind": "type",
-      "signature": "export type MutationStatus = \"idle\" | \"running\" | \"success\" | \"failure\""
+      "signature": "export type MutationStatus = DesktopAsyncStatus"
     },
     {
       "name": "PendingApproval",
@@ -226,7 +226,7 @@
     {
       "name": "ReactDesktopRootProps",
       "kind": "interface",
-      "signature": "export interface ReactDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined readonly children?: ReactNode | undefined }"
+      "signature": "export interface ReactDesktopRootProps { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcs?: DesktopRpcsLayer<never, never> | undefined readonly children?: ReactNode | undefined }"
     },
     {
       "name": "ReactDesktopRpcClient",

@@ -44,8 +44,7 @@ export class WindowCreateInput extends Schema.Class<WindowCreateInput>("WindowCr
   height: Schema.optionalKey(PositiveFiniteNumber),
   titleBarStyle: Schema.optionalKey(WindowTitleBarStyle),
   vibrancy: Schema.optionalKey(WindowVibrancyMaterial),
-  trafficLights: Schema.optionalKey(WindowTrafficLights),
-  persistState: Schema.optionalKey(Schema.Boolean)
+  trafficLights: Schema.optionalKey(WindowTrafficLights)
 }) {}
 
 export type WindowCreateOptions = Schema.Schema.Type<typeof WindowCreateInput>

@@ -19,7 +19,7 @@ export const holdScopedExecutionPermit = <BusyError>(options: {
       Effect.flatMap(
         Option.match({
           onNone: () => Deferred.succeed(acquired, false),
-          onSome: () => Effect.void
+          onSome: () => Effect.succeed(true)
         })
       ),
       Effect.forkScoped({ startImmediately: true }),

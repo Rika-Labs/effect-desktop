@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { CspPolicy } from "@effect-desktop/config"
-import { Effect, Fiber, Layer, Stream } from "effect"
-import { HttpRouter, HttpServer, HttpServerRequest } from "effect/unstable/http"
+import { Clock, Effect, Fiber, Layer, Stream } from "effect"
+import { HttpClientRequest, HttpRouter, HttpServer, HttpServerRequest } from "effect/unstable/http"
 
 import {
   AppAssetResolver,
@@ -23,16 +23,7 @@ const makeRequest = (
   url: string,
   headers: Record<string, string> = {}
 ): HttpServerRequest.HttpServerRequest =>
-  ({
-    url,
-    method: "GET",
-    headers,
-    source: {},
-    originalUrl: url,
-    cookies: {},
-    modify: (opts: { url?: string; headers?: Record<string, string> }) =>
-      makeRequest(opts.url ?? url, (opts.headers as Record<string, string>) ?? headers)
-  }) as unknown as HttpServerRequest.HttpServerRequest
+  HttpServerRequest.fromClientRequest(HttpClientRequest.get(url, { headers }))
 
 const htmlAsset: ResolvedAsset = {
   bytes: TEXT_ENCODER.encode(
@@ -271,6 +262,7 @@ test("backslash traversal URLs are rejected before normalization", async () => {
 })
 
 test("streams CSP blocked decisions through AppCspInspector", async () => {
+  const timestamp = 1_710_000_123_456
   await Effect.runPromise(
     Effect.gen(function* () {
       const inspector = yield* makeAppCspInspector()
@@ -303,7 +295,9 @@ test("streams CSP blocked decisions through AppCspInspector", async () => {
       expect(events[0]?.kind).toBe("csp")
       expect(events[0]?.decision).toBe("blocked")
       expect(events[0]?.reason).toBe("path-traversal")
-    })
+      expect(events[0]?.timestamp).toBe(timestamp)
+      expect(events[0]?.traceId).toBe(`csp:${timestamp}`)
+    }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
   )
 })
 
@@ -370,8 +364,16 @@ test("AppAssetRoutes exposes Scalar documentation", async () => {
 
     expect(response.status).toBe(200)
     expect(body).toContain("Effect Desktop Local API")
-    expect(body).toContain("\"openapi\":\"3.1.0\"")
+    expect(body).toContain('"openapi":"3.1.0"')
   } finally {
     await dispose()
   }
+})
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.void
 })

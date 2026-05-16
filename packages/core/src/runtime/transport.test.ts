@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Clock, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect"
 import { Socket } from "effect/unstable/socket"
 import { makeBridgeInspector } from "@effect-desktop/bridge"
 
@@ -17,9 +17,10 @@ import {
   TransportClosedError,
   encodeFrame,
   instrumentTransportConnection,
-  makeFramedSocketConnection
+  makeFramedSocketConnection,
+  makeInMemoryTransportPair,
+  makeTransport
 } from "./transport.js"
-import { makeInMemoryTransportPair, makeTransport } from "./transport.js"
 
 test("encodeFrame emits a big-endian length prefix", () => {
   const frame = encodeFrame(new Uint8Array([0x68, 0x69]))
@@ -132,18 +133,22 @@ test("instrumentTransportConnection emits typed transport inspector events", asy
   const [client] = await Effect.runPromise(makeInMemoryTransportPair())
   const connection = instrumentTransportConnection(client, {
     inspector,
-    target: "stdio",
-    now: () => 42
+    target: "stdio"
   })
 
-  await Effect.runPromise(connection.send(new Uint8Array([1, 2, 3])))
-  await Effect.runPromise(connection.close())
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* connection.send(new Uint8Array([1, 2, 3]))
+      yield* connection.close()
+    }).pipe(Effect.provideService(Clock.Clock, fixedClock(42)))
+  )
 
   expect(events).toContainEqual(
     expect.objectContaining({
       kind: "transport.backpressure",
       boundary: "host",
       method: "stdio",
+      timestamp: 42,
       payload: { bytes: 3 }
     })
   )
@@ -151,7 +156,8 @@ test("instrumentTransportConnection emits typed transport inspector events", asy
     expect.objectContaining({
       kind: "transport.disconnect",
       boundary: "host",
-      method: "stdio"
+      method: "stdio",
+      timestamp: 42
     })
   )
 })
@@ -325,18 +331,14 @@ test("unframeStream validates frameQueueCapacity", async () => {
 test("Transport service validates unframeStream chunks input", async () => {
   const transport = await Effect.runPromise(makeTransport())
   const missing = await Effect.runPromiseExit(
-    transport
-      .unframeStream({ scheme: "length-prefixed" } as unknown as Parameters<
-        typeof transport.unframeStream
-      >[0])
-      .pipe(Stream.take(1), Stream.runCollect)
+    transport.unframeStream({ scheme: "length-prefixed" }).pipe(Stream.take(1), Stream.runCollect)
   )
   const malformed = await Effect.runPromiseExit(
     transport
       .unframeStream({
         scheme: "length-prefixed",
         chunks: { pipe: "not a function" }
-      } as unknown as Parameters<typeof transport.unframeStream>[0])
+      })
       .pipe(Stream.take(1), Stream.runCollect)
   )
 
@@ -366,9 +368,7 @@ test("Transport service returns typed failures for invalid input and bad frames"
       bytes: new TextEncoder().encode("X-Header: nope\r\n\r\n{}")
     })
   )
-  const malformedInput = await Effect.runPromiseExit(
-    transport.frame(null as unknown as Parameters<typeof transport.frame>[0])
-  )
+  const malformedInput = await Effect.runPromiseExit(transport.frame(null))
 
   expectFailure(invalid, TransportInvalidArgumentError)
   expectFailure(tooLarge, TransportFrameTooLargeError)
@@ -446,14 +446,11 @@ test("in-memory transport pair accepts bounded queue capacity", async () => {
 
   await Effect.runPromise(left.send(new Uint8Array([0x68, 0x69])))
   const blockedSecond = Effect.runFork(left.send(new Uint8Array([0x6f, 0x6b])))
-  const isStillBlocked = await Promise.race([
-    Effect.runPromise(Fiber.join(blockedSecond)).then(() => false),
-    new Promise<boolean>((resolve) => {
-      setTimeout(() => resolve(true), 25)
-    })
-  ])
+  const blockedExit = await Effect.runPromise(
+    Fiber.join(blockedSecond).pipe(Effect.timeoutOption("25 millis"))
+  )
 
-  expect(isStillBlocked).toBe(true)
+  expect(Option.isNone(blockedExit)).toBe(true)
 
   const received = await Effect.runPromise(right.receive.pipe(Stream.take(2), Stream.runCollect))
   const collected = Array.from(received).map((chunk) => Array.from(chunk))
@@ -599,3 +596,11 @@ function getFailure<E>(exit: Exit.Exit<unknown, E>): E | undefined {
   }
   return undefined
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})

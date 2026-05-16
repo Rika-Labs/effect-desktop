@@ -2,19 +2,21 @@ import {
   bindRendererEndpoints,
   describeRpcs,
   getGlobalDesktopRendererRpcTransport,
+  makeFrameworkRuntime,
   makeDesktopRendererRpcLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
   RendererRpcClients,
   type MissingDesktopRpcClientError,
   type DesktopAppManifest,
-  type AnyDesktopRpcLayer,
+  type DesktopRpcsLayer,
   type DesktopEndpointSupport,
   type DesktopRendererRpcClient,
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcClientMethod,
   type DesktopRendererRpcTransport,
-  type RpcGroupWithRequests
+  type FrameworkRuntime,
+  type DesktopRpcRegistrationGroup as RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
 import { Effect, ManagedRuntime, Stream } from "effect"
@@ -61,7 +63,7 @@ export type ReactDesktopClientMap = DesktopRendererRpcClientMap
 
 export interface ReactDesktopRootProps {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
   readonly children?: ReactNode | undefined
 }
 
@@ -82,27 +84,27 @@ export {
 
 interface ReactDesktopContextValue {
   readonly clients: ReactDesktopClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
 }
 
 interface ReactDesktopRuntime {
   readonly clients: ReactDesktopClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
-  readonly dispose: () => Promise<void>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly disposeEffect: Effect.Effect<void, never, never>
 }
 
 const ReactDesktopContext = createContext<ReactDesktopContextValue | undefined>(undefined)
 
 export const ReactDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): ReactDesktopAdapter<App> => {
-    const DesktopRoot = ({ transport, rpcLayers, children }: ReactDesktopRootProps): ReactNode => {
+    const DesktopRoot = ({ transport, rpcs, children }: ReactDesktopRootProps): ReactNode => {
       const runtime = useMemo(
-        () => makeReactDesktopRuntime(app, transport, rpcLayers),
-        [app, transport, rpcLayers]
+        () => makeReactDesktopRuntime(app, transport, rpcs),
+        [app, transport, rpcs]
       )
       useEffect(
         () => () => {
-          void runtime.dispose()
+          void Effect.runCallback(runtime.disposeEffect)
         },
         [runtime]
       )
@@ -157,25 +159,26 @@ export const ReactDesktop = Object.freeze({
 const makeReactDesktopRuntime = (
   app: DesktopAppManifest,
   transport: DesktopRendererRpcTransport | undefined,
-  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
+  rpcs: DesktopRpcsLayer<never, never> | undefined
 ): ReactDesktopRuntime => {
   const runtime = ManagedRuntime.make(
     makeDesktopRendererRpcLayer(app, {
       framework: "react",
       transport: transport ?? getGlobalDesktopRendererRpcTransport(),
-      rpcLayers
+      rpcs
     })
   )
   let clients: ReactDesktopClientMap
   try {
     clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
   } catch (error) {
-    void runtime.dispose()
+    void Effect.runCallback(runtime.disposeEffect)
     throw error
   }
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
   return Object.freeze({
     clients,
-    runtime,
-    dispose: runtime.dispose
+    runtime: frameworkRuntime,
+    disposeEffect: frameworkRuntime.disposeEffect.pipe(Effect.andThen(runtime.disposeEffect))
   })
 }

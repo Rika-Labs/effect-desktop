@@ -78,7 +78,7 @@ const asEffect = (
   framework: DesktopFramework
 ): Effect.Effect<unknown, unknown, never> => {
   if (Effect.isEffect(value)) {
-    return value as Effect.Effect<unknown, unknown, never>
+    return value
   }
   throw makeMissingDesktopRpcClientError(
     framework,
@@ -93,7 +93,7 @@ const asStream = (
   framework: DesktopFramework
 ): Stream.Stream<unknown, unknown, never> => {
   if (Stream.isStream(value)) {
-    return value as Stream.Stream<unknown, unknown, never>
+    return value
   }
   throw makeMissingDesktopRpcClientError(
     framework,

@@ -13,6 +13,7 @@ import { layerStdioSocket, writeStdout } from "./stdio-socket.js"
 import { makeTransport } from "./transport.js"
 import {
   openDeclaredWindows,
+  requireStartupWindows,
   readStartupEnvironment,
   readStartupWindows
 } from "./window-supervisor.js"
@@ -21,12 +22,6 @@ const readyEvent = {
   event: "runtime.ready",
   version: packageJson.version
 } as const
-
-const smokeTestWindows = Object.freeze({
-  smoke: Object.freeze({
-    title: "Effect Desktop"
-  })
-})
 
 await Effect.runPromise(
   Effect.gen(function* () {
@@ -39,11 +34,10 @@ await Effect.runPromise(
     const windows = makeHostWindowClient(hostExchange)
     const startupEnvironment = yield* readStartupEnvironment()
     const startupWindows = yield* readStartupWindows(startupEnvironment)
-    const declaredWindows =
-      Object.keys(startupWindows).length === 0 ? smokeTestWindows : startupWindows
+    const declaredRegistrations = yield* requireStartupWindows(startupWindows)
     yield* negotiateHostVersion(handshake, HOST_PROTOCOL_VERSION)
     yield* handshake.ping()
-    yield* openDeclaredWindows(windows, declaredWindows, {
+    yield* openDeclaredWindows(windows, declaredRegistrations, {
       smokeTest: startupEnvironment.smokeTest
     })
   }).pipe(Effect.scoped, Effect.provide(layerStdioSocket))

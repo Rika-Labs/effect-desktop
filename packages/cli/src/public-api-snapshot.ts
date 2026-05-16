@@ -1,7 +1,7 @@
 import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Option, Schema } from "effect"
 import ts from "typescript"
 
 export type PublicApiSymbolKind = "class" | "function" | "interface" | "type" | "value"
@@ -229,13 +229,12 @@ const readRootExportEntrypoint = (packageJson: PackageJson): string | undefined 
 }
 
 const fileExists = (path: string): Effect.Effect<boolean, never, never> =>
-  Effect.tryPromise({
-    try: () => access(path),
-    catch: () => undefined
-  }).pipe(
-    Effect.as(true),
-    Effect.catch(() => Effect.succeed(false))
-  )
+  Effect.option(
+    Effect.tryPromise({
+      try: () => access(path),
+      catch: (cause) => cause
+    })
+  ).pipe(Effect.map(Option.isSome))
 
 const snapshotPackage = (
   workspacePackage: WorkspacePackage
@@ -495,16 +494,18 @@ const readJson = <A>(path: string): Effect.Effect<A, PublicApiFileError, never> 
           cause
         })
     })
-    return yield* Effect.try({
-      try: () => JSON.parse(body) as A,
-      catch: (cause) =>
-        new PublicApiFileError({
-          operation: "parse",
-          path,
-          message: `failed to parse ${path}`,
-          cause
-        })
-    })
+    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+      Effect.map((value) => value as A),
+      Effect.mapError(
+        (cause) =>
+          new PublicApiFileError({
+            operation: "parse",
+            path,
+            message: `failed to parse ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], PublicApiFileError, never> =>

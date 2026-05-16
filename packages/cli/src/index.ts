@@ -15,12 +15,17 @@ import { pathToFileURL } from "node:url"
 
 import { HOST_PROTOCOL_VERSION } from "@effect-desktop/bridge"
 import {
+  provider,
+  providers,
+  Provider,
   runtimeGraph,
   runtimeGraphSnapshot,
   type DesktopProviderBudget,
+  type DesktopWindowsLayer,
   type LayerGraphSnapshot
 } from "@effect-desktop/core"
 import {
+  Clock,
   Console,
   Data,
   Effect,
@@ -29,6 +34,8 @@ import {
   Option,
   Path,
   Ref,
+  Result,
+  Schema,
   Sink,
   Stdio,
   Terminal
@@ -399,7 +406,13 @@ export type BuildPipelineError =
   | BuildFileError
 
 export type BuildTarget = DesktopTargetId
-export type BuildStepName = "renderer" | "runtime" | "native-host" | "bridge" | "manifest"
+export type BuildStepName =
+  | "renderer"
+  | "runtime"
+  | "native-host"
+  | "webview-runtime"
+  | "bridge"
+  | "manifest"
 const DEFAULT_RUNTIME_ENGINE: RuntimeEngine = "bun"
 const RUNTIME_ENGINES = ["bun", "node"] as const satisfies readonly RuntimeEngine[]
 const DEFAULT_RENDERER_FRAMEWORK = "react"
@@ -435,40 +448,16 @@ const ROOT_HELP = [
   "Usage: desktop <command> [options]",
   "",
   "Commands:",
-  "  init",
-  "  dev",
   "  build",
   "  package",
   "  sign",
   "  notarize",
   "  publish",
   "  release",
-  "  typecheck",
-  "  lint",
-  "  test",
   "  doctor",
-  "  info",
-  "  generate-types",
-  "  migrate",
-  "  clean",
-  "  inspect",
-  "  replay",
   "  check",
   ""
 ].join("\n")
-const DEFERRED_COMMANDS = [
-  "init",
-  "dev",
-  "typecheck",
-  "lint",
-  "test",
-  "info",
-  "generate-types",
-  "migrate",
-  "clean",
-  "inspect",
-  "replay"
-] as const
 const JSON_VALUE_FLAGS = new Set([
   "--artifact",
   "--config",
@@ -549,11 +538,7 @@ const CLI_FLAG_SPECS: ReadonlyMap<string, CliFlagSpec> = new Map([
       boolean: new Set([...CHECK_MODE_FLAGS, "--write", "--json", "--help", "-h"]),
       value: new Set(["--config", "--renderer", "--platform", "--artifact"])
     }
-  ],
-  ...DEFERRED_COMMANDS.map((command): readonly [string, CliFlagSpec] => [
-    command,
-    { boolean: new Set(["--json", "--help", "-h"]), value: new Set() }
-  ])
+  ]
 ])
 
 export interface CliRunOptions {
@@ -664,6 +649,8 @@ interface BuildPlan {
   readonly rendererFramework: "react"
   readonly rendererStyling: "tailwind"
   readonly webEngine: WebEngine
+  readonly webEngineRuntimeSource: string | undefined
+  readonly webEngineRuntimePath: string | undefined
   readonly rendererEntry: string
   readonly rendererDistPath: string
   readonly runtimeEntryPath: string
@@ -780,6 +767,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
     }
 
     const exitCodeRef = yield* Ref.make(0)
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
 
     const fail = (code: number): Effect.Effect<void, never, never> => Ref.set(exitCodeRef, code)
 
@@ -799,17 +788,21 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             platform: Option.getOrUndefined(flags.platform),
             profile: flags.profile,
             commandRunner: options.commandRunner ?? runCommand,
-            now: options.now ?? Date.now,
+            now,
             hostTarget: options.hostTarget
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatBuildError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatBuildErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatBuildError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatBuildErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -845,17 +838,21 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             platform: Option.getOrUndefined(flags.platform),
             artifact: Option.getOrUndefined(flags.artifact),
             commandRunner: options.packageCommandRunner ?? runPackageCommand,
-            now: options.now ?? Date.now,
+            now,
             hostTarget: options.hostTarget
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatPackageError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatPackageErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatPackageError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatPackageErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -889,18 +886,22 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             configPath: flags.config,
             platform: Option.getOrUndefined(flags.platform),
             commandRunner: options.signCommandRunner ?? runSignCommand,
-            now: options.now ?? Date.now,
+            now,
             hostTarget: options.hostTarget,
             env: options.env ?? process.env
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatSignError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatSignErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatSignError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatSignErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -938,18 +939,22 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             configPath: flags.config,
             platform: Option.getOrUndefined(flags.platform),
             commandRunner: options.notarizeCommandRunner ?? runNotarizeCommand,
-            now: options.now ?? Date.now,
+            now,
             hostTarget: macosTarget,
             env: options.env ?? process.env
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatNotarizeError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatNotarizeErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatNotarizeError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatNotarizeErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -982,17 +987,21 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             cwd: options.cwd,
             configPath: flags.config,
             platform: Option.getOrUndefined(flags.platform),
-            now: options.now ?? Date.now,
+            now,
             env: options.env ?? process.env
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatPublishError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatPublishErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatPublishError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatPublishErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -1033,17 +1042,21 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
               ...(artifact === undefined ? {} : { artifact }),
               ...(version === undefined ? {} : { version })
             }),
-            makeReleaseWorkflowApi(options)
+            makeReleaseWorkflowApi(options, now)
           ).pipe(
             Effect.provide(WorkflowEngine.layerMemory),
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatReleaseError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatReleaseErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatReleaseError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatReleaseErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -1155,28 +1168,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       )
     )
 
-    const deferredCommands = DEFERRED_COMMANDS.map((name) =>
-      Command.make(
-        name,
-        {
-          json: Flag.boolean("json").pipe(Flag.withDefault(false))
-        },
-        (flags) =>
-          Effect.gen(function* () {
-            const error = deferredCommandError(name)
-            if (flags.json) {
-              options.writeStderr(`${JSON.stringify(error, null, 2)}\n`)
-            } else {
-              options.writeStderr(`${error.tag}: ${error.message}\nNext: ${error.remediation}\n`)
-            }
-            yield* fail(1)
-          })
-      ).pipe(Command.withDescription(`Deferred desktop ${name} command.`))
-    )
-
     const desktopCmd = Command.make("desktop").pipe(
       Command.withSubcommands([
-        ...deferredCommands,
         buildCmd,
         packageCmd,
         signCmd,
@@ -1191,7 +1184,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
     const cliLayer = makeCliLayer(options)
 
     yield* Command.runWith(desktopCmd, { version: "0.0.0" })(options.argv).pipe(
-      Effect.catch(() => fail(1)),
+      Effect.tapError(() => fail(1)),
+      Effect.ignore,
       Effect.provide(cliLayer)
     )
 
@@ -1282,20 +1276,6 @@ const formatCliUsageError = (
   message: error.message
 })
 
-const deferredCommandError = (
-  command: (typeof DEFERRED_COMMANDS)[number]
-): {
-  readonly tag: "CliDeferredCommand"
-  readonly command: string
-  readonly message: string
-  readonly remediation: string
-} => ({
-  tag: "CliDeferredCommand",
-  command,
-  message: `desktop ${command} is declared but not implemented in this milestone`,
-  remediation: "Use the implemented build/package/sign/notarize/publish/doctor/check commands."
-})
-
 export const runDesktopBuild = (
   options: DesktopBuildOptions
 ): Effect.Effect<DesktopBuildReport, BuildPipelineError, never> =>
@@ -1351,14 +1331,25 @@ export const runDesktopBuild = (
       yield* copyFileEffect(hostBuildOutputPath(options.cwd, target), nativeHost.outputPath)
     }
 
+    const webviewRuntime =
+      plan.webEngine === "chrome"
+        ? yield* copyWebViewRuntimeBuildNode(options, cache, plan)
+        : undefined
     const bridgeNode = makeBridgeBuildNode(plan)
     const bridge = yield* writeBridgeManifest(plan, options.now, cache, bridgeNode)
-    const manifestNode = makeManifestBuildNode(plan, [renderer, runtime, nativeHost, bridge])
+    const manifestNode = makeManifestBuildNode(
+      plan,
+      webviewRuntime === undefined
+        ? [renderer, runtime, nativeHost, bridge]
+        : [renderer, runtime, nativeHost, webviewRuntime, bridge]
+    )
     const manifest = yield* writeAppManifest(plan, cache, manifestNode)
     const providerMeasurement = yield* measureBuildProvider(plan, runtime)
     const report = newBuildReport(
       plan,
-      [renderer, runtime, nativeHost, bridge, manifest],
+      webviewRuntime === undefined
+        ? [renderer, runtime, nativeHost, bridge, manifest]
+        : [renderer, runtime, nativeHost, webviewRuntime, bridge, manifest],
       [providerMeasurement]
     )
     yield* writeJson(join(plan.layoutPath, "build-report.json"), report)
@@ -1439,6 +1430,11 @@ const normalizeBuildPlan = (
     const rendererFramework = yield* readRendererFramework(config.renderer?.framework)
     const rendererStyling = yield* readRendererStyling(config.renderer?.styling)
     const webEngine = yield* readWebEngine(config.web?.engine)
+    const webEngineRuntimeSource = yield* readWebEngineRuntimeSource(
+      appRoot,
+      webEngine,
+      options.target
+    )
     const rendererEntry = yield* readRequiredExistingFile(
       config.renderer?.entry,
       "renderer.entry",
@@ -1482,8 +1478,8 @@ const normalizeBuildPlan = (
     const updateManifestInput = yield* readUpdateFields(config.update, appVersion)
     const layerGraph = yield* runtimeGraphSnapshot({
       id: appId,
-      windows: {},
-      providers: { runtime: runtimeEngine }
+      windows: [] satisfies DesktopWindowsLayer<never>,
+      providers: providerLayerForBuildConfig(runtimeEngine, webEngine)
     })
 
     return {
@@ -1494,6 +1490,8 @@ const normalizeBuildPlan = (
       rendererFramework,
       rendererStyling,
       webEngine,
+      webEngineRuntimeSource,
+      webEngineRuntimePath: webEngineRuntimeSource === undefined ? undefined : "native/chrome",
       rendererEntry,
       appRoot,
       configPath: options.configPath,
@@ -1600,11 +1598,66 @@ const makeNativeHostBuildNode = (
     }))
   )
 
+const makeWebViewRuntimeBuildNode = (
+  plan: BuildPlan
+): Effect.Effect<BuildNodePlan, BuildFileError, never> => {
+  const source = plan.webEngineRuntimeSource
+  return hashBuildInputs([
+    ["web.engine", plan.webEngine],
+    ["web.runtime.source", source ?? ""],
+    ["web.runtime.sources.sha256", source === undefined ? "" : hashExistingTrees([source])]
+  ]).pipe(
+    Effect.map((cacheKey) => ({
+      name: "webview-runtime" as const,
+      provider: `webview:${plan.webEngine}`,
+      cacheKey,
+      outputPath: join(plan.layoutPath, plan.webEngineRuntimePath ?? "native/chrome")
+    }))
+  )
+}
+
+const copyWebViewRuntimeBuildNode = (
+  options: DesktopBuildOptions,
+  cache: BuildCacheManifest,
+  plan: BuildPlan
+): Effect.Effect<BuildStepReport, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const source = plan.webEngineRuntimeSource
+    if (source === undefined) {
+      return yield* Effect.fail(
+        new BuildFileError({
+          operation: "read",
+          path: join(plan.appRoot, "native", "chrome", plan.target),
+          message: "web.engine chrome requires a bundled Chrome runtime",
+          cause: undefined
+        })
+      )
+    }
+    const node = yield* makeWebViewRuntimeBuildNode(plan)
+    const cached = yield* canReuseBuildNode(cache, node)
+    if (cached) {
+      return reusedBuildStep(node)
+    }
+    const start = options.now()
+    yield* removePath(node.outputPath)
+    yield* copyDirectory(source, node.outputPath)
+    return {
+      name: node.name,
+      elapsedMs: Math.max(0, options.now() - start),
+      outputPath: node.outputPath,
+      ...(node.provider === undefined ? {} : { provider: node.provider }),
+      cacheKey: node.cacheKey,
+      status: "rebuilt",
+      reason: buildNodeRebuildReason(cache, node)
+    }
+  })
+
 const makeBridgeBuildNode = (plan: BuildPlan): BuildNodePlan => ({
   name: "bridge",
   cacheKey: stableHash([
     ["bridge.protocol", HOST_PROTOCOL_VERSION],
-    ["provider.runtime", plan.layerGraph.providers.runtime]
+    ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["provider.webview", plan.layerGraph.providers.webview]
   ]),
   outputPath: join(plan.layoutPath, "bridge", "bridge-manifest.json")
 })
@@ -1619,6 +1672,7 @@ const makeManifestBuildNode = (
     ["app.version", plan.appVersion],
     ["target", plan.target],
     ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["provider.webview", plan.layerGraph.providers.webview],
     ["web.engine", plan.webEngine],
     ["dependencies", dependencies.map((dependency) => [dependency.name, dependency.cacheKey])]
   ]),
@@ -1823,8 +1877,12 @@ const writeAppManifest = (
       },
       hostManifest: {
         nativeHost: "rust-wry-tao",
-        systemWebView: "system-webview",
+        ...(plan.webEngine === "system" ? { systemWebView: "system-webview" } : {}),
         webEngine: plan.webEngine,
+        webEngineRuntime: plan.webEngine === "chrome" ? "cef" : "system-webview",
+        ...(plan.webEngineRuntimePath === undefined
+          ? {}
+          : { webEnginePath: plan.webEngineRuntimePath }),
         windows: plan.windows,
         protocols: protocolSchemes,
         signingHints: {}
@@ -1853,6 +1911,10 @@ const writeAppManifest = (
       },
       nativeHost: {
         binary: `native/${hostBinaryName(plan.target)}`
+      },
+      providers: {
+        runtime: plan.layerGraph.providers.runtime,
+        webview: plan.layerGraph.providers.webview
       },
       bridge: {
         manifest: "bridge/bridge-manifest.json"
@@ -1895,12 +1957,12 @@ const readBuildCache = (
       return {}
     }
     const content = yield* readTextFile(path)
-    const parsed = yield* parseBuildCache(path, content)
-    if (isBuildCacheManifest(parsed)) {
-      return parsed
-    }
-    return {}
-  }).pipe(Effect.catch(() => Effect.succeed({})))
+    const parsed = yield* Effect.option(parseBuildCache(path, content))
+    return Option.match(parsed, {
+      onNone: () => ({}),
+      onSome: (value) => (isBuildCacheManifest(value) ? value : {})
+    })
+  })
 
 const writeBuildCache = (
   plan: BuildPlan,
@@ -1916,16 +1978,17 @@ const parseBuildCache = (
   path: string,
   content: string
 ): Effect.Effect<unknown, BuildFileError, never> =>
-  Effect.try({
-    try: () => JSON.parse(content) as unknown,
-    catch: (cause) =>
-      new BuildFileError({
-        operation: "read",
-        path,
-        message: `failed to parse ${path}`,
-        cause
-      })
-  })
+  Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+    Effect.mapError(
+      (cause) =>
+        new BuildFileError({
+          operation: "read",
+          path,
+          message: `failed to parse ${path}`,
+          cause
+        })
+    )
+  )
 
 const canReuseBuildNode = (
   cache: BuildCacheManifest,
@@ -1999,8 +2062,8 @@ const providerBudgetForRuntime = (
 ): Effect.Effect<DesktopProviderBudget, BuildConfigError, never> =>
   runtimeGraph({
     id: plan.appId,
-    windows: {},
-    providers: { runtime: plan.runtimeEngine }
+    windows: [] satisfies DesktopWindowsLayer<never>,
+    providers: providerLayerForBuildConfig(plan.runtimeEngine, "system")
   }).pipe(
     Effect.map((graph) => graph.providerBudgets[0]),
     Effect.flatMap((budget) =>
@@ -2020,6 +2083,12 @@ const providerBudgetForRuntime = (
           message: error.message
         })
     )
+  )
+
+const providerLayerForBuildConfig = (runtimeEngine: RuntimeEngine, webEngine: WebEngine) =>
+  providers(
+    provider(runtimeEngine === "node" ? Provider.Runtime.node : Provider.Runtime.bun),
+    provider(webEngine === "chrome" ? Provider.WebView.chrome : Provider.WebView.system)
   )
 
 const providerMeasurementReport = (options: {
@@ -2354,7 +2423,7 @@ const formatBuildConfigDecodeMessage = (message: string): string => {
     return `runtime.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
   }
   if (message.includes('["web"]["engine"]')) {
-    return "web.engine must be one of system, chromium"
+    return "web.engine must be one of system, chrome"
   }
   if (message.includes('["security"]["externalNavigation"]')) {
     return 'security.externalNavigation must be "deny" or "ask"'
@@ -2384,16 +2453,47 @@ const readWebEngine = (value: unknown): Effect.Effect<WebEngine, BuildConfigErro
   readOptionalString(value, "web.engine").pipe(
     Effect.map((rawEngine) => rawEngine ?? "system"),
     Effect.flatMap((webEngine) =>
-      webEngine === "system" || webEngine === "chromium"
-        ? Effect.succeed(webEngine)
+      webEngine === "system" || webEngine === "chrome" || webEngine === "chromium"
+        ? Effect.succeed(webEngine === "chromium" ? "chrome" : webEngine)
         : Effect.fail(
             new BuildConfigError({
               field: "web.engine",
-              message: "web.engine must be one of system, chromium"
+              message: "web.engine must be one of system, chrome"
             })
           )
     )
   )
+
+const readWebEngineRuntimeSource = (
+  appRoot: string,
+  webEngine: WebEngine,
+  target: BuildTarget
+): Effect.Effect<string | undefined, BuildConfigError, never> => {
+  if (webEngine !== "chrome") {
+    return Effect.succeed(undefined)
+  }
+
+  const source = join(appRoot, "native", "chrome", target)
+  return pathExists(source).pipe(
+    Effect.mapError(
+      () =>
+        new BuildConfigError({
+          field: "web.engine",
+          message: `failed to inspect bundled Chromium/CEF assets at native/chrome/${target}`
+        })
+    ),
+    Effect.flatMap((exists) =>
+      exists
+        ? Effect.succeed(source)
+        : Effect.fail(
+            new BuildConfigError({
+              field: "web.engine",
+              message: `web.engine chrome requires bundled Chromium/CEF assets at native/chrome/${target}`
+            })
+          )
+    )
+  )
+}
 
 const readRendererFramework = (value: unknown): Effect.Effect<"react", BuildConfigError, never> =>
   readOptionalString(value, "renderer.framework").pipe(
@@ -2433,7 +2533,13 @@ const readRequiredExistingFile = (
   readRequiredString(value, field).pipe(
     Effect.flatMap((path) =>
       readContainedAppPath(root, path, field).pipe(
-        Effect.flatMap((containedPath) => statPath(containedPath)),
+        Effect.flatMap((containedPath) =>
+          statPath(containedPath).pipe(
+            Effect.mapError(
+              () => new BuildConfigError({ field, message: `${field} must exist at ${path}` })
+            )
+          )
+        ),
         Effect.flatMap((stats) =>
           stats.isDirectory()
             ? Effect.fail(
@@ -2443,9 +2549,6 @@ const readRequiredExistingFile = (
                 })
               )
             : Effect.succeed(path)
-        ),
-        Effect.catch(() =>
-          Effect.fail(new BuildConfigError({ field, message: `${field} must exist at ${path}` }))
         )
       )
     )
@@ -2484,7 +2587,7 @@ const readProtocols = (
     if (value === undefined) {
       return []
     }
-    if (!Array.isArray(value)) {
+    if (!isUnknownArray(value)) {
       return yield* Effect.fail(
         new BuildConfigError({ field: "protocols", message: "protocols must be an array" })
       )
@@ -2739,7 +2842,10 @@ const validateWindowOptions = (value: unknown, field: string): BuildConfigError 
   }
 
   const titleBarStyle = value["titleBarStyle"]
-  if (titleBarStyle !== undefined && !WINDOW_TITLE_BAR_STYLES.has(String(titleBarStyle))) {
+  if (
+    titleBarStyle !== undefined &&
+    (typeof titleBarStyle !== "string" || !WINDOW_TITLE_BAR_STYLES.has(titleBarStyle))
+  ) {
     return new BuildConfigError({
       field: `${field}.titleBarStyle`,
       message: `${field}.titleBarStyle must be default, hidden, hiddenInset, or customButtonsOnHover`
@@ -3146,7 +3252,7 @@ const formatReleaseErrorText = (error: ReleaseError): string => {
   return `${formatted.tag}: ${formatted.phase}: ${formatted.message}`
 }
 
-const makeReleaseWorkflowApi = (options: CliRunOptions): ReleaseWorkflowApi => ({
+const makeReleaseWorkflowApi = (options: CliRunOptions, now: () => number): ReleaseWorkflowApi => ({
   package: (config) =>
     runDesktopPackage({
       cwd: options.cwd,
@@ -3154,7 +3260,7 @@ const makeReleaseWorkflowApi = (options: CliRunOptions): ReleaseWorkflowApi => (
       platform: config.platform,
       artifact: config.artifact,
       commandRunner: options.packageCommandRunner ?? runPackageCommand,
-      now: options.now ?? Date.now,
+      now,
       hostTarget: options.hostTarget
     }),
   sign: (config) =>
@@ -3163,7 +3269,7 @@ const makeReleaseWorkflowApi = (options: CliRunOptions): ReleaseWorkflowApi => (
       configPath: config.configPath,
       platform: config.platform,
       commandRunner: options.signCommandRunner ?? runSignCommand,
-      now: options.now ?? Date.now,
+      now,
       hostTarget: options.hostTarget,
       env: options.env ?? process.env
     }),
@@ -3173,7 +3279,7 @@ const makeReleaseWorkflowApi = (options: CliRunOptions): ReleaseWorkflowApi => (
       configPath: config.configPath,
       platform: config.platform,
       commandRunner: options.notarizeCommandRunner ?? runNotarizeCommand,
-      now: options.now ?? Date.now,
+      now,
       hostTarget:
         options.hostTarget === "macos-arm64" || options.hostTarget === "macos-x64"
           ? options.hostTarget
@@ -3185,7 +3291,7 @@ const makeReleaseWorkflowApi = (options: CliRunOptions): ReleaseWorkflowApi => (
       cwd: options.cwd,
       configPath: config.configPath,
       platform: config.platform,
-      now: options.now ?? Date.now,
+      now,
       env: options.env ?? process.env
     })
 })
@@ -3437,6 +3543,8 @@ const pathToFileUrl = (path: string): string => pathToFileURL(path).href
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null
 
+const isUnknownArray = (value: unknown): value is readonly unknown[] => Array.isArray(value)
+
 const isNotFoundError = (cause: unknown): boolean => isRecord(cause) && cause["code"] === "ENOENT"
 
 const MAX_COMMAND_OUTPUT_CHARS = 16_384
@@ -3588,17 +3696,21 @@ const runReproCheckHandler = (
           hostTarget: options.hostTarget
         })
     }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatReproError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else if (formatted.report === undefined) {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          } else {
-            options.writeStderr(formatReproReport(formatted.report))
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatReproError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else if (formatted.report === undefined) {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            } else {
+              options.writeStderr(formatReproReport(formatted.report))
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3623,17 +3735,21 @@ const runApiCheckHandler = (
       cwd: options.cwd,
       updateSnapshots: flags.write
     }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatPublicApiError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else if (formatted.report === undefined) {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          } else {
-            options.writeStderr(formatPublicApiReport(formatted.report))
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatPublicApiError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else if (formatted.report === undefined) {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            } else {
+              options.writeStderr(formatPublicApiReport(formatted.report))
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3655,15 +3771,19 @@ const runDocsCheckHandler = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const report = yield* runDocsReleaseGate({ cwd: options.cwd }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatDocsReleaseGateError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatDocsReleaseGateError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3685,15 +3805,19 @@ const runReleaseCheckHandler = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const report = yield* runReleaseGate({ cwd: options.cwd }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatReleaseGateError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatReleaseGateError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3715,15 +3839,19 @@ const runA11yCheckHandler = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const report = yield* runAccessibilityGate({ cwd: options.cwd }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatAccessibilityGateError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatAccessibilityGateError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3745,17 +3873,21 @@ const runSemverCheckHandler = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const report = yield* runSemverGuard({ cwd: options.cwd }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatSemverGuardError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else if (formatted.report === undefined) {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          } else {
-            options.writeStderr(formatSemverGuardReport(formatted.report))
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatSemverGuardError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else if (formatted.report === undefined) {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            } else {
+              options.writeStderr(formatSemverGuardReport(formatted.report))
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )

@@ -1,26 +1,22 @@
 import {
+  makeFrameworkScopedOperation,
   runFrameworkEffect,
-  runFrameworkPromiseExit,
   type FrameworkRuntime
 } from "@effect-desktop/core/renderer"
-import { Cause, Effect, Exit, Layer, ManagedRuntime } from "effect"
-import { useCallback, useEffect, useRef, useState, type DependencyList } from "react"
+import { Effect, Exit, Layer, ManagedRuntime, type Cause } from "effect"
+import { AsyncResult } from "effect/unstable/reactivity"
+import { useCallback, useEffect, useMemo, useRef, useState, type DependencyList } from "react"
 
-export type DesktopAsyncStatus =
-  | "idle"
-  | "running"
-  | "success"
-  | "failure"
-  | "canceled"
-  | "unavailable"
+import {
+  asyncResultFromExit,
+  asyncResultStatusOf,
+  runAsyncResult,
+  type AsyncResultStatus
+} from "./effect-runner.js"
 
-export type DesktopAsyncState<A, E> =
-  | { readonly _tag: "Idle" }
-  | { readonly _tag: "Running" }
-  | { readonly _tag: "Success"; readonly value: A }
-  | { readonly _tag: "Failure"; readonly cause: Cause.Cause<E>; readonly message: string }
-  | { readonly _tag: "Canceled" }
-  | { readonly _tag: "Unavailable"; readonly message: string }
+export type DesktopAsyncStatus = AsyncResultStatus
+
+export type DesktopAsyncState<A, E> = AsyncResult.AsyncResult<A, E>
 
 export type DesktopActionConcurrency = "drop" | "replace" | "queue"
 
@@ -55,24 +51,11 @@ export interface DesktopDisposable<E = never> {
 
 const defaultRuntime: FrameworkRuntime = ManagedRuntime.make(Layer.empty)
 
-const idle = <A, E>(): DesktopAsyncState<A, E> => ({ _tag: "Idle" })
+const idle = <A, E>(): DesktopAsyncState<A, E> => AsyncResult.initial<A, E>()
+const running = <A, E>(): DesktopAsyncState<A, E> => AsyncResult.initial<A, E>(true)
 
-export const statusOf = <A, E>(state: DesktopAsyncState<A, E>): DesktopAsyncStatus => {
-  switch (state._tag) {
-    case "Idle":
-      return "idle"
-    case "Running":
-      return "running"
-    case "Success":
-      return "success"
-    case "Failure":
-      return "failure"
-    case "Canceled":
-      return "canceled"
-    case "Unavailable":
-      return "unavailable"
-  }
-}
+export const statusOf = <A, E>(state: DesktopAsyncState<A, E>): DesktopAsyncStatus =>
+  asyncResultStatusOf(state)
 
 export const useDesktopAction = <Args extends readonly unknown[], A, E>(
   operation: (...args: Args) => Effect.Effect<A, E, never>,
@@ -84,7 +67,6 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
   const runningRef = useRef(false)
   const interruptRef = useRef<(() => void) | undefined>(undefined)
   const runIdRef = useRef(0)
-  const canceledRunIdsRef = useRef(new Set<number>())
   const queueRef = useRef<Args[]>([])
   const [state, setState] = useState<DesktopAsyncState<A, E>>(idle<A, E>)
 
@@ -94,29 +76,27 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
     runningRef.current = true
     const runId = runIdRef.current + 1
     runIdRef.current = runId
-    setState({ _tag: "Running" })
+    setState(running<A, E>())
 
-    const interrupt = runFrameworkEffect(defaultRuntime, operationRef.current(...args), (exit) => {
-      if (!mountedRef.current || runId !== runIdRef.current) {
-        canceledRunIdsRef.current.delete(runId)
-        return
+    const interrupt = runFrameworkEffect(
+      defaultRuntime,
+      runAsyncResult(operationRef.current(...args)),
+      (exit) => {
+        if (!mountedRef.current || runId !== runIdRef.current) {
+          return
+        }
+
+        interruptRef.current = undefined
+        runningRef.current = false
+
+        setState(asyncResultFromExit(exit))
+
+        const next = queueRef.current.shift()
+        if (next !== undefined) {
+          start(next)
+        }
       }
-
-      interruptRef.current = undefined
-      runningRef.current = false
-
-      const wasCanceled = canceledRunIdsRef.current.delete(runId)
-      if (wasCanceled) {
-        setState({ _tag: "Canceled" })
-      } else {
-        setState(stateFromExit(exit))
-      }
-
-      const next = queueRef.current.shift()
-      if (next !== undefined) {
-        start(next)
-      }
-    })
+    )
     interruptRef.current = interrupt
   }, [])
 
@@ -126,7 +106,6 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
       return
     }
 
-    canceledRunIdsRef.current.add(runIdRef.current)
     interrupt()
   }, [])
 
@@ -183,7 +162,7 @@ export const useDesktopQuery = <A, E>(
 ): DesktopQuery<A, E> => {
   const operationRef = useRef(operation)
   const interruptRef = useRef<(() => void) | undefined>(undefined)
-  const canceledRef = useRef(false)
+  const queryOperation = useMemo(() => makeFrameworkScopedOperation(defaultRuntime), [])
   const [reloads, setReloads] = useState(0)
   const [state, setState] = useState<DesktopAsyncState<A, E>>(idle<A, E>)
 
@@ -195,7 +174,6 @@ export const useDesktopQuery = <A, E>(
       return
     }
 
-    canceledRef.current = true
     interrupt()
   }, [])
 
@@ -209,31 +187,26 @@ export const useDesktopQuery = <A, E>(
 
   useEffect(
     () => {
-      let active = true
-      canceledRef.current = false
-      setState({ _tag: "Running" })
+      setState(running<A, E>())
 
-      const interrupt = runFrameworkEffect(defaultRuntime, operationRef.current(), (exit) => {
-        if (!active) {
-          return
-        }
-
+      queryOperation.runLatest(runAsyncResult(operationRef.current()), (exit) => {
         interruptRef.current = undefined
-        if (canceledRef.current) {
-          setState({ _tag: "Canceled" })
-        } else {
-          setState(stateFromExit(exit))
-        }
+        setState(asyncResultFromExit(exit))
       })
-      interruptRef.current = interrupt
+      interruptRef.current = queryOperation.reset
 
       return () => {
-        active = false
-        interrupt()
+        queryOperation.reset()
       }
     },
     deps === undefined ? [reloads] : [...deps, reloads]
   )
+
+  useEffect(() => {
+    return () => {
+      queryOperation.dispose()
+    }
+  }, [queryOperation])
 
   return {
     state,
@@ -275,7 +248,7 @@ export const useDesktopResource = <E>(
 
       setState({ status: "active", error: undefined })
       return () => {
-        void runFrameworkPromiseExit(defaultRuntime, current.dispose()).then((exit) => {
+        runFrameworkEffect(defaultRuntime, current.dispose(), (exit) => {
           if (!mountedRef.current || generationRef.current !== generation) {
             return
           }
@@ -295,54 +268,3 @@ export const useDesktopResource = <E>(
 }
 
 export const useResource = useDesktopResource
-
-const stateFromExit = <A, E>(exit: Exit.Exit<A, E>): DesktopAsyncState<A, E> => {
-  if (Exit.isSuccess(exit)) {
-    return { _tag: "Success", value: exit.value }
-  }
-
-  const unavailableMessage = unavailableMessageFromCause(exit.cause)
-  if (unavailableMessage !== undefined) {
-    return { _tag: "Unavailable", message: unavailableMessage }
-  }
-
-  return {
-    _tag: "Failure",
-    cause: exit.cause,
-    message: String(exit.cause)
-  }
-}
-
-const unavailableMessageFromCause = <E>(cause: Cause.Cause<E>): string | undefined => {
-  for (const reason of cause.reasons) {
-    if (Cause.isFailReason(reason)) {
-      const message = unavailableMessageFromError(reason.error)
-      if (message !== undefined) {
-        return message
-      }
-    }
-  }
-  return undefined
-}
-
-const unavailableMessageFromError = (error: unknown): string | undefined => {
-  if (typeof error !== "object" || error === null) {
-    return undefined
-  }
-
-  const value = error as {
-    readonly tag?: unknown
-    readonly current?: unknown
-    readonly message?: unknown
-  }
-  const isUnavailable =
-    value.tag === "HostUnavailable" ||
-    value.tag === "RuntimeUnavailable" ||
-    (value.tag === "InvalidState" && value.current === "missing host bridge")
-
-  if (!isUnavailable) {
-    return undefined
-  }
-
-  return typeof value.message === "string" ? value.message : "desktop host is unavailable"
-}

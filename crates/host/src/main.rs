@@ -24,6 +24,9 @@ const HOST_STARTED_EVENT: &str = "host.started";
 const RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(10);
 const WINDOW_SMOKE_TEST_ARG: &str = "--window-smoke-test";
 const WINDOW_SMOKE_TEST_ENV: &str = "EFFECT_DESKTOP_WINDOW_SMOKE_TEST";
+const STARTUP_WINDOWS_ENV: &str = "EFFECT_DESKTOP_STARTUP_WINDOWS";
+const WINDOW_SMOKE_TEST_STARTUP_WINDOWS: &str =
+    r#"{"smoke":{"title":"Effect Desktop Smoke Test","width":800,"height":600}}"#;
 const SOURCE_RUNTIME_ENTRY: &str = "src/runtime/main.ts";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -107,7 +110,9 @@ fn packaged_runtime_config_for_exe(current_exe: &Path) -> Result<Option<runtime:
 
 fn with_run_mode_env(config: runtime::RuntimeConfig, run_mode: RunMode) -> runtime::RuntimeConfig {
     if matches!(run_mode, RunMode::WindowSmokeTest) {
-        config.env(WINDOW_SMOKE_TEST_ENV, "1")
+        config
+            .env(WINDOW_SMOKE_TEST_ENV, "1")
+            .env(STARTUP_WINDOWS_ENV, WINDOW_SMOKE_TEST_STARTUP_WINDOWS)
     } else {
         config
     }
@@ -161,7 +166,7 @@ mod tests {
     use super::{
         packaged_runtime_config_for_exe, parse_run_mode, resolve_source_runtime_cwd_from_anchors,
         runtime_config, startup_event, HOST_STARTED_EVENT, SOURCE_RUNTIME_ENTRY,
-        WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
+        STARTUP_WINDOWS_ENV, WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
     };
     use crate::window::RunMode;
     use std::path::PathBuf;
@@ -223,6 +228,11 @@ mod tests {
         assert!(
             config_debug.contains(WINDOW_SMOKE_TEST_ENV) && config_debug.contains("\"1\""),
             "window smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
+        );
+        assert!(
+            config_debug.contains(STARTUP_WINDOWS_ENV)
+                && config_debug.contains("Effect Desktop Smoke Test"),
+            "window smoke runtime config should declare startup windows: {config_debug}"
         );
     }
 

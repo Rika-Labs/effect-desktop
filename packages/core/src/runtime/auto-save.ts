@@ -33,12 +33,11 @@ export const makeAutoSaveLayer = (
       const retries = options.retries ?? defaultAutoSaveRetries
 
       const flush = svc.flush(options.target).pipe(Effect.retry(Schedule.recurs(retries)))
+      const scheduledFlush = Effect.sleep(interval).pipe(
+        Effect.andThen(flush),
+        Effect.repeat(Schedule.spaced(interval))
+      )
 
-      yield* Effect.gen(function* () {
-        while (true) {
-          yield* Effect.sleep(interval)
-          yield* flush
-        }
-      }).pipe(Effect.forkScoped)
+      yield* scheduledFlush.pipe(Effect.forkScoped)
     })
   )

@@ -1,7 +1,7 @@
 import { resolve } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { encodeFrame, FrameDecoder } from "@effect-desktop/core/runtime/transport"
-import { type Cause, Deferred, Effect, Layer, Queue, Sink, Stream } from "effect"
+import { type Cause, Deferred, Effect, Layer, Queue, Schedule, Sink, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { makeHmrController, type ViteDevRuntimeServer } from "./hmr-controller.js"
 import {
@@ -93,6 +93,26 @@ describe("HMR controller", () => {
     expect(fake.events).toEqual(["spawn:1", "close:1"])
   })
 
+  test("runtime frame errors are reported without failing the controller lifecycle", async () => {
+    const fake = makeFakeProcessLayer()
+    const server = makeFakeServer()
+    const controller = makeHmrController({
+      entry: "src/runtime.ts",
+      cwd: "/workspace/app",
+      server,
+      processLayer: fake.layer
+    })
+
+    await waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+    const record = firstRecord(fake.records)
+    await Effect.runPromise(Queue.offer(record.stdout, new Uint8Array([0, 0, 0, 4, 1])))
+    await Effect.runPromise(Queue.end(record.stdout))
+
+    await waitFor(() => server.errors.some((error) => error.includes("runtime error")))
+    controller.dispose()
+    await waitFor(() => record.killed)
+  })
+
   test("dispose is idempotent when Vite close hooks fire more than once", async () => {
     const fake = makeFakeProcessLayer()
     const server = makeFakeServer()
@@ -109,6 +129,26 @@ describe("HMR controller", () => {
 
     await waitFor(() => fake.records.every((record) => record.killed))
     expect(fake.events).toEqual(["spawn:1", "close:1"])
+  })
+
+  test("dispose unregisters Vite websocket and watcher handlers", async () => {
+    const fake = makeFakeProcessLayer()
+    const server = makeFakeServer()
+    const controller = makeHmrController({
+      entry: "src/runtime.ts",
+      cwd: "/workspace/app",
+      server,
+      processLayer: fake.layer
+    })
+
+    await waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+    expect(server.listenerCounts()).toEqual({ frameUp: 1, change: 1 })
+
+    controller.dispose()
+    await waitFor(() => fake.records.every((record) => record.killed))
+    await waitFor(
+      () => server.listenerCounts().frameUp === 0 && server.listenerCounts().change === 0
+    )
   })
 
   test("rapid restarts are serialized through process cleanup", async () => {
@@ -213,9 +253,10 @@ const makeFakeServer = (): ViteDevRuntimeServer & {
   readonly errors: string[]
   readonly emitWs: (event: string, payload: { readonly data: string }) => void
   readonly emitWatchChange: (filePath: string) => void
+  readonly listenerCounts: () => { readonly frameUp: number; readonly change: number }
 } => {
-  const wsHandlers = new Map<string, (payload: { readonly data: string }) => void>()
-  const watchHandlers: Array<(filePath: string) => void> = []
+  const wsHandlers = new Map<string, Set<(payload: { readonly data: string }) => void>>()
+  const watchHandlers = new Set<(filePath: string) => void>()
   const sent: SentEvent[] = []
   const errors: string[] = []
 
@@ -227,12 +268,24 @@ const makeFakeServer = (): ViteDevRuntimeServer & {
         sent.push([event, payload])
       },
       on: (event, handler) => {
-        wsHandlers.set(event, handler)
+        const handlers = wsHandlers.get(event) ?? new Set()
+        handlers.add(handler)
+        wsHandlers.set(event, handlers)
+      },
+      off: (event, handler) => {
+        const handlers = wsHandlers.get(event)
+        handlers?.delete(handler)
+        if (handlers?.size === 0) {
+          wsHandlers.delete(event)
+        }
       }
     },
     watcher: {
       on: (_event, handler) => {
-        watchHandlers.push(handler)
+        watchHandlers.add(handler)
+      },
+      off: (_event, handler) => {
+        watchHandlers.delete(handler)
       }
     },
     httpServer: {
@@ -246,13 +299,19 @@ const makeFakeServer = (): ViteDevRuntimeServer & {
       }
     },
     emitWs: (event, payload) => {
-      wsHandlers.get(event)?.(payload)
+      for (const handler of wsHandlers.get(event) ?? []) {
+        handler(payload)
+      }
     },
     emitWatchChange: (filePath) => {
       for (const handler of watchHandlers) {
         handler(filePath)
       }
-    }
+    },
+    listenerCounts: () => ({
+      frameUp: wsHandlers.get(FRAME_UP_EVENT)?.size ?? 0,
+      change: watchHandlers.size
+    })
   }
 }
 
@@ -286,13 +345,14 @@ const isFramePayload = (payload: unknown): payload is { readonly data: string } 
   typeof payload.data === "string"
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
-  const started = Date.now()
-  while (!predicate()) {
-    if (Date.now() - started > 1_000) {
-      throw new Error("timed out waiting for condition")
-    }
-    await Bun.sleep(5)
-  }
+  await Effect.runPromise(
+    Effect.suspend(() =>
+      predicate() ? Effect.void : Effect.fail(new Error("condition not met"))
+    ).pipe(
+      Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(200)))),
+      Effect.mapError(() => new Error("timed out waiting for condition"))
+    )
+  )
 }
 
 const firstRecord = (records: readonly FakeProcessRecord[]): FakeProcessRecord => {

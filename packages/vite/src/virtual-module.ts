@@ -13,6 +13,7 @@ import { Deferred, Effect, Layer, Queue, Stream } from "effect"
 const FRAME_DOWN = ${JSON.stringify(FRAME_DOWN_EVENT)}
 const FRAME_UP = ${JSON.stringify(FRAME_UP_EVENT)}
 const RUNTIME_READY = ${JSON.stringify(RUNTIME_READY_EVENT)}
+const RUNTIME_RESTART = ${JSON.stringify(RUNTIME_RESTART_EVENT)}
 const HMR_BUFFER_SIZE = 1024
 let runtimeReady = false
 
@@ -35,7 +36,7 @@ const makeDevSocket = () =>
 
     const awaitRuntimeReady = runtimeReady || !import.meta.hot
       ? Effect.void
-      : Effect.async((resume) => {
+      : Effect.callback((resume) => {
           const onReady = () => {
             runtimeReady = true
             import.meta.hot?.off?.(RUNTIME_READY, onReady)
@@ -104,12 +105,20 @@ const makeDevSocket = () =>
 export const layerDevSocket = Layer.effect(Socket.Socket, makeDevSocket())
 
 if (import.meta.hot) {
-  import.meta.hot.on(RUNTIME_READY, () => {
+  const onRuntimeReady = () => {
     runtimeReady = true
-  })
+  }
 
-  import.meta.hot.on(${JSON.stringify(RUNTIME_RESTART_EVENT)}, () => {
+  const onRuntimeRestart = () => {
     import.meta.hot?.invalidate()
+  }
+
+  import.meta.hot.on(RUNTIME_READY, onRuntimeReady)
+  import.meta.hot.on(RUNTIME_RESTART, onRuntimeRestart)
+
+  import.meta.hot.dispose(() => {
+    import.meta.hot?.off?.(RUNTIME_READY, onRuntimeReady)
+    import.meta.hot?.off?.(RUNTIME_RESTART, onRuntimeRestart)
   })
 }
 `

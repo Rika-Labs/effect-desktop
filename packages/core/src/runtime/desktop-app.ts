@@ -1,11 +1,22 @@
-import { Config, Context, Data, Effect, Layer, Option, Schema } from "effect"
+import { Config, Context, Data, Effect, Layer, Option, Schema, type Scope } from "effect"
 import type * as FileSystemRuntime from "effect/FileSystem"
 import type * as PathRuntime from "effect/Path"
 import type * as StdioRuntime from "effect/Stdio"
 import type * as TerminalRuntime from "effect/Terminal"
+import {
+  ClusterWorkflowEngine,
+  RunnerHealth,
+  Runners,
+  Sharding,
+  ShardingConfig,
+  SqlMessageStorage,
+  SqlRunnerStorage
+} from "effect/unstable/cluster"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
 import type { ChildProcessSpawner as ChildProcessSpawnerRuntime } from "effect/unstable/process"
 import { Reactivity } from "effect/unstable/reactivity"
+import type { SqlClient } from "effect/unstable/sql/SqlClient"
+import type { SqlError } from "effect/unstable/sql/SqlError"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import { rpcCapability } from "@effect-desktop/bridge"
@@ -22,12 +33,14 @@ import type { NormalizedCapability } from "./permission-registry.js"
 import {
   ProviderCapability,
   ProviderRegistryError,
-  makeProviderRegistry,
-  type Provider
+  type Provider as RegistryProvider,
+  type ProviderKind
 } from "./provider-registry.js"
 import { ResourceRegistryLive } from "./resources.js"
-import { servedRpcGroup, servedRpcGroupProperties } from "./rpc-group-metadata.js"
+import { ResourceOwner, makeAppResourceOwner } from "./resource-owner.js"
+import type { ResourceOwnerInvalidArgumentError } from "./resource-owner.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
+import type { DesktopRpcContractLaw, DesktopRpcSchemaDoc } from "./desktop-rpc-surface.js"
 
 export interface WindowSpec {
   readonly title: string
@@ -36,40 +49,121 @@ export interface WindowSpec {
   readonly renderer?: string
 }
 
+export type TypedDesktopRpcRegistrationGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
+  readonly requests: ReadonlyMap<string, Rpc.Any>
+}
+
+export type DesktopRpcRegistrationGroup = RpcGroup.Any & {
+  readonly requests: ReadonlyMap<string, Rpc.Any>
+}
+
+export interface DesktopRpcRegistration<Rpcs extends Rpc.Any, E = unknown, R = unknown> {
+  readonly _tag: "DesktopRpcRegistration"
+  readonly group: TypedDesktopRpcRegistrationGroup<Rpcs>
+  readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+  readonly serverLayer: Layer.Layer<never, unknown, unknown>
+}
+
+export interface AnyDesktopRpcRegistration<E = unknown, R = unknown> {
+  readonly _tag: "DesktopRpcRegistration"
+  readonly group: DesktopRpcRegistrationGroup
+  readonly handlers: Layer.Layer<never, E, R>
+  readonly serverLayer: Layer.Layer<never, unknown, unknown>
+}
+
+export type DesktopRpcsLayer<E = never, RIn = never> = ReadonlyArray<
+  AnyDesktopRpcRegistration<E, RIn>
+>
+
+export interface DesktopWindowRegistration<RIn = unknown> {
+  readonly _tag: "DesktopWindowRegistration"
+  readonly id: string
+  readonly spec: WindowSpec
+  readonly services: Layer.Layer<never, never, RIn | Scope.Scope> | undefined
+}
+
+const RESERVED_WINDOW_IDS: ReadonlySet<string> = Object.freeze(
+  new Set(["__proto__", "constructor", "prototype"])
+)
+
+export const isSafeWindowId = (id: string): boolean => id.length > 0 && !RESERVED_WINDOW_IDS.has(id)
+
+export type DesktopWindowsLayer<RIn = never> = ReadonlyArray<DesktopWindowRegistration<RIn>>
+
+export type DesktopPermissionsLayer = ReadonlyArray<NormalizedCapability>
+
+export type DesktopProvidersLayer = ReadonlyArray<DesktopProviderDescriptor>
+
+export interface DesktopNativeRegistration<E = unknown, R = unknown> {
+  readonly tag: string
+  readonly serverLayer: DesktopRpcsLayer<E, R>
+  readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
+  readonly contractLaws: readonly DesktopRpcContractLaw[]
+}
+
+export type AnyDesktopNativeRegistration = DesktopNativeRegistration<unknown, unknown>
+
+export type DesktopNativeLayer = ReadonlyArray<AnyDesktopNativeRegistration>
+
+export interface DesktopNativeSurfaceSelection {
+  readonly _tag: "NativeSurfaceSelection"
+  readonly surfaces: readonly AnyDesktopNativeRegistration[]
+}
+
+export type DesktopNativeDeclaration = DesktopNativeLayer | DesktopNativeSurfaceSelection
+
+export type DesktopWorkflowRegistration<E = unknown, R = unknown> = Layer.Layer<
+  never,
+  E,
+  R | WorkflowEngine.WorkflowEngine
+>
+
+export type AnyDesktopWorkflowRegistration = DesktopWorkflowRegistration<unknown, unknown>
+
+export type DesktopWorkflowsLayer<RIn = never, E = never> = ReadonlyArray<
+  DesktopWorkflowRegistration<E, RIn>
+>
+
 export interface DesktopConfig<RIn = never, E = never> {
   readonly id: string
-  readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly providers?: DesktopProviderSelection
-  readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer<E, RIn>>
-  readonly permissions?: ReadonlyArray<NormalizedCapability>
-  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
+  readonly windows: DesktopWindowsLayer<RIn>
+  readonly providers?: DesktopProvidersLayer
+  readonly native?: DesktopNativeLayer
+  readonly rpcs?: DesktopRpcsLayer<E, RIn>
+  readonly permissions?: DesktopPermissionsLayer
+  readonly workflows?: DesktopWorkflowsLayer<RIn, E>
 }
 
 export interface DesktopMakeConfig<RIn = never, E = never> {
   readonly id?: string
-  readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly providers?: DesktopProviderSelection
-  readonly rpcs?: ReadonlyArray<AnyDesktopRpcLayer<E, RIn>>
-  readonly permissions?: ReadonlyArray<NormalizedCapability>
-  readonly workflows?: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
+  readonly windows: DesktopWindowsLayer<RIn>
+  readonly providers?: DesktopProvidersLayer
+  readonly native?: DesktopNativeLayer
+  readonly rpcs?: DesktopRpcsLayer<E, RIn>
+  readonly permissions?: DesktopPermissionsLayer
+  readonly workflows?: DesktopWorkflowsLayer<RIn, E>
 }
 
-export type DesktopWorkflowLayer<RIn = never, E = never> = Layer.Layer<
-  never,
+export type DesktopWorkflowLayer<RIn = never, E = never> = DesktopWorkflowRegistration<E, RIn>
+
+export type DesktopWorkflowEngineLayer<RIn = never, E = never> = Layer.Layer<
+  WorkflowEngine.WorkflowEngine,
   E,
-  RIn | WorkflowEngine.WorkflowEngine
+  RIn
 >
 
 export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopConfig<RIn, E> {
   readonly _tag: "DesktopAppDescriptor"
-  readonly rpcs: ReadonlyArray<AnyDesktopRpcLayer<E, RIn>>
-  readonly permissions: ReadonlyArray<NormalizedCapability>
-  readonly workflows: ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
+  readonly native: DesktopNativeLayer
+  readonly rpcs: DesktopRpcsLayer<E, RIn>
+  readonly permissions: DesktopPermissionsLayer
+  readonly workflows: DesktopWorkflowsLayer<RIn, E>
+  readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration<RIn>>
 }
 
 export interface DesktopRpcGroupDescriptor {
   readonly _tag: "DesktopRpcGroup"
-  readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
+  readonly group: DesktopRpcRegistrationGroup
 }
 
 export interface DesktopAppManifest {
@@ -79,33 +173,28 @@ export interface DesktopAppManifest {
   readonly rpcGroups: ReadonlyArray<DesktopRpcGroupDescriptor>
 }
 
-export interface DesktopRpcLayer<Rpcs extends Rpc.Any = Rpc.Any, E = never, R = never> {
-  readonly _tag: "DesktopRpcsLayer"
-  readonly group: RpcGroup.RpcGroup<Rpcs>
-  readonly layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+interface DesktopNativeSelectionSnapshot {
+  readonly registrations: ReadonlyArray<AnyDesktopNativeRegistration>
+  readonly permissions: ReadonlyArray<NormalizedCapability>
 }
 
-export interface AnyDesktopRpcLayer<E = unknown, R = unknown> {
-  readonly _tag: "DesktopRpcsLayer"
-  readonly group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
-  readonly layer: Layer.Layer<any, E, R>
-}
-
-export type DesktopManifestSource = Pick<DesktopConfig<any, any>, "id" | "windows" | "rpcs">
+export type DesktopManifestSource<RIn = never, E = never> = Pick<
+  DesktopConfig<RIn, E>,
+  "id" | "windows" | "native" | "rpcs"
+>
 
 export type DesktopRuntimeProviderId = "bun" | "node" | "test" | (string & {})
-
-export interface DesktopProviderSelection {
-  readonly runtime?: DesktopRuntimeProviderId | undefined
-}
+export type DesktopWebViewProviderId = "system" | "chrome" | (string & {})
+export type DesktopWebViewHostEngine = "system" | "chrome" | (string & {})
 
 export interface DesktopRuntimeSelectedProviders {
   readonly runtime: DesktopRuntimeProviderId
+  readonly webview: DesktopWebViewProviderId
 }
 
 export class ProviderFact extends Schema.Class<ProviderFact>("ProviderFact")({
   id: Schema.String,
-  kind: Schema.Literal("runtime"),
+  kind: Schema.Literals(["runtime", "webview"]),
   capabilities: Schema.Array(Schema.String)
 }) {}
 
@@ -125,6 +214,7 @@ export class LayerGraphNodeSnapshot extends Schema.Class<LayerGraphNodeSnapshot>
   kind: Schema.Literals([
     "provider",
     "core-service",
+    "native-surface",
     "rpc-layer",
     "workflow",
     "app-service",
@@ -137,7 +227,7 @@ export class LayerGraphNodeSnapshot extends Schema.Class<LayerGraphNodeSnapshot>
 
 export class LayerGraphSnapshot extends Schema.Class<LayerGraphSnapshot>("LayerGraphSnapshot")({
   appId: Schema.String,
-  providers: Schema.Struct({ runtime: Schema.String }),
+  providers: Schema.Struct({ runtime: Schema.String, webview: Schema.String }),
   nodes: Schema.Array(LayerGraphNodeSnapshot),
   providerFacts: Schema.Array(ProviderFact),
   failures: Schema.Array(LayerFailurePayload)
@@ -146,6 +236,7 @@ export class LayerGraphSnapshot extends Schema.Class<LayerGraphSnapshot>("LayerG
 export type DesktopRuntimeGraphNodeKind =
   | "provider"
   | "core-service"
+  | "native-surface"
   | "rpc-layer"
   | "workflow"
   | "app-service"
@@ -176,6 +267,11 @@ export interface DesktopRuntimeApi {
   readonly graph: DesktopRuntimeGraph
 }
 
+interface SelectedProviderDescriptors {
+  readonly runtime: DesktopRuntimeProviderDescriptor
+  readonly webview: DesktopWebViewProviderDescriptor
+}
+
 export type DesktopRuntimeProviderServices =
   | FileSystemRuntime.FileSystem
   | PathRuntime.Path
@@ -183,7 +279,11 @@ export type DesktopRuntimeProviderServices =
   | StdioRuntime.Stdio
   | ChildProcessSpawnerRuntime.ChildProcessSpawner
 
-export type DesktopRuntimeServices = DesktopApp | DesktopRuntime | DesktopRuntimeProviderServices
+export type DesktopRuntimeServices =
+  | DesktopApp
+  | DesktopRuntime
+  | DesktopRuntimeProviderServices
+  | ResourceOwner
 
 export interface DesktopProviderBudget {
   readonly id: DesktopRuntimeProviderId
@@ -196,12 +296,20 @@ export interface DesktopProviderBudget {
 
 export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly appId: string
-  readonly reason: "missing-permission" | "missing-provider" | "invalid-config" | "duplicate-rpc"
+  readonly reason:
+    | "missing-permission"
+    | "missing-provider"
+    | "invalid-config"
+    | "duplicate-rpc"
+    | "duplicate-window-id"
   readonly message: string
   readonly contract?: string
   readonly method?: string
   readonly permission?: string
   readonly provider?: string
+  readonly providerKind?: ProviderKind
+  readonly windowId?: string
+  readonly cause?: unknown
 }> {}
 
 const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
@@ -221,7 +329,8 @@ const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
 export interface DesktopAppApi {
   readonly appId: string
   readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<any, any>>
+  readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration>
+  readonly rpcRegistrations: ReadonlyArray<AnyDesktopRpcRegistration>
 }
 
 export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()("DesktopApp") {}
@@ -234,12 +343,24 @@ const TelemetryLive: Layer.Layer<Telemetry, never, never> = Layer.effect(Telemet
   makeTelemetry().pipe(Effect.orDie)
 )
 
+export const WorkflowEngineMemory: DesktopWorkflowEngineLayer = WorkflowEngine.layerMemory
+
+export const WorkflowEngineDurable: DesktopWorkflowEngineLayer<SqlClient, SqlError> =
+  ClusterWorkflowEngine.layer.pipe(
+    Layer.provideMerge(Sharding.layer),
+    Layer.provide(Runners.layerNoop),
+    Layer.provideMerge(SqlMessageStorage.layer),
+    Layer.provide(SqlRunnerStorage.layer),
+    Layer.provide(RunnerHealth.layerNoop),
+    Layer.provide(ShardingConfig.layer())
+  )
+
 const coreServicesLayer: Layer.Layer<never, Config.ConfigError, never> = Layer.mergeAll(
   ResourceRegistryLive,
   Layer.provideMerge(EffectTelemetryRuntimeLive, TelemetryLive),
   Reactivity.layer,
   DesktopLoggerLayer,
-  WorkflowEngine.layerMemory
+  WorkflowEngineMemory
 )
 
 const CoreServiceGraphNodes = Object.freeze([
@@ -259,6 +380,8 @@ const RuntimeProviderServiceNames = Object.freeze([
   "ChildProcessSpawner"
 ])
 
+const WebViewProviderCapabilities = Object.freeze(["WindowWebView", "AppProtocol"])
+
 const RuntimeProviderCapabilities = Object.freeze(
   RuntimeProviderServiceNames.map(
     (name) =>
@@ -269,143 +392,464 @@ const RuntimeProviderCapabilities = Object.freeze(
   )
 )
 
-interface RuntimeProviderDescriptor extends Provider<"runtime", DesktopRuntimeProviderId> {
+export interface DesktopRuntimeProviderDescriptor extends RegistryProvider<
+  "runtime",
+  DesktopRuntimeProviderId
+> {
   readonly id: DesktopRuntimeProviderId
   readonly node: DesktopRuntimeGraphNode
   readonly budget: DesktopProviderBudget
   readonly layer: Effect.Effect<
     Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>,
-    never,
+    DesktopConfigError,
     never
   >
 }
 
-const RuntimeProviders = [
+export interface DesktopRuntimeProviderOptions {
+  readonly id: DesktopRuntimeProviderId
+  readonly layer: Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
+  readonly budget: DesktopProviderBudget
+  readonly capabilities?: readonly ProviderCapability[]
+  readonly node?: DesktopRuntimeGraphNode
+}
+
+export interface DesktopWebViewProviderDescriptor extends RegistryProvider<
+  "webview",
+  DesktopWebViewProviderId
+> {
+  readonly id: DesktopWebViewProviderId
+  readonly hostEngine: DesktopWebViewHostEngine
+  readonly node: DesktopRuntimeGraphNode
+}
+
+export interface DesktopWebViewProviderOptions {
+  readonly id: DesktopWebViewProviderId
+  readonly hostEngine: DesktopWebViewHostEngine
+  readonly capabilities: readonly (ProviderCapability | string)[]
+  readonly node?: DesktopRuntimeGraphNode
+}
+
+export type DesktopProviderDescriptor =
+  | DesktopRuntimeProviderDescriptor
+  | DesktopWebViewProviderDescriptor
+
+const runtimeProvider = (
+  options: DesktopRuntimeProviderOptions
+): DesktopRuntimeProviderDescriptor =>
   Object.freeze({
     kind: "runtime" as const,
-    id: "bun" as const,
-    capabilities: RuntimeProviderCapabilities,
-    budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
-    layer: Effect.promise(() =>
-      import("../providers/bun.js").then((module) => module.BunRuntimeProviderLayer)
-    ),
-    node: graphNode(
-      "provider:runtime:bun",
-      "provider",
-      "Bun runtime provider",
-      RuntimeProviderServiceNames,
-      []
-    )
-  }),
+    id: options.id,
+    capabilities: Object.freeze([...(options.capabilities ?? RuntimeProviderCapabilities)]),
+    budget: Object.freeze({ ...options.budget }),
+    layer: Effect.succeed(options.layer),
+    node:
+      options.node ??
+      graphNode(
+        `provider:runtime:${options.id}`,
+        "provider",
+        `${providerLabel(options.id)} runtime provider`,
+        RuntimeProviderServiceNames,
+        []
+      )
+  })
+
+const lazyRuntimeProvider = (options: {
+  readonly id: DesktopRuntimeProviderId
+  readonly budget: DesktopProviderBudget
+  readonly layer: Effect.Effect<
+    Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>,
+    DesktopConfigError,
+    never
+  >
+  readonly label: string
+}): DesktopRuntimeProviderDescriptor =>
   Object.freeze({
     kind: "runtime" as const,
-    id: "node" as const,
+    id: options.id,
     capabilities: RuntimeProviderCapabilities,
-    budget: providerBudget("node", "@effect/platform-node", "@effect-desktop/core/providers/node"),
-    layer: Effect.promise(() =>
-      import("../providers/node.js").then((module) => module.NodeRuntimeProviderLayer)
-    ),
+    budget: options.budget,
+    layer: options.layer,
     node: graphNode(
-      "provider:runtime:node",
+      `provider:runtime:${options.id}`,
       "provider",
-      "Node runtime provider",
-      RuntimeProviderServiceNames,
-      []
-    )
-  }),
-  Object.freeze({
-    kind: "runtime" as const,
-    id: "test" as const,
-    capabilities: RuntimeProviderCapabilities,
-    budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
-    layer: Effect.promise(() =>
-      import("../providers/test.js").then((module) => module.TestRuntimeProviderLayer)
-    ),
-    node: graphNode(
-      "provider:runtime:test",
-      "provider",
-      "Test runtime provider",
+      options.label,
       RuntimeProviderServiceNames,
       []
     )
   })
-] as const satisfies readonly RuntimeProviderDescriptor[]
 
-const RuntimeProviderRegistry = makeProviderRegistry(RuntimeProviders)
+const webviewProvider = (
+  options: DesktopWebViewProviderOptions
+): DesktopWebViewProviderDescriptor => {
+  const capabilities = options.capabilities.map((capability) =>
+    typeof capability === "string"
+      ? new ProviderCapability({
+          name: capability,
+          description: `Provides ${capability} through the ${options.id} WebView provider`
+        })
+      : capability
+  )
+  return Object.freeze({
+    kind: "webview" as const,
+    id: options.id,
+    hostEngine: options.hostEngine,
+    capabilities: Object.freeze(capabilities),
+    node:
+      options.node ??
+      graphNode(
+        `provider:webview:${options.id}`,
+        "provider",
+        `${providerLabel(options.id)} WebView provider`,
+        capabilities.map((capability) => capability.name),
+        []
+      )
+  })
+}
+
+const RuntimeProviders = [
+  lazyRuntimeProvider({
+    id: "bun" as const,
+    budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
+    layer: Effect.tryPromise({
+      try: async () => (await import("../providers/bun.js")).BunRuntimeProviderLayer,
+      catch: (cause) => runtimeProviderLoadError("bun", cause)
+    }),
+    label: "Bun runtime provider"
+  }),
+  lazyRuntimeProvider({
+    id: "node" as const,
+    budget: providerBudget("node", "@effect/platform-node", "@effect-desktop/core/providers/node"),
+    layer: Effect.tryPromise({
+      try: async () => (await import("../providers/node.js")).NodeRuntimeProviderLayer,
+      catch: (cause) => runtimeProviderLoadError("node", cause)
+    }),
+    label: "Node runtime provider"
+  }),
+  lazyRuntimeProvider({
+    id: "test" as const,
+    budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
+    layer: Effect.tryPromise({
+      try: async () => (await import("../providers/test.js")).TestRuntimeProviderLayer,
+      catch: (cause) => runtimeProviderLoadError("test", cause)
+    }),
+    label: "Test runtime provider"
+  })
+] as const satisfies readonly DesktopRuntimeProviderDescriptor[]
+
+const WebViewProviders = [
+  Object.freeze({
+    kind: "webview" as const,
+    id: "system" as const,
+    hostEngine: "system" as const,
+    capabilities: WebViewProviderCapabilities.map(
+      (name) =>
+        new ProviderCapability({
+          name,
+          description: `Provides ${name} through the operating system WebView runtime`
+        })
+    ),
+    node: graphNode(
+      "provider:webview:system",
+      "provider",
+      "System WebView provider",
+      WebViewProviderCapabilities,
+      []
+    )
+  }),
+  Object.freeze({
+    kind: "webview" as const,
+    id: "chrome" as const,
+    hostEngine: "chrome" as const,
+    capabilities: [
+      ...WebViewProviderCapabilities.map(
+        (name) =>
+          new ProviderCapability({
+            name,
+            description: `Provides ${name} through bundled Chromium/CEF`
+          })
+      ),
+      new ProviderCapability({
+        name: "BundledChromium",
+        description: "Provides a packaged Chromium runtime instead of an installed browser"
+      })
+    ],
+    node: graphNode(
+      "provider:webview:chrome",
+      "provider",
+      "Bundled Chrome WebView provider",
+      [...WebViewProviderCapabilities, "BundledChromium"],
+      []
+    )
+  })
+] as const satisfies readonly DesktopWebViewProviderDescriptor[]
+
+export const Provider = Object.freeze({
+  runtime: runtimeProvider,
+  webview: webviewProvider,
+  Runtime: Object.freeze({
+    bun: RuntimeProviders[0],
+    node: RuntimeProviders[1],
+    test: RuntimeProviders[2]
+  }),
+  WebView: Object.freeze({
+    system: WebViewProviders[0],
+    chrome: WebViewProviders[1]
+  })
+})
+
+export const provider = (descriptor: DesktopProviderDescriptor): DesktopProvidersLayer =>
+  Object.freeze([descriptor])
+
+export const providers = (...layers: readonly DesktopProvidersLayer[]): DesktopProvidersLayer =>
+  Object.freeze(layers.flat())
+
+export const native = (...declarations: readonly DesktopNativeDeclaration[]): DesktopNativeLayer =>
+  Object.freeze(
+    declarations.flatMap((declaration) =>
+      isDesktopNativeLayer(declaration) ? declaration : declaration.surfaces
+    )
+  )
+
+const isDesktopNativeLayer = (
+  declaration: DesktopNativeDeclaration
+): declaration is DesktopNativeLayer => Array.isArray(declaration)
+
+const DefaultProviders = Object.freeze({
+  runtime: Provider.Runtime.bun,
+  webview: Provider.WebView.system
+})
+
+const providerLabel = (id: string): string => `${id.slice(0, 1).toUpperCase()}${id.slice(1)}`
 
 export const make = <RIn = never, E = never>(
   config: DesktopMakeConfig<RIn, E>
-): DesktopAppDescriptor<RIn, E> =>
-  Object.freeze({
+): DesktopAppDescriptor<RIn, E> => {
+  const windowRegistrations = config.windows
+  failOnDuplicateWindowIds(config.id ?? "app", windowRegistrations)
+  return Object.freeze({
     _tag: "DesktopAppDescriptor" as const,
     id: config.id ?? "app",
-    windows: freezeWindows(config.windows),
-    rpcs: freezeArray(config.rpcs),
-    permissions: freezeArray(config.permissions),
-    workflows: freezeArray(config.workflows),
-    ...(config.providers === undefined ? {} : { providers: freezeObject(config.providers) })
+    windows: config.windows,
+    windowRegistrations,
+    native: config.native ?? Object.freeze([]),
+    rpcs: config.rpcs ?? Object.freeze([]),
+    permissions: config.permissions ?? Object.freeze([]),
+    workflows: config.workflows ?? Object.freeze([]),
+    ...(config.providers === undefined ? {} : { providers: config.providers })
   })
+}
 
-export const manifest = (config: DesktopManifestSource): DesktopAppManifest =>
-  Object.freeze({
+export const manifest = <RIn = never, E = never>(
+  config: DesktopManifestSource<RIn, E>
+): DesktopAppManifest => {
+  const registrations = [...(config.rpcs ?? []), ...nativeRpcRegistrationsSync(config.native ?? [])]
+  const windowRegistrations = config.windows
+  return Object.freeze({
     _tag: "DesktopAppManifest" as const,
     id: config.id,
-    windows: config.windows,
+    windows: projectWindowRecord(windowRegistrations),
     rpcGroups: Object.freeze(
-      (config.rpcs ?? []).map((rpcLayer) => {
-        const servedGroup = servedRpcGroup(rpcLayer)
-        return Object.freeze({
+      registrations.map((registration) =>
+        Object.freeze({
           _tag: "DesktopRpcGroup" as const,
-          group: rpcLayer.group,
-          ...servedRpcGroupProperties(rpcLayer.group, servedGroup)
+          group: registration.group
         })
-      })
+      )
     )
   })
+}
 
-export const Rpcs = Object.freeze({
-  layer: <Rpcs extends Rpc.Any, E, R>(
-    group: RpcGroup.RpcGroup<Rpcs>,
-    layer: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-  ): DesktopRpcLayer<Rpcs, E, R> =>
+export const rpc = <Rpcs extends Rpc.Any, E, R>(
+  group: RpcGroup.RpcGroup<Rpcs>,
+  handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+): DesktopRpcsLayer<E, R> =>
+  Object.freeze([
     Object.freeze({
-      _tag: "DesktopRpcsLayer" as const,
-      group,
-      layer
+      _tag: "DesktopRpcRegistration" as const,
+      group: group as TypedDesktopRpcRegistrationGroup<Rpcs>,
+      handlers: handlers as Layer.Layer<never, E, R>,
+      serverLayer: bindRpcGroup(group, handlers)
     })
-})
+  ])
 
-export const app = <RIn = never, E = never>(
+export const rpcs = <E = never, RIn = never>(
+  ...layers: readonly DesktopRpcsLayer<E, RIn>[]
+): DesktopRpcsLayer<E, RIn> => Object.freeze(layers.flat())
+
+export const desktopWindow = <RIn = never>(
+  id: string,
+  spec: WindowSpec,
+  services?: Layer.Layer<never, never, RIn | Scope.Scope>
+): DesktopWindowsLayer<RIn> => {
+  if (!isSafeWindowId(id)) {
+    throw new TypeError(
+      `Desktop.window: window id ${JSON.stringify(id)} is reserved (cannot be empty, "__proto__", "constructor", or "prototype")`
+    )
+  }
+  return Object.freeze([
+    Object.freeze({
+      _tag: "DesktopWindowRegistration" as const,
+      id,
+      spec: Object.freeze({ ...spec }),
+      services
+    })
+  ])
+}
+
+export const windows = <RIn = never>(
+  ...layers: readonly DesktopWindowsLayer<RIn>[]
+): DesktopWindowsLayer<RIn> => Object.freeze(layers.flat())
+
+export const permission = (capability: NormalizedCapability): DesktopPermissionsLayer =>
+  Object.freeze([capability])
+
+export const permissions = (
+  ...layers: readonly DesktopPermissionsLayer[]
+): DesktopPermissionsLayer => {
+  const seen = new Set<string>()
+  const deduped: NormalizedCapability[] = []
+  for (const capability of layers.flat()) {
+    const key = JSON.stringify(capability)
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    deduped.push(capability)
+  }
+  return Object.freeze(deduped)
+}
+
+export const workflow = <RIn = never, E = never>(
+  layer: DesktopWorkflowLayer<RIn, E>
+): DesktopWorkflowsLayer<RIn, E> => Object.freeze([layer])
+
+export const workflows = <RIn = never, E = never>(
+  ...layers: readonly DesktopWorkflowsLayer<RIn, E>[]
+): DesktopWorkflowsLayer<RIn, E> => Object.freeze(layers.flat())
+
+const projectWindowRecord = (
+  registrations: ReadonlyArray<DesktopWindowRegistration>
+): Readonly<Record<string, WindowSpec>> =>
+  Object.freeze(
+    Object.fromEntries(
+      registrations.map((registration) => [
+        registration.id,
+        Object.freeze({ ...registration.spec })
+      ])
+    )
+  )
+
+const findDuplicateWindowId = (
+  registrations: ReadonlyArray<DesktopWindowRegistration>
+): string | undefined => {
+  const seen = new Set<string>()
+  for (const { id } of registrations) {
+    if (seen.has(id)) return id
+    seen.add(id)
+  }
+  return undefined
+}
+
+const duplicateWindowError = (appId: string, id: string): DesktopConfigError =>
+  new DesktopConfigError({
+    appId,
+    reason: "duplicate-window-id",
+    message: `Window id ${JSON.stringify(id)} is registered more than once. Each Desktop.window(id, ...) call must use a distinct id.`,
+    windowId: id
+  })
+
+const failOnDuplicateWindowIds = (
+  appId: string,
+  registrations: ReadonlyArray<DesktopWindowRegistration>
+): void => {
+  const dup = findDuplicateWindowId(registrations)
+  if (dup !== undefined) throw duplicateWindowError(appId, dup)
+}
+
+const checkWindowRegistrations = (
+  appId: string,
+  registrations: ReadonlyArray<DesktopWindowRegistration>
+): Effect.Effect<void, DesktopConfigError, never> => {
+  const dup = findDuplicateWindowId(registrations)
+  return dup === undefined ? Effect.void : Effect.fail(duplicateWindowError(appId, dup))
+}
+
+const buildRegistrations = <RIn, E>(
+  rpcs: DesktopConfig<RIn, E>["rpcs"]
+): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>, never, never> =>
+  Effect.succeed(rpcs ?? [])
+
+const buildNativeSelection = <RIn, E>(
+  nativeLayer: DesktopConfig<RIn, E>["native"]
+): Effect.Effect<DesktopNativeSelectionSnapshot, never, never> =>
+  Effect.succeed({
+    registrations: nativeLayer ?? [],
+    permissions: Object.freeze([])
+  })
+
+const buildPermissions = <RIn>(
+  permissions: DesktopConfig<RIn, never>["permissions"]
+): Effect.Effect<ReadonlyArray<NormalizedCapability>, never, never> =>
+  Effect.succeed(permissions ?? [])
+
+const buildWorkflows = <RIn, E>(
+  workflows: DesktopConfig<RIn, E>["workflows"]
+): Effect.Effect<ReadonlyArray<AnyDesktopWorkflowRegistration>, never, never> =>
+  Effect.succeed(workflows ?? [])
+
+const buildProviders = <RIn, E>(
   config: DesktopConfig<RIn, E>
-): Layer.Layer<DesktopApp, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices>> =>
-  runtime(config) as Layer.Layer<
-    DesktopApp,
-    DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices>
-  >
+): Effect.Effect<SelectedProviderDescriptors, DesktopConfigError, never> =>
+  selectProviderDescriptors(config.id, config.providers ?? [])
+
+const nativeRpcRegistrationsSync = (
+  registrations: ReadonlyArray<AnyDesktopNativeRegistration>
+): ReadonlyArray<AnyDesktopRpcRegistration> =>
+  Object.freeze(registrations.flatMap((registration) => registration.serverLayer))
+
+export const layer = <RIn = never, E = never>(
+  descriptor: DesktopAppDescriptor<RIn, E>
+): Layer.Layer<
+  DesktopRuntimeServices,
+  DesktopConfigError | E,
+  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
+> => runtime(descriptor)
 
 export const runtime = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices>
-> => {
-  const validationLayer = Layer.effectDiscard(checkPermissions(config))
-  const spine = buildSpine(config)
-  return Layer.provideMerge(validationLayer, spine) as Layer.Layer<
-    DesktopRuntimeServices,
-    DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices>
-  >
-}
+  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
+> => buildSpine(config)
 
 export const DesktopRuntimeLive = runtime
 
 export const runtimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>
 ): Effect.Effect<DesktopRuntimeGraph, DesktopConfigError, never> =>
-  resolveRuntimeProvider(config).pipe(Effect.map((provider) => makeRuntimeGraph(config, provider)))
+  Effect.gen(function* () {
+    const providers = yield* buildProviders(config)
+    const appRegistrations = yield* buildRegistrations(config.rpcs)
+    const nativeSelection = yield* buildNativeSelection(config.native)
+    const nativeRegistrations = nativeSelection.registrations
+    const registrations = [
+      ...appRegistrations,
+      ...nativeRpcRegistrationsSync(nativeRegistrations)
+    ] as const
+    const workflows = yield* buildWorkflows(config.workflows)
+    yield* checkNativeRegistrations(config.id, nativeRegistrations)
+    yield* checkDuplicateRpcRegistrations(config, registrations)
+    return makeRuntimeGraph(
+      config,
+      providers.runtime,
+      providers.webview,
+      nativeRegistrations,
+      registrations,
+      workflows
+    )
+  })
 
 export const runtimeGraphSnapshot = <RIn, E>(
   config: DesktopConfig<RIn, E>
@@ -414,7 +858,7 @@ export const runtimeGraphSnapshot = <RIn, E>(
     onFailure: (error) =>
       new LayerGraphSnapshot({
         appId: config.id,
-        providers: selectedProviders(config.providers),
+        providers: selectedProviderIdsFromLayer(config.providers),
         nodes: [],
         providerFacts: [],
         failures: [layerFailureFromConfigError(config.id, error)]
@@ -459,26 +903,39 @@ export const layerGraphSnapshotFromGraph = (graph: DesktopRuntimeGraph): LayerGr
 
 const makeRuntimeGraph = <RIn, E>(
   config: DesktopConfig<RIn, E>,
-  provider: RuntimeProviderDescriptor
+  provider: DesktopRuntimeProviderDescriptor,
+  webviewProvider: DesktopWebViewProviderDescriptor,
+  nativeRegistrations: ReadonlyArray<AnyDesktopNativeRegistration>,
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration>,
+  workflows: ReadonlyArray<AnyDesktopWorkflowRegistration>
 ): DesktopRuntimeGraph => {
   const selected = Object.freeze({
-    runtime: provider.id
+    runtime: provider.id,
+    webview: webviewProvider.id
   } satisfies DesktopRuntimeSelectedProviders)
-  const rpcLayers = config.rpcs ?? []
   const nodes: DesktopRuntimeGraphNode[] = [
     provider.node,
+    webviewProvider.node,
     ...CoreServiceGraphNodes,
-    ...rpcLayers.map((rpcLayer, index) => {
-      const servedGroup = servedRpcGroup(rpcLayer)
-      return graphNode(
-        `rpc-layer:${index}`,
-        "rpc-layer",
-        `RPC layer ${Array.from(servedGroup.requests.keys()).join(", ")}`,
-        Array.from(servedGroup.requests.keys()),
+    ...nativeRegistrations.map((registration) =>
+      graphNode(
+        `native:${registration.tag}`,
+        "native-surface",
+        `${registration.tag} native surface`,
+        registration.schemaDocs.map((doc) => doc.tag),
         ["RpcServer.Protocol"]
       )
-    }),
-    ...(config.workflows ?? []).map((_, index) =>
+    ),
+    ...registrations.map((registration, index) =>
+      graphNode(
+        `rpc-layer:${index}`,
+        "rpc-layer",
+        `RPC layer ${Array.from(registration.group.requests.keys()).join(", ")}`,
+        Array.from(registration.group.requests.keys()),
+        ["RpcServer.Protocol"]
+      )
+    ),
+    ...workflows.map((_, index) =>
       graphNode(
         `workflow:${index}`,
         "workflow",
@@ -502,6 +959,11 @@ const makeRuntimeGraph = <RIn, E>(
         id: provider.id,
         kind: "runtime",
         capabilities: [...RuntimeProviderServiceNames]
+      }),
+      new ProviderFact({
+        id: webviewProvider.id,
+        kind: "webview",
+        capabilities: webviewProvider.capabilities.map((capability) => capability.name)
       })
     ]),
     failures: Object.freeze([])
@@ -513,26 +975,12 @@ export const launch = (
 ): Effect.Effect<never, DesktopConfigError, never> => Layer.launch(layer)
 
 const checkPermissions = <RIn, E>(
-  config: DesktopConfig<RIn, E>
+  config: DesktopConfig<RIn, E>,
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration>,
+  declared: ReadonlyArray<NormalizedCapability>
 ): Effect.Effect<void, DesktopConfigError, never> => {
-  const declared = config.permissions ?? []
-  const rpcLayers = config.rpcs ?? []
-  const seenRpcTags = new Set<string>()
-
-  for (const rpcLayer of rpcLayers) {
-    for (const [tag, rpc] of servedRpcGroup(rpcLayer).requests.entries()) {
-      if (seenRpcTags.has(tag)) {
-        return Effect.fail(
-          new DesktopConfigError({
-            appId: config.id,
-            reason: "duplicate-rpc",
-            message: `RPC method "${tag}" is provided more than once`,
-            method: tag
-          })
-        )
-      }
-      seenRpcTags.add(tag)
-
+  for (const registration of registrations) {
+    for (const [tag, rpc] of registration.group.requests.entries()) {
       const required = rpcCapability(rpc)
       if (Option.isNone(required) || required.value.kind === "none") {
         continue
@@ -549,7 +997,7 @@ const checkPermissions = <RIn, E>(
           new DesktopConfigError({
             appId: config.id,
             reason: "missing-permission",
-            message: `RPC method "${tag}" requires capability "${requiredCapability.kind}" but it is not declared in config.permissions`,
+            message: `RPC method "${tag}" requires capability "${requiredCapability.kind}" but it is not declared with Desktop.permission(...)`,
             method: tag,
             permission: requiredCapability.kind
           })
@@ -560,6 +1008,56 @@ const checkPermissions = <RIn, E>(
 
   return Effect.void
 }
+
+const checkDuplicateRpcRegistrations = <RIn, E>(
+  config: DesktopConfig<RIn, E>,
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration>
+): Effect.Effect<void, DesktopConfigError, never> =>
+  Effect.suspend(() => {
+    const seenRpcTags = new Set<string>()
+
+    for (const registration of registrations) {
+      for (const tag of registration.group.requests.keys()) {
+        if (seenRpcTags.has(tag)) {
+          return Effect.fail(
+            new DesktopConfigError({
+              appId: config.id,
+              reason: "duplicate-rpc",
+              message: `RPC method "${tag}" is provided more than once`,
+              method: tag
+            })
+          )
+        }
+        seenRpcTags.add(tag)
+      }
+    }
+
+    return Effect.void
+  })
+
+const checkNativeRegistrations = (
+  appId: string,
+  registrations: ReadonlyArray<AnyDesktopNativeRegistration>
+): Effect.Effect<void, DesktopConfigError, never> =>
+  Effect.suspend(() => {
+    const seenTags = new Set<string>()
+
+    for (const registration of registrations) {
+      if (seenTags.has(registration.tag)) {
+        return Effect.fail(
+          new DesktopConfigError({
+            appId,
+            reason: "invalid-config",
+            message: `Native surface "${registration.tag}" is registered more than once`,
+            contract: registration.tag
+          })
+        )
+      }
+      seenTags.add(registration.tag)
+    }
+
+    return Effect.void
+  })
 
 const decodeRpcCapability = (
   value: Readonly<{ readonly kind: string }>,
@@ -585,7 +1083,7 @@ const decodeRpcCapability = (
     new DesktopConfigError({
       appId,
       reason: "missing-permission",
-      message: `RPC method "${method}" requires unknown capability "${value.kind}" and it cannot be matched against config.permissions`,
+      message: `RPC method "${method}" requires unknown capability "${value.kind}" and it cannot be matched against Desktop.permission(...) declarations`,
       method,
       permission: value.kind
     })
@@ -597,78 +1095,183 @@ const buildSpine = <RIn, E>(
 ): Layer.Layer<
   DesktopRuntimeServices,
   E | DesktopConfigError,
-  Exclude<RIn, DesktopRuntimeProviderServices>
+  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
 > =>
   Layer.unwrap(
-    resolveRuntimeProvider(config).pipe(
-      Effect.map((provider) => {
-        const graph = makeRuntimeGraph(config, provider)
-        const workflowLayers = config.workflows ?? []
-        const rpcLayers = (config.rpcs ?? []).map((rpcLayer) => bindRpcLayer<E, RIn>(rpcLayer))
+    Effect.gen(function* () {
+      const providers = yield* buildProviders(config)
+      const appRegistrations = yield* buildRegistrations(config.rpcs)
+      const nativeSelection = yield* buildNativeSelection(config.native)
+      const nativeRegistrations = nativeSelection.registrations
+      const nativeRpcRegistrations = nativeRpcRegistrationsSync(nativeRegistrations)
+      const registrations = [...appRegistrations, ...nativeRpcRegistrations]
+      const explicitPermissions = yield* buildPermissions(config.permissions)
+      const permissions = [...nativeSelection.permissions, ...explicitPermissions]
+      const workflowLayers = yield* buildWorkflows(config.workflows)
+      const windowRegistrations = config.windows
+      yield* checkWindowRegistrations(config.id, windowRegistrations)
+      yield* checkNativeRegistrations(config.id, nativeRegistrations)
+      yield* checkDuplicateRpcRegistrations(config, registrations)
+      yield* checkPermissions(config, appRegistrations, permissions)
+      const graph = makeRuntimeGraph(
+        config,
+        providers.runtime,
+        providers.webview,
+        nativeRegistrations,
+        registrations,
+        workflowLayers
+      )
+      const rpcLayers = registrations.map((registration) => bindRegistration(registration))
 
-        const workflowLayer = mergeLayerArray(workflowLayers)
-        const rpcLayer = mergeLayerArray(rpcLayers)
-        const runtimeBase = Layer.mergeAll(
-          providerLayerFor({ runtime: provider.id }),
-          coreServicesLayer,
-          makePermissionServicesLayer(config)
-        ) as Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError, never>
+      const workflowLayer = mergeLayerArray(workflowLayers)
+      const rpcLayer = mergeLayerArray(rpcLayers)
+      const runtimeProviderLayer = yield* providers.runtime.layer
+      const runtimeBase = Layer.mergeAll(
+        runtimeProviderLayer,
+        coreServicesLayer,
+        makePermissionServicesLayer(config, permissions),
+        makeAppResourceOwnerLayer(config.id)
+      ) as Layer.Layer<
+        DesktopRuntimeProviderServices | ResourceOwner,
+        Config.ConfigError | DesktopConfigError,
+        never
+      >
 
-        const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
-          Effect.succeed({
-            appId: config.id,
-            windows: config.windows,
-            rpcLayers: config.rpcs ?? []
-          })
-        )
+      const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
+        Effect.succeed({
+          appId: config.id,
+          windows: projectWindowRecord(windowRegistrations),
+          windowRegistrations,
+          rpcRegistrations: registrations
+        })
+      )
 
-        const desktopRuntimeLayer: Layer.Layer<DesktopRuntime, never, never> = Layer.succeed(
-          DesktopRuntime
-        )(
-          Object.freeze({
-            appId: config.id,
-            providers: graph.providers,
-            providerBudgets: graph.providerBudgets,
-            graph
-          } satisfies DesktopRuntimeApi)
-        )
+      const desktopRuntimeLayer: Layer.Layer<DesktopRuntime, never, never> = Layer.succeed(
+        DesktopRuntime
+      )(
+        Object.freeze({
+          appId: config.id,
+          providers: graph.providers,
+          providerBudgets: graph.providerBudgets,
+          graph
+        } satisfies DesktopRuntimeApi)
+      )
 
-        const dependentLayer = Layer.mergeAll(
-          workflowLayer,
-          rpcLayer,
-          desktopAppLayer,
-          desktopRuntimeLayer
-        ) as Layer.Layer<DesktopApp | DesktopRuntime, E, RIn | DesktopRuntimeProviderServices>
+      const dependentLayer = Layer.mergeAll(
+        workflowLayer,
+        rpcLayer,
+        desktopAppLayer,
+        desktopRuntimeLayer
+      ) as Layer.Layer<
+        DesktopApp | DesktopRuntime,
+        E,
+        RIn | DesktopRuntimeProviderServices | ResourceOwner
+      >
 
-        return Layer.provideMerge(dependentLayer, runtimeBase) as Layer.Layer<
-          DesktopRuntimeServices,
-          E | DesktopConfigError,
-          Exclude<RIn, DesktopRuntimeProviderServices>
-        >
+      return Layer.provideMerge(dependentLayer, runtimeBase) as Layer.Layer<
+        DesktopRuntimeServices,
+        E | DesktopConfigError,
+        Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
+      >
+    })
+  )
+
+export const providerLayerFor = (
+  choice: Pick<DesktopRuntimeSelectedProviders, "runtime">
+): Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError | DesktopConfigError, never> =>
+  Layer.unwrap(
+    resolveBuiltinRuntimeProvider(choice.runtime).pipe(Effect.flatMap((provider) => provider.layer))
+  )
+
+const selectProviderDescriptors = (
+  appId: string,
+  descriptors: ReadonlyArray<DesktopProviderDescriptor>
+): Effect.Effect<SelectedProviderDescriptors, DesktopConfigError, never> => {
+  let runtimeProvider: DesktopRuntimeProviderDescriptor | undefined
+  let webviewProviderDescriptor: DesktopWebViewProviderDescriptor | undefined
+
+  for (const descriptor of descriptors) {
+    if (descriptor.kind === "runtime") {
+      if (runtimeProvider !== undefined) {
+        return duplicateProviderSelection(appId, "runtime", runtimeProvider.id, descriptor.id)
+      }
+      runtimeProvider = descriptor
+      continue
+    }
+
+    if (webviewProviderDescriptor !== undefined) {
+      return duplicateProviderSelection(
+        appId,
+        "webview",
+        webviewProviderDescriptor.id,
+        descriptor.id
+      )
+    }
+    webviewProviderDescriptor = descriptor
+  }
+
+  return Effect.succeed({
+    runtime: runtimeProvider ?? DefaultProviders.runtime,
+    webview: webviewProviderDescriptor ?? DefaultProviders.webview
+  })
+}
+
+const duplicateProviderSelection = (
+  appId: string,
+  kind: "runtime" | "webview",
+  first: string,
+  second: string
+): Effect.Effect<never, DesktopConfigError, never> =>
+  Effect.fail(
+    new DesktopConfigError({
+      appId,
+      reason: "invalid-config",
+      message: `Desktop.provider(...) selected more than one ${kind} provider (${first}, ${second})`,
+      provider: second,
+      providerKind: kind
+    })
+  )
+
+const selectedProviderIdsFromLayer = (
+  providers: DesktopProvidersLayer | undefined
+): DesktopRuntimeSelectedProviders => {
+  const descriptors = providers ?? []
+  let runtimeProvider: DesktopRuntimeProviderId = "bun"
+  let webviewProviderDescriptor: DesktopWebViewProviderId = "system"
+
+  for (const descriptor of descriptors) {
+    if (descriptor.kind === "runtime") {
+      runtimeProvider = descriptor.id
+    } else {
+      webviewProviderDescriptor = descriptor.id
+    }
+  }
+
+  return Object.freeze({
+    runtime: runtimeProvider,
+    webview: webviewProviderDescriptor
+  })
+}
+
+const resolveBuiltinRuntimeProvider = (
+  provider: DesktopRuntimeProviderId
+): Effect.Effect<DesktopRuntimeProviderDescriptor, DesktopConfigError, never> => {
+  const descriptor = RuntimeProviders.find((candidate) => candidate.id === provider)
+  if (descriptor !== undefined) {
+    return Effect.succeed(descriptor)
+  }
+  return Effect.fail(
+    providerRegistryErrorToConfigError(
+      "provider-loader",
+      new ProviderRegistryError({
+        reason: "missing-provider",
+        kind: "runtime",
+        provider,
+        message: `Runtime provider "${provider}" is not available`
       })
     )
   )
-
-const resolveRuntimeProvider = <RIn, E>(
-  config: DesktopConfig<RIn, E>
-): Effect.Effect<RuntimeProviderDescriptor, DesktopConfigError, never> => {
-  const provider = selectedProviders(config.providers).runtime
-  return RuntimeProviderRegistry.pipe(
-    Effect.flatMap((registry) => registry.get("runtime", provider)),
-    Effect.mapError((error) => providerRegistryErrorToConfigError(config.id, error))
-  )
 }
-
-export const providerLayerFor = (
-  choice: DesktopRuntimeSelectedProviders
-): Layer.Layer<DesktopRuntimeProviderServices, Config.ConfigError | DesktopConfigError, never> =>
-  Layer.unwrap(
-    RuntimeProviderRegistry.pipe(
-      Effect.flatMap((registry) => registry.get("runtime", choice.runtime)),
-      Effect.mapError((error) => providerRegistryErrorToConfigError("provider-loader", error)),
-      Effect.flatMap((provider) => provider.layer)
-    )
-  )
 
 const providerRegistryErrorToConfigError = (
   appId: string,
@@ -678,22 +1281,24 @@ const providerRegistryErrorToConfigError = (
     appId,
     reason: error.reason === "missing-provider" ? "missing-provider" : "invalid-config",
     message: error.message,
-    provider: error.provider
+    provider: error.provider,
+    providerKind: error.kind
   })
 
 const makePermissionServicesLayer = <RIn, E>(
-  config: DesktopConfig<RIn, E>
+  config: DesktopConfig<RIn, E>,
+  permissions: ReadonlyArray<NormalizedCapability>
 ): Layer.Layer<PermissionRegistry | PermissionInterceptor, never, never> => {
   const registryLayer = Layer.effect(
     PermissionRegistry,
     Effect.gen(function* () {
       const registry = yield* makePermissionRegistry()
       yield* Effect.forEach(
-        config.permissions ?? [],
+        permissions,
         (capability) =>
           registry
             .declare(capability, {
-              source: `Desktop.app:${config.id}`,
+              source: `Desktop.layer:${config.id}`,
               effect: "allow"
             })
             .pipe(Effect.orDie),
@@ -706,11 +1311,24 @@ const makePermissionServicesLayer = <RIn, E>(
   return Layer.provideMerge(makePermissionInterceptorLayer(), registryLayer)
 }
 
-const selectedProviders = (
-  selection: DesktopProviderSelection | undefined
-): DesktopRuntimeSelectedProviders =>
-  Object.freeze({
-    runtime: selection?.runtime ?? "bun"
+const makeAppResourceOwnerLayer = (
+  appId: string
+): Layer.Layer<ResourceOwner, DesktopConfigError, never> =>
+  Layer.effect(
+    ResourceOwner,
+    makeAppResourceOwner(appId).pipe(
+      Effect.mapError((error) => resourceOwnerErrorToConfigError(appId, error))
+    )
+  )
+
+const resourceOwnerErrorToConfigError = (
+  appId: string,
+  error: ResourceOwnerInvalidArgumentError
+): DesktopConfigError =>
+  new DesktopConfigError({
+    appId,
+    reason: "invalid-config",
+    message: `Desktop app id is not a valid resource owner id: ${error.message}`
   })
 
 const layerFailureFromConfigError = (
@@ -722,40 +1340,36 @@ const layerFailureFromConfigError = (
     reason: error.reason === "missing-provider" ? "missing-provider" : "missing-requirement",
     requirement:
       error.reason === "missing-provider"
-        ? "DesktopRuntimeProviderServices"
+        ? error.providerKind === "webview"
+          ? "DesktopWebViewProvider"
+          : "DesktopRuntimeProviderServices"
         : (error.permission ?? error.method ?? error.contract ?? "DesktopRuntime"),
-    providerPath: error.provider === undefined ? [] : [`provider:runtime:${error.provider}`],
+    providerPath:
+      error.provider === undefined
+        ? []
+        : [`provider:${error.providerKind ?? "runtime"}:${error.provider}`],
     message: error.message,
     ...(error.provider === undefined ? {} : { provider: error.provider })
   })
 
 const mergeLayerArray = <E, R>(
   layers: ReadonlyArray<Layer.Layer<never, E, R>>
-): Layer.Layer<never, E, R> =>
-  layers.reduce<Layer.Layer<never, E, R>>(
-    (acc, layer) => Layer.merge(acc, layer),
-    Layer.empty as Layer.Layer<never, E, R>
-  )
+): Layer.Layer<never, E, R> => {
+  const [firstLayer, ...remainingLayers] = layers
+  return firstLayer === undefined
+    ? (Layer.empty as Layer.Layer<never, E, R>)
+    : Layer.mergeAll(firstLayer, ...remainingLayers)
+}
 
-const bindRpcLayer = <E, R>(rpcLayer: AnyDesktopRpcLayer<E, R>): Layer.Layer<never, E, R> =>
-  Layer.provide(
-    RpcServer.layer(
-      (servedRpcGroup(rpcLayer) as RpcGroup.RpcGroup<Rpc.Any>).middleware(PermissionInterceptor)
-    ),
-    rpcLayer.layer as Layer.Layer<unknown, E, R>
-  ) as Layer.Layer<never, E, R>
+const bindRpcGroup = <Rpcs extends Rpc.Any, E, R>(
+  group: RpcGroup.RpcGroup<Rpcs>,
+  handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+): Layer.Layer<never, unknown, unknown> =>
+  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers)
 
-const freezeArray = <A>(values: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>
-  Object.freeze([...(values ?? [])])
-
-const freezeObject = <A extends object>(value: A): A => Object.freeze({ ...value }) as A
-
-const freezeWindows = (
-  windows: Readonly<Record<string, WindowSpec>>
-): Readonly<Record<string, WindowSpec>> =>
-  Object.freeze(
-    Object.fromEntries(Object.entries(windows).map(([name, spec]) => [name, Object.freeze(spec)]))
-  )
+const bindRegistration = (
+  registration: AnyDesktopRpcRegistration
+): Layer.Layer<never, unknown, unknown> => registration.serverLayer
 
 function graphNode(
   id: string,
@@ -785,5 +1399,19 @@ function providerBudget(
     importPath,
     startupBudgetMs: 25,
     bundleBudgetKb: 64
+  })
+}
+
+function runtimeProviderLoadError(
+  provider: DesktopRuntimeProviderId,
+  cause: unknown
+): DesktopConfigError {
+  return new DesktopConfigError({
+    appId: "provider-loader",
+    reason: "missing-provider",
+    provider,
+    providerKind: "runtime",
+    message: `Runtime provider "${provider}" failed to load`,
+    cause
   })
 }

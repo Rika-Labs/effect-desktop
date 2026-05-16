@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 
 import {
   Cause,
+  Clock,
   Context,
   Data,
   Deferred,
@@ -107,9 +108,7 @@ export interface ApprovalBrokerOptions {
 }
 
 export interface ApprovalBrokerApi {
-  readonly ask: (
-    request: ApprovalRequest
-  ) => Effect.Effect<ApprovalOutcome, ApprovalBrokerError, never>
+  readonly ask: (request: unknown) => Effect.Effect<ApprovalOutcome, ApprovalBrokerError, never>
   readonly shutdown: Effect.Effect<void, never, never>
 }
 
@@ -153,48 +152,61 @@ export const makeApprovalBroker = (
     const state = yield* Ref.make<BrokerState>(EMPTY_STATE)
     const scope = yield* Scope.make()
     const activePrompts = yield* Scope.provide(scope)(FiberMap.make<string, void, never>())
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     const traceId = options.traceId ?? randomUUID
 
     return Object.freeze({
       ask: (request) =>
         Effect.gen(function* () {
           const decoded = yield* decodeRequest(request)
-          const requestWithTrace = yield* withTraceId(decoded, traceId)
-          yield* auditApproval(options.audit, "approval requested", requestWithTrace, Option.none())
-
-          if (options.devApproveAll === true) {
-            const outcome = approvalOutcome(requestWithTrace, "approved-once", now(), "dev-bypass")
+          return yield* Effect.gen(function* () {
+            const requestWithTrace = yield* withTraceId(decoded, traceId)
             yield* auditApproval(
               options.audit,
-              "approval granted",
+              "approval requested",
               requestWithTrace,
-              Option.some(outcome)
+              Option.none()
             )
-            return outcome
-          }
 
-          const waiter = yield* Deferred.make<ApprovalOutcome, ApprovalBrokerError>()
-          const result = yield* Ref.modify(state, (current) =>
-            enqueue(current, requestWithTrace, waiter, maxQueueDepthPerActor, now())
-          )
-
-          return yield* Match.value(result).pipe(
-            Match.tag("Await", () => Deferred.await(waiter)),
-            Match.tag("Immediate", (r) => Effect.succeed(r.outcome)),
-            Match.tag("Overflow", (r) => Effect.fail(r.error)),
-            Match.tag("Start", (r) =>
-              startPromptLoop(activePrompts, state, options.prompt, options.audit, r.entry).pipe(
-                Effect.flatMap(() => Deferred.await(waiter))
+            if (options.devApproveAll === true) {
+              const outcome = approvalOutcome(
+                requestWithTrace,
+                "approved-once",
+                now(),
+                "dev-bypass"
               )
-            ),
-            Match.exhaustive
+              yield* auditApproval(
+                options.audit,
+                "approval granted",
+                requestWithTrace,
+                Option.some(outcome)
+              )
+              return outcome
+            }
+
+            const waiter = yield* Deferred.make<ApprovalOutcome, ApprovalBrokerError>()
+            const result = yield* Ref.modify(state, (current) =>
+              enqueue(current, requestWithTrace, waiter, maxQueueDepthPerActor, now())
+            )
+
+            return yield* Match.value(result).pipe(
+              Match.tag("Await", () => Deferred.await(waiter)),
+              Match.tag("Immediate", (r) => Effect.succeed(r.outcome)),
+              Match.tag("Overflow", (r) => Effect.fail(r.error)),
+              Match.tag("Start", (r) =>
+                startPromptLoop(activePrompts, state, options.prompt, options.audit, r.entry).pipe(
+                  Effect.flatMap(() => Deferred.await(waiter))
+                )
+              ),
+              Match.exhaustive
+            )
+          }).pipe(
+            Effect.withSpan("ApprovalBroker.ask", {
+              attributes: { operation: decoded.operation, actor: decoded.actor }
+            })
           )
-        }).pipe(
-          Effect.withSpan("ApprovalBroker.ask", {
-            attributes: { operation: request.operation, actor: request.actor }
-          })
-        ),
+        }),
       shutdown: Scope.close(scope, Exit.void)
     } satisfies ApprovalBrokerApi)
   }).pipe(Effect.withSpan("ApprovalBroker.make"))
@@ -547,7 +559,7 @@ const approvalOutcome = (
   new ApprovalOutcome({
     requestId: request.id,
     outcome,
-    traceId: request.traceId ?? randomUUID(),
+    traceId: request.traceId ?? request.id,
     decidedAt,
     source
   })

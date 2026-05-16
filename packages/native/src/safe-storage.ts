@@ -3,28 +3,21 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeSecretBytes,
   type SecretBytes,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
-  RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError,
   unsafeSecretBytes
 } from "@effect-desktop/bridge"
-import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   SafeStorageAvailabilityResult,
   SafeStorageKeyInput,
@@ -98,6 +91,13 @@ export const SafeStorageMethodNames = Object.freeze([
   "isAvailable"
 ] as const)
 
+const SafeStorageCapabilityMethods = Object.freeze([
+  "set",
+  "get",
+  "delete",
+  "list"
+] as const satisfies readonly (typeof SafeStorageMethodNames)[number][])
+
 export interface SafeStorageClientApi {
   readonly set: (key: string, value: SecretBytes) => Effect.Effect<void, SafeStorageError, never>
   readonly get: (key: string) => Effect.Effect<SecretBytes, SafeStorageError, never>
@@ -114,20 +114,22 @@ export type SafeStorageServiceApi = SafeStorageClientApi
 
 export class SafeStorage extends Context.Service<SafeStorage, SafeStorageServiceApi>()(
   "@effect-desktop/native/SafeStorage"
-) {}
+) {
+  static readonly layer = Layer.effect(SafeStorage)(
+    Effect.gen(function* () {
+      const client = yield* SafeStorageClient
+      return SafeStorage.of({
+        set: (key, value) => client.set(key, value),
+        get: (key) => client.get(key),
+        delete: (key) => client.delete(key),
+        list: () => client.list(),
+        isAvailable: () => client.isAvailable()
+      } satisfies SafeStorageServiceApi)
+    })
+  )
+}
 
-export const SafeStorageLive = Layer.effect(SafeStorage)(
-  Effect.gen(function* () {
-    const client = yield* SafeStorageClient
-    return Object.freeze({
-      set: (key, value) => client.set(key, value),
-      get: (key) => client.get(key),
-      delete: (key) => client.delete(key),
-      list: () => client.list(),
-      isAvailable: () => client.isAvailable()
-    } satisfies SafeStorageServiceApi)
-  })
-)
+export const SafeStorageLive = SafeStorage.layer
 
 export const makeSafeStorageClientLayer = (
   client: SafeStorageClientApi
@@ -140,15 +142,11 @@ export const makeSafeStorageServiceLayer = (
 export const makeSafeStorageBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<SafeStorageClient> =>
-  Layer.provide(
-    SafeStorageSurface.clientLayer,
-    makeSafeStorageBridgeProtocolLayer(exchange, options)
-  )
+): Layer.Layer<SafeStorageClient> => SafeStorageSurface.bridgeClientLayer(exchange, options)
 
 export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>
 
-export type SafeStorageRpcHandlers = Parameters<typeof SafeStorageRpcGroup.toLayer>[0]
+export type SafeStorageRpcHandlers = RpcGroup.HandlersFrom<SafeStorageRpc>
 
 export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
   "SafeStorage.set": (input) =>
@@ -181,8 +179,9 @@ export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
     })
 })
 
-export const SafeStorageSurface = DesktopRpc.surface("SafeStorage", SafeStorageRpcGroup, {
+export const SafeStorageSurface = NativeSurface.make("SafeStorage", SafeStorageRpcGroup, {
   service: SafeStorageClient,
+  capabilities: SafeStorageCapabilityMethods,
   handlers: SafeStorageHandlersLive,
   client: (client) => safeStorageClientFromRpcClient(client)
 })
@@ -191,11 +190,7 @@ export const makeHostSafeStorageRpcRuntime = (
   handlers: SafeStorageRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    SafeStorageRpcGroup,
-    SafeStorageRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  SafeStorageSurface.hostRuntime(handlers, runtimeOptions)
 
 const safeStorageClientFromRpcClient = (
   client: DesktopRpcClient<SafeStorageRpc>
@@ -232,28 +227,6 @@ const safeStorageClientFromRpcClient = (
         client["SafeStorage.isAvailable"](undefined),
         "SafeStorage.isAvailable"
       ).pipe(Effect.map((result) => result.available))
-  } satisfies SafeStorageClientApi)
-}
-
-const makeSafeStorageBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
-export const makeUnsupportedSafeStorageClient = (): SafeStorageClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, SafeStorageError, never> =>
-    Effect.fail(unsupportedError(method))
-  return Object.freeze({
-    set: () => unsupportedEffect<void>("SafeStorage.set"),
-    get: () => unsupportedEffect<SecretBytes>("SafeStorage.get"),
-    delete: () => unsupportedEffect<void>("SafeStorage.delete"),
-    list: () => unsupportedEffect<ReadonlyArray<string>>("SafeStorage.list"),
-    isAvailable: () => Effect.succeed(false)
   } satisfies SafeStorageClientApi)
 }
 
@@ -294,10 +267,7 @@ const validateKey = (
   return Effect.succeed(key)
 }
 
-const unsupportedError = (
-  method: string,
-  reason = "host SafeStorage platform adapter is not implemented yet"
-): HostProtocolUnsupportedError =>
+const unsupportedError = (method: string, reason: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
     reason,
@@ -333,11 +303,13 @@ function safeStorageRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`SafeStorage.${method}` as const, {
+  return NativeSurface.rpc("SafeStorage", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runSafeStorageRpc = <A, E>(

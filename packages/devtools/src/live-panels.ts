@@ -14,7 +14,7 @@ import {
   type InspectorSafetyPolicyApi,
   type InspectorSafetySummary
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Match, Option, Stream } from "effect"
+import { Clock, Context, Effect, Layer, Match, Option, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
 
@@ -117,11 +117,11 @@ export const makeLiveRuntimePanels = (
     const resources = yield* ResourceRegistry
     const inspectorSafety = options.inspectorSafety ?? (yield* InspectorSafetyPolicy)
     const maxRows = positiveRowLimit(options.maxRows, 256)
-    const now = options.now ?? Date.now
     const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
     const list = (): Effect.Effect<LiveRuntimePanelsSnapshot, never, never> =>
       Effect.gen(function* () {
+        const timestamp = yield* currentTimeMillis(options.now)
         const bridgeCalls = yield* sources.bridgeCalls.list()
         const streams = yield* sources.streams.snapshot()
         const resourceSnapshot = yield* resources.list()
@@ -135,7 +135,7 @@ export const makeLiveRuntimePanels = (
             streams: streams.slice(-maxRows).map(toStreamRow),
             resources: resourceSnapshot.entries
               .slice(-maxRows)
-              .map((entry) => toResourceRow(entry, now())),
+              .map((entry) => toResourceRow(entry, timestamp)),
             permissions: permissionRows.slice(-maxRows).map(toPermissionRow),
             processes: processRows.slice(-maxRows).map(toProcessRow)
           } satisfies Omit<LiveRuntimePanelsSnapshot, "safety">
@@ -158,14 +158,12 @@ export const makeLiveRuntimePanels = (
 
     return Object.freeze({
       list,
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep(frameInterval).pipe(Effect.andThen(list())))
-          )
-        )
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced(frameInterval))
     } satisfies LiveRuntimePanelsApi)
   })
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
 
 interface BridgeCallProjection {
   readonly id: string

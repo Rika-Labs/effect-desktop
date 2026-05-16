@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
 import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
 
@@ -366,15 +366,21 @@ const runToolStep = (
 > =>
   Effect.gen(function* () {
     const start = options.now()
-    const output = yield* options
-      .commandRunner({ step: name, command, args, cwd })
-      .pipe(
-        Effect.mapError((error) =>
-          error instanceof NotarizeCommandFailedError
-            ? new NotarizeCommandFailedError({ ...error, command: [command, ...reportArgs] })
-            : error
-        )
+    const output = yield* options.commandRunner({ step: name, command, args, cwd }).pipe(
+      Effect.mapError((error) =>
+        error instanceof NotarizeCommandFailedError
+          ? new NotarizeCommandFailedError({
+              step: error.step,
+              command: [command, ...reportArgs],
+              cwd: error.cwd,
+              exitCode: error.exitCode,
+              message: error.message,
+              ...(error.stdout === undefined ? {} : { stdout: error.stdout }),
+              ...(error.stderr === undefined ? {} : { stderr: error.stderr })
+            })
+          : error
       )
+    )
     const step = {
       name,
       command: [command, ...reportArgs],
@@ -409,19 +415,23 @@ const parseSubmission = (
   stdout: string,
   stderr: string
 ): Effect.Effect<NotarySubmission, NotarizeCommandFailedError, never> =>
-  Effect.try({
-    try: () => (stdout.length === 0 ? undefined : (JSON.parse(stdout) as unknown)),
-    catch: (cause) =>
-      new NotarizeCommandFailedError({
-        step: "notarytool-submit",
-        command: ["xcrun", "notarytool", "submit"],
-        cwd: "",
-        exitCode: undefined,
-        message: `failed to parse notarytool JSON output: ${formatUnknownError(cause)}`,
-        stdout,
-        stderr
-      })
-  }).pipe(
+  (stdout.length === 0
+    ? Effect.succeed(undefined)
+    : Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(stdout).pipe(
+        Effect.mapError(
+          (cause) =>
+            new NotarizeCommandFailedError({
+              step: "notarytool-submit",
+              command: ["xcrun", "notarytool", "submit"],
+              cwd: "",
+              exitCode: undefined,
+              message: `failed to parse notarytool JSON output: ${formatUnknownError(cause)}`,
+              stdout,
+              stderr
+            })
+        )
+      )
+  ).pipe(
     Effect.flatMap((value) =>
       isRecord(value) && typeof value["status"] === "string"
         ? Effect.succeed({
@@ -512,7 +522,7 @@ const resolveCredentials = (
           "--team-id",
           teamId,
           "--password",
-          String(passwordSecret)
+          "<redacted:AppleNotaryPassword>"
         ]
       }
     }
@@ -531,15 +541,14 @@ const readPackagedArtifacts = (
 ): Effect.Effect<readonly PackagedArtifact[], NotarizeFileError | NotarizeConfigError, never> =>
   Effect.gen(function* () {
     yield* statPath(plan.outputPath).pipe(
-      Effect.catch(() =>
-        Effect.fail(
+      Effect.mapError(
+        () =>
           new NotarizeFileError({
             operation: "discover",
             path: plan.outputPath,
             message: "no macOS packaged artifacts found; run bun desktop package first",
             cause: undefined
           })
-        )
       )
     )
     const entries = yield* readDirectory(plan.outputPath)
@@ -906,7 +915,9 @@ const readJson = <A>(path: string): Effect.Effect<A, NotarizeFileError, never> =
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
       const content = yield* fs.readFileString(path)
-      return JSON.parse(content) as A
+      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+        Effect.map((value) => value as A)
+      )
     })
   ).pipe(
     Effect.mapError(

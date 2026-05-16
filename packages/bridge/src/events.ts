@@ -1,4 +1,4 @@
-import { Effect, PubSub, Schema, Stream } from "effect"
+import { Clock, Effect, PubSub, Schema, Stream } from "effect"
 
 import {
   type BridgeContract,
@@ -26,7 +26,7 @@ export interface BridgeEventHubOptions {
 }
 
 interface ResolvedBridgeEventHubOptions {
-  readonly now: () => number
+  readonly now?: (() => number) | undefined
   readonly nextTraceId: () => string
   readonly windowId: string | undefined
 }
@@ -127,7 +127,9 @@ const publish = <Events extends BridgeContractEvents, Event extends keyof Events
     }
 
     const encodedPayload = yield* encodeEventPayload(method, channel.spec.payload, payload)
-    const timestamp = yield* validateHostProtocolTimestamp(options.now(), method)
+    const timestamp = yield* currentTimeMillis(options.now).pipe(
+      Effect.flatMap((now) => validateHostProtocolTimestamp(now, method))
+    )
     const traceId = yield* validateHostProtocolNonEmptyString(
       "traceId",
       options.nextTraceId(),
@@ -198,10 +200,13 @@ const encodeEventPayload = <Type, Encoded>(
   )
 
 const resolveOptions = (options: BridgeEventHubOptions): ResolvedBridgeEventHubOptions => ({
-  now: options.now ?? Date.now,
+  now: options.now,
   nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
   windowId: options.windowId
 })
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
 
 const eventName = (tag: string, event: string): string => `${tag}.${event}`
 

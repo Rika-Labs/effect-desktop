@@ -390,10 +390,7 @@ export const makeTelemetry = (
           if (!tracingEnabled) {
             return
           }
-          const effectSpanOption = yield* Effect.currentSpan.pipe(
-            Effect.map(Option.some),
-            Effect.catch(() => Effect.succeed(Option.none()))
-          )
+          const effectSpanOption = yield* Effect.option(Effect.currentSpan)
           const effectSpan = Option.getOrUndefined(effectSpanOption)
           const parent =
             effectSpan === undefined ? undefined : Option.getOrUndefined(effectSpan.parent)
@@ -586,7 +583,7 @@ export const makeEffectTelemetryCollector = (
       const traceId = span?.traceId ?? `fiber-${options.fiber.id}`
       const operation = span?._tag === "Span" ? span.name : "Effect.log"
       const level = logLevelToTelemetry(options.logLevel)
-      void Effect.runPromise(
+      void Effect.runFork(
         telemetry
           .log({
             level,
@@ -604,7 +601,7 @@ export const makeEffectTelemetryCollector = (
                 : { cause: causePayload(options.cause) })
             }
           })
-          .pipe(Effect.catch(() => Effect.void))
+          .pipe(Effect.ignore)
       )
     })
     const tracer = Tracer.make({
@@ -614,7 +611,7 @@ export const makeEffectTelemetryCollector = (
         span.end = function (this: Tracer.Span, endTime, exit) {
           endSpan(endTime, exit)
           const parent = Option.getOrUndefined(span.parent)
-          void Effect.runPromise(
+          void Effect.runFork(
             telemetry
               .recordSpan({
                 traceId: span.traceId,
@@ -638,7 +635,7 @@ export const makeEffectTelemetryCollector = (
                       })
                     : Effect.void
                 ),
-                Effect.catch(() => Effect.void)
+                Effect.ignore
               )
           )
         }

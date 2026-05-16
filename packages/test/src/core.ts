@@ -23,7 +23,7 @@ export {
   type MockProcessSpawnRecord,
   type MockPtyApi,
   type MockPtyFixture,
-  MockPtyLive,
+  MockPtyLayer,
   type MockPtyOpenRecord,
   type MockPtyOptions,
   registerLeakMatchers,

@@ -1,7 +1,7 @@
 # @effect-desktop/test
 
 > **Status:** Phase 3.5 headless harness is available. Phase 15 adds a memory
-> Secrets safe-storage adapter. See `docs/SPEC.md`.
+> Secrets safe-storage adapter. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -69,7 +69,7 @@ mutable internal state.
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+See `engineering/SPEC.md` for the package's normative non-goals.
 
 ## Usage
 

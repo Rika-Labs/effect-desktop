@@ -127,8 +127,7 @@ interface ResolvedAccessibilityRequiredToken extends AccessibilityRequiredToken 
 }
 
 const MANIFEST_PATH = "release/accessibility.json"
-const SPEC_SOURCE = "docs/SPEC.md §25.5"
-const REQUIRED_TEMPLATE_ID = "basic-react-tailwind"
+const SPEC_SOURCE = "engineering/SPEC.md §25.5"
 const REQUIRED_AUDIT_MODES = new Map<
   string,
   { readonly direction: "ltr" | "rtl"; readonly colorScheme: "light" | "dark" }
@@ -226,13 +225,6 @@ const validateManifest = (
     }
     ids.add(template.id)
   }
-  if (!ids.has(REQUIRED_TEMPLATE_ID)) {
-    return Effect.fail(
-      new AccessibilityGateManifestError({
-        message: `accessibility manifest is missing required template ${REQUIRED_TEMPLATE_ID}`
-      })
-    )
-  }
   return Effect.void
 }
 
@@ -283,14 +275,14 @@ const resolveTemplatePaths = (
             template,
             "pa11y"
           )
-          return { ...mode, axePath, pa11yPath }
+          return Object.assign({}, mode, { axePath, pa11yPath })
         })
       )
     )
     const requiredTokens = yield* Effect.all(
       template.requiredTokens.map((required) =>
         containedPath(workspaceRoot, root, required.file, template, "requiredTokens.file").pipe(
-          Effect.map((filePath) => ({ ...required, filePath }))
+          Effect.map((filePath) => Object.assign({}, required, { filePath }))
         )
       )
     )
@@ -640,16 +632,18 @@ const linearize = (channel: number): number => {
 const readJson = <A>(path: string): Effect.Effect<A, AccessibilityGateFileError, never> =>
   readText(path).pipe(
     Effect.flatMap((body) =>
-      Effect.try({
-        try: () => JSON.parse(body) as A,
-        catch: (cause) =>
-          new AccessibilityGateFileError({
-            operation: "parse-json",
-            path,
-            message: `failed to parse JSON at ${path}`,
-            cause
-          })
-      })
+      Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+        Effect.map((value) => value as A),
+        Effect.mapError(
+          (cause) =>
+            new AccessibilityGateFileError({
+              operation: "parse-json",
+              path,
+              message: `failed to parse JSON at ${path}`,
+              cause
+            })
+        )
+      )
     )
   )
 

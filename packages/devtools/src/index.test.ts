@@ -6,6 +6,7 @@ import {
   makeCommandRegistry,
   makePermissionRegistry,
   makeProcess,
+  makeResourceId,
   makeResourceRegistry,
   makeTelemetry,
   makeWorker,
@@ -21,13 +22,27 @@ import {
   Worker,
   type NormalizedCapability,
   type ProcessApi,
+  type ResourceOwnerApi,
   type ResourceRegistryApi,
   type WorkerApi,
   type WorkerAdapter,
   type WorkerError,
   type WorkerRuntime
 } from "@effect-desktop/core"
-import { Cause, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Sink, Stream } from "effect"
+import {
+  Cause,
+  Clock,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Schedule,
+  Schema,
+  Sink,
+  Stream
+} from "effect"
 import { ChildProcessSpawner } from "effect/unstable/process"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
@@ -55,6 +70,13 @@ import {
   type WorkersSnapshot
 } from "./index.js"
 import { DevtoolsInvalidOptionError } from "./panel-options.js"
+
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
 
 const commandCapability: NormalizedCapability = {
   kind: "native.invoke",
@@ -125,13 +147,9 @@ test("WorkersDevtools lists live workers with redacted scripts", async () => {
   const workerHandle = await Effect.runPromise(
     fixture.worker.spawn({
       script: "./secret-worker.ts",
-      ownerScope: "scope-main",
       inputSchema: Schema.Struct({ text: Schema.String }),
       outputSchema: Schema.Struct({ echoed: Schema.String }),
-      context: new PermissionContext({
-        actor: new PermissionActor({ kind: "app", id: "app-main" }),
-        traceId: "trace-devtools"
-      })
+      context: { traceId: "trace-devtools" }
     })
   )
 
@@ -151,7 +169,7 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
   const resources = await Effect.runPromise(
     makeResourceRegistry({
       now: () => timestamp++,
-      nextId: (now) => `resource-${now}` as never
+      nextId: (now) => makeResourceId(`resource-${now}`)
     })
   )
   const permissions = await Effect.runPromise(
@@ -199,7 +217,7 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
   )
   await Effect.runPromise(
     resources.register({
-      id: "resource-panel" as never,
+      id: makeResourceId("resource-panel"),
       kind: "window",
       ownerScope: "scope-main",
       state: "open"
@@ -211,9 +229,7 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
       traceId: "trace-panel"
     })
   )
-  const handle = await Effect.runPromise(
-    processes.spawn("echo", ["hi"], { ownerScope: "scope-main" })
-  )
+  const handle = await Effect.runPromise(processes.spawn("echo", ["hi"]))
   await Effect.runPromise(handle.exit)
 
   const snapshot = await Effect.runPromise(
@@ -223,7 +239,7 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
     }).pipe(
       Effect.provide(
         Layer.provide(
-          LiveRuntimePanelsLive({ bridgeCalls, streams }, { now: () => 1_100 }),
+          LiveRuntimePanelsLive({ bridgeCalls, streams }),
           Layer.mergeAll(
             Layer.succeed(ResourceRegistry)(resources),
             Layer.succeed(PermissionRegistry)(permissions),
@@ -231,7 +247,8 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
             InspectorSafetyPolicyLive()
           )
         )
-      )
+      ),
+      Effect.provideService(Clock.Clock, fixedClock(1_100))
     )
   )
 
@@ -247,7 +264,8 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
   expect(snapshot.resources[0]).toMatchObject({
     id: "resource-panel",
     kind: "window",
-    scope: "scope-main"
+    scope: "scope-main",
+    ageMs: 100
   })
   expect(snapshot.permissions[0]?.decision).toBe("denied")
   expect(snapshot.permissions[0]?.remediation).toEqual(
@@ -263,7 +281,7 @@ test("LiveRuntimePanels projects bridge, stream, resource, permission, and proce
 test("Inspector collectors stream resource, scope, fiber, and stream lifecycle events", async () => {
   const resources = await Effect.runPromise(
     makeResourceRegistry({
-      nextId: () => "resource-collector" as never
+      nextId: () => makeResourceId("resource-collector")
     })
   )
   const streams = await Effect.runPromise(makeBridgeStreamRegistry())
@@ -351,12 +369,8 @@ test("Inspector collectors stream resource, scope, fiber, and stream lifecycle e
 test("LayerGraphPanel publishes selected providers and graph snapshots to Inspector", async () => {
   const app = Desktop.make({
     id: "notes",
-    providers: { runtime: "test" },
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
+    providers: Desktop.provider(Desktop.Provider.Runtime.test),
+    windows: Desktop.window("main", { title: "Notes" })
   })
 
   const snapshot = await Effect.runPromise(
@@ -374,12 +388,17 @@ test("LayerGraphPanel publishes selected providers and graph snapshots to Inspec
   )
 
   expect(snapshot.layerGraph.appId).toBe("notes")
-  expect(snapshot.layerGraph.providers).toEqual({ runtime: "test" })
+  expect(snapshot.layerGraph.providers).toEqual({ runtime: "test", webview: "system" })
   expect(snapshot.layerGraph.providerFacts).toEqual([
     {
       id: "test",
       kind: "runtime",
       capabilities: ["FileSystem", "Path", "Terminal", "Stdio", "ChildProcessSpawner"]
+    },
+    {
+      id: "system",
+      kind: "webview",
+      capabilities: ["WindowWebView", "AppProtocol"]
     }
   ])
   expect(snapshot.layerGraph.nodes.map((node) => node.id)).toContain("provider:runtime:test")
@@ -725,7 +744,7 @@ interface WorkersFixture {
 
 const makeProcessService = (registry: ResourceRegistryApi): Promise<ProcessApi> =>
   Effect.runPromise(
-    makeProcess(registry, {
+    makeProcess(registry, TEST_OWNER, {
       permissions: { spawn: ["echo"] }
     }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, fakeProcessSpawner))
   )
@@ -753,13 +772,13 @@ const makeWorkersFixture = async (): Promise<WorkersFixture> => {
   const registry = await Effect.runPromise(
     makeResourceRegistry({
       now: () => timestamp++,
-      nextId: (now) => `resource-${now}` as never
+      nextId: (now) => makeResourceId(`resource-${now}`)
     })
   )
   const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
   const runtime = await makeFakeRuntime()
   const worker = await Effect.runPromise(
-    makeWorker(registry, permissions, {
+    makeWorker(registry, permissions, TEST_OWNER, {
       adapter: makeFakeAdapter(runtime),
       now: () => timestamp++
     })
@@ -771,27 +790,29 @@ const waitForWorkersSnapshot = async (
   fixture: WorkersFixture,
   predicate: (snapshot: WorkersSnapshot) => boolean
 ): Promise<WorkersSnapshot> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const snapshot = await Effect.runPromise(
-      Effect.gen(function* () {
-        const devtools = yield* WorkersDevtools
-        return yield* devtools.list()
-      }).pipe(
-        Effect.provide(
-          Layer.provide(
-            WorkersDevtoolsLive,
-            Layer.mergeAll(Layer.succeed(Worker)(fixture.worker), InspectorSafetyPolicyLive())
-          )
-        )
+  const readSnapshot = Effect.gen(function* () {
+    const devtools = yield* WorkersDevtools
+    return yield* devtools.list()
+  }).pipe(
+    Effect.provide(
+      Layer.provide(
+        WorkersDevtoolsLive,
+        Layer.mergeAll(Layer.succeed(Worker)(fixture.worker), InspectorSafetyPolicyLive())
       )
     )
-    if (predicate(snapshot)) {
-      return snapshot
-    }
-    await Bun.sleep(10)
-  }
+  )
 
-  throw new Error("devtools snapshot did not match")
+  return await Effect.runPromise(
+    readSnapshot.pipe(
+      Effect.flatMap((snapshot) =>
+        predicate(snapshot)
+          ? Effect.succeed(snapshot)
+          : Effect.fail(new Error("snapshot did not match"))
+      ),
+      Effect.retry(Schedule.spaced("10 millis").pipe(Schedule.both(Schedule.recurs(50)))),
+      Effect.mapError(() => new Error("devtools snapshot did not match"))
+    )
+  )
 }
 
 const makeFakeAdapter = (runtime: WorkerRuntime): WorkerAdapter => ({
@@ -811,3 +832,11 @@ const makeFakeRuntime = async (): Promise<WorkerRuntime> => {
     )
   }
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})

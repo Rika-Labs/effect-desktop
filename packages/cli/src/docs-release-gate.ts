@@ -1,7 +1,7 @@
 import { isAbsolute, join, relative } from "node:path"
 
 import { DesktopTimeouts } from "@effect-desktop/core"
-import { Data, Duration, Effect, Option } from "effect"
+import { Data, Duration, Effect, Option, Schema } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
@@ -99,31 +99,31 @@ interface RunnableBlock {
 
 const MANIFEST_PATH = "docs/docs-manifest.json"
 const RUNNABLE_BLOCK_PATTERN = /```([^\n`]*)\n([\s\S]*?)```/g
-const SPEC_SOURCE = "docs/SPEC.md §25.3"
+const SPEC_SOURCE = "engineering/SPEC.md §25.3"
 const REQUIRED_SPEC_PAGES: ReadonlyMap<string, string> = new Map([
-  ["installation", "docs/user/installation.md"],
-  ["quickstart", "docs/user/quickstart.md"],
-  ["concepts", "docs/user/concepts.md"],
-  ["architecture-overview", "docs/user/architecture-overview.md"],
-  ["app-config", "docs/user/app-config.md"],
-  ["windows", "docs/user/windows.md"],
-  ["typed-apis", "docs/user/typed-apis.md"],
-  ["bridge", "docs/user/bridge.md"],
-  ["native-services", "docs/user/native-services.md"],
-  ["resources", "docs/user/resources.md"],
-  ["processes", "docs/user/processes.md"],
-  ["ptys", "docs/user/ptys.md"],
-  ["filesystem", "docs/user/filesystem.md"],
-  ["storage", "docs/user/storage.md"],
-  ["permissions", "docs/user/permissions.md"],
-  ["commands", "docs/user/commands.md"],
-  ["devtools", "docs/user/devtools.md"],
-  ["testing", "docs/user/testing.md"],
-  ["packaging", "docs/user/packaging.md"],
-  ["signing", "docs/user/signing.md"],
-  ["updating", "docs/user/updating.md"],
-  ["troubleshooting", "docs/user/troubleshooting.md"],
-  ["contribution-guide", "docs/user/contribution-guide.md"]
+  ["installation", "docs/installation.md"],
+  ["quickstart", "docs/quickstart.md"],
+  ["concepts", "docs/concepts.md"],
+  ["architecture-overview", "docs/architecture-overview.md"],
+  ["app-config", "docs/app-config.md"],
+  ["windows", "docs/windows.md"],
+  ["typed-apis", "docs/typed-apis.md"],
+  ["bridge", "docs/bridge.md"],
+  ["native-services", "docs/native-services.md"],
+  ["resources", "docs/resources.md"],
+  ["processes", "docs/processes.md"],
+  ["ptys", "docs/ptys.md"],
+  ["filesystem", "docs/filesystem.md"],
+  ["storage", "docs/storage.md"],
+  ["permissions", "docs/permissions.md"],
+  ["commands", "docs/commands.md"],
+  ["devtools", "docs/devtools.md"],
+  ["testing", "docs/testing.md"],
+  ["packaging", "docs/packaging.md"],
+  ["signing", "docs/signing.md"],
+  ["updating", "docs/updating.md"],
+  ["troubleshooting", "docs/troubleshooting.md"],
+  ["contribution-guide", "docs/contribution-guide.md"]
 ])
 const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["installation", ["runCli", "desktop --help"]],
@@ -132,7 +132,7 @@ const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = ne
   ["architecture-overview", ["HostProtocolRequestEnvelope", "Desktop"]],
   ["app-config", ["defineDesktopConfig"]],
   ["windows", ["WindowRpcs", "WindowMethodNames"]],
-  ["typed-apis", ["RpcGroup", "Handlers"]],
+  ["typed-apis", ["RpcGroup", "makeDesktopRpcHandlerRuntime"]],
   ["bridge", ["HostProtocolEnvelope", "Client"]],
   ["native-services", ["ClipboardRpcs", "DialogRpcs", "WindowRpcs"]],
   ["resources", ["ResourceRegistry", "ManagedResource"]],
@@ -179,13 +179,12 @@ export const runDocsReleaseGate = (
         )
       }
       const body = yield* readText(absolutePath).pipe(
-        Effect.catch((error) =>
-          Effect.fail(
+        Effect.mapError(
+          (error) =>
             new DocsGateMissingPageError({
               page,
               message: `required docs page ${page.path} is missing or unreadable: ${error.message}`
             })
-          )
         )
       )
       if (body.trim().length === 0) {
@@ -452,16 +451,18 @@ const runDocsExample: DocsExampleRunner = (invocation) =>
 const readJson = <A>(path: string): Effect.Effect<A, DocsGateFileError, never> =>
   Effect.gen(function* () {
     const body = yield* readText(path)
-    return yield* Effect.try({
-      try: () => JSON.parse(body) as A,
-      catch: (cause) =>
-        new DocsGateFileError({
-          operation: "parse",
-          path,
-          message: `failed to parse ${path}`,
-          cause
-        })
-    })
+    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+      Effect.map((value) => value as A),
+      Effect.mapError(
+        (cause) =>
+          new DocsGateFileError({
+            operation: "parse",
+            path,
+            message: `failed to parse ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const readText = (path: string): Effect.Effect<string, DocsGateFileError, never> =>

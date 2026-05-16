@@ -6,12 +6,12 @@ import {
   appendBounded,
   isDesktopStreamOptions,
   makeDesktopRendererRpcLayer,
-  type AnyDesktopRpcLayer,
+  type DesktopRpcsLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
+  makeFrameworkRuntime,
+  makeFrameworkScopedOperation,
   normalizeDesktopStreamCapacity,
-  runFrameworkEffect,
-  runFrameworkPromiseExit,
   RendererRpcClients,
   runRendererStream,
   type DesktopAppManifest,
@@ -21,7 +21,7 @@ import {
   type DesktopRendererRpcTransport,
   type FrameworkRuntime,
   type MissingDesktopRpcClientError,
-  type RpcGroupWithRequests
+  type DesktopRpcRegistrationGroup as RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
 import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
@@ -125,13 +125,13 @@ type SolidEndpoint =
 
 export interface SolidDesktopRootProps {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcLayers?: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
   readonly children?: JSX.Element
 }
 
 export interface SolidDesktopRenderOptions {
   readonly transport?: SolidDesktopRootProps["transport"]
-  readonly rpcLayers?: SolidDesktopRootProps["rpcLayers"]
+  readonly rpcs?: SolidDesktopRootProps["rpcs"]
 }
 
 export interface SolidDesktopAdapter<App extends DesktopAppManifest> {
@@ -152,13 +152,13 @@ export {
 
 interface SolidDesktopContextValue {
   readonly clients: DesktopRendererRpcClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
 }
 
 interface SolidDesktopRuntime {
   readonly clients: DesktopRendererRpcClientMap
-  readonly runtime: ManagedRuntime.ManagedRuntime<RendererRpcClients, MissingDesktopRpcClientError>
-  readonly dispose: () => Promise<void>
+  readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
+  readonly disposeEffect: Effect.Effect<void, never, never>
 }
 
 const SolidDesktopContext = createContext<SolidDesktopContextValue>()
@@ -166,9 +166,9 @@ const SolidDesktopContext = createContext<SolidDesktopContextValue>()
 export const SolidDesktop = Object.freeze({
   from: <App extends DesktopAppManifest>(app: App): SolidDesktopAdapter<App> => {
     const DesktopRoot = (props: SolidDesktopRootProps): JSX.Element => {
-      const runtime = makeSolidDesktopRuntime(app, props.transport, props.rpcLayers)
+      const runtime = makeSolidDesktopRuntime(app, props.transport, props.rpcs)
       onCleanup(() => {
-        void runtime.dispose()
+        void Effect.runCallback(runtime.disposeEffect)
       })
       return createComponent(SolidDesktopContext.Provider, {
         value: { clients: runtime.clients, runtime: runtime.runtime },
@@ -234,7 +234,7 @@ export const SolidDesktop = Object.freeze({
         options?: SolidDesktopRenderOptions
       ) => {
         const rootProps =
-          options?.transport === undefined && options?.rpcLayers === undefined
+          options?.transport === undefined && options?.rpcs === undefined
             ? {
                 get children() {
                   return children()
@@ -242,7 +242,7 @@ export const SolidDesktop = Object.freeze({
               }
             : {
                 transport: options.transport,
-                rpcLayers: options.rpcLayers,
+                rpcLayers: options.rpcs,
                 get children() {
                   return children()
                 }
@@ -257,26 +257,27 @@ export const SolidDesktop = Object.freeze({
 const makeSolidDesktopRuntime = (
   app: DesktopAppManifest,
   transport: DesktopRendererRpcTransport | undefined,
-  rpcLayers: ReadonlyArray<AnyDesktopRpcLayer<never, never>> | undefined
+  rpcs: DesktopRpcsLayer<never, never> | undefined
 ): SolidDesktopRuntime => {
   const runtime = ManagedRuntime.make(
     makeDesktopRendererRpcLayer(app, {
       framework: "solid",
       transport: transport ?? getGlobalDesktopRendererRpcTransport(),
-      rpcLayers
+      rpcs
     })
   )
   let clients: DesktopRendererRpcClientMap
   try {
     clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
   } catch (error) {
-    void runtime.dispose()
+    void Effect.runCallback(runtime.disposeEffect)
     throw error
   }
+  const frameworkRuntime = makeFrameworkRuntime(runtime)
   return Object.freeze({
     clients,
-    runtime,
-    dispose: runtime.dispose
+    runtime: frameworkRuntime,
+    disposeEffect: frameworkRuntime.disposeEffect.pipe(Effect.andThen(runtime.disposeEffect))
   })
 }
 
@@ -285,29 +286,24 @@ const createMutationState = <R, ER, I, A, E>(
   makeEffect: (input: I) => Effect.Effect<A, E, R>
 ): SolidMutation<I, A, E | ER> => {
   const [state, setState] = createSignal<SolidAsyncState<A, E | ER>>({ status: "idle" })
-  let runId = 0
-  let active = true
+  const operation = makeFrameworkScopedOperation(runtime)
 
   onCleanup(() => {
-    active = false
-    runId += 1
+    operation.dispose()
   })
 
   const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
-    const currentRun = runId + 1
-    runId = currentRun
     setState({ status: "running" })
 
-    const exit = await runFrameworkPromiseExit(runtime, makeEffect(input as I))
-    if (!active || runId !== currentRun) {
-      return exit
-    }
+    const [exit, isLatest] = await operation.runLatestPromiseExit(makeEffect(input as I))
 
-    setState(
-      Exit.isSuccess(exit)
-        ? { status: "success", value: exit.value }
-        : { status: "failure", cause: exit.cause }
-    )
+    if (isLatest) {
+      setState(
+        Exit.isSuccess(exit)
+          ? { status: "success", value: exit.value }
+          : { status: "failure", cause: exit.cause }
+      )
+    }
     return exit
   }
 
@@ -318,7 +314,7 @@ const createMutationState = <R, ER, I, A, E>(
     }) as SolidPrimitive<I, void>,
     runPromise: runPromiseImpl as SolidPrimitive<I, Promise<Exit.Exit<A, E | ER>>>,
     reset: () => {
-      runId += 1
+      operation.reset()
       setState({ status: "idle" })
     }
   }
@@ -329,12 +325,9 @@ const createQueryState = <R, ER, A, E>(
   effect: Effect.Effect<A, E, R>
 ): Accessor<SolidAsyncState<A, E | ER>> => {
   const [state, setState] = createSignal<SolidAsyncState<A, E | ER>>({ status: "running" })
-  let active = true
+  const operation = makeFrameworkScopedOperation(runtime)
 
-  const interrupt = runFrameworkEffect(runtime, effect, (exit) => {
-    if (!active) {
-      return
-    }
+  operation.runLatest(effect, (exit) => {
     setState(
       Exit.isSuccess(exit)
         ? { status: "success", value: exit.value }
@@ -343,8 +336,7 @@ const createQueryState = <R, ER, A, E>(
   })
 
   onCleanup(() => {
-    active = false
-    interrupt()
+    operation.dispose()
   })
 
   return state

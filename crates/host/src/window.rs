@@ -497,7 +497,7 @@ impl WindowRegistry {
             "host window opened"
         );
 
-        let webview = webview::attach_app_webview(&window)?;
+        let webview = webview::attach_app_webview(&window).map_err(|error| *error)?;
         self.windows.insert(
             window_id.clone(),
             NativeWindowResources {

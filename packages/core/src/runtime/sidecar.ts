@@ -134,6 +134,11 @@ const startSidecar = (
     const publish = (state: SidecarState): Effect.Effect<void, never, never> =>
       SubscriptionRef.set(status, state)
 
+    const publishStartFailure = (error: SidecarError): Effect.Effect<boolean, never, never> =>
+      publish({ _tag: "Failed", message: error.message, recoverable: error.recoverable }).pipe(
+        Effect.andThen(Deferred.fail(ready, error))
+      )
+
     const start = Effect.gen(function* startAttempt() {
       const nextAttempt = yield* Ref.updateAndGet(attempt, (current) => current + 1)
       yield* publish({ _tag: "Starting", attempt: nextAttempt, command: command.command })
@@ -141,7 +146,6 @@ const startSidecar = (
         .spawn(command.command, command.args, {
           ...(command.cwd === undefined ? {} : { cwd: command.cwd }),
           ...(command.env === undefined ? {} : { env: command.env }),
-          ownerScope: command.ownerScope,
           ...(command.shell === undefined ? {} : { shell: command.shell })
         })
         .pipe(Effect.mapError((error) => sidecarError(error, "Sidecar.start", true)))
@@ -185,23 +189,11 @@ const startSidecar = (
             Schedule.recurs(retry.retries)
           ).pipe(Schedule.setInputType<SidecarError>())
         ),
-        Effect.catch((error) =>
-          publish({ _tag: "Failed", message: error.message, recoverable: error.recoverable }).pipe(
-            Effect.andThen(Deferred.fail(ready, error)),
-            Effect.andThen(Effect.fail(error))
-          )
-        )
+        Effect.tapError(publishStartFailure)
       )
     }
 
-    return yield* start.pipe(
-      Effect.catch((error) =>
-        publish({ _tag: "Failed", message: error.message, recoverable: error.recoverable }).pipe(
-          Effect.andThen(Deferred.fail(ready, error)),
-          Effect.andThen(Effect.fail(error))
-        )
-      )
-    )
+    return yield* start.pipe(Effect.tapError(publishStartFailure))
   }).pipe(Effect.withSpan("Sidecar.start", { attributes: { command: command.command } }))
 
 const makeHandle = (
@@ -247,11 +239,12 @@ const observeReadiness = (
             })
           )
     ),
-    Effect.catch((error) =>
+    Effect.tapError((error) =>
       Deferred.fail(ready, error).pipe(
         Effect.andThen(publish({ _tag: "Failed", message: error.message, recoverable: false }))
       )
-    )
+    ),
+    Effect.ignore
   )
 }
 
@@ -279,9 +272,10 @@ const observeExit = (
         )
       )
     ),
-    Effect.catch((error) =>
+    Effect.tapError((error) =>
       publish({ _tag: "Failed", message: error.message, recoverable: false })
-    )
+    ),
+    Effect.ignore
   )
 
 const readinessLines = (
@@ -323,11 +317,7 @@ const closeSidecar = (
 
 const lineMatches = (line: string, match: string): boolean => line.includes(match)
 
-const sidecarError = (
-  error: ProcessError,
-  operation: string,
-  recoverable: boolean
-): SidecarError =>
+const sidecarError = (error: ProcessError, operation: string, recoverable: boolean): SidecarError =>
   new SidecarError({
     message: error.message,
     operation,

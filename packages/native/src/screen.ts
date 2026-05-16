@@ -3,24 +3,17 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
-  RpcClient,
-  RpcCapability,
   RpcGroup,
+  hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
-  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolRequestEnvelope,
-  HostProtocolUnsupportedError,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   ScreenDisplay,
   ScreenDisplaysResult,
@@ -32,29 +25,37 @@ import {
 
 export type ScreenError = HostProtocolError
 
-export const ScreenGetDisplays = Rpc.make("Screen.getDisplays", {
+export const ScreenGetDisplays = NativeSurface.rpc("Screen", "getDisplays", {
   payload: Schema.Void,
   success: ScreenDisplaysResult,
-  error: HostProtocolErrorSchema
-}).pipe(RpcCapability(P.nativeInvoke({ primitive: "Screen", methods: ["getDisplays"] })))
+  authority: NativeSurface.authority.native(),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
-export const ScreenGetPrimaryDisplay = Rpc.make("Screen.getPrimaryDisplay", {
+export const ScreenGetPrimaryDisplay = NativeSurface.rpc("Screen", "getPrimaryDisplay", {
   payload: Schema.Void,
   success: ScreenDisplay,
-  error: HostProtocolErrorSchema
-}).pipe(RpcCapability(P.nativeInvoke({ primitive: "Screen", methods: ["getPrimaryDisplay"] })))
+  authority: NativeSurface.authority.native(),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
-export const ScreenGetPointerPoint = Rpc.make("Screen.getPointerPoint", {
+export const ScreenGetPointerPoint = NativeSurface.rpc("Screen", "getPointerPoint", {
   payload: Schema.Void,
   success: ScreenPoint,
-  error: HostProtocolErrorSchema
-}).pipe(RpcCapability(P.nativeInvoke({ primitive: "Screen", methods: ["getPointerPoint"] })))
+  authority: NativeSurface.authority.native(),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
-export const ScreenIsSupported = Rpc.make("Screen.isSupported", {
+export const ScreenIsSupported = NativeSurface.rpc("Screen", "isSupported", {
   payload: ScreenIsSupportedInput,
   success: ScreenSupportedResult,
-  error: HostProtocolErrorSchema
-}).pipe(RpcCapability({ kind: "none" }))
+  authority: NativeSurface.authority.none,
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
 const makeScreenRpcGroup = () =>
   RpcGroup.make(
@@ -79,6 +80,12 @@ export const ScreenMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const ScreenCapabilityMethods = Object.freeze([
+  "getDisplays",
+  "getPrimaryDisplay",
+  "getPointerPoint"
+] as const satisfies readonly (typeof ScreenMethodNames)[number][])
+
 export interface ScreenClientApi {
   readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>
   readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
@@ -101,20 +108,22 @@ export interface ScreenServiceApi {
 
 export class Screen extends Context.Service<Screen, ScreenServiceApi>()(
   "@effect-desktop/native/Screen"
-) {}
+) {
+  static readonly layer = Layer.effect(Screen)(
+    Effect.gen(function* () {
+      const client = yield* ScreenClient
+      return Screen.of({
+        getDisplays: () => client.getDisplays().pipe(Effect.map((result) => result.displays)),
+        getPrimaryDisplay: () => client.getPrimaryDisplay(),
+        getPointerPoint: () => client.getPointerPoint(),
+        isSupported: (method) =>
+          client.isSupported(method).pipe(Effect.map((result) => result.supported))
+      } satisfies ScreenServiceApi)
+    })
+  )
+}
 
-export const ScreenLive = Layer.effect(Screen)(
-  Effect.gen(function* () {
-    const client = yield* ScreenClient
-    return Object.freeze({
-      getDisplays: () => client.getDisplays().pipe(Effect.map((result) => result.displays)),
-      getPrimaryDisplay: () => client.getPrimaryDisplay(),
-      getPointerPoint: () => client.getPointerPoint(),
-      isSupported: (method) =>
-        client.isSupported(method).pipe(Effect.map((result) => result.supported))
-    } satisfies ScreenServiceApi)
-  })
-)
+export const ScreenLive = Screen.layer
 
 export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
   "Screen.getDisplays": () =>
@@ -141,8 +150,9 @@ export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
     })
 })
 
-export const ScreenSurface = DesktopRpc.surface("Screen", ScreenRpcGroup, {
+export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
   service: ScreenClient,
+  capabilities: ScreenCapabilityMethods,
   handlers: ScreenHandlersLive,
   client: (client) => screenClientFromRpcClient(client)
 })
@@ -157,26 +167,17 @@ export const makeScreenBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: ScreenBridgeClientOptions = {}
 ): Layer.Layer<ScreenClient> =>
-  Layer.provide(ScreenSurface.clientLayer, makeScreenBridgeProtocolLayer(exchange, options))
+  ScreenSurface.bridgeClientLayer(exchange, {
+    ...options,
+    normalizeRequest: normalizeScreenBridgeRequest
+  })
 
-export type ScreenRpcHandlers = Parameters<typeof ScreenRpcGroup.toLayer>[0]
+export type ScreenRpcHandlers = RpcGroup.HandlersFrom<ScreenRpc>
 
 export const makeHostScreenRpcRuntime = (
   handlers: ScreenRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(ScreenRpcGroup, ScreenRpcGroup.toLayer(handlers), runtimeOptions)
-
-const makeScreenBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: ScreenBridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, {
-      ...options,
-      normalizeRequest: normalizeScreenBridgeRequest
-    }).pipe(Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options)))
-  )
+): BridgeHandlerRuntime<PermissionRegistry> => ScreenSurface.hostRuntime(handlers, runtimeOptions)
 
 const normalizeScreenBridgeRequest = (
   request: HostProtocolRequestEnvelope
@@ -217,7 +218,10 @@ const runScreenRpc = <A, E>(
 ): Effect.Effect<A, ScreenError, never> => effect.pipe(Effect.mapError(mapScreenRpcClientError))
 
 const mapScreenRpcClientError = (error: unknown): ScreenError =>
-  isScreenError(error) ? error : makeHostProtocolInternalError("Screen RPC client failed", "Screen")
+  isScreenError(error)
+    ? error
+    : (hostProtocolErrorFromRpcClientError(error) ??
+      makeHostProtocolInternalError("Screen RPC client failed", "Screen"))
 
 const isScreenError = (error: unknown): error is ScreenError =>
   typeof error === "object" &&
@@ -248,23 +252,3 @@ const validateScreenDisplays = (
   }
   return Effect.succeed(result)
 }
-
-export const makeUnsupportedScreenClient = (): ScreenClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, ScreenError, never> =>
-    Effect.fail(unsupportedError(method))
-  return Object.freeze({
-    getDisplays: () => unsupportedEffect<ScreenDisplaysResult>("Screen.getDisplays"),
-    getPrimaryDisplay: () => unsupportedEffect<ScreenDisplay>("Screen.getPrimaryDisplay"),
-    getPointerPoint: () => unsupportedEffect<ScreenPoint>("Screen.getPointerPoint"),
-    isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: false }))
-  } satisfies ScreenClientApi)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Screen platform adapter is not implemented yet",
-    message: `unsupported Screen method: ${method}`,
-    operation: method,
-    recoverable: false
-  })

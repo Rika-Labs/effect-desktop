@@ -3,26 +3,21 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   TrayActivatedEvent,
   TrayCreateInput,
@@ -101,6 +96,14 @@ export const TrayMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const TrayCapabilityMethods = Object.freeze([
+  "create",
+  "setIcon",
+  "setTooltip",
+  "setMenu",
+  "destroy"
+] as const satisfies readonly (typeof TrayMethodNames)[number][])
+
 export interface TrayClientApi {
   readonly create: (input: TrayCreateOptions) => Effect.Effect<TrayHandle, TrayError, never>
   readonly setIcon: (tray: TrayHandle, icon: string) => Effect.Effect<void, TrayError, never>
@@ -122,22 +125,24 @@ export interface TrayServiceApi extends Omit<TrayClientApi, "isSupported"> {
   readonly isSupported: () => Effect.Effect<boolean, TrayError, never>
 }
 
-export class Tray extends Context.Service<Tray, TrayServiceApi>()("@effect-desktop/native/Tray") {}
+export class Tray extends Context.Service<Tray, TrayServiceApi>()("@effect-desktop/native/Tray") {
+  static readonly layer = Layer.effect(Tray)(
+    Effect.gen(function* () {
+      const client = yield* TrayClient
+      return Tray.of({
+        create: (input) => client.create(input),
+        setIcon: (tray, icon) => client.setIcon(tray, icon),
+        setTooltip: (tray, tooltip) => client.setTooltip(tray, tooltip),
+        setMenu: (tray, menu) => client.setMenu(tray, menu),
+        destroy: (tray) => client.destroy(tray),
+        onActivated: () => client.onActivated(),
+        isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported))
+      } satisfies TrayServiceApi)
+    })
+  )
+}
 
-export const TrayLive = Layer.effect(Tray)(
-  Effect.gen(function* () {
-    const client = yield* TrayClient
-    return Object.freeze({
-      create: (input) => client.create(input),
-      setIcon: (tray, icon) => client.setIcon(tray, icon),
-      setTooltip: (tray, tooltip) => client.setTooltip(tray, tooltip),
-      setMenu: (tray, menu) => client.setMenu(tray, menu),
-      destroy: (tray) => client.destroy(tray),
-      onActivated: () => client.onActivated(),
-      isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported))
-    } satisfies TrayServiceApi)
-  })
-)
+export const TrayLive = Tray.layer
 
 export const makeTrayClientLayer = (client: TrayClientApi): Layer.Layer<TrayClient> =>
   Layer.succeed(TrayClient)(client)
@@ -158,7 +163,7 @@ export const makeTrayBridgeClientLayer = (
 
 export type TrayRpc = RpcGroup.Rpcs<typeof TrayRpcGroup>
 
-export type TrayRpcHandlers = Parameters<typeof TrayRpcGroup.toLayer>[0]
+export type TrayRpcHandlers = RpcGroup.HandlersFrom<TrayRpc>
 
 export const TrayHandlersLive = TrayRpcGroup.toLayer({
   "Tray.create": (input) =>
@@ -194,8 +199,9 @@ export const TrayHandlersLive = TrayRpcGroup.toLayer({
     })
 })
 
-export const TraySurface = DesktopRpc.surface("Tray", TrayRpcGroup, {
+export const TraySurface = NativeSurface.make("Tray", TrayRpcGroup, {
   service: TrayClient,
+  capabilities: TrayCapabilityMethods,
   handlers: TrayHandlersLive,
   client: (client) => trayClientFromRpcClient(client, undefined)
 })
@@ -203,8 +209,7 @@ export const TraySurface = DesktopRpc.surface("Tray", TrayRpcGroup, {
 export const makeHostTrayRpcRuntime = (
   handlers: TrayRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(TrayRpcGroup, TrayRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => TraySurface.hostRuntime(handlers, runtimeOptions)
 
 const trayClientFromRpcClient = (
   client: DesktopRpcClient<TrayRpc>,
@@ -253,62 +258,8 @@ const makeTrayBridgeProtocolLayer = (
 const subscribeTrayEvent = (
   exchange: BridgeClientExchange | undefined,
   method: "Tray.Activated"
-): Stream.Stream<TrayActivatedEvent, TrayError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeTrayEventEnvelope(method, envelope)))
-}
-
-const decodeTrayEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<TrayActivatedEvent, TrayError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(TrayActivatedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
-}
-
-export const makeUnsupportedTrayClient = (): TrayClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, TrayError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, TrayError, never> =>
-    Stream.fail(unsupportedError(method))
-
-  const client: TrayClientApi = {
-    create: () => unsupportedEffect<TrayHandle>("Tray.create"),
-    setIcon: () => unsupportedEffect<void>("Tray.setIcon"),
-    setTooltip: () => unsupportedEffect<void>("Tray.setTooltip"),
-    setMenu: () => unsupportedEffect<void>("Tray.setMenu"),
-    destroy: () => unsupportedEffect<void>("Tray.destroy"),
-    onActivated: () => unsupportedStream<TrayActivatedEvent>("Tray.Activated"),
-    isSupported: () => Effect.succeed(new TraySupportedResult({ supported: false }))
-  }
-
-  return Object.freeze(client)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Tray platform adapter is not implemented yet",
-    message: `unsupported Tray method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
+): Stream.Stream<TrayActivatedEvent, TrayError, never> =>
+  subscribeNativeEvent(exchange, method, TrayActivatedEvent)
 
 const toTrayHandle = (handle: TrayHandle): TrayHandle =>
   Object.freeze({
@@ -317,7 +268,7 @@ const toTrayHandle = (handle: TrayHandle): TrayHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as TrayHandle
+  })
 
 const decodeTrayCreateInput = (input: unknown): Effect.Effect<TrayCreateInput, TrayError, never> =>
   decodeInput(TrayCreateInput, input, "Tray.create")
@@ -369,11 +320,13 @@ function trayRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Tray.${method}` as const, {
+  return NativeSurface.rpc("Tray", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runTrayRpc = <A, E>(

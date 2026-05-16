@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Clock, Effect, Schema } from "effect"
 
 import {
   HostProtocolRequestEnvelope,
@@ -96,7 +96,7 @@ export interface HostWindowClientOptions {
 interface ResolvedHostWindowClientOptions {
   readonly nextRequestId: () => string
   readonly nextTraceId: () => string
-  readonly now: () => number
+  readonly now?: (() => number) | undefined
 }
 
 export const makeHostWindowClient = (
@@ -109,7 +109,7 @@ export const makeHostWindowClient = (
     create: (input = {}) =>
       Effect.gen(function* () {
         const payload = yield* encodeCreatePayload(input)
-        const request = makeRequest(WINDOW_CREATE_METHOD, resolved, payload)
+        const request = yield* makeRequest(WINDOW_CREATE_METHOD, resolved, payload)
         const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
@@ -119,7 +119,7 @@ export const makeHostWindowClient = (
     destroy: (windowId) =>
       Effect.gen(function* () {
         const payload = yield* encodeDestroyPayload(windowId)
-        const request = makeRequest(WINDOW_DESTROY_METHOD, resolved, payload)
+        const request = yield* makeRequest(WINDOW_DESTROY_METHOD, resolved, payload)
         yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
@@ -193,21 +193,29 @@ const makeRequest = (
   method: string,
   options: ResolvedHostWindowClientOptions,
   payload: unknown
-): HostProtocolRequestEnvelope =>
-  new HostProtocolRequestEnvelope({
-    kind: "request",
-    id: options.nextRequestId(),
-    method,
-    timestamp: options.now(),
-    traceId: options.nextTraceId(),
-    payload
-  })
+): Effect.Effect<HostProtocolRequestEnvelope, never, never> =>
+  currentTimeMillis(options.now).pipe(
+    Effect.map(
+      (timestamp) =>
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: options.nextRequestId(),
+          method,
+          timestamp,
+          traceId: options.nextTraceId(),
+          payload
+        })
+    )
+  )
 
 const resolveOptions = (options: HostWindowClientOptions): ResolvedHostWindowClientOptions => ({
   nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),
   nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
-  now: options.now ?? Date.now
+  now: options.now
 })
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
 
 const invalidArgument = (field: string, error: unknown, operation: string) =>
   makeHostProtocolInvalidArgumentError(field, formatUnknownError(error), operation)

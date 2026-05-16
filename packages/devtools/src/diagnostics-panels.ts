@@ -8,7 +8,7 @@ import {
   type TelemetryMetricSnapshot,
   type TelemetryTraceSpan
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Option, Stream } from "effect"
+import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
 
@@ -80,12 +80,7 @@ export const makeDiagnosticsPanels = (
 
     return Object.freeze({
       list,
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep(frameInterval).pipe(Effect.andThen(list())))
-          )
-        )
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced(frameInterval))
     } satisfies DiagnosticsPanelsApi)
   })
 

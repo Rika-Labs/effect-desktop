@@ -3,26 +3,18 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolError as HostProtocolErrorSchema,
   HostProtocolPermissionDeniedError,
-  HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
-  RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import type { PermissionRegistry } from "@effect-desktop/core"
-import { P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
 import {
   ShellOpenExternalInput,
   type ShellOpenExternalOptions,
@@ -114,19 +106,21 @@ export type ShellServiceApi = ShellClientApi
 
 export class Shell extends Context.Service<Shell, ShellServiceApi>()(
   "@effect-desktop/native/Shell"
-) {}
+) {
+  static readonly layer = Layer.effect(Shell)(
+    Effect.gen(function* () {
+      const client = yield* ShellClient
+      return Shell.of({
+        openExternal: (url, options) => client.openExternal(url, options),
+        showItemInFolder: (path) => client.showItemInFolder(path),
+        openPath: (path, options) => client.openPath(path, options),
+        trashItem: (path) => client.trashItem(path)
+      } satisfies ShellServiceApi)
+    })
+  )
+}
 
-export const ShellLive = Layer.effect(Shell)(
-  Effect.gen(function* () {
-    const client = yield* ShellClient
-    return Object.freeze({
-      openExternal: (url, options) => client.openExternal(url, options),
-      showItemInFolder: (path) => client.showItemInFolder(path),
-      openPath: (path, options) => client.openPath(path, options),
-      trashItem: (path) => client.trashItem(path)
-    } satisfies ShellServiceApi)
-  })
-)
+export const ShellLive = Shell.layer
 
 export const makeShellClientLayer = (client: ShellClientApi): Layer.Layer<ShellClient> =>
   Layer.succeed(ShellClient)(client)
@@ -137,12 +131,11 @@ export const makeShellServiceLayer = (client: ShellClientApi): Layer.Layer<Shell
 export const makeShellBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<ShellClient> =>
-  Layer.provide(ShellSurface.clientLayer, makeShellBridgeProtocolLayer(exchange, options))
+): Layer.Layer<ShellClient> => ShellSurface.bridgeClientLayer(exchange, options)
 
 export type ShellRpc = RpcGroup.Rpcs<typeof ShellRpcGroup>
 
-export type ShellRpcHandlers = Parameters<typeof ShellRpcGroup.toLayer>[0]
+export type ShellRpcHandlers = RpcGroup.HandlersFrom<ShellRpc>
 
 export const ShellHandlersLive = ShellRpcGroup.toLayer({
   "Shell.openExternal": (input) =>
@@ -173,8 +166,9 @@ export const ShellHandlersLive = ShellRpcGroup.toLayer({
     })
 })
 
-export const ShellSurface = DesktopRpc.surface("Shell", ShellRpcGroup, {
+export const ShellSurface = NativeSurface.make("Shell", ShellRpcGroup, {
   service: ShellClient,
+  capabilities: ShellMethodNames,
   handlers: ShellHandlersLive,
   client: (client) => shellClientFromRpcClient(client)
 })
@@ -182,8 +176,7 @@ export const ShellSurface = DesktopRpc.surface("Shell", ShellRpcGroup, {
 export const makeHostShellRpcRuntime = (
   handlers: ShellRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(ShellRpcGroup, ShellRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => ShellSurface.hostRuntime(handlers, runtimeOptions)
 
 const shellClientFromRpcClient = (client: DesktopRpcClient<ShellRpc>): ShellClientApi => {
   const shellClient: ShellClientApi = {
@@ -218,30 +211,6 @@ const shellClientFromRpcClient = (client: DesktopRpcClient<ShellRpc>): ShellClie
   }
 
   return Object.freeze(shellClient)
-}
-
-const makeShellBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
-export const makeUnsupportedShellClient = (): ShellClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, ShellError, never> =>
-    Effect.fail(unsupportedError(method))
-
-  const client: ShellClientApi = {
-    openExternal: () => unsupportedEffect<void>("Shell.openExternal"),
-    showItemInFolder: () => unsupportedEffect<void>("Shell.showItemInFolder"),
-    openPath: () => unsupportedEffect<void>("Shell.openPath"),
-    trashItem: () => unsupportedEffect<void>("Shell.trashItem")
-  }
-
-  return Object.freeze(client)
 }
 
 const validateExternalUrl = (
@@ -351,15 +320,6 @@ const permissionDenied = (
     recoverable: false
   })
 
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "host Shell platform adapter is not implemented yet",
-    message: `unsupported Shell method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
-
 const normalizeOpenExternalOptions = (
   options: Omit<ShellOpenExternalOptions, "url"> | undefined
 ): Omit<ShellOpenExternalOptions, "url"> =>
@@ -412,11 +372,13 @@ function shellRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Shell.${method}` as const, {
+  return NativeSurface.rpc("Shell", method, {
     payload,
     success: Schema.Void,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runShellRpc = <A, E>(

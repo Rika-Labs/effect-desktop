@@ -1,6 +1,6 @@
 import { join } from "node:path"
 
-import { Context, Data, Effect, Layer, Schema } from "effect"
+import { Clock, Context, Data, Effect, Layer, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 import { SqliteClient } from "@effect/sql-sqlite-bun/SqliteClient"
@@ -35,6 +35,18 @@ const BackupResultSchema = Schema.Struct({
 })
 
 export type BackupResult = typeof BackupResultSchema.Type
+
+export const BackupManifest = Schema.Struct({
+  label: Schema.String,
+  createdAt: Schema.Number,
+  format: Schema.String
+})
+
+export type BackupManifest = typeof BackupManifest.Type
+
+export const BackupManifestJson = Schema.fromJsonString(BackupManifest)
+
+const encodeBackupManifestJson = Schema.encodeSync(BackupManifestJson)
 
 export const BackupWorkflow = Workflow.make({
   name: "Backup",
@@ -109,10 +121,11 @@ export const BackupWorkflowLayer: Layer.Layer<
       success: Schema.Struct({ archivePath: Schema.NonEmptyString }),
       error: BackupErrorSchema,
       execute: Effect.gen(function* () {
+        const createdAt = yield* Clock.currentTimeMillis
         const manifestBytes = new TextEncoder().encode(
-          JSON.stringify({
+          encodeBackupManifestJson({
             label,
-            createdAt: Date.now(),
+            createdAt,
             format: "effect-desktop-backup-v1"
           })
         )

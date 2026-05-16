@@ -1,16 +1,30 @@
 import { expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import {
   Desktop,
   DuplicateDesktopRpcNameError,
   MissingDesktopRpcClientError
 } from "@effect-desktop/core"
-import { Deferred, Effect, Schema, Stream } from "effect"
+import { Deferred, Effect, Exit, Schedule, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createRoot } from "solid-js"
 import { createComponent, renderToString } from "solid-js/web"
 
 import { MissingDesktopContextError, SolidDesktop } from "./index.js"
+
+test("SolidDesktop adapter runtime uses the shared scoped framework helper", () => {
+  const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8")
+
+  expect(source).toContain("makeFrameworkRuntime(runtime)")
+  expect(source).toContain("Effect.runCallback(runtime.disposeEffect)")
+  expect(source).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(source).not.toContain("void runtime.dispose()")
+  expect(source).not.toContain("await frameworkRuntime.dispose()")
+  expect(source).not.toContain("let runId")
+  expect(source).not.toContain("let active")
+  expect(source).not.toContain("runFrameworkPromiseExit")
+})
 
 test("SolidDesktop.from exposes app-scoped primitives from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
@@ -21,7 +35,7 @@ test("SolidDesktop.from exposes app-scoped primitives from provided groups", () 
     success: Schema.String
   })
   const NotesRpcs = RpcGroup.make(ListNotes, CreateNote)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.List": () => Effect.succeed(["inbox"]),
@@ -29,19 +43,15 @@ test("SolidDesktop.from exposes app-scoped primitives from provided groups", () 
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [NotesLayer]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
 
   const dispose = createRoot((disposeRoot) => {
     createComponent(NotesSolid.DesktopRoot, {
-      rpcLayers,
+      rpcs,
       get children() {
         const notes = NotesSolid.useDesktop(NotesRpcs)
         const list = notes.list.createQuery()
@@ -60,28 +70,24 @@ test("SolidDesktop.from exposes app-scoped primitives from provided groups", () 
 test("SolidDesktop.useDesktop keeps reserved endpoint names as own properties", () => {
   const Reserved = Rpc.make("Notes.__proto__", { success: Schema.String }).pipe(RpcEndpoint.query)
   const NotesRpcs = RpcGroup.make(Reserved)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.__proto__": () => Effect.succeed("ok")
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [NotesLayer]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
 
   const dispose = createRoot((disposeRoot) => {
     createComponent(NotesSolid.DesktopRoot, {
-      rpcLayers,
+      rpcs,
       get children() {
-        const notes = NotesSolid.useDesktop(NotesRpcs) as unknown as Record<string, unknown>
+        const notes = NotesSolid.useDesktop(NotesRpcs)
         expect(Object.getPrototypeOf(notes)).toBeNull()
         expect(Object.prototype.hasOwnProperty.call(notes, "__proto__")).toBe(true)
         return undefined
@@ -96,7 +102,7 @@ test("SolidDesktop.useDesktop rejects colliding endpoint names", () => {
   const ProjectList = Rpc.make("Projects.List", { success: Schema.Array(Schema.String) })
   const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })
   const CollidingRpcs = RpcGroup.make(ProjectList, TaskList)
-  const CollidingLayer = Desktop.Rpcs.layer(
+  const CollidingLayer = Desktop.rpc(
     CollidingRpcs,
     CollidingRpcs.toLayer({
       "Projects.List": () => Effect.succeed(["project"]),
@@ -104,19 +110,15 @@ test("SolidDesktop.useDesktop rejects colliding endpoint names", () => {
     })
   )
   const CollidingApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Lists"
-      }
-    },
-    rpcs: [CollidingLayer]
+    windows: Desktop.window("main", { title: "Lists" }),
+    rpcs: CollidingLayer
   })
   const CollidingSolid = SolidDesktop.from(Desktop.manifest(CollidingApp))
-  const rpcLayers = [CollidingLayer]
+  const rpcs = CollidingLayer
 
   const dispose = createRoot((disposeRoot) => {
     createComponent(CollidingSolid.DesktopRoot, {
-      rpcLayers,
+      rpcs,
       get children() {
         expect(() => CollidingSolid.useDesktop(CollidingRpcs)).toThrow(DuplicateDesktopRpcNameError)
         return undefined
@@ -131,7 +133,7 @@ test("SolidDesktop query effects are interrupted when the owner is disposed", as
   const interrupted = await Effect.runPromise(Deferred.make<void>())
   const Slow = Rpc.make("Notes.Slow", { success: Schema.String }).pipe(RpcEndpoint.query)
   const NotesRpcs = RpcGroup.make(Slow)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Slow": () =>
@@ -139,19 +141,15 @@ test("SolidDesktop query effects are interrupted when the owner is disposed", as
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [NotesLayer]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
 
   const dispose = createRoot((disposeRoot) => {
     createComponent(NotesSolid.DesktopRoot, {
-      rpcLayers,
+      rpcs,
       get children() {
         const notes = NotesSolid.useDesktop(NotesRpcs)
         notes.slow.createQuery()
@@ -164,6 +162,60 @@ test("SolidDesktop query effects are interrupted when the owner is disposed", as
   dispose()
 
   await Effect.runPromise(Deferred.await(interrupted))
+})
+
+test("SolidDesktop mutation replaces active runs through the scoped runtime helper", async () => {
+  const interrupted = await Effect.runPromise(Deferred.make<void>())
+  const Save = Rpc.make("Notes.Save", { success: Schema.String })
+  const NotesRpcs = RpcGroup.make(Save)
+  let calls = 0
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Save": () => {
+        calls += 1
+        return calls === 1
+          ? Effect.never.pipe(Effect.ensuring(Deferred.succeed(interrupted, undefined)))
+          : Effect.succeed("second")
+      }
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
+  })
+  const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
+
+  let mutation:
+    | {
+        readonly state: () => unknown
+        readonly runPromise: () => Promise<Exit.Exit<string, unknown>>
+      }
+    | undefined
+  const dispose = createRoot((disposeRoot) => {
+    createComponent(NotesSolid.DesktopRoot, {
+      rpcs: NotesLayer,
+      get children() {
+        const notes = NotesSolid.useDesktop(NotesRpcs)
+        mutation = notes.save.createMutation()
+        return undefined
+      }
+    })
+    return disposeRoot
+  })
+
+  const first = mutation?.runPromise()
+  const second = mutation?.runPromise()
+
+  await Effect.runPromise(Deferred.await(interrupted))
+  const secondExit = await second
+  const firstExit = await first
+
+  expect(secondExit !== undefined && Exit.isSuccess(secondExit)).toBe(true)
+  expect(firstExit !== undefined && Exit.isFailure(firstExit)).toBe(true)
+  expect(mutation?.state()).toMatchObject({ status: "success" })
+  expect(calls).toBe(2)
+  dispose()
 })
 
 test("SolidDesktop stream primitives emit values, close, fail, and interrupt on disposal", async () => {
@@ -184,7 +236,7 @@ test("SolidDesktop stream primitives emit values, close, fail, and interrupt on 
     stream: true
   })
   const NotesRpcs = RpcGroup.make(Tail, Failing, Slow)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Tail": () => Stream.make("a", "b"),
@@ -194,21 +246,17 @@ test("SolidDesktop stream primitives emit values, close, fail, and interrupt on 
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [NotesLayer]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
 
   let tail: (() => { readonly status: string; readonly data: readonly unknown[] }) | undefined
   let failing: (() => { readonly status: string }) | undefined
   const dispose = createRoot((disposeRoot) => {
     createComponent(NotesSolid.DesktopRoot, {
-      rpcLayers,
+      rpcs,
       get children() {
         const notes = NotesSolid.useDesktop(NotesRpcs)
         tail = notes.tail.createStream()
@@ -237,19 +285,15 @@ test("SolidDesktop stream primitives retain bounded data and support callback-on
     stream: true
   })
   const NotesRpcs = RpcGroup.make(Tail)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Tail": () => Stream.make("a", "b", "c")
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [NotesLayer]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
   const observed: string[] = []
@@ -260,7 +304,7 @@ test("SolidDesktop stream primitives retain bounded data and support callback-on
     | undefined
   const dispose = createRoot((disposeRoot) => {
     createComponent(NotesSolid.DesktopRoot, {
-      rpcLayers: [NotesLayer],
+      rpcs: NotesLayer,
       get children() {
         const notes = NotesSolid.useDesktop(NotesRpcs)
         bounded = notes.tail.createStream({ capacity: 2 })
@@ -287,19 +331,13 @@ test("SolidDesktop.useDesktop fails loudly without context or an installed clien
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.Ping": () => Effect.void
-        })
-      )
-    ]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: Desktop.rpc(
+      NotesRpcs,
+      NotesRpcs.toLayer({
+        "Notes.Ping": () => Effect.void
+      })
+    )
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
 
@@ -331,26 +369,22 @@ test("SolidDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
     RpcSupport.unsupported("host method is unavailable")
   )
   const NotesRpcs = RpcGroup.make(Unsupported)
-  const NotesLayer = Desktop.Rpcs.layer(
+  const NotesLayer = Desktop.rpc(
     NotesRpcs,
     NotesRpcs.toLayer({
       "Notes.Unsupported": () => Effect.succeed("unused")
     })
   )
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    },
-    rpcs: [NotesLayer]
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
   const NotesSolid = SolidDesktop.from(Desktop.manifest(NotesApp))
-  const rpcLayers = [NotesLayer]
+  const rpcs = NotesLayer
 
   const dispose = createRoot((disposeRoot) => {
     createComponent(NotesSolid.DesktopRoot, {
-      rpcLayers,
+      rpcs,
       get children() {
         const notes = NotesSolid.useDesktop(NotesRpcs)
         const endpoint: SupportedQueryEndpoint = notes.unsupported
@@ -366,11 +400,12 @@ test("SolidDesktop.useDesktop exposes RpcSupport metadata on generated endpoints
 })
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
-  for (let index = 0; index < 100; index += 1) {
-    if (predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
-  expect(predicate()).toBe(true)
+  await Effect.runPromise(
+    Effect.suspend(() =>
+      predicate() ? Effect.void : Effect.fail(new Error("condition not met"))
+    ).pipe(
+      Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(100)))),
+      Effect.mapError(() => new Error("timed out waiting for condition"))
+    )
+  )
 }

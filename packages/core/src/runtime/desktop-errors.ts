@@ -64,7 +64,7 @@ export class DuplicateDesktopRpcNameError extends Data.TaggedError("DuplicateDes
 }> {}
 
 const FRAMEWORK_ADAPTER_DOCS =
-  "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/SPEC.md#framework-adapters"
+  "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/typed-apis.md"
 
 export const makeMissingDesktopContextError = (
   framework: DesktopFramework,
@@ -116,7 +116,7 @@ export const makeMissingDesktopRpcsError = (
       details: { tags: [...tags] },
       actor: "application",
       remediation:
-        "Add the RpcGroup through Desktop.make({ rpcs: [Desktop.Rpcs.layer(...)] }) and pass Desktop.manifest(App) to the framework adapter."
+        "Register the RpcGroup with Desktop.make({ rpcs: Desktop.rpc(group, handlers) }) (compose multiple via Desktop.rpcs) and pass Desktop.manifest(App) to the framework adapter."
     })
   })
 

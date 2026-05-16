@@ -1,7 +1,7 @@
 # @effect-desktop/config
 
 > **Status:** Phase 16 starts the production security checker; full config
-> loading and manifest emission land in later phases. See `docs/SPEC.md`.
+> loading and manifest emission land in later phases. See `engineering/SPEC.md`.
 
 ## Dependencies
 

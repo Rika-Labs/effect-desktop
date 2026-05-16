@@ -1,10 +1,14 @@
 export {
   appendBounded,
+  interruptFrameworkFiber,
+  makeFrameworkScopedOperation,
   runFrameworkEffect,
-  runFrameworkPromiseExit,
   isDesktopStreamOptions,
+  makeFrameworkRuntime,
+  observeFrameworkFiber,
   normalizeDesktopStreamCapacity,
   runRendererStream,
+  type FrameworkScopedOperation,
   type FrameworkRuntime,
   type DesktopStreamOptions
 } from "./renderer-stream.js"
@@ -53,5 +57,5 @@ export {
   makeMissingDesktopRpcsError,
   type DesktopFramework
 } from "./desktop-errors.js"
-export type { AnyDesktopRpcLayer, DesktopAppManifest } from "./desktop-app.js"
-export type { RpcGroupWithRequests } from "./rpc-group-metadata.js"
+export type { DesktopAppManifest, DesktopRpcsLayer } from "./desktop-app.js"
+export type { DesktopRpcRegistration, DesktopRpcRegistrationGroup } from "./desktop-app.js"

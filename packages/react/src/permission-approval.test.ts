@@ -28,7 +28,7 @@ const noopState = (
   resolutions,
   push: () => undefined,
   resolve: () => undefined,
-  resolvePromise: () => Promise.resolve(Exit.void),
+  resolvePromise: async () => Exit.void,
   clearResolution: () => undefined
 })
 

@@ -17,24 +17,27 @@ import {
 import { makeDatabase, makeMigration, makeTable, makeVersion } from "./storage/idb.js"
 import { layerLocalStorage, layerSessionStorage } from "./storage/kv.js"
 
-interface PlatformBrowserPackageJson {
-  readonly exports: Record<string, PlatformBrowserPackageExportTarget>
-}
+const PlatformBrowserPackageExportTarget = Schema.Union([
+  Schema.String,
+  Schema.Struct({
+    types: Schema.optionalKey(Schema.String),
+    default: Schema.optionalKey(Schema.String)
+  })
+])
 
-type PlatformBrowserPackageExportTarget =
-  | string
-  | {
-      readonly types?: string
-      readonly default?: string
-    }
+const PlatformBrowserPackageJson = Schema.Struct({
+  exports: Schema.Record(Schema.String, PlatformBrowserPackageExportTarget)
+})
+
+const decodePlatformBrowserPackageJson = Schema.decodeUnknownSync(
+  Schema.fromJsonString(PlatformBrowserPackageJson)
+)
 
 const packageJsonUrl = new URL("../package.json", import.meta.url)
 const packageRootUrl = new URL("../", import.meta.url)
 
 test("platform-browser package exports point at checked-in source files", () => {
-  const packageJson = JSON.parse(
-    readFileSync(packageJsonUrl, "utf8")
-  ) as PlatformBrowserPackageJson
+  const packageJson = decodePlatformBrowserPackageJson(readFileSync(packageJsonUrl, "utf8"))
   const missing: string[] = []
 
   for (const [subpath, target] of Object.entries(packageJson.exports)) {

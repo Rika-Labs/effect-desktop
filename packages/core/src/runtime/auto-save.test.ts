@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Layer } from "effect"
+import { Deferred, Effect, Layer } from "effect"
 
 import { AutoSaveError, AutoSaveService, makeAutoSaveLayer } from "./auto-save.js"
 
@@ -17,18 +17,22 @@ test("AutoSave: runs local flush cadence with plain Effect scope", async () => {
     Layer.provide(autoSaveSvcLayer)
   )
 
-  await Effect.runPromise(Effect.scoped(Effect.sleep("5 millis").pipe(Effect.provide(layer))))
+  await Effect.runPromise(Effect.scoped(Effect.sleep("100 millis").pipe(Effect.provide(layer))))
 
   expect(calls).toContain("session-1")
 })
 
 test("AutoSave: retries transient local flush failures without Workflow", async () => {
   let attempts = 0
+  const retried = Effect.runSync(Deferred.make<void>())
 
   const autoSaveSvcLayer = Layer.succeed(AutoSaveService, {
     flush: (target) =>
       Effect.gen(function* () {
         attempts += 1
+        if (attempts >= 3) {
+          yield* Deferred.succeed(retried, undefined)
+        }
         if (attempts < 3) {
           return yield* Effect.fail(
             new AutoSaveError({
@@ -45,7 +49,18 @@ test("AutoSave: retries transient local flush failures without Workflow", async 
     Layer.provide(autoSaveSvcLayer)
   )
 
-  await Effect.runPromise(Effect.scoped(Effect.sleep("5 millis").pipe(Effect.provide(layer))))
+  await Effect.runPromise(
+    Effect.scoped(
+      Deferred.await(retried).pipe(
+        Effect.raceFirst(
+          Effect.sleep("1 second").pipe(
+            Effect.andThen(Effect.fail(new Error("auto-save did not retry transient failures")))
+          )
+        ),
+        Effect.provide(layer)
+      )
+    )
+  )
 
-  expect(attempts).toBeGreaterThanOrEqual(3)
+  expect(attempts).toBe(3)
 })

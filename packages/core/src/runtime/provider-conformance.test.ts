@@ -80,24 +80,17 @@ test("runtime provider conformance records missing executables as typed Effect f
 })
 
 test("runtime provider conformance has no experimental Deno cell", async () => {
-  const exit = await Effect.runPromiseExit(
+  const graph = await Effect.runPromise(
     Desktop.runtimeGraph({
       id: "provider-parity",
-      windows: { main: { title: "Provider Parity" } },
-      providers: { runtime: "deno" }
+      windows: Desktop.window("main", { title: "Provider Parity" }),
+      providers: Desktop.provider(Desktop.Provider.Runtime.bun)
     })
   )
 
   expect(providerCases.map((provider) => provider.engine)).toEqual(["bun", "node"])
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toMatchObject({
-      _tag: "DesktopConfigError",
-      reason: "missing-provider",
-      provider: "deno"
-    })
-  }
+  expect("deno" in Desktop.Provider.Runtime).toBe(false)
+  expect(graph.providers.runtime).toBe("bun")
 })
 
 test("provider registry exposes capabilities and rejects duplicate provider ids", async () => {
@@ -158,8 +151,12 @@ const runProviderContract = (provider: RuntimeProviderCase): Promise<ProviderPar
         Effect.provide(
           Desktop.runtime({
             id: "provider-parity",
-            windows: { main: { title: "Provider Parity" } },
-            providers: { runtime: provider.engine }
+            windows: Desktop.window("main", { title: "Provider Parity" }),
+            providers: Desktop.provider(
+              provider.engine === "node"
+                ? Desktop.Provider.Runtime.node
+                : Desktop.Provider.Runtime.bun
+            )
           })
         )
       )
@@ -179,8 +176,12 @@ const runMissingExecutableContract = (provider: RuntimeProviderCase) =>
         Effect.provide(
           Desktop.runtime({
             id: "provider-parity",
-            windows: { main: { title: "Provider Parity" } },
-            providers: { runtime: provider.engine }
+            windows: Desktop.window("main", { title: "Provider Parity" }),
+            providers: Desktop.provider(
+              provider.engine === "node"
+                ? Desktop.Provider.Runtime.node
+                : Desktop.Provider.Runtime.bun
+            )
           })
         )
       )
