@@ -8,7 +8,25 @@ effect_version: 4
 
 # How to integrate native services
 
-Native services live under `@effect-desktop/native`. Each one ships with an `RpcGroup` you call through `useDesktop(...)`.
+Native services live under `@effect-desktop/native`. Each one ships with an `RpcGroup` you call through `useDesktop(...)` after the runtime entry selects the matching native layer.
+
+## Runtime setup
+
+Select native availability in `Desktop.make`. Use `Native.all` for the broad built-in set or list only the services the app uses.
+
+```ts
+import { Desktop } from "@effect-desktop/core"
+import { Native } from "@effect-desktop/native"
+
+export const App = Desktop.make({
+  id: "com.acme.app",
+  windows: Desktop.window("main", { title: "Acme" }),
+  native: Desktop.native(Native.clipboard, Native.dialog),
+  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+})
+```
+
+`native` declares what the app wires into the runtime. `permissions` declares what calls are allowed.
 
 ## The pattern
 
@@ -110,7 +128,7 @@ Don't assume support — check it and degrade gracefully.
 
 ## Permissions
 
-`native.invoke` capabilities cover native services. Most have sensible defaults declared by the framework (clipboard, dialog, notification are usually allowed). Privileged-feeling ones (`SafeStorage`, `Updater.install`, `Protocol.register`) require explicit declarations.
+`native.invoke` capabilities cover native services. Native availability by itself does not grant authority; declare allowed calls with `Desktop.permissions(Desktop.permission(...))`. Privileged calls such as `SafeStorage`, `Updater.install`, and `Protocol.register` should stay explicit and reviewable.
 
 ## Related
 

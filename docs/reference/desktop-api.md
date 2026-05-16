@@ -31,8 +31,9 @@ function make<RIn = never, E = never>(
 | `id`          | `string`                       | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                           |
 | `windows`     | `DesktopWindowsLayer<RIn>`     | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Layer.mergeAll`. |
 | `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`.           |
+| `native`      | `DesktopNativeLayer<RIn,E>`    | A single composed Layer of native surface registrations. Build via `Desktop.native(Native.all)` or selected `Native.*` layers.           |
 | `providers`   | `DesktopProvidersLayer<RIn>`   | A single composed Layer of provider registrations. Build via `Desktop.provider(...)`; compose multiple via `Layer.mergeAll`.             |
-| `permissions` | `DesktopPermissionsLayer<RIn>` | A single composed Layer of permission declarations. Build via `Desktop.permission(capability)`.                                          |
+| `permissions` | `DesktopPermissionsLayer<RIn>` | A single composed Layer of permission declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                |
 | `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | A single composed Layer of workflow registrations. Build via `Desktop.workflow(layer)`.                                                  |
 
 `WindowSpec` is `{ title, width?, height?, renderer? }`. The window id is the first argument to `Desktop.window(id, spec)` — there is no `id` field on the spec itself.
@@ -95,12 +96,31 @@ windows: Layer.mergeAll(
 
 Reserved ids — `__proto__`, `constructor`, `prototype`, and the empty string — throw a `TypeError` synchronously from the call site. Duplicate ids surface as a `DesktopConfigError` at `Desktop.make` time.
 
-## `Desktop.permission(capability)`
+## `Desktop.native(...layers)`
 
-Registers one permission declaration with the surrounding `DesktopPermissionRegistry`. Compose multiple declarations with `Layer.mergeAll(...)` and pass the result as `permissions:`.
+Composes native availability layers for `Desktop.make`. `Native.all` selects every built-in native surface; selected layers keep availability narrower.
 
 ```ts
-permissions: Layer.mergeAll(
+import { Native } from "@effect-desktop/native"
+
+native: Desktop.native(Native.clipboard, Native.dialog)
+```
+
+Native availability is not permission approval. Pair privileged calls with explicit permissions.
+
+```ts
+native: Desktop.native(Native.all),
+permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+```
+
+Duplicate native surfaces and duplicate RPC method names fail as typed `DesktopConfigError` values during graph assembly.
+
+## `Desktop.permission(capability)`, `Desktop.permissions(...layers)`
+
+Registers one permission declaration with the surrounding `DesktopPermissionRegistry`. Compose multiple declarations with `Desktop.permissions(...)` and pass the result as `permissions:`.
+
+```ts
+permissions: Desktop.permissions(
   Desktop.permission(Permission.filesystemRead({ roots: ["/tmp/app"] })),
   Desktop.permission(Permission.networkConnect({ hosts: ["api.example.com"] }))
 )
