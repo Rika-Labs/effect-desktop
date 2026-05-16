@@ -38,6 +38,18 @@ Desktop.make({
 })
 ```
 
+`Native.all` registers every built-in native surface, but it does not grant authority. Use
+`Native.Permissions.all` when an app intentionally wants every non-public native invoke permission:
+
+```ts
+Desktop.make({
+  id: "com.acme.native",
+  windows: Desktop.window("main", { title: "Native" }),
+  native: Desktop.native(Native.all),
+  permissions: Desktop.permissions(Native.Permissions.all)
+})
+```
+
 ## Current native modules
 
 | Module             | Purpose                     | Reference                                                         |

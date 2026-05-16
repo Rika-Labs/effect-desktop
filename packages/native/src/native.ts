@@ -1,12 +1,14 @@
 import {
   Desktop,
   DesktopNativeRegistry,
+  NormalizedCapability as NormalizedCapabilitySchema,
   P,
   type DesktopNativeLayer,
   type DesktopNativeRegistration,
+  type DesktopRpcSchemaDoc,
   type NormalizedCapability
 } from "@effect-desktop/core"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Option, Schema } from "effect"
 
 import { AppSurface } from "./app.js"
 import { ClipboardSurface } from "./clipboard.js"
@@ -28,6 +30,35 @@ import { TraySurface } from "./tray.js"
 import { UpdaterSurface } from "./updater.js"
 import { WebViewSurface } from "./webview.js"
 import { WindowSurface } from "./window.js"
+
+interface NativePermissionSource {
+  readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
+}
+
+type NativeInvokeCapability = Extract<NormalizedCapability, { readonly kind: "native.invoke" }>
+
+const BuiltInPermissionSources: readonly NativePermissionSource[] = Object.freeze([
+  AppSurface,
+  ClipboardSurface,
+  ContextMenuSurface,
+  CrashReporterSurface,
+  DialogSurface,
+  DockSurface,
+  GlobalShortcutSurface,
+  MenuSurface,
+  NotificationSurface,
+  PathSurface,
+  PowerMonitorSurface,
+  ProtocolSurface,
+  SafeStorageSurface,
+  ScreenSurface,
+  ShellSurface,
+  SystemAppearanceSurface,
+  TraySurface,
+  UpdaterSurface,
+  WebViewSurface,
+  WindowSurface
+])
 
 export const surface = <RIn = never, E = never>(
   registration: DesktopNativeRegistration<E, RIn>
@@ -83,8 +114,42 @@ export const all = Desktop.native(
   window
 )
 
-const nativePermission = (primitive: string, method: string): NormalizedCapability =>
+const nativePermission = (primitive: string, method: string): NativeInvokeCapability =>
   P.nativeInvoke({ primitive, methods: [method] })
+
+const allPermissionCapabilities = (
+  surfaces: readonly NativePermissionSource[]
+): readonly NormalizedCapability[] => {
+  const permissions: NormalizedCapability[] = []
+  const seen = new Set<string>()
+
+  for (const nativeSurface of surfaces) {
+    for (const doc of nativeSurface.schemaDocs) {
+      const capability = Option.getOrUndefined(doc.capability)
+      if (capability === undefined || capability.kind === "none") {
+        continue
+      }
+
+      const decoded = Schema.decodeUnknownOption(NormalizedCapabilitySchema)(capability)
+      if (Option.isNone(decoded)) {
+        throw new TypeError(
+          `Native.Permissions.all cannot declare non-normalized capability metadata for ${doc.tag}: ${capability.kind}`
+        )
+      }
+
+      const key = JSON.stringify(decoded.value)
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      permissions.push(decoded.value)
+    }
+  }
+
+  return Object.freeze(permissions)
+}
+
+const allNativePermissionCapabilities = allPermissionCapabilities(BuiltInPermissionSources)
 
 export const Permissions = Object.freeze({
   clipboard: Object.freeze({
@@ -92,8 +157,14 @@ export const Permissions = Object.freeze({
     writeText: nativePermission("Clipboard", "writeText"),
     readImage: nativePermission("Clipboard", "readImage"),
     writeImage: nativePermission("Clipboard", "writeImage"),
-    clear: nativePermission("Clipboard", "clear")
-  })
+    clear: nativePermission("Clipboard", "clear"),
+    all: Desktop.permissions(
+      ...["readText", "writeText", "readImage", "writeImage", "clear"].map((method) =>
+        Desktop.permission(nativePermission("Clipboard", method))
+      )
+    )
+  }),
+  all: Desktop.permissions(...allNativePermissionCapabilities.map(Desktop.permission))
 })
 
 export const Native = Object.freeze({

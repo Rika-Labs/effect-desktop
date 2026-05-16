@@ -373,6 +373,7 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect(native.DialogSurface).toBeDefined()
   expect(native.Native.all).toBeDefined()
   expect(Layer.isLayer(native.Native.clipboard)).toBe(true)
+  expect(Layer.isLayer(native.Native.Permissions.all)).toBe(true)
   expect(native.Native.Permissions.clipboard.readText).toMatchObject({
     kind: "native.invoke",
     primitive: "Clipboard",
@@ -394,6 +395,38 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect("makeUnsupportedClipboardClient" in native).toBe(false)
   expect("makeClipboardBridgeClientLayer" in native).toBe(false)
   expect("makeHostClipboardRpcRuntime" in native).toBe(false)
+})
+
+test("Native.Permissions.all declares every non-public native capability", async () => {
+  const rules = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(
+          Layer.provideMerge(
+            Desktop.app({ permissions: Native.Permissions.all }),
+            Layer.effect(PermissionRegistry, makePermissionRegistry())
+          )
+        )
+        const permissions = Context.get(context, PermissionRegistry)
+        return yield* permissions.query("native.invoke", {
+          kind: "app",
+          id: "native-permissions-all"
+        })
+      })
+    )
+  )
+  const declared = new Set(
+    rules.flatMap((rule) =>
+      rule.capability.kind === "native.invoke"
+        ? [`${rule.capability.primitive}.${rule.capability.methods.join(",")}`]
+        : []
+    )
+  )
+
+  expect(declared).toContain("App.quit")
+  expect(declared).toContain("Clipboard.readText")
+  expect(declared).toContain("Window.create")
+  expect(declared).not.toContain("Clipboard.isSupported")
 })
 
 test("native contracts subpath exposes schema-coded payload contracts", async () => {
