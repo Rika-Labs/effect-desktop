@@ -200,13 +200,6 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
           stdio: ["pipe", "pipe", "pipe"]
         }
       )
-      if (!hasChildEventEmitter(child)) {
-        child.kill()
-        resume(
-          Effect.fail(new TypeError("spawned runtime process did not expose EventEmitter methods"))
-        )
-        return Effect.void
-      }
       const readyEvents: RuntimeReadyEvent[] = []
       const methods: string[] = []
       const stderrChunks: Buffer[] = []
@@ -309,13 +302,6 @@ const runCommand = (command: string, args: readonly string[]): Promise<void> =>
         cwd: PACKAGE_ROOT,
         stdio: ["ignore", "ignore", "pipe"]
       })
-      if (!hasChildEventEmitter(child)) {
-        child.kill()
-        resume(
-          Effect.fail(new TypeError("spawned command process did not expose EventEmitter methods"))
-        )
-        return Effect.void
-      }
       const stderrChunks: Buffer[] = []
 
       child.stderr.on("data", (chunk: Buffer) => {
@@ -360,13 +346,6 @@ const runCommand = (command: string, args: readonly string[]): Promise<void> =>
       })
     })
   )
-
-interface ChildEventEmitter {
-  readonly on: (event: string, listener: (...args: readonly unknown[]) => void) => void
-}
-
-const hasChildEventEmitter = (value: object): value is ChildEventEmitter =>
-  "on" in value && typeof value.on === "function"
 
 const responseFor = (request: HostProtocolRequest): unknown => {
   const base = {
