@@ -26,15 +26,15 @@ function make<RIn = never, E = never>(
 ): DesktopAppDescriptor<RIn, E>
 ```
 
-| Field         | Type                           | Description                                                                                                                              |
-| ------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`          | `string`                       | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                           |
-| `windows`     | `DesktopWindowsLayer<RIn>`     | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Layer.mergeAll`. |
-| `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`.           |
-| `native`      | `DesktopNativeLayer`           | A single composed Layer of native selections. Build via `Native.capabilities(...)` or `Native.available(...)`.                           |
-| `providers`   | `DesktopProvidersLayer`        | A single composed Layer of provider registrations. Build via `Desktop.provider(...)`; compose multiple via `Layer.mergeAll`.             |
-| `permissions` | `DesktopPermissionsLayer`      | A single composed Layer of permission declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                |
-| `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | A single composed Layer of workflow registrations. Build via `Desktop.workflow(layer)`.                                                  |
+| Field         | Type                           | Description                                                                                                                                    |
+| ------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | `string`                       | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                                 |
+| `windows`     | `DesktopWindowsLayer<RIn>`     | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Desktop.windows(...)`. |
+| `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Desktop.rpcs(...)`.              |
+| `native`      | `DesktopNativeLayer`           | A single composed Layer of native selections. Build via `Native.capabilities(...)` or `Native.available(...)`.                                 |
+| `providers`   | `DesktopProvidersLayer`        | A single composed Layer of provider registrations. Build via `Desktop.provider(...)`; compose multiple via `Desktop.providers(...)`.           |
+| `permissions` | `DesktopPermissionsLayer`      | A single composed Layer of permission declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                      |
+| `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | A single composed Layer of workflow registrations. Build via `Desktop.workflow(layer)`; compose multiple via `Desktop.workflows(...)`.         |
 
 `WindowSpec` is `{ title, width?, height?, renderer? }`. The window id is the first argument to `Desktop.window(id, spec)` — there is no `id` field on the spec itself.
 
@@ -70,7 +70,7 @@ Use `Desktop.app(config)` in your runtime entry to materialize the dependency gr
 
 ## `Desktop.window(id, spec, services?)`
 
-Registers a window with the surrounding `DesktopWindowRegistry`. Returns a `Layer` that self-registers when built; compose multiple windows with `Layer.mergeAll(...)` and pass the result as the `windows:` field of `Desktop.make`.
+Registers a window with the surrounding `DesktopWindowRegistry`. Returns a `Layer` that self-registers when built; compose multiple windows with `Desktop.windows(...)` and pass the result as the `windows:` field of `Desktop.make`.
 
 ```ts
 function window<RIn = never>(
@@ -90,7 +90,7 @@ interface WindowSpec {
 The optional `services` Layer is built **inside** the per-window scope at open time. Anything it acquires (a `Settings` store, a watcher, a stream subscription) is released when the window closes. This is the framework's typed answer to per-window resource lifetime.
 
 ```ts
-windows: Layer.mergeAll(
+windows: Desktop.windows(
   Desktop.window("main", { title: "App", width: 1024, height: 720 }),
   Desktop.window("preferences", { title: "Preferences", width: 480, height: 360 })
 )
@@ -129,10 +129,13 @@ permissions: Desktop.permissions(
 
 ## `Desktop.workflow(layer)`
 
-Registers one workflow layer with the surrounding `DesktopWorkflowRegistry`. Compose multiple workflow registrations with `Layer.mergeAll(...)` and pass the result as `workflows:`.
+Registers one workflow layer with the surrounding `DesktopWorkflowRegistry`. Compose multiple workflow registrations with `Desktop.workflows(...)` and pass the result as `workflows:`.
 
 ```ts
-workflows: Layer.mergeAll(Desktop.workflow(UserOnboardingWorkflow), Desktop.workflow(SyncWorkflow))
+workflows: Desktop.workflows(
+  Desktop.workflow(UserOnboardingWorkflow),
+  Desktop.workflow(SyncWorkflow)
+)
 ```
 
 ## `Desktop.Rpc.surface(name, group, options)`
@@ -176,7 +179,7 @@ These come from `@effect-desktop/bridge` and are exposed here so a runtime entry
 Provider selection follows the same app-composition shape as windows, RPCs, permissions, and workflows:
 
 ```ts
-providers: Layer.mergeAll(
+providers: Desktop.providers(
   Desktop.provider(Desktop.Provider.Runtime.node),
   Desktop.provider(Desktop.Provider.WebView.chrome)
 )

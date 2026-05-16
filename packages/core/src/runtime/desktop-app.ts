@@ -610,6 +610,9 @@ export const provider = (descriptor: DesktopProviderDescriptor): DesktopProvider
     )
   )
 
+export const providers = (...layers: readonly DesktopProvidersLayer[]): DesktopProvidersLayer =>
+  mergeDeclarationLayers(layers)
+
 export const native = (...layers: readonly DesktopNativeLayer[]): DesktopNativeLayer =>
   mergeDeclarationLayers(layers.map((layer) => Layer.fresh(layer)))
 
@@ -665,7 +668,7 @@ export const manifest = <RIn = never, E = never>(
 
 /**
  * Registers an RPC group + handler layer with the surrounding `DesktopRpcRegistry`.
- * Compose multiple registrations with `Layer.mergeAll(...)` and pass the result
+ * Compose multiple registrations with `Desktop.rpcs(...)` and pass the result
  * as `rpcs:` to `Desktop.make`.
  *
  * The resulting declaration layer builds synchronously and requires only
@@ -710,6 +713,10 @@ export const rpc = <Rpcs extends Rpc.Any, E, R>(
     )
   )
 
+export const rpcs = <E = never, RIn = never>(
+  ...layers: readonly DesktopRpcsLayer<E, RIn>[]
+): DesktopRpcsLayer<E, RIn> => mergeDeclarationLayers(layers)
+
 export const desktopWindow = <RIn = never>(
   id: string,
   spec: WindowSpec,
@@ -733,6 +740,10 @@ export const desktopWindow = <RIn = never>(
     )
   )
 }
+
+export const windows = <RIn = never>(
+  ...layers: readonly DesktopWindowsLayer<RIn>[]
+): DesktopWindowsLayer<RIn> => mergeDeclarationLayers(layers)
 
 export const permission = (capability: NormalizedCapability): DesktopPermissionsLayer =>
   declarationLayer(
@@ -759,6 +770,10 @@ export const workflow = <RIn = never, E = never>(
       })
     )
   )
+
+export const workflows = <RIn = never, E = never>(
+  ...layers: readonly DesktopWorkflowsLayer<RIn, E>[]
+): DesktopWorkflowsLayer<RIn, E> => mergeDeclarationLayers(layers)
 
 /**
  * Thrown by `Desktop.manifest(...)` when the user's `rpcs` layer requires

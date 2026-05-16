@@ -33,13 +33,12 @@ Update your `Desktop.make` call to declare two windows:
 
 ```ts
 import { Desktop } from "@effect-desktop/core"
-import { Layer } from "effect"
 import { NotesRpcs } from "./notes/contracts.js"
 import { NotesHandlersLive } from "./notes/handlers.js"
 
 export const App = Desktop.make({
   id: "dev.example.notes",
-  windows: Layer.mergeAll(
+  windows: Desktop.windows(
     Desktop.window("main", { title: "Notes", width: 720, height: 520 }),
     Desktop.window("compose", { title: "Compose Note", width: 480, height: 360 })
   ),
@@ -49,7 +48,7 @@ export const App = Desktop.make({
 export const Manifest = Desktop.manifest(App)
 ```
 
-Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Layer.mergeAll(...)`. The window ids (`"main"`, `"compose"`) are what the runtime uses to address them. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
+Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Desktop.windows(...)`. The window ids (`"main"`, `"compose"`) are what the runtime uses to address them. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
 
 ### Optional: bind window-scoped resources
 
