@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 import {
@@ -25,12 +25,26 @@ const PingRpc = Rpc.make("Ping", {
 
 const group = RpcGroup.make(PingRpc)
 
+const runQueuedTransport = (
+  queue: Queue.Queue<HostProtocolEnvelope>,
+  onEnvelope: (envelope: HostProtocolEnvelope) => Effect.Effect<void>
+): Effect.Effect<never> =>
+  Stream.fromQueue(queue).pipe(Stream.runForEach(onEnvelope), Effect.andThen(Effect.never))
+
 const VoidPingRpc = Rpc.make("VoidPing", {
   payload: Schema.Void,
   success: Schema.String
 })
 
 const voidGroup = RpcGroup.make(VoidPingRpc)
+
+const StreamPingRpc = Rpc.make("StreamPing", {
+  payload: { message: Schema.String },
+  success: Schema.String,
+  stream: true
+})
+
+const streamGroup = RpcGroup.make(StreamPingRpc)
 
 test("Rpc.make produces an rpc with the correct tag", () => {
   expect(PingRpc._tag).toBe("Ping")
@@ -183,6 +197,61 @@ test("makeDesktopRpcHandlerRuntime treats omitted host payloads as Effect void p
   )
 
   expect(response).toEqual({ kind: "success", payload: "pong" })
+})
+
+test("RpcServer stream handlers emit host stream envelopes through desktop protocol", async () => {
+  const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
+  const responseObserved = Effect.runSync(Deferred.make<void>())
+  const sent: HostProtocolEnvelope[] = []
+  const transport: DesktopTransportSend & DesktopTransportRun = {
+    send: (envelope) =>
+      Effect.sync(() => {
+        sent.push(envelope)
+      }).pipe(
+        Effect.flatMap(() =>
+          envelope.kind === "response" ? Deferred.succeed(responseObserved, undefined) : Effect.void
+        )
+      ),
+    run: (onEnvelope): Effect.Effect<never> => runQueuedTransport(queue, onEnvelope)
+  }
+
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const protocol = yield* makeDesktopServerProtocol(transport, {
+          nextTraceId: () => "trace-stream-response",
+          now: () => 1710000000001
+        })
+        yield* Layer.build(
+          RpcServer.layer(streamGroup).pipe(
+            Layer.provide(
+              streamGroup.toLayer({
+                StreamPing: ({ message }) => Stream.make(`${message}:1`, `${message}:2`)
+              })
+            ),
+            Layer.provide(Layer.succeed(RpcServer.Protocol)(protocol))
+          )
+        )
+        yield* Queue.offer(
+          queue,
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "stream-request",
+            method: "StreamPing",
+            timestamp: 1710000000000,
+            traceId: "trace-request",
+            payload: { message: "hello" }
+          })
+        )
+        yield* Deferred.await(responseObserved)
+      })
+    )
+  )
+
+  expect(
+    sent.filter((envelope) => envelope.kind === "stream").map((envelope) => envelope.payload)
+  ).toEqual(["hello:1", "hello:2"])
+  expect(sent.some((envelope) => envelope.kind === "response")).toBe(true)
 })
 
 test("makeDesktopRpcHandlerRuntime interrupts pending dispatches on cancel", async () => {

@@ -35,10 +35,10 @@ Use `RpcGroup.toLayer(...)` to install handlers; use `Desktop.Rpc.surface(...)` 
 ## Verify RPC Exports
 
 ```ts run
-import { Handlers, RpcGroup } from "../packages/bridge/src/index.js"
+import { RpcGroup, makeDesktopRpcHandlerRuntime } from "../packages/bridge/src/index.js"
 
-if (RpcGroup === undefined || Handlers === undefined) {
-  throw new Error("RpcGroup or Handlers is unavailable")
+if (RpcGroup === undefined || makeDesktopRpcHandlerRuntime === undefined) {
+  throw new Error("RpcGroup or makeDesktopRpcHandlerRuntime is unavailable")
 }
 ```
 

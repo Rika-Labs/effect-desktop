@@ -24,7 +24,7 @@ The current public surface includes:
 
 Generated Effect RPC clients send host protocol envelopes through `makeDesktopClientProtocol(...)`. Host protocol failures are encoded before they enter Effect RPC exits, and successful `undefined` payloads are normalized to `null` on the bridge response envelope so the wire outcome remains explicit JSON.
 
-Bridge contracts are authored as canonical Effect RPC groups. Bridge-specific helpers only derive native/web protocol metadata from the group and bind the resulting contract to client, handler, event, or stream runtimes.
+Bridge contracts are authored as canonical Effect RPC groups. Bridge-specific helpers derive native/web protocol metadata from the group and adapt Effect RPC clients or servers to the desktop host protocol; handler composition stays in `RpcGroup.toLayer(...)`.
 
 ## Non-goals
 

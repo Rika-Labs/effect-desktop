@@ -6,7 +6,7 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   RendererOriginAuth
-} from "./handlers.js"
+} from "./runtime.js"
 import {
   type DesktopTransportRun,
   type DesktopTransportSend,

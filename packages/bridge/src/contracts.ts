@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Option, Schema, Stream } from "effect"
+import { Context, Data, Option, Schema } from "effect"
 import { RpcGroup, RpcSchema } from "effect/unstable/rpc"
 import type { Any as RpcAny, AnyWithProps as RpcAnyWithProps } from "effect/unstable/rpc/Rpc"
 
@@ -46,16 +46,6 @@ export interface BridgeStreamSpec<
   readonly error: Error
   readonly backpressure?: BackpressureSpec
 }
-
-type BridgeOutputType<Output> = Output extends BridgeStreamSpec
-  ? Stream.Stream<
-      BridgeContractCodecType<Output["chunk"]>,
-      BridgeContractCodecType<Output["error"]>,
-      unknown
-    >
-  : Output extends BridgeContractCodec
-    ? BridgeContractCodecType<Output>
-    : never
 
 export interface BackpressureSpec {
   readonly strategy: "buffer" | "drop" | "block"
@@ -143,28 +133,6 @@ export type BridgeContract<
   readonly events: Events
 }
 
-export type BridgeContractHandlers<Spec extends BridgeContractSpec> = {
-  readonly [Method in keyof Spec]: (
-    input: BridgeContractCodecType<Spec[Method]["input"]>
-  ) => Spec[Method]["output"] extends BridgeStreamSpec
-    ? BridgeOutputType<Spec[Method]["output"]>
-    : Effect.Effect<
-        BridgeOutputType<Spec[Method]["output"]>,
-        BridgeContractCodecType<Spec[Method]["error"]>,
-        unknown
-      >
-}
-
-export interface BridgeHandlerLayer<
-  Tag extends string,
-  Spec extends BridgeContractSpec,
-  Handlers extends BridgeContractHandlers<Spec>,
-  Events extends BridgeContractEvents = BridgeContractEvents
-> {
-  readonly group: BridgeContract<Tag, Spec, Events>
-  readonly handlers: Handlers
-}
-
 export class InvalidBridgeMetadataError extends Data.TaggedError("InvalidBridgeMetadataError")<{
   readonly tag: string
   readonly method: string
@@ -228,20 +196,6 @@ export const bridgeContractFromRpcGroup = <
     Group
   >
 }
-
-export const makeBridgeHandlerLayer =
-  <Tag extends string, Spec extends BridgeContractSpec, Events extends BridgeContractEvents>(
-    group: BridgeContract<Tag, Spec, Events>
-  ) =>
-  <Handlers extends BridgeContractHandlers<Spec>>(
-    handlers: Handlers
-  ): BridgeHandlerLayer<Tag, Spec, Handlers, Events> => {
-    validateHandlers(group.tag, group.spec, handlers)
-    return Object.freeze({
-      group,
-      handlers: Object.freeze(handlers)
-    })
-  }
 
 const bridgeMetadataFromRpcGroup = (
   tag: string,
@@ -414,22 +368,6 @@ const validateSupportSpec = (tag: string, method: string, spec: RpcSupportMetada
 
   if (typeof spec.reason !== "string" || spec.reason.length === 0) {
     throw invalidSpec(tag, method, "unsupported methods must declare a non-empty support.reason")
-  }
-}
-
-const validateHandlers = <Spec extends BridgeContractSpec>(
-  tag: string,
-  spec: Spec,
-  handlers: unknown
-): void => {
-  if (typeof handlers !== "object" || handlers === null) {
-    throw invalidSpec(tag, "<handlers>", "handlers must be an object")
-  }
-
-  for (const method of Object.keys(spec)) {
-    if (typeof Reflect.get(handlers, method) !== "function") {
-      throw invalidSpec(tag, method, "handler must be a function")
-    }
   }
 }
 

@@ -4,7 +4,6 @@ import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "eff
 import {
   type BridgeClientResponse,
   Client,
-  Handlers,
   HostProtocolCancelByRequestEnvelope,
   HostProtocolRequestEnvelope,
   RendererOriginAuth,
@@ -12,9 +11,9 @@ import {
   RpcClient,
   RpcGroup,
   bridgeContractFromRpcGroup,
-  makeBridgeHandlerLayer,
   makeBridgeInspector,
   makeDesktopClientProtocol,
+  makeDesktopRpcHandlerRuntime,
   makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInvalidOutputError,
   type HostProtocolError,
@@ -459,22 +458,23 @@ test("Client interruption sends bridge cancellation", async () => {
   const ProcessRpcs = makeProjectRpcs("ProjectRpcs.ClientInterrupt")
   const started = await Effect.runPromise(Deferred.make<void>())
   const states: string[] = []
-  const runtime = Handlers.withOptions(
+  const runtime = makeDesktopRpcHandlerRuntime(
+    ProcessRpcs,
+    ProcessRpcs.toLayer({
+      "ProjectRpcs.ClientInterrupt.open": () =>
+        Effect.gen(function* () {
+          yield* Deferred.succeed(started, undefined)
+          yield* Effect.sleep(10_000)
+          return new ProjectOpenOutput({ id: "project-1" })
+        })
+    }),
     {
       originAuth: RendererOriginAuth.unsafeDisabledForTests,
       onState: (state) =>
         Effect.sync(() => {
           states.push(state.tag)
         })
-    },
-    makeBridgeHandlerLayer(ProcessRpcs)({
-      open: () =>
-        Effect.gen(function* () {
-          yield* Deferred.succeed(started, undefined)
-          yield* Effect.sleep(10_000)
-          return new ProjectOpenOutput({ id: "project-1" })
-        })
-    })
+    }
   )
   const cancelRequests: HostProtocolCancelByRequestEnvelope[] = []
   const client = Client(
@@ -510,7 +510,7 @@ test("Client interruption sends bridge cancellation", async () => {
       traceId: "trace-client-cancel"
     })
   ])
-  expect(states).toEqual(["Pending", "Authorized", "Running", "Canceled"])
+  expect(states).toEqual(["Pending", "Running", "Canceled"])
 })
 
 test("Client runtime AbortSignal interruption sends bridge cancellation", async () => {
