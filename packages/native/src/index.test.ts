@@ -429,6 +429,26 @@ test("native capability constants can declare a selected method", async () => {
   expect(declared).not.toContain("Clipboard.writeText")
 })
 
+test("native capability bundles dedupe repeated surfaces and permissions", async () => {
+  const native = Native.capabilities(
+    Native.Clipboard.readText,
+    Native.Clipboard.writeText,
+    Native.Clipboard.readText
+  )
+  const graph = await Effect.runPromise(
+    Desktop.runtimeGraph({
+      id: "native-deduped-capabilities",
+      windows: Desktop.window("main", { title: "Native Dedupe" }),
+      native
+    })
+  )
+  const declared = await nativePermissionTagList(native)
+
+  expect(graph.nodes.filter((node) => node.id === "native:Clipboard")).toHaveLength(1)
+  expect(declared.filter((tag) => tag === "Clipboard.readText")).toHaveLength(1)
+  expect(declared.filter((tag) => tag === "Clipboard.writeText")).toHaveLength(1)
+})
+
 test("native availability selection does not grant authority", async () => {
   const declared = await nativePermissionTags(Native.available(Native.Clipboard))
 
@@ -550,6 +570,13 @@ const expectImportRejected = async (specifier: string): Promise<void> => {
 const nativePermissionTags = async (
   nativeLayer: DesktopNativeLayer | DesktopPermissionsLayer
 ): Promise<ReadonlySet<string>> => {
+  const tags = await nativePermissionTagList(nativeLayer)
+  return new Set(tags)
+}
+
+const nativePermissionTagList = async (
+  nativeLayer: DesktopNativeLayer | DesktopPermissionsLayer
+): Promise<readonly string[]> => {
   const capabilities = await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
@@ -564,12 +591,10 @@ const nativePermissionTags = async (
       })
     )
   )
-  return new Set(
-    capabilities.flatMap((capability) =>
-      capability.kind === "native.invoke"
-        ? [`${capability.primitive}.${capability.methods.join(",")}`]
-        : []
-    )
+  return capabilities.flatMap((capability) =>
+    capability.kind === "native.invoke"
+      ? [`${capability.primitive}.${capability.methods.join(",")}`]
+      : []
   )
 }
 
