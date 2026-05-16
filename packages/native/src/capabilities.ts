@@ -116,7 +116,7 @@ export const makeNativeCapabilities = (
   makeNativeCapabilityManifest(surfaces).pipe(Effect.map(capabilitiesFromManifest))
 
 export const makeNativeCapabilitiesLayer = (
-  nativeLayer: DesktopNativeLayer = NativeAll()
+  nativeLayer: DesktopNativeLayer = NativeAll
 ): Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never> =>
   Layer.effect(
     NativeCapabilities,

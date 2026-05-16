@@ -22,6 +22,7 @@ Most native modules follow the same public shape:
 - `<Name>Client` — client service.
 - `<Name>Live`, `<Name>HandlersLive` — live host-backed layers.
 - `Native.<name>` — app-composition layer for `Desktop.native(...)`.
+- `Native.Permissions.<name>.<method>` — native invoke permission capability data.
 - `make<Name>ClientLayer`, `make<Name>ServiceLayer` — deterministic substitution helpers.
 - `<Name>MethodNames`, `<Name>RpcEvents`, typed errors, handlers, and API types.
 
@@ -33,28 +34,31 @@ Native service authors should use the internal native surface authoring path, no
 Desktop.make({
   id: "com.acme.app",
   windows: Desktop.window("main", { title: "Acme" }),
-  native: Desktop.native(Native.clipboard({ permissions: ["readText"] }))
+  native: Desktop.native(Native.clipboard),
+  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
 })
 ```
 
-`Native.all()` registers every built-in native surface, but it does not grant authority. Use
-`Native.all({ permissions: "all" })` when an app intentionally wants every non-public native invoke permission:
+`Native.all` registers every built-in native surface, but it does not grant authority. Use
+`Native.permissions(...Native.Permissions.all)` when an app intentionally wants every non-public native invoke permission:
 
 ```ts
 Desktop.make({
   id: "com.acme.native",
   windows: Desktop.window("main", { title: "Native" }),
-  native: Desktop.native(Native.all({ permissions: "all" }))
+  native: Desktop.native(Native.all),
+  permissions: Native.permissions(...Native.Permissions.all)
 })
 ```
 
-Each native surface also accepts explicit permission options:
+Each native surface exposes its own grouped permission data:
 
 ```ts
 Desktop.make({
   id: "com.acme.windows",
   windows: Desktop.window("main", { title: "Windows" }),
-  native: Desktop.native(Native.window({ permissions: "all" }))
+  native: Desktop.native(Native.window),
+  permissions: Native.permissions(...Native.Permissions.window.all)
 })
 ```
 

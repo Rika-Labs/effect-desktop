@@ -29,9 +29,9 @@ import { Clipboard, ClipboardClient, ClipboardRpcs, ClipboardError } from "@effe
 
 ## Layer
 
-`ClipboardLive`, `ClipboardHandlersLive`, `Native.clipboard()`.
+`ClipboardLive`, `ClipboardHandlersLive`, `Native.clipboard`.
 
-Use `Native.clipboard({ permissions: ["readText"] })` when the app allows reading clipboard text.
+Use `Desktop.permission(Native.Permissions.clipboard.readText)` when the app allows reading clipboard text.
 
 ## Test layer
 

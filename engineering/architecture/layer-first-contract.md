@@ -87,7 +87,7 @@ Native capability modules must author host-backed endpoints through the package-
 - no-permission metadata for support/status endpoints;
 - custom capability metadata when the endpoint owns durable desktop policy.
 
-`NativeSurface.make(name, group, options)` delegates to `Desktop.Rpc.surface(...)` and adds the standard native bridge-client and host-runtime assembly. `Native.surface(surface)` turns that generated surface into the public app-composition layer consumed by `Desktop.native(...)`. Capability-specific adapters may still stay local when they translate protocol semantics, event streams, scoped resource handles, or request normalization. They should not re-create RPC construction, host runtime wiring, or capability manifest tables.
+`NativeSurface.make(name, group, options)` delegates to `Desktop.Rpc.surface(...)` and adds the standard native bridge-client and host-runtime assembly. `Native.surface(surface)` turns that generated surface into the public app-composition layer consumed by `Desktop.native(...)`. `Native.Permissions` derives authority data from the same surface metadata; it must not become a parallel capability table. Capability-specific adapters may still stay local when they translate protocol semantics, event streams, scoped resource handles, or request normalization. They should not re-create RPC construction, host runtime wiring, or capability manifest tables.
 
 `NativeCapabilities` derives runtime facts from selected native registrations and their `schemaDocs`. A fact includes the method tag, capability metadata, and support metadata. Missing capability metadata, duplicate method tags, and unsupported endpoints without a reason are definition errors.
 

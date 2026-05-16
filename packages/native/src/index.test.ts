@@ -30,6 +30,7 @@ import {
   DesktopPermissionRegistry,
   DesktopPermissionRegistryLive,
   type DesktopNativeLayer,
+  type DesktopPermissionsLayer,
   type DesktopRpcRegistration,
   P,
   PermissionRegistry,
@@ -376,9 +377,9 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect(native.ClipboardSurface).toBeDefined()
   expect(native.DialogSurface).toBeDefined()
   expect(native.Native.all).toBeDefined()
-  expect(Layer.isLayer(native.Native.clipboard())).toBe(true)
-  expect(Layer.isLayer(native.Native.all())).toBe(true)
-  expect("Permissions" in native.Native).toBe(false)
+  expect(Layer.isLayer(native.Native.clipboard)).toBe(true)
+  expect(Layer.isLayer(native.Native.all)).toBe(true)
+  expect(native.Native.Permissions.clipboard.readText).toBeDefined()
   expect(native.NativeCapabilities).toBeFunction()
   expect(native.NativeCapabilitiesLive).toBeDefined()
   expect(native.UnsupportedCapability).toBeFunction()
@@ -397,8 +398,8 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect("makeHostClipboardRpcRuntime" in native).toBe(false)
 })
 
-test("Native.all with permissions declares every non-public native capability", async () => {
-  const declared = await nativePermissionTags(Native.all({ permissions: "all" }))
+test("Native.Permissions.all declares every non-public native capability", async () => {
+  const declared = await nativePermissionTags(Native.permissions(...Native.Permissions.all))
 
   expect(declared).toContain("App.quit")
   expect(declared).toContain("Clipboard.readText")
@@ -406,10 +407,16 @@ test("Native.all with permissions declares every non-public native capability", 
   expect(declared).not.toContain("Clipboard.isSupported")
 })
 
-test("native surface permission options declare only their native surface", async () => {
-  const windowPermissions = await nativePermissionTags(Native.window({ permissions: "all" }))
-  const dialogPermissions = await nativePermissionTags(Native.dialog({ permissions: "all" }))
-  const clipboardPermissions = await nativePermissionTags(Native.clipboard({ permissions: "all" }))
+test("native permission groups declare only their native surface", async () => {
+  const windowPermissions = await nativePermissionTags(
+    Native.permissions(...Native.Permissions.window.all)
+  )
+  const dialogPermissions = await nativePermissionTags(
+    Native.permissions(...Native.Permissions.dialog.all)
+  )
+  const clipboardPermissions = await nativePermissionTags(
+    Native.permissions(...Native.Permissions.clipboard.all)
+  )
 
   expect(windowPermissions).toContain("Window.create")
   expect(windowPermissions).toContain("Window.close")
@@ -420,15 +427,17 @@ test("native surface permission options declare only their native surface", asyn
   expect(clipboardPermissions).not.toContain("Clipboard.isSupported")
 })
 
-test("native surface permission options can declare a selected method", async () => {
-  const declared = await nativePermissionTags(Native.clipboard({ permissions: ["readText"] }))
+test("native permission constants can declare a selected method", async () => {
+  const declared = await nativePermissionTags(
+    Desktop.permission(Native.Permissions.clipboard.readText)
+  )
 
   expect(declared).toContain("Clipboard.readText")
   expect(declared).not.toContain("Clipboard.writeText")
 })
 
 test("bare native surface selection does not grant authority", async () => {
-  const declared = await nativePermissionTags(Native.clipboard())
+  const declared = await nativePermissionTags(Native.clipboard)
 
   expect(declared.size).toBe(0)
 })
@@ -445,7 +454,8 @@ test("Desktop.native registers selected native surfaces into app manifests", () 
   const app = Desktop.make({
     id: "native-selected",
     windows: Desktop.window("main", { title: "Native Selected" }),
-    native: Desktop.native(Native.clipboard({ permissions: ["readText"] }), Native.dialog())
+    native: Desktop.native(Native.clipboard, Native.dialog),
+    permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
   })
   const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
     Array.from(group.group.requests.keys())
@@ -461,7 +471,7 @@ test("Desktop.native availability does not require matching permissions during g
     Desktop.runtimeGraph({
       id: "native-no-permissions",
       windows: Desktop.window("main", { title: "Native No Permissions" }),
-      native: Desktop.native(Native.clipboard())
+      native: Desktop.native(Native.clipboard)
     })
   )
 
@@ -474,7 +484,7 @@ test("Desktop.native rejects duplicate native surfaces as typed config errors", 
     Desktop.runtimeGraph({
       id: "native-duplicate",
       windows: Desktop.window("main", { title: "Native Duplicate" }),
-      native: Desktop.native(Native.clipboard(), Native.clipboard())
+      native: Desktop.native(Native.clipboard, Native.clipboard)
     })
   )
 
@@ -495,7 +505,7 @@ test("Desktop.native rejects duplicate RPC methods across native and app RPC lay
     Desktop.runtimeGraph({
       id: "native-rpc-duplicate",
       windows: Desktop.window("main", { title: "Native RPC Duplicate" }),
-      native: Desktop.native(Native.clipboard()),
+      native: Desktop.native(Native.clipboard),
       rpcs: ClipboardSurface.serverLayer
     })
   )
@@ -516,7 +526,7 @@ test("Desktop.native Native.all registers every built-in native surface", () => 
   const app = Desktop.make({
     id: "native-all",
     windows: Desktop.window("main", { title: "Native All" }),
-    native: Desktop.native(Native.all())
+    native: Desktop.native(Native.all)
   })
   const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
     Array.from(group.group.requests.keys())
@@ -546,7 +556,7 @@ const expectImportRejected = async (specifier: string): Promise<void> => {
 }
 
 const nativePermissionTags = async (
-  nativeLayer: DesktopNativeLayer
+  nativeLayer: DesktopNativeLayer | DesktopPermissionsLayer
 ): Promise<ReadonlySet<string>> => {
   const capabilities = await Effect.runPromise(
     Effect.scoped(
@@ -939,6 +949,31 @@ test("App bridge client keeps input decoding strict while event decoding remains
   expectExitFailure(inputExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(Array.from(eventResult)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
   expect(requests).toEqual([])
+})
+
+test("App bridge client rejects event envelopes for the wrong method", async () => {
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+    subscribe: () =>
+      Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          timestamp: 1710000000401,
+          traceId: "event-trace",
+          method: "App.onOpenUrl",
+          payload: { path: "README.md" }
+        })
+      )
+  }
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
 test("App bridge client validates protocol registration scheme before host requests", async () => {

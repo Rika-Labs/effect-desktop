@@ -54,7 +54,7 @@ import {
 - `WindowHandlersLive` — runtime handler layer.
 - `makeWindowClientLayer(client)` — substitute the client (tests).
 - `makeWindowServiceLayer(client)` — service backed by a client.
-- `Native.window()` — app-composition layer for `Desktop.native(...)`.
+- `Native.window` — app-composition layer for `Desktop.native(...)`.
 - `WindowSurface.bridgeClientLayer(exchange, options)` — bridge client artifact used by adapters and tests.
 
 ## Surface

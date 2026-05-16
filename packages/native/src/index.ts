@@ -32,6 +32,7 @@ export {
 } from "./capabilities.js"
 export {
   Native,
+  Permissions,
   all,
   app as nativeApp,
   clipboard,
@@ -48,14 +49,16 @@ export {
   safeStorage,
   screen,
   shell,
+  permissions,
   surface,
   systemAppearance,
   tray,
   updater,
   webView,
   window,
-  type NativeAllSelectionOptions,
-  type NativeSelectionOptions
+  type NativeApi,
+  type NativePermissionGroup,
+  type NativePermissionsApi
 } from "./native.js"
 export {
   Clipboard,
