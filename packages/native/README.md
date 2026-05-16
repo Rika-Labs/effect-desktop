@@ -8,15 +8,15 @@ TypeScript-facing native services backed by the Rust host: `App`, `Window`, `Web
 
 ## Public API
 
-Each native module exposes a canonical Effect `RpcGroup`, a generated `*Surface`, an Effect service, a client service, live handlers, bridge client layers, host runtime helpers, support metadata, and deterministic test seams. The `*Surface` value is the source for server, client, test-client, schema-doc, contract-law, host-runtime, and default bridge-client artifacts.
+Each native module exposes a canonical Effect `RpcGroup`, a generated `*Surface`, an Effect service, a client service, live handlers, support metadata, and deterministic test seams. The `Native.*` layer values are the public app-composition API; `Native.all` selects every built-in surface, while selective composition uses `Desktop.native(Native.clipboard, Native.dialog, ...)`. The `*Surface` value remains the internal source for server, client, test-client, schema-doc, contract-law, host-runtime, and default bridge-client artifacts.
 
 Native RPC endpoints are authored through the package-internal `NativeSurface` helper. New native endpoints must declare payload and success schemas, endpoint kind, support status, and authority in one place. Authority is explicit: either a native invoke capability, an explicit no-permission endpoint, or a custom capability for desktop-specific policy. Native service files should not call `Rpc.make(...)` directly.
 
-`NativeCapabilities` builds its manifest from native surfaces, not from a parallel table of RPC groups. Every manifest fact includes the endpoint tag, capability metadata, and support metadata. Duplicate tags, missing capability metadata, and unsupported endpoints without reasons fail as typed manifest errors.
+`NativeCapabilities` builds its manifest from selected native layers, not from a parallel table of RPC groups. Every manifest fact includes the endpoint tag, capability metadata, and support metadata. Duplicate tags, missing capability metadata, and unsupported endpoints without reasons fail as typed manifest errors.
 
 `Window` is exposed as an Effect service. `WindowRpcs` is the full Window method descriptor with support metadata, and `WindowSupportedRpcs` is the generated callable group used by the bridge client layer. The host runtime binds handlers through canonical Effect RPC groups and bridge protocol adapters. `WindowClient` remains the substitutable port used by tests and adapters, but its supported callable surface is `create` and `close`.
 
-`WindowBridgeClientOptions` omits `nextRequestId` because the generated Effect RPC protocol owns request identifiers for `makeWindowBridgeClientLayer()`. Tests that need deterministic request ids should assert observed requests at the exchange boundary instead of injecting ids through the Window options object.
+`WindowBridgeClientOptions` omits `nextRequestId` because the generated Effect RPC protocol owns request identifiers for `WindowSurface.bridgeClientLayer(...)`. Tests that need deterministic request ids should assert observed requests at the exchange boundary instead of injecting ids through the Window options object.
 
 The generated Window client validates caller input before transport and validates host success payloads before returning app values. Invalid caller input fails as `HostProtocolInvalidArgumentError`; malformed create or close success payloads fail as `HostProtocolInvalidOutputError`.
 
@@ -58,4 +58,4 @@ This package depends on `effect` for services/layers, streams, `PubSub`, `Subscr
 
 ## Internal architecture
 
-`NativeSurface` is internal to this package. It is not a public app-authoring API; app code should continue to consume the exported Effect services, `*Rpcs`, `*Surface` values, and bridge/test layers. Boundary-specific adapters may remain local when they translate native/web protocol semantics, event streams, resource handles, or request normalization. Thin wrappers that only rename Effect RPC construction are architecture debt and should be removed.
+`NativeSurface` is internal to this package. It is not a public app-authoring API; app code should compose exported `Native.*` layers through `Desktop.native(...)` and consume Effect services at runtime. Boundary-specific adapters may remain local when they translate native/web protocol semantics, event streams, resource handles, or request normalization. Thin wrappers that only rename Effect RPC construction are architecture debt and should be removed.

@@ -6,7 +6,7 @@ import {
 } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Layer } from "effect"
 
-import { Protocol, ProtocolLive, makeProtocolBridgeClientLayer } from "./index.js"
+import { Protocol, ProtocolLive, ProtocolSurface } from "./index.js"
 
 const expectExitFailure = <E>(
   exit: Exit.Exit<unknown, E>,
@@ -72,7 +72,7 @@ test("Protocol bridge client validates asset roots as absolute local paths", asy
       Effect.provide(
         Layer.provide(
           ProtocolLive,
-          makeProtocolBridgeClientLayer(
+          ProtocolSurface.bridgeClientLayer(
             protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )

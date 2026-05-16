@@ -62,6 +62,7 @@ import {
   AppLive,
   AppMethodNames,
   AppSurface,
+  Native,
   NativeCapabilities,
   NativeCapabilitiesLive,
   UnsupportedCapability,
@@ -155,7 +156,6 @@ import {
   ScreenLive,
   ScreenMethodNames,
   ScreenSurface,
-  makeHostScreenRpcRuntime,
   Shell,
   ShellHandlersLive,
   ShellRpcs,
@@ -198,51 +198,30 @@ import {
   WindowClient,
   WindowLive,
   WindowMethodNames,
-  makeHostWindowRpcRuntime,
-  makeAppBridgeClientLayer,
   makeAppServiceLayer,
-  makeClipboardBridgeClientLayer,
   makeClipboardServiceLayer,
-  makeContextMenuBridgeClientLayer,
   makeContextMenuServiceLayer,
-  makeCrashReporterBridgeClientLayer,
   makeCrashReporterMemoryClient,
   makeCrashReporterServiceLayer,
-  makeDialogBridgeClientLayer,
   makeDialogServiceLayer,
-  makeDockBridgeClientLayer,
   makeDockServiceLayer,
   makeGlobalShortcutAlreadyRegisteredError,
-  makeGlobalShortcutBridgeClientLayer,
   makeLinuxDockClient,
   makeLinuxGlobalShortcutClient,
   makeLinuxSafeStorageClient,
   makeGlobalShortcutServiceLayer,
-  makePowerMonitorBridgeClientLayer,
-  makeScreenBridgeClientLayer,
   makeScreenServiceLayer,
   makeSecretBytesFromUtf8,
-  makeSystemAppearanceBridgeClientLayer,
   makeSystemAppearanceServiceLayer,
-  makeUpdaterBridgeClientLayer,
   makeUpdaterServiceLayer,
-  makeMenuBridgeClientLayer,
   makeMenuServiceLayer,
-  makeNotificationBridgeClientLayer,
   makeNotificationServiceLayer,
-  makePathBridgeClientLayer,
   makePathServiceLayer,
-  makeProtocolBridgeClientLayer,
   makeProtocolServiceLayer,
-  makeSafeStorageBridgeClientLayer,
   makeSafeStorageServiceLayer,
-  makeShellBridgeClientLayer,
   makeShellServiceLayer,
-  makeTrayBridgeClientLayer,
   makeTrayServiceLayer,
-  makeWebViewBridgeClientLayer,
   makeWebViewServiceLayer,
-  makeWindowBridgeClientLayer,
   makeWindowServiceLayer,
   unsafeSecretBytes,
   wipeSecretBytes,
@@ -265,7 +244,26 @@ import {
   type WebViewClientApi,
   type WindowClientApi
 } from "./index.js"
-import { webViewCapability } from "./webview.js"
+import { makeAppBridgeClientLayer } from "./app.js"
+import { makeClipboardBridgeClientLayer } from "./clipboard.js"
+import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
+import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
+import { makeDialogBridgeClientLayer } from "./dialog.js"
+import { makeDockBridgeClientLayer } from "./dock.js"
+import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
+import { makeMenuBridgeClientLayer } from "./menu.js"
+import { makeNotificationBridgeClientLayer } from "./notification.js"
+import { makePathBridgeClientLayer } from "./path.js"
+import { makePowerMonitorBridgeClientLayer } from "./power-monitor.js"
+import { makeProtocolBridgeClientLayer } from "./protocol.js"
+import { makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
+import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
+import { makeShellBridgeClientLayer } from "./shell.js"
+import { makeSystemAppearanceBridgeClientLayer } from "./system-appearance.js"
+import { makeTrayBridgeClientLayer } from "./tray.js"
+import { makeUpdaterBridgeClientLayer } from "./updater.js"
+import { makeWebViewBridgeClientLayer, webViewCapability } from "./webview.js"
+import { makeHostWindowRpcRuntime, makeWindowBridgeClientLayer } from "./window.js"
 import {
   AppBeforeQuitEvent,
   AppCommandLine,
@@ -372,6 +370,13 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect(native.WindowLive).toBeDefined()
   expect(native.ClipboardSurface).toBeDefined()
   expect(native.DialogSurface).toBeDefined()
+  expect(native.Native.all).toBeDefined()
+  expect(Layer.isLayer(native.Native.clipboard)).toBe(true)
+  expect(native.Native.Permissions.clipboard.readText).toMatchObject({
+    kind: "native.invoke",
+    primitive: "Clipboard",
+    methods: ["readText"]
+  })
   expect(native.NativeCapabilities).toBeFunction()
   expect(native.NativeCapabilitiesLive).toBeDefined()
   expect(native.UnsupportedCapability).toBeFunction()
@@ -386,6 +391,8 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect("UpdateWorkflow" in native).toBe(false)
   expect("makeUnsupportedWindowClient" in native).toBe(false)
   expect("makeUnsupportedClipboardClient" in native).toBe(false)
+  expect("makeClipboardBridgeClientLayer" in native).toBe(false)
+  expect("makeHostClipboardRpcRuntime" in native).toBe(false)
 })
 
 test("native contracts subpath exposes schema-coded payload contracts", async () => {
@@ -394,6 +401,37 @@ test("native contracts subpath exposes schema-coded payload contracts", async ()
   expect(contracts.WindowCreateInput).toBeFunction()
   expect(contracts.ClipboardText).toBeFunction()
   expect(contracts.DialogOpenResult).toBeFunction()
+})
+
+test("Desktop.native registers selected native surfaces into app manifests", () => {
+  const app = Desktop.make({
+    id: "native-selected",
+    windows: Desktop.window("main", { title: "Native Selected" }),
+    native: Desktop.native(Native.clipboard, Native.dialog),
+    permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+  })
+  const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
+    Array.from(group.group.requests.keys())
+  )
+
+  expect(tags).toContain("Clipboard.readText")
+  expect(tags).toContain("Dialog.openFile")
+  expect(tags).not.toContain("Window.create")
+})
+
+test("Desktop.native Native.all registers every built-in native surface", () => {
+  const app = Desktop.make({
+    id: "native-all",
+    windows: Desktop.window("main", { title: "Native All" }),
+    native: Desktop.native(Native.all)
+  })
+  const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
+    Array.from(group.group.requests.keys())
+  )
+
+  expect(tags).toContain("App.getInfo")
+  expect(tags).toContain("Clipboard.readText")
+  expect(tags).toContain("Window.create")
 })
 
 test("native package exports reject implementation-only subpaths", async () => {

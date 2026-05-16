@@ -21,12 +21,22 @@ Most native modules follow the same public shape:
 - `<Name>` — runtime Effect service.
 - `<Name>Client` — client service.
 - `<Name>Live`, `<Name>HandlersLive` — live host-backed layers.
-- `make<Name>ClientLayer`, `make<Name>ServiceLayer`, `make<Name>BridgeClientLayer`, `makeHost<Name>RpcRuntime`.
+- `Native.<name>` — app-composition layer for `Desktop.native(...)`.
+- `make<Name>ClientLayer`, `make<Name>ServiceLayer` — deterministic substitution helpers.
 - `<Name>MethodNames`, `<Name>RpcEvents`, typed errors, handlers, and API types.
 
 This is the [layer-first contract](explanation/layer-first-design.md) applied uniformly.
 
-Native service authors should use the internal native surface authoring path, not ad hoc RPC construction. Each endpoint must carry schemas, endpoint kind, support metadata, and authority metadata together. `NativeCapabilities` reads the resulting surface docs, so the public support manifest uses the same source of truth as handlers, clients, tests, and renderer descriptors.
+Native service authors should use the internal native surface authoring path, not ad hoc RPC construction. Each endpoint must carry schemas, endpoint kind, support metadata, and authority metadata together. `NativeCapabilities` reads the selected native registrations, so the public support manifest uses the same source of truth as handlers, clients, tests, and renderer descriptors.
+
+```ts
+Desktop.make({
+  id: "com.acme.app",
+  windows: Desktop.window("main", { title: "Acme" }),
+  native: Desktop.native(Native.all),
+  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+})
+```
 
 ## Current native modules
 

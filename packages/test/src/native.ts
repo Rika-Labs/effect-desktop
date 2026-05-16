@@ -3,6 +3,8 @@ import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
 import {
   makePermissionRegistry,
   NormalizedCapability,
+  DesktopNativeRegistry,
+  DesktopNativeRegistryLive,
   PermissionRegistry,
   ResourceRegistry,
   ResourceRegistryLive,
@@ -12,30 +14,14 @@ import {
   type ResourceRegistryApi
 } from "@effect-desktop/core"
 import {
-  AppSurface,
   Clipboard,
   ClipboardSurface,
-  ContextMenuSurface,
-  CrashReporterSurface,
   Dialog,
   DialogSurface,
-  DockSurface,
-  GlobalShortcutSurface,
-  MenuSurface,
-  NotificationSurface,
-  PathSurface,
-  PowerMonitorSurface,
-  ProtocolSurface,
-  SafeStorageSurface,
   Screen,
   ScreenSurface,
-  ShellSurface,
-  SystemAppearanceSurface,
-  TraySurface,
-  UpdaterSurface,
-  WebViewSurface,
   Window,
-  WindowSurface,
+  Native,
   type ClipboardClient,
   type ClipboardError,
   type ClipboardServiceApi,
@@ -117,28 +103,7 @@ export interface TestNativeSurface {
   readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
 }
 
-export const TestNativeSurfaces: readonly TestNativeSurface[] = Object.freeze([
-  testNativeSurface(AppSurface),
-  testNativeSurface(ClipboardSurface),
-  testNativeSurface(ContextMenuSurface),
-  testNativeSurface(CrashReporterSurface),
-  testNativeSurface(DialogSurface),
-  testNativeSurface(DockSurface),
-  testNativeSurface(GlobalShortcutSurface),
-  testNativeSurface(MenuSurface),
-  testNativeSurface(NotificationSurface),
-  testNativeSurface(PathSurface),
-  testNativeSurface(PowerMonitorSurface),
-  testNativeSurface(ProtocolSurface),
-  testNativeSurface(SafeStorageSurface),
-  testNativeSurface(ScreenSurface),
-  testNativeSurface(ShellSurface),
-  testNativeSurface(SystemAppearanceSurface),
-  testNativeSurface(TraySurface),
-  testNativeSurface(UpdaterSurface),
-  testNativeSurface(WebViewSurface),
-  testNativeSurface(WindowSurface)
-])
+export const TestNativeSurfaces: readonly TestNativeSurface[] = snapshotTestNativeSurfaces()
 
 export const ClipboardTest = (options: TestClipboardOptions = {}): Layer.Layer<Clipboard> =>
   makeClipboardScenarioLayer(options)
@@ -401,6 +366,20 @@ function testNativeSurface(surface: {
     contractLaws: surface.contractLaws,
     schemaDocs: surface.schemaDocs
   })
+}
+
+function snapshotTestNativeSurfaces(): readonly TestNativeSurface[] {
+  const nativeLayer = Layer.provideMerge(Native.all, DesktopNativeRegistryLive)
+  const registrations = Effect.runSync(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(nativeLayer)
+        const registry = Context.get(context, DesktopNativeRegistry)
+        return yield* registry.snapshot
+      })
+    )
+  )
+  return Object.freeze(registrations.map(testNativeSurface))
 }
 
 const nativeInvokeCapabilities = (): Effect.Effect<

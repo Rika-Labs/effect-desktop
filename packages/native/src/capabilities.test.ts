@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
-import type { DesktopRpcSchemaDoc } from "@effect-desktop/core"
+import { Desktop, type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect"
 
 import {
@@ -11,6 +11,7 @@ import {
   UnsupportedCapability,
   makeNativeCapabilitiesLayer
 } from "./capabilities.js"
+import { surface } from "./native.js"
 
 test("NativeCapabilities exposes support metadata from native surfaces", async () => {
   const result = await Effect.runPromise(
@@ -38,7 +39,7 @@ test("NativeCapabilities require fails unsupported methods from explicit metadat
       const capabilities = yield* NativeCapabilities
       yield* capabilities.support("Example.unsupported")
       return yield* capabilities.require("Example.unsupported")
-    }).pipe(Effect.provide(makeNativeCapabilitiesLayer([unsupported])))
+    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(testNativeLayer(unsupported))))
   )
 
   expect(Exit.isFailure(exit)).toBe(true)
@@ -91,7 +92,7 @@ test("NativeCapabilities rejects duplicate method tags in manifests", async () =
   })
 
   const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer([first, second])))
+    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(first, second))))
   )
 
   expect(Exit.isFailure(exit)).toBe(true)
@@ -107,7 +108,9 @@ test("NativeCapabilities rejects duplicate method tags in manifests", async () =
 
 test("NativeCapabilities rejects missing capability metadata", async () => {
   const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer([testSurfaceWithoutCapability()])))
+    Effect.scoped(
+      Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(testSurfaceWithoutCapability())))
+    )
   )
 
   expect(Exit.isFailure(exit)).toBe(true)
@@ -158,3 +161,17 @@ const testSurfaceWithoutCapability = () =>
       } satisfies DesktopRpcSchemaDoc)
     ])
   })
+
+const testNativeLayer = (
+  ...surfaces: readonly { readonly schemaDocs: readonly DesktopRpcSchemaDoc[] }[]
+): DesktopNativeLayer =>
+  Desktop.native(
+    ...surfaces.map((capabilitySurface, index) =>
+      surface({
+        tag: `TestSurface${index}`,
+        serverLayer: Layer.empty,
+        schemaDocs: capabilitySurface.schemaDocs,
+        contractLaws: []
+      })
+    )
+  )

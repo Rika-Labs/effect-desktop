@@ -46,16 +46,15 @@ import {
   ClipboardLive,
   ClipboardSurface,
   Dialog,
+  DialogSurface,
   DialogLive,
   Screen,
+  ScreenSurface,
   ScreenLive,
   Window,
   type DialogClientApi,
-  makeClipboardBridgeClientLayer,
   makeClipboardServiceLayer,
-  makeDialogBridgeClientLayer,
   makeDialogServiceLayer,
-  makeScreenBridgeClientLayer,
   makeScreenClientLayer,
   type ClipboardClientApi,
   type DialogError,
@@ -207,7 +206,7 @@ const makeClipboardBridgeLawLayer = (lawName: string): Layer.Layer<Clipboard> =>
       throw new Error(`unhandled Clipboard law fixture: ${lawName}`)
   }
 
-  return Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(bridge.exchange))
+  return Layer.provide(ClipboardLive, ClipboardSurface.bridgeClientLayer(bridge.exchange))
 }
 
 test("public bridge subpath exposes host and bridge fixtures", async () => {
@@ -1790,7 +1789,7 @@ test("native capability programs run unchanged through Live, Client, and Test la
         Effect.runPromise(
           screenProgram.pipe(
             Effect.provide(
-              Layer.provide(ScreenLive, makeScreenBridgeClientLayer(screenBridge.exchange))
+              Layer.provide(ScreenLive, ScreenSurface.bridgeClientLayer(screenBridge.exchange))
             )
           )
         ),
@@ -1826,7 +1825,7 @@ test("native capability programs run unchanged through Live, Client, and Test la
         Effect.runPromise(
           dialogProgram.pipe(
             Effect.provide(
-              Layer.provide(DialogLive, makeDialogBridgeClientLayer(dialogBridge.exchange))
+              Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(dialogBridge.exchange))
             )
           )
         ),

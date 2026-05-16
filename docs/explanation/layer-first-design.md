@@ -63,9 +63,8 @@ export const WindowLive = Layer.effect(Window)(
   })
 )
 
-// 4. Client layer (wraps an exchange)
-export const makeWindowBridgeClientLayer = (exchange, options) =>
-  Layer.effect(WindowClient)(/* RpcClient.make + bridge protocol */)
+// 4. Native app-composition layer
+export const window = Native.surface(WindowSurface)
 
 // 5. Test layer
 //    Provided by @effect-desktop/test as TestWindow.layer()

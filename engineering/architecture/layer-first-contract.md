@@ -87,20 +87,20 @@ Native capability modules must author host-backed endpoints through the package-
 - no-permission metadata for support/status endpoints;
 - custom capability metadata when the endpoint owns durable desktop policy.
 
-`NativeSurface.make(name, group, options)` delegates to `Desktop.Rpc.surface(...)` and adds the standard native bridge-client and host-runtime assembly. Capability-specific adapters may still stay local when they translate protocol semantics, event streams, scoped resource handles, or request normalization. They should not re-create RPC construction, host runtime wiring, or capability manifest tables.
+`NativeSurface.make(name, group, options)` delegates to `Desktop.Rpc.surface(...)` and adds the standard native bridge-client and host-runtime assembly. `Native.surface(surface)` turns that generated surface into the public app-composition layer consumed by `Desktop.native(...)`. Capability-specific adapters may still stay local when they translate protocol semantics, event streams, scoped resource handles, or request normalization. They should not re-create RPC construction, host runtime wiring, or capability manifest tables.
 
-`NativeCapabilities` derives runtime facts from native surfaces and their `schemaDocs`. A fact includes the method tag, capability metadata, and support metadata. Missing capability metadata, duplicate method tags, and unsupported endpoints without a reason are definition errors.
+`NativeCapabilities` derives runtime facts from selected native registrations and their `schemaDocs`. A fact includes the method tag, capability metadata, and support metadata. Missing capability metadata, duplicate method tags, and unsupported endpoints without a reason are definition errors.
 
 ## Current proof
 
 `packages/test/src/index.test.ts` contains the `native capability programs run unchanged through Live, Client, and Test layers` test. It defines user-level `Effect` programs for `Screen`, `Clipboard`, and `Dialog` and runs each through:
 
 - the capability `*Live` layer with an explicit deterministic `*Client` layer;
-- the capability `*Live` layer with `make*BridgeClientLayer(...)`;
+- the capability `*Live` layer with `*Surface.bridgeClientLayer(...)`;
 - the matching deterministic `*Test(...)` layer from `@effect-desktop/test`.
 
 That is the minimum substitution claim this contract requires: provider replacement changes layers, not user code.
 
-Native service modules are generated native vertical slices. Their `*Rpcs` values are canonical Effect `RpcGroup`s; their `*Surface` values derive server, client, test-client, schema-doc, law, capability-fact, bridge-client, and host-runtime artifacts; their `make*BridgeClientLayer(...)` functions adapt the existing bridge exchange into the generated RPC protocol instead of widening the public service contract.
+Native service modules are generated native vertical slices. Their `*Rpcs` values are canonical Effect `RpcGroup`s; their `*Surface` values derive server, client, test-client, schema-doc, law, capability-fact, bridge-client, and host-runtime artifacts; their `Native.<name>` values adapt those surfaces into app-composition layers instead of widening the public service contract with helper exports.
 
 `packages/native/src/window.ts` proves the callable-client rule. `WindowRpcs` exposes only host-backed methods, currently `Window.create` and `Window.close`; planned Window methods stay out of the RPC group until the host path exists.

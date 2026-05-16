@@ -636,6 +636,21 @@ test("Desktop.rpc pairs an RpcGroup with its implementation for app adapters", a
   })
 })
 
+test("Desktop.native composes an empty native layer without adding runtime surfaces", async () => {
+  const core = await import("./index.js")
+  const app = core.Desktop.make({
+    id: "native-empty",
+    windows: core.Desktop.window("main", { title: "Native" }),
+    providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
+    native: core.Desktop.native()
+  })
+  const graph = await Effect.runPromise(core.Desktop.runtimeGraph(app))
+
+  expect(Layer.isLayer(app.native)).toBe(true)
+  expect(core.Desktop.manifest(app).rpcGroups).toEqual([])
+  expect(graph.nodes.some((node) => node.kind === "native-surface")).toBe(false)
+})
+
 test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one RpcGroup", async () => {
   const core = await import("./index.js")
   const Ping = Rpc.make("Notes.Ping", { success: Schema.String }).pipe(RpcEndpoint.query)

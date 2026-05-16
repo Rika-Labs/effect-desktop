@@ -24,7 +24,7 @@ import {
   WindowHandlersLive,
   makeWindowClientLayer,
   makeWindowServiceLayer,
-  makeWindowBridgeClientLayer,
+  Native,
   type WindowClientApi,
   type WindowServiceApi,
   type WindowCreateOptions,
@@ -54,7 +54,8 @@ import {
 - `WindowHandlersLive` — runtime handler layer.
 - `makeWindowClientLayer(client)` — substitute the client (tests).
 - `makeWindowServiceLayer(client)` — service backed by a client.
-- `makeWindowBridgeClientLayer(exchange, options)` — production client over the bridge.
+- `Native.window` — app-composition layer for `Desktop.native(...)`.
+- `WindowSurface.bridgeClientLayer(exchange, options)` — bridge client artifact used by adapters and tests.
 
 ## Surface
 

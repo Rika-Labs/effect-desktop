@@ -7,7 +7,9 @@ import {
   launch,
   make,
   manifest,
+  native,
   permission,
+  permissions,
   provider,
   Provider,
   providerLayerFor,
@@ -20,11 +22,12 @@ import {
   WorkflowEngineDurable,
   WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
+import type { DesktopNativeRegistry } from "./runtime/desktop-native-registry.js"
+import type { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
 import {
   DesktopPermissionRegistry,
   DesktopPermissionRegistryLive
 } from "./runtime/desktop-permission-registry.js"
-import { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
 import {
   DesktopWorkflowRegistry,
   DesktopWorkflowRegistryLive
@@ -89,6 +92,7 @@ export * from "./runtime/inspector-security-events.js"
 export * from "./runtime/desktop-observability.js"
 export * from "./runtime/inspector-transport.js"
 export * from "./runtime/desktop-errors.js"
+export * from "./runtime/desktop-native-registry.js"
 export * from "./runtime/desktop-permission-registry.js"
 export * from "./runtime/desktop-rpc-registry.js"
 export * from "./runtime/desktop-rpc-surface.js"
@@ -103,7 +107,9 @@ export {
   layerGraphSnapshotFromGraph,
   make,
   manifest,
+  native,
   permission,
+  permissions,
   provider,
   Provider,
   providerLayerFor,
@@ -139,6 +145,7 @@ export {
   type DesktopRuntimeProviderServices,
   type DesktopRuntimeSelectedProviders,
   type DesktopRuntimeServices,
+  type DesktopNativeLayer,
   type DesktopPermissionsLayer,
   type DesktopWorkflowEngineLayer,
   type DesktopWorkflowLayer,
@@ -175,6 +182,7 @@ function app<RIn = never, E = never>(
   Exclude<
     RIn,
     | DesktopRuntimeProviderServices
+    | DesktopNativeRegistry
     | DesktopRpcRegistry
     | DesktopWindowRegistry
     | DesktopPermissionRegistry
@@ -200,6 +208,7 @@ function app<RIn = never, E = never>(
       Exclude<
         RIn,
         | DesktopRuntimeProviderServices
+        | DesktopNativeRegistry
         | DesktopRpcRegistry
         | DesktopWindowRegistry
         | DesktopPermissionRegistry
@@ -292,7 +301,9 @@ export const Desktop = Object.freeze({
   launch,
   make,
   manifest,
+  native,
   permission,
+  permissions,
   provider,
   Provider,
   providerLayerFor,
