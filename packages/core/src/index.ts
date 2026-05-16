@@ -7,16 +7,22 @@ import {
   launch,
   make,
   manifest,
+  native,
   permission,
+  permissions,
   provider,
+  providers,
   Provider,
   providerLayerFor,
   rpc,
+  rpcs,
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
   desktopWindow,
+  windows,
   workflow,
+  workflows,
   WorkflowEngineDurable,
   WorkflowEngineMemory
 } from "./runtime/desktop-app.js"
@@ -24,18 +30,17 @@ import {
   DesktopPermissionRegistry,
   DesktopPermissionRegistryLive
 } from "./runtime/desktop-permission-registry.js"
-import { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
 import {
   DesktopWorkflowRegistry,
   DesktopWorkflowRegistryLive
 } from "./runtime/desktop-workflow-registry.js"
-import type { DesktopWindowRegistry } from "./runtime/desktop-window-registry.js"
+import { snapshotDeclarationLayerSync } from "./runtime/desktop-declaration.js"
 import type {
-  DesktopApp,
   DesktopConfig,
   DesktopConfigError,
   DesktopPermissionsLayer,
   DesktopRuntimeProviderServices,
+  DesktopRuntimeServices,
   DesktopWorkflowLayer,
   DesktopWorkflowsLayer
 } from "./runtime/desktop-app.js"
@@ -89,6 +94,7 @@ export * from "./runtime/inspector-security-events.js"
 export * from "./runtime/desktop-observability.js"
 export * from "./runtime/inspector-transport.js"
 export * from "./runtime/desktop-errors.js"
+export * from "./runtime/desktop-native-registry.js"
 export * from "./runtime/desktop-permission-registry.js"
 export * from "./runtime/desktop-rpc-registry.js"
 export * from "./runtime/desktop-rpc-surface.js"
@@ -103,16 +109,22 @@ export {
   layerGraphSnapshotFromGraph,
   make,
   manifest,
+  native,
   permission,
+  permissions,
   provider,
+  providers,
   Provider,
   providerLayerFor,
   rpc,
+  rpcs,
   runtime,
   runtimeGraph,
   runtimeGraphSnapshot,
   desktopWindow,
+  windows,
   workflow,
+  workflows,
   type DesktopAppApi,
   type DesktopAppDescriptor,
   type DesktopAppManifest,
@@ -139,6 +151,10 @@ export {
   type DesktopRuntimeProviderServices,
   type DesktopRuntimeSelectedProviders,
   type DesktopRuntimeServices,
+  type DesktopNativeDeclaration,
+  type DesktopNativeCapabilitySelection,
+  type DesktopNativeLayer,
+  type DesktopNativeSurfaceSelection,
   type DesktopPermissionsLayer,
   type DesktopWorkflowEngineLayer,
   type DesktopWorkflowLayer,
@@ -170,17 +186,9 @@ function app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
 function app<RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<
-  DesktopApp,
+  DesktopRuntimeServices,
   DesktopConfigError | E,
-  Exclude<
-    RIn,
-    | DesktopRuntimeProviderServices
-    | DesktopRpcRegistry
-    | DesktopWindowRegistry
-    | DesktopPermissionRegistry
-    | DesktopWorkflowRegistry
-    | ResourceOwner
-  >
+  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
 >
 function app<RIn = never, E = never>(
   options: DesktopAppOptionsWithPermissions<RIn, E>
@@ -195,20 +203,12 @@ function app<RIn = never, E = never>(
   | Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>
   | Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>
   | Layer.Layer<
-      DesktopApp,
+      DesktopRuntimeServices,
       DesktopConfigError | E,
-      Exclude<
-        RIn,
-        | DesktopRuntimeProviderServices
-        | DesktopRpcRegistry
-        | DesktopWindowRegistry
-        | DesktopPermissionRegistry
-        | DesktopWorkflowRegistry
-        | ResourceOwner
-      >
+      Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
     > {
   if ("id" in options) {
-    return desktopApp(options as DesktopConfig)
+    return desktopApp(options)
   }
 
   const workflows = snapshotStandaloneWorkflows(options.workflows)
@@ -244,19 +244,12 @@ const snapshotStandalonePermissions = (
 ): ReadonlyArray<NormalizedCapability> => {
   if (permissions === undefined) return []
 
-  return Effect.runSync(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(
-          Layer.provideMerge(
-            permissions as Layer.Layer<never, never, DesktopPermissionRegistry>,
-            DesktopPermissionRegistryLive
-          )
-        )
-        return yield* Context.get(context, DesktopPermissionRegistry).snapshot
-      })
-    )
-  )
+  return snapshotDeclarationLayerSync({
+    layer: permissions,
+    live: DesktopPermissionRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopPermissionRegistry).snapshot,
+    onAsyncBuild: (cause) => cause
+  })
 }
 
 const snapshotStandaloneWorkflows = <RIn, E>(
@@ -264,19 +257,12 @@ const snapshotStandaloneWorkflows = <RIn, E>(
 ): ReadonlyArray<DesktopWorkflowLayer<RIn, E>> => {
   if (workflows === undefined) return []
 
-  const snapshot = Effect.runSync(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(
-          Layer.provideMerge(
-            workflows as unknown as Layer.Layer<never, never, DesktopWorkflowRegistry>,
-            DesktopWorkflowRegistryLive
-          )
-        )
-        return yield* Context.get(context, DesktopWorkflowRegistry).snapshot
-      })
-    )
-  )
+  const snapshot = snapshotDeclarationLayerSync({
+    layer: workflows,
+    live: DesktopWorkflowRegistryLive,
+    snapshot: (context) => Context.get(context, DesktopWorkflowRegistry).snapshot,
+    onAsyncBuild: (cause) => cause
+  })
 
   return snapshot as ReadonlyArray<DesktopWorkflowLayer<RIn, E>>
 }
@@ -292,13 +278,19 @@ export const Desktop = Object.freeze({
   launch,
   make,
   manifest,
+  native,
   permission,
+  permissions,
   provider,
+  providers,
   Provider,
   providerLayerFor,
   rpc,
+  rpcs,
   window: desktopWindow,
+  windows,
   workflow,
+  workflows,
   Rpc: DesktopRpc,
   runtime,
   runtimeGraph,

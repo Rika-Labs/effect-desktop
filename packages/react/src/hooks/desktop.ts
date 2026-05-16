@@ -1,7 +1,6 @@
 import {
   makeFrameworkScopedOperation,
   runFrameworkEffect,
-  runFrameworkPromiseExit,
   type FrameworkRuntime
 } from "@effect-desktop/core/renderer"
 import { Effect, Exit, Layer, ManagedRuntime, type Cause } from "effect"
@@ -249,7 +248,7 @@ export const useDesktopResource = <E>(
 
       setState({ status: "active", error: undefined })
       return () => {
-        void runFrameworkPromiseExit(defaultRuntime, current.dispose()).then((exit) => {
+        runFrameworkEffect(defaultRuntime, current.dispose(), (exit) => {
           if (!mountedRef.current || generationRef.current !== generation) {
             return
           }

@@ -45,7 +45,7 @@ WebView providers are host/build policy. `system` uses the operating system WebV
 Provider selection is app composition. Register provider descriptors through layers, the same way windows and RPCs are registered:
 
 ```ts
-providers: Layer.mergeAll(
+providers: Desktop.providers(
   Desktop.provider(Desktop.Provider.Runtime.node),
   Desktop.provider(Desktop.Provider.WebView.chrome)
 )

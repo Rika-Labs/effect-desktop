@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
 import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
 import { decodeDesktopConfig } from "@effect-desktop/config"
@@ -615,15 +615,14 @@ const readPackagedArtifacts = (
 ): Effect.Effect<readonly PackagedArtifact[], SignFileError | SignConfigError, never> =>
   Effect.gen(function* () {
     yield* statPath(plan.outputPath).pipe(
-      Effect.catch(() =>
-        Effect.fail(
+      Effect.mapError(
+        () =>
           new SignFileError({
             operation: "discover",
             path: plan.outputPath,
             message: `no ${plan.platform} packaged artifacts found; run bun desktop package first`,
             cause: undefined
           })
-        )
       )
     )
     const entries = yield* readDirectory(plan.outputPath)
@@ -1251,7 +1250,9 @@ const readJson = <A>(path: string): Effect.Effect<A, SignFileError, never> =>
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
       const content = yield* fs.readFileString(path)
-      return JSON.parse(content) as A
+      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+        Effect.map((value) => value as A)
+      )
     })
   ).pipe(
     Effect.mapError(

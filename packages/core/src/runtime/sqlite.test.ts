@@ -259,8 +259,11 @@ function expectFailure<E>(
   }
 }
 
-const exists = (path: string): Promise<boolean> =>
-  access(path).then(
-    () => true,
-    () => false
-  )
+const exists = async (path: string): Promise<boolean> => {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}

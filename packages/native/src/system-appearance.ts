@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
@@ -17,6 +16,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-deskt
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   type SystemAppearanceColor,
   SystemAppearanceAccentColorResult,
@@ -85,6 +85,13 @@ export const SystemAppearanceMethodNames = Object.freeze([
   "getReducedTransparency",
   "isSupported"
 ] as const)
+
+const SystemAppearanceCapabilityMethods = Object.freeze([
+  "getAppearance",
+  "getAccentColor",
+  "getReducedMotion",
+  "getReducedTransparency"
+] as const satisfies readonly (typeof SystemAppearanceMethodNames)[number][])
 
 export interface SystemAppearanceClientApi {
   readonly getAppearance: () => Effect.Effect<SystemAppearanceResult, SystemAppearanceError, never>
@@ -185,7 +192,7 @@ export const makeSystemAppearanceBridgeClientLayer = (
 
 export type SystemAppearanceRpc = RpcGroup.Rpcs<typeof SystemAppearanceRpcGroup>
 
-export type SystemAppearanceRpcHandlers = Parameters<typeof SystemAppearanceRpcGroup.toLayer>[0]
+export type SystemAppearanceRpcHandlers = RpcGroup.HandlersFrom<SystemAppearanceRpc>
 
 export const SystemAppearanceHandlersLive = SystemAppearanceRpcGroup.toLayer({
   "SystemAppearance.getAppearance": () =>
@@ -225,6 +232,7 @@ export const SystemAppearanceSurface = NativeSurface.make(
   SystemAppearanceRpcGroup,
   {
     service: SystemAppearanceClient,
+    capabilities: SystemAppearanceCapabilityMethods,
     handlers: SystemAppearanceHandlersLive,
     client: (client) =>
       systemAppearanceClientFromRpcClient(client, () =>
@@ -295,34 +303,8 @@ const makeSystemAppearanceBridgeProtocolLayer = (
 const subscribeSystemAppearanceEvent = (
   exchange: BridgeClientExchange,
   method: "SystemAppearance.AppearanceChanged"
-): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> => {
-  if (exchange.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeSystemAppearanceEventEnvelope(method, envelope)))
-}
-
-const decodeSystemAppearanceEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<SystemAppearanceChangedEvent, SystemAppearanceError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(SystemAppearanceChangedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
-}
+): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> =>
+  subscribeNativeEvent(exchange, method, SystemAppearanceChangedEvent)
 
 function systemAppearanceRpc<
   const Method extends string,

@@ -4,12 +4,9 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -101,6 +98,15 @@ export const DockMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const DockCapabilityMethods = Object.freeze([
+  "setBadgeCount",
+  "setBadgeText",
+  "setProgress",
+  "setMenu",
+  "setJumpList",
+  "requestAttention"
+] as const satisfies readonly (typeof DockMethodNames)[number][])
+
 export interface DockClientApi {
   readonly setBadgeCount: (count: number) => Effect.Effect<void, DockError, never>
   readonly setBadgeText: (text: string | null) => Effect.Effect<void, DockError, never>
@@ -157,12 +163,11 @@ export const makeDockServiceLayer = (client: DockClientApi): Layer.Layer<Dock> =
 export const makeDockBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<DockClient> =>
-  Layer.provide(DockSurface.clientLayer, makeDockBridgeProtocolLayer(exchange, options))
+): Layer.Layer<DockClient> => DockSurface.bridgeClientLayer(exchange, options)
 
 export type DockRpc = RpcGroup.Rpcs<typeof DockRpcGroup>
 
-export type DockRpcHandlers = Parameters<typeof DockRpcGroup.toLayer>[0]
+export type DockRpcHandlers = RpcGroup.HandlersFrom<DockRpc>
 
 export const DockHandlersLive = DockRpcGroup.toLayer({
   "Dock.setBadgeCount": (input) =>
@@ -205,6 +210,7 @@ export const DockHandlersLive = DockRpcGroup.toLayer({
 
 export const DockSurface = NativeSurface.make("Dock", DockRpcGroup, {
   service: DockClient,
+  capabilities: DockCapabilityMethods,
   handlers: DockHandlersLive,
   client: (client) => dockClientFromRpcClient(client)
 })
@@ -261,16 +267,6 @@ const dockClientFromRpcClient = (client: DesktopRpcClient<DockRpc>): DockClientA
       )
   } satisfies DockClientApi)
 }
-
-const makeDockBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 export const makeLinuxDockClient = (): DockClientApi => {
   const unsupportedEffect = <A>(

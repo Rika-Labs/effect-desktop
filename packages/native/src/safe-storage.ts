@@ -4,14 +4,11 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeSecretBytes,
   type SecretBytes,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError,
@@ -94,6 +91,13 @@ export const SafeStorageMethodNames = Object.freeze([
   "isAvailable"
 ] as const)
 
+const SafeStorageCapabilityMethods = Object.freeze([
+  "set",
+  "get",
+  "delete",
+  "list"
+] as const satisfies readonly (typeof SafeStorageMethodNames)[number][])
+
 export interface SafeStorageClientApi {
   readonly set: (key: string, value: SecretBytes) => Effect.Effect<void, SafeStorageError, never>
   readonly get: (key: string) => Effect.Effect<SecretBytes, SafeStorageError, never>
@@ -136,15 +140,11 @@ export const makeSafeStorageServiceLayer = (
 export const makeSafeStorageBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<SafeStorageClient> =>
-  Layer.provide(
-    SafeStorageSurface.clientLayer,
-    makeSafeStorageBridgeProtocolLayer(exchange, options)
-  )
+): Layer.Layer<SafeStorageClient> => SafeStorageSurface.bridgeClientLayer(exchange, options)
 
 export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>
 
-export type SafeStorageRpcHandlers = Parameters<typeof SafeStorageRpcGroup.toLayer>[0]
+export type SafeStorageRpcHandlers = RpcGroup.HandlersFrom<SafeStorageRpc>
 
 export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
   "SafeStorage.set": (input) =>
@@ -179,6 +179,7 @@ export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
 
 export const SafeStorageSurface = NativeSurface.make("SafeStorage", SafeStorageRpcGroup, {
   service: SafeStorageClient,
+  capabilities: SafeStorageCapabilityMethods,
   handlers: SafeStorageHandlersLive,
   client: (client) => safeStorageClientFromRpcClient(client)
 })
@@ -226,16 +227,6 @@ const safeStorageClientFromRpcClient = (
       ).pipe(Effect.map((result) => result.available))
   } satisfies SafeStorageClientApi)
 }
-
-const makeSafeStorageBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 export const makeLinuxSafeStorageClient = (): SafeStorageClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, SafeStorageError, never> =>

@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -18,6 +17,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-deskt
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   TrayActivatedEvent,
   TrayCreateInput,
@@ -96,6 +96,14 @@ export const TrayMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const TrayCapabilityMethods = Object.freeze([
+  "create",
+  "setIcon",
+  "setTooltip",
+  "setMenu",
+  "destroy"
+] as const satisfies readonly (typeof TrayMethodNames)[number][])
+
 export interface TrayClientApi {
   readonly create: (input: TrayCreateOptions) => Effect.Effect<TrayHandle, TrayError, never>
   readonly setIcon: (tray: TrayHandle, icon: string) => Effect.Effect<void, TrayError, never>
@@ -153,7 +161,7 @@ export const makeTrayBridgeClientLayer = (
 
 export type TrayRpc = RpcGroup.Rpcs<typeof TrayRpcGroup>
 
-export type TrayRpcHandlers = Parameters<typeof TrayRpcGroup.toLayer>[0]
+export type TrayRpcHandlers = RpcGroup.HandlersFrom<TrayRpc>
 
 export const TrayHandlersLive = TrayRpcGroup.toLayer({
   "Tray.create": (input) =>
@@ -191,6 +199,7 @@ export const TrayHandlersLive = TrayRpcGroup.toLayer({
 
 export const TraySurface = NativeSurface.make("Tray", TrayRpcGroup, {
   service: TrayClient,
+  capabilities: TrayCapabilityMethods,
   handlers: TrayHandlersLive,
   client: (client) => trayClientFromRpcClient(client, undefined)
 })
@@ -247,34 +256,8 @@ const makeTrayBridgeProtocolLayer = (
 const subscribeTrayEvent = (
   exchange: BridgeClientExchange | undefined,
   method: "Tray.Activated"
-): Stream.Stream<TrayActivatedEvent, TrayError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeTrayEventEnvelope(method, envelope)))
-}
-
-const decodeTrayEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<TrayActivatedEvent, TrayError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(TrayActivatedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
-}
+): Stream.Stream<TrayActivatedEvent, TrayError, never> =>
+  subscribeNativeEvent(exchange, method, TrayActivatedEvent)
 
 const toTrayHandle = (handle: TrayHandle): TrayHandle =>
   Object.freeze({
@@ -283,7 +266,7 @@ const toTrayHandle = (handle: TrayHandle): TrayHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as TrayHandle
+  })
 
 const decodeTrayCreateInput = (input: unknown): Effect.Effect<TrayCreateInput, TrayError, never> =>
   decodeInput(TrayCreateInput, input, "Tray.create")

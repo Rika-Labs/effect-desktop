@@ -2,7 +2,7 @@ import { isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { DesktopSchedules, type LayerGraphSnapshot } from "@effect-desktop/core"
-import { Context, Data, Effect, Option, Schema } from "effect"
+import { Context, Data, Effect, Option, Result, Schema } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
@@ -55,6 +55,12 @@ export class DoctorDiagnostic extends Schema.Class<DoctorDiagnostic>("DoctorDiag
   docsUrl: Schema.optionalKey(Schema.NonEmptyString),
   evidence: Schema.Array(DoctorEvidence)
 }) {}
+
+const PackageJsonMetadata = Schema.Struct({
+  packageManager: Schema.optionalKey(Schema.Unknown)
+})
+
+type PackageJsonMetadata = Schema.Schema.Type<typeof PackageJsonMetadata>
 
 export interface DoctorEnvironmentApi {
   readonly get: (name: string) => Effect.Effect<Option.Option<string>, never, never>
@@ -463,16 +469,15 @@ const probeConfig = (
         })
       )
     }
-    const imported = yield* Effect.promise(async () => {
-      try {
-        return {
-          ok: true as const,
-          module: (await import(pathToFileUrl(configPath))) as { readonly default?: unknown }
-        }
-      } catch (cause) {
-        return { ok: false as const, cause }
-      }
-    })
+    const imported = yield* Effect.tryPromise({
+      try: async () => (await import(pathToFileUrl(configPath))) as { readonly default?: unknown },
+      catch: (cause) => cause
+    }).pipe(
+      Effect.match({
+        onFailure: (cause) => ({ ok: false as const, cause }),
+        onSuccess: (module) => ({ ok: true as const, module })
+      })
+    )
     if (!imported.ok) {
       return missingResult(
         missing({
@@ -687,8 +692,13 @@ const commandProbe = (
   options
     .commandRunner({ probe, command, args, cwd: options.cwd, platform: options.platform })
     .pipe(
-      Effect.map(() => ok(probe, command, `${command} is available`)),
-      Effect.catch((error) => Effect.succeed(missingResult(error)))
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: () => ok(probe, command, `${command} is available`),
+          onFailure: missingResult
+        })
+      )
     )
 
 const ok = (name: DoctorProbeName, component: string, message: string): DoctorProbeResult =>
@@ -747,23 +757,22 @@ const readPinnedBunVersion = (cwd: string): Effect.Effect<string, never, never> 
 
 const readPackageJson = (
   cwd: string
-): Effect.Effect<{ readonly packageManager?: unknown } | undefined, never, never> =>
+): Effect.Effect<PackageJsonMetadata | undefined, never, never> =>
   runReleaseFileSystem(
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
       const content = yield* fs.readFileString(join(cwd, "package.json"))
-      return JSON.parse(content) as { readonly packageManager?: unknown }
+      return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(PackageJsonMetadata))(content)
     })
-  ).pipe(Effect.catch(() => Effect.succeed(undefined)))
+  ).pipe(Effect.option, Effect.map(Option.getOrUndefined))
 
 const pathExists = (path: string): Effect.Effect<boolean, never, never> =>
   runReleaseFileSystem(
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
-      yield* fs.access(path)
-      return true
+      return yield* fs.exists(path)
     })
-  ).pipe(Effect.catch(() => Effect.succeed(false)))
+  ).pipe(Effect.option, Effect.map(Option.getOrElse(() => false)))
 
 const compareVersions = (actual: string, floor: string): number => {
   const actualParts = parseVersion(actual)
@@ -868,17 +877,20 @@ const readDesktopConfigForDoctor = (
 ): Effect.Effect<AppConfig | undefined, never, never> =>
   Effect.gen(function* () {
     const configPath = resolve(options.cwd, options.configPath ?? "desktop.config.ts")
-    const module = yield* Effect.tryPromise({
-      try: async () =>
-        (await import(pathToFileURL(configPath).href)) as {
-          readonly default?: unknown
-        },
-      catch: (cause) => cause
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
-    if (module === undefined || !isRecord(module.default)) {
+    const module = yield* Effect.option(
+      Effect.tryPromise({
+        try: async () =>
+          (await import(pathToFileURL(configPath).href)) as {
+            readonly default?: unknown
+          },
+        catch: (cause) => cause
+      })
+    )
+    const defaultExport = Option.getOrUndefined(module)?.default
+    if (!isRecord(defaultExport)) {
       return undefined
     }
-    return module.default as AppConfig
+    return defaultExport as AppConfig
   })
 
 const remediationForCommand = (command: string): string => {

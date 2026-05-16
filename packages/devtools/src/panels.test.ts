@@ -5,7 +5,7 @@ import {
   InspectorSafetyPolicyLive,
   LayerGraphSnapshot
 } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
+import { Cause, Clock, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
 
 import {
   ClusterPanel,
@@ -67,7 +67,7 @@ test("ClusterPanelLive reads Effect cluster services", async () => {
 })
 
 test("WorkflowExecutionRegistry tracks started and completed executions", async () => {
-  const now = Date.now()
+  const now = 1_710_000_000_000
   const registry = await Effect.runPromise(makeWorkflowExecutionRegistry({ now: () => now }))
 
   await Effect.runPromise(
@@ -96,7 +96,7 @@ test("WorkflowExecutionRegistry tracks started and completed executions", async 
 })
 
 test("WorkflowsPanel snapshot counts running and completed executions", async () => {
-  const now = Date.now()
+  const now = 1_710_000_000_000
   const registry = await Effect.runPromise(makeWorkflowExecutionRegistry({ now: () => now }))
 
   await Effect.runPromise(
@@ -137,7 +137,7 @@ test("WorkflowsPanel snapshot counts running and completed executions", async ()
 })
 
 test("WorkflowsPanel observes registry changes without polling", async () => {
-  const now = Date.now()
+  const now = 1_710_000_000_000
   const registry = await Effect.runPromise(makeWorkflowExecutionRegistry({ now: () => now }))
 
   const result = await Effect.runPromise(
@@ -171,21 +171,25 @@ test("WorkflowsPanel observes registry changes without polling", async () => {
 })
 
 test("ReactivityTracker records invalidation events", async () => {
-  const now = Date.now()
-  const tracker = await Effect.runPromise(makeReactivityTracker({ now: () => now }))
-
-  await Effect.runPromise(tracker.trackInvalidation(["key-a", "key-b"]))
-  await Effect.runPromise(tracker.trackInvalidation({ users: ["user-1"] }))
-
-  const rows = await Effect.runPromise(tracker.list())
+  const timestamp = 1_710_000_444_000
+  const rows = await Effect.runPromise(
+    Effect.gen(function* () {
+      const tracker = yield* makeReactivityTracker()
+      yield* tracker.trackInvalidation(["key-a", "key-b"])
+      yield* tracker.trackInvalidation({ users: ["user-1"] })
+      return yield* tracker.list()
+    }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
 
   expect(rows).toHaveLength(2)
   expect(rows[0]?.keys).toEqual(["key-a", "key-b"])
+  expect(rows[0]?.timestampMs).toBe(timestamp)
   expect(rows[1]?.keys).toEqual(["users:user-1"])
+  expect(rows[1]?.timestampMs).toBe(timestamp)
 })
 
 test("ReactivityPanel snapshot aggregates unique keys", async () => {
-  const now = Date.now()
+  const now = 1_710_000_000_000
   const tracker = await Effect.runPromise(makeReactivityTracker({ now: () => now }))
 
   await Effect.runPromise(tracker.trackInvalidation(["key-a"]))
@@ -246,6 +250,37 @@ test("LogsPanel sanitizes logger text before buffering", async () => {
   expect(JSON.stringify(result)).not.toContain("secret-key")
   expect(result.records[0]?.message).toContain("<redacted>")
   expect(result.records[0]?.safety.redacted).toBeGreaterThan(0)
+})
+
+test("LogsPanel observe emits initial snapshot and scheduled refresh", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const panel = yield* LogsPanel
+      const logLayer = panel.layer()
+      const snapshots = yield* panel
+        .observe()
+        .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* Effect.yieldNow
+      yield* Effect.logInfo("scheduled refresh").pipe(Effect.provide(logLayer))
+
+      return yield* Fiber.join(snapshots).pipe(Effect.timeoutOption("100 millis"))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          LogsPanelLive({ levelFilter: "Info", frameInterval: "1 millis" }),
+          InspectorSafetyPolicyLive()
+        )
+      )
+    )
+  )
+
+  expect(Option.isSome(result)).toBe(true)
+  const snapshots = Option.getOrThrow(result)
+  expect(snapshots[0]?.records).toEqual([])
+  expect(snapshots[1]?.records.some((record) => record.message.includes("scheduled refresh"))).toBe(
+    true
+  )
 })
 
 test("EventLogPanel lists entries from an empty journal", async () => {
@@ -565,3 +600,11 @@ const devtoolsSnapshot: DevtoolsSnapshot = {
   },
   safety: emptyInspectorSafetySummary
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})

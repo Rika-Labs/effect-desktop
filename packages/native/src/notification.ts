@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -18,6 +17,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-deskt
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   NotificationActionEvent,
   NotificationClickEvent,
@@ -92,6 +92,12 @@ export const NotificationMethodNames = Object.freeze([
   "getPermissionStatus"
 ] as const)
 
+const NotificationCapabilityMethods = Object.freeze([
+  "show",
+  "close",
+  "requestPermission"
+] as const satisfies readonly (typeof NotificationMethodNames)[number][])
+
 export interface NotificationClientApi {
   readonly show: (
     input: NotificationShowOptions
@@ -165,7 +171,7 @@ export const makeNotificationBridgeClientLayer = (
 
 export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
-export type NotificationRpcHandlers = Parameters<typeof NotificationRpcGroup.toLayer>[0]
+export type NotificationRpcHandlers = RpcGroup.HandlersFrom<NotificationRpc>
 
 export const NotificationHandlersLive = NotificationRpcGroup.toLayer({
   "Notification.show": (input) =>
@@ -200,6 +206,7 @@ export const NotificationHandlersLive = NotificationRpcGroup.toLayer({
 
 export const NotificationSurface = NativeSurface.make("Notification", NotificationRpcGroup, {
   service: NotificationClient,
+  capabilities: NotificationCapabilityMethods,
   handlers: NotificationHandlersLive,
   client: (client) => notificationClientFromRpcClient(client, undefined)
 })
@@ -278,43 +285,13 @@ const subscribeNotificationEvent = <A>(
   exchange: BridgeClientExchange | undefined,
   method: string,
   schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, NotificationError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeNotificationEventEnvelope(method, schema, envelope)))
-}
-
-const decodeNotificationEventEnvelope = <A>(
-  operation: string,
-  schema: Schema.Codec<A, unknown, never, never>,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<A, NotificationError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(schema)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
-}
+): Stream.Stream<A, NotificationError, never> => subscribeNativeEvent(exchange, method, schema)
 
 const toNotificationShowInput = (input: NotificationShowOptions): unknown => ({
   title: input.title,
   body: input.body,
   ...(input.actions === undefined ? {} : { actions: input.actions }),
-  ...(input.ownerWindow === undefined
-    ? {}
-    : { ownerWindow: toWindowHandle(input.ownerWindow as WindowHandle) })
+  ...(input.ownerWindow === undefined ? {} : { ownerWindow: toWindowHandle(input.ownerWindow) })
 })
 
 const toWindowHandle = (handle: WindowHandle): WindowHandle =>
@@ -324,7 +301,7 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as WindowHandle
+  })
 
 const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
   Object.freeze({
@@ -333,7 +310,7 @@ const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as NotificationHandle
+  })
 
 const decodeNotificationShowInput = (
   input: unknown

@@ -2,6 +2,7 @@ import {
   P,
   type DesktopRpcClient,
   CommandRegistry,
+  makeResourceId,
   PermissionActor,
   PermissionContext,
   type CommandRegistryError,
@@ -15,7 +16,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
@@ -30,6 +30,7 @@ import {
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
 import {
@@ -168,14 +169,15 @@ const invokeContextMenuCommand = (
     )
     .pipe(
       Effect.asVoid,
-      Effect.catch((error: CommandRegistryError) =>
+      Effect.tapError((error: CommandRegistryError) =>
         Effect.logWarning("ContextMenu command invocation failed", {
           commandId,
           error: commandBindingWarningError(error),
           itemId,
           windowId
         })
-      )
+      ),
+      Effect.ignore
     )
 
 export const makeContextMenuClientLayer = (
@@ -199,7 +201,7 @@ export const makeContextMenuBridgeClientLayer = (
 
 export type ContextMenuRpc = RpcGroup.Rpcs<typeof ContextMenuRpcGroup>
 
-export type ContextMenuRpcHandlers = Parameters<typeof ContextMenuRpcGroup.toLayer>[0]
+export type ContextMenuRpcHandlers = RpcGroup.HandlersFrom<ContextMenuRpc>
 
 export const ContextMenuHandlersLive = ContextMenuRpcGroup.toLayer({
   "ContextMenu.show": (input) =>
@@ -217,6 +219,7 @@ export const ContextMenuHandlersLive = ContextMenuRpcGroup.toLayer({
 
 export const ContextMenuSurface = NativeSurface.make("ContextMenu", ContextMenuRpcGroup, {
   service: ContextMenuClient,
+  capabilities: ContextMenuMethodNames,
   handlers: ContextMenuHandlersLive,
   client: (client) => contextMenuClientFromRpcClient(client, undefined)
 })
@@ -272,34 +275,8 @@ const makeContextMenuBridgeProtocolLayer = (
 const subscribeContextMenuEvent = (
   exchange: BridgeClientExchange | undefined,
   method: "ContextMenu.Activated"
-): Stream.Stream<ContextMenuActivatedEvent, ContextMenuError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeContextMenuEventEnvelope(method, envelope)))
-}
-
-const decodeContextMenuEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<ContextMenuActivatedEvent, ContextMenuError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(ContextMenuActivatedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
-}
+): Stream.Stream<ContextMenuActivatedEvent, ContextMenuError, never> =>
+  subscribeNativeEvent(exchange, method, ContextMenuActivatedEvent)
 
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
@@ -311,10 +288,10 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const contextMenuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
-  `context-menu-command:${itemId}:${commandId}` as ResourceId
+  makeResourceId(`context-menu-command:${itemId}:${commandId}`)
 
 const toContextMenuShowInput = (input: ContextMenuShowOptions): unknown => ({
-  window: toWindowHandle(input.window as WindowHandle),
+  window: toWindowHandle(input.window),
   template: input.template,
   position: input.position
 })
@@ -326,7 +303,7 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as WindowHandle
+  })
 
 const decodeContextMenuShowInput = (
   input: unknown

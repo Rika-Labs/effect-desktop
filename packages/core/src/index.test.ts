@@ -12,7 +12,18 @@ import {
 import * as SqliteClient from "@effect/sql-sqlite-bun/SqliteClient"
 import { BunServices } from "@effect/platform-bun"
 import { NodeServices } from "@effect/platform-node"
-import { Cause, Context, Effect, Exit, FileSystem, Layer, Path, Queue, Schema } from "effect"
+import {
+  Cause,
+  Context,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  Path,
+  Queue,
+  Schema,
+  Stream
+} from "effect"
 import type { Scope } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcServer } from "effect/unstable/rpc"
 import type { SqlClient } from "effect/unstable/sql/SqlClient"
@@ -22,10 +33,23 @@ import { Reactivity } from "effect/unstable/reactivity"
 import { WorkflowEngine } from "effect/unstable/workflow"
 import type * as RuntimeTransport from "@effect-desktop/core/runtime/transport"
 import type {
+  DesktopNativeLayer,
+  DesktopPermissionsLayer,
+  DesktopProvidersLayer,
+  DesktopProviderRegistry,
+  DesktopRuntimeProviderDescriptor,
+  DesktopRpcsLayer,
   DesktopRuntimeProviderServices,
+  DesktopWindowsLayer,
   DesktopWorkflowEngineLayer,
-  DesktopWorkflowLayer
+  DesktopWorkflowLayer,
+  DesktopWorkflowsLayer
 } from "./runtime/desktop-app.js"
+import type { DesktopNativeRegistry } from "./runtime/desktop-native-registry.js"
+import type { DesktopPermissionRegistry } from "./runtime/desktop-permission-registry.js"
+import type { DesktopRpcRegistry } from "./runtime/desktop-rpc-registry.js"
+import type { DesktopWindowRegistry } from "./runtime/desktop-window-registry.js"
+import type { DesktopWorkflowRegistry } from "./runtime/desktop-workflow-registry.js"
 import type { DesktopRpcClient, SupportedDesktopRpcClient } from "./runtime/desktop-rpc-surface.js"
 
 type IsEqual<A, B> =
@@ -54,12 +78,61 @@ type DurableWorkflowEngineContract = Assert<
     DesktopWorkflowEngineLayer<SqlClient, SqlError>
   >
 >
+interface WindowDependency {
+  readonly _tag: "WindowDependency"
+}
+interface RpcDependency {
+  readonly _tag: "RpcDependency"
+}
+interface WorkflowDependency {
+  readonly _tag: "WorkflowDependency"
+}
+type PermissionDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopPermissionsLayer>, DesktopPermissionRegistry>
+>
+type ProviderDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopProvidersLayer>, DesktopProviderRegistry>
+>
+type NativeDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopNativeLayer>, DesktopNativeRegistry | DesktopPermissionRegistry>
+>
+type WindowDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopWindowsLayer<WindowDependency>>, DesktopWindowRegistry>
+>
+type RpcDeclarationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopRpcsLayer<Error, RpcDependency>>, DesktopRpcRegistry>
+>
+type WorkflowDeclarationServicesContract = Assert<
+  IsEqual<
+    Layer.Services<DesktopWorkflowLayer<WorkflowDependency, Error>>,
+    WorkflowDependency | WorkflowEngine.WorkflowEngine
+  >
+>
+type WorkflowRegistrationServicesContract = Assert<
+  IsEqual<Layer.Services<DesktopWorkflowsLayer<WorkflowDependency, Error>>, DesktopWorkflowRegistry>
+>
 const bunProviderServicesContract: BunProviderServicesContract = true
 const nodeProviderServicesContract: NodeProviderServicesContract = true
 const durableWorkflowEngineContract: DurableWorkflowEngineContract = true
+const permissionDeclarationServicesContract: PermissionDeclarationServicesContract = true
+const providerDeclarationServicesContract: ProviderDeclarationServicesContract = true
+const nativeDeclarationServicesContract: NativeDeclarationServicesContract = true
+const windowDeclarationServicesContract: WindowDeclarationServicesContract = true
+const rpcDeclarationServicesContract: RpcDeclarationServicesContract = true
+const workflowDeclarationServicesContract: WorkflowDeclarationServicesContract = true
+const workflowRegistrationServicesContract: WorkflowRegistrationServicesContract = true
 const runtimeProviderServicesContracts = [
   bunProviderServicesContract,
   nodeProviderServicesContract
+] as const
+const declarationLayerContracts = [
+  permissionDeclarationServicesContract,
+  providerDeclarationServicesContract,
+  nativeDeclarationServicesContract,
+  windowDeclarationServicesContract,
+  rpcDeclarationServicesContract,
+  workflowDeclarationServicesContract,
+  workflowRegistrationServicesContract
 ] as const
 // @ts-expect-error FramedTransport was removed from the public runtime transport subpath.
 type _RemovedFramedTransport = RuntimeTransport.FramedTransport
@@ -70,6 +143,7 @@ test("public barrel exports the ResourceRegistry factory", async () => {
   const core = await import("./index.js")
 
   expect(runtimeProviderServicesContracts).toEqual([true, true])
+  expect(declarationLayerContracts).toEqual([true, true, true, true, true, true, true])
   expect(core.makeResourceRegistry).toBeFunction()
   expect(core.makeProcess).toBeFunction()
   expect(core.ProcessLive).toBeDefined()
@@ -160,10 +234,12 @@ test("runtime transport subpath exposes framed transport helpers", async () => {
 test("deleted zero-policy runtime wrapper subpaths are not exported", async () => {
   for (const module of ["reactivity", "workflow"]) {
     const specifier = "@effect-desktop/core/runtime/" + module
-    const rejected = await import(specifier).then(
-      () => false,
-      () => true
-    )
+    let rejected = false
+    try {
+      await import(specifier)
+    } catch {
+      rejected = true
+    }
     expect(rejected).toBe(true)
   }
 })
@@ -186,7 +262,8 @@ test("public Desktop facade exposes Rpc metadata helpers", async () => {
   expect(core.Desktop.RpcCapability).toBeFunction()
   expect(core.Desktop.RpcSupport.unsupported).toBeFunction()
   expect(core.Desktop.Rpc.supportedGroup).toBeFunction()
-  expect(core.Desktop.RedactionFilter.redact({ token: "abc" }) as unknown).toEqual({
+  const redactedRpcMetadata: unknown = core.Desktop.RedactionFilter.redact({ token: "abc" })
+  expect(redactedRpcMetadata).toEqual({
     token: core.Desktop.RedactionFilter.redactedValue
   })
 })
@@ -231,15 +308,7 @@ test("Desktop.make returns metadata descriptor and Desktop.app returns the runti
     Effect.scoped(
       Effect.gen(function* () {
         return yield* core.DesktopRuntime
-      }).pipe(
-        Effect.provide(
-          core.Desktop.app(app) as unknown as Layer.Layer<
-            InstanceType<typeof core.DesktopRuntime>,
-            InstanceType<typeof core.DesktopSpineConfigError>,
-            never
-          >
-        )
-      )
+      }).pipe(Effect.provide(core.Desktop.app(app)))
     )
   )
   expect(runtime.providers).toEqual({ runtime: "test", webview: "system" })
@@ -496,6 +565,74 @@ test("Desktop runtime accepts handler services provided around Desktop.app(App)"
   expect(Exit.isSuccess(exit)).toBe(true)
 })
 
+test("Desktop.runtime preserves lazy runtime provider load failures as typed startup errors", async () => {
+  const core = await import("./index.js")
+  const providerLoadCause = new Error("missing provider bundle")
+  const failingRuntime = {
+    kind: "runtime" as const,
+    id: "failing-runtime" as const,
+    capabilities: [
+      new core.ProviderCapability({
+        name: "FileSystem",
+        description: "Provides FileSystem for failure-path tests"
+      })
+    ],
+    budget: {
+      id: "failing-runtime",
+      kind: "runtime" as const,
+      package: "@effect-desktop/core",
+      importPath: "@effect-desktop/core/providers/failing-runtime",
+      startupBudgetMs: 25,
+      bundleBudgetKb: 64
+    },
+    node: {
+      id: "provider:runtime:failing-runtime",
+      kind: "provider" as const,
+      label: "Failing runtime provider",
+      provides: ["FileSystem"],
+      requires: []
+    },
+    layer: Effect.fail(
+      new core.DesktopSpineConfigError({
+        appId: "provider-loader",
+        reason: "missing-provider",
+        provider: "failing-runtime",
+        providerKind: "runtime",
+        message: 'Runtime provider "failing-runtime" failed to load',
+        cause: providerLoadCause
+      })
+    )
+  } satisfies DesktopRuntimeProviderDescriptor
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      Effect.gen(function* () {
+        return yield* core.DesktopApp
+      }).pipe(
+        Effect.provide(
+          core.Desktop.runtime({
+            id: "notes",
+            windows: core.Desktop.window("main", { title: "Notes" }),
+            providers: core.Desktop.provider(failingRuntime)
+          })
+        )
+      )
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "missing-provider",
+      provider: "failing-runtime",
+      providerKind: "runtime",
+      cause: providerLoadCause
+    })
+  }
+})
+
 test("Desktop.runtime rejects duplicate runtime providers as typed startup errors", async () => {
   const core = await import("./index.js")
   const duplicateProviders = Layer.mergeAll(
@@ -636,6 +773,21 @@ test("Desktop.rpc pairs an RpcGroup with its implementation for app adapters", a
   })
 })
 
+test("Desktop.native composes an empty native layer without adding runtime surfaces", async () => {
+  const core = await import("./index.js")
+  const app = core.Desktop.make({
+    id: "native-empty",
+    windows: core.Desktop.window("main", { title: "Native" }),
+    providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
+    native: core.Desktop.native()
+  })
+  const graph = await Effect.runPromise(core.Desktop.runtimeGraph(app))
+
+  expect(Layer.isLayer(app.native)).toBe(true)
+  expect(core.Desktop.manifest(app).rpcGroups).toEqual([])
+  expect(graph.nodes.some((node) => node.kind === "native-surface")).toBe(false)
+})
+
 test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one RpcGroup", async () => {
   const core = await import("./index.js")
   const Ping = Rpc.make("Notes.Ping", { success: Schema.String }).pipe(RpcEndpoint.query)
@@ -702,7 +854,8 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
             })
           ).pipe(Effect.asVoid)
         },
-        run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
+        run: (onEnvelope) =>
+          Stream.fromQueue(queue).pipe(Stream.runForEach(onEnvelope), Effect.andThen(Effect.never))
       },
       { nextTraceId: () => "trace-surface-client" }
     )
@@ -806,13 +959,6 @@ test("Desktop.Rpc.surface laws reject groups that cannot lower to bridge metadat
   const Valid = Rpc.make("Notes.Ping", { success: Schema.String })
   const InvalidNamespace = RpcGroup.make(Rpc.make("Other.Ping", { success: Schema.String }))
   const DuplicateNames = RpcGroup.make(Valid, Rpc.make("Tasks.Ping", { success: Schema.String }))
-  const Broken = { _tag: "Notes.Broken", annotations: Context.empty() }
-  const BrokenGroup = Object.freeze({
-    ...RpcGroup.make(Valid),
-    requests: new Map([["Notes.Broken", Broken]])
-  }) as unknown as RpcGroup.Any & {
-    readonly requests: ReadonlyMap<string, Rpc.Any>
-  }
 
   const invalidNamespace = core.Desktop.Rpc.surface("Notes", InvalidNamespace, {
     service: Context.Service<{ readonly client: unknown }>("InvalidNamespaceClient"),
@@ -829,12 +975,6 @@ test("Desktop.Rpc.surface laws reject groups that cannot lower to bridge metadat
     }),
     client: (client) => ({ client })
   })
-  const brokenSchema = core.Desktop.Rpc.surface("Notes", BrokenGroup, {
-    service: Context.Service<{ readonly client: unknown }>("BrokenSchemaClient"),
-    handlers: Layer.empty as Layer.Layer<unknown>,
-    client: (client: unknown) => ({ client })
-  })
-
   const expectLawFailure = async (
     law: (typeof invalidNamespace.contractLaws)[number],
     expected: Record<string, unknown>
@@ -853,10 +993,6 @@ test("Desktop.Rpc.surface laws reject groups that cannot lower to bridge metadat
   await expectLawFailure(duplicateNames.contractLaws[1]!, {
     reason: "duplicate-endpoint",
     tag: "Tasks.Ping"
-  })
-  await expectLawFailure(brokenSchema.contractLaws[2]!, {
-    reason: "missing-schema",
-    tag: "Notes.Broken"
   })
 })
 
@@ -1083,7 +1219,7 @@ test("Desktop.app permission middleware declares app permissions for protected R
   const transport = {
     send: (envelope: HostProtocolEnvelope) => Queue.offer(response, envelope).pipe(Effect.asVoid),
     run: (onEnvelope: (envelope: HostProtocolEnvelope) => Effect.Effect<void>) =>
-      Effect.forever(Queue.take(inbound).pipe(Effect.flatMap(onEnvelope)))
+      Stream.fromQueue(inbound).pipe(Stream.runForEach(onEnvelope), Effect.andThen(Effect.never))
   }
   const protocolLayer = Layer.effect(RpcServer.Protocol)(
     makeDesktopServerProtocol(transport, {

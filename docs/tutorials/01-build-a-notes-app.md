@@ -24,8 +24,8 @@ By the end, you'll understand how every Effect Desktop app is shaped — contrac
 ```mermaid
 flowchart LR
   UI[NotesPanel.tsx] -- useDesktop(NotesRpcs) --> Bridge
-  Bridge -- HostProtocolEnvelope --> Handlers[NotesHandlersLive]
-  Handlers --> SQLite[(SqlClient)]
+  Bridge -- HostProtocolEnvelope --> Runtime[RpcGroup.toLayer]
+  Runtime --> SQLite[(SqlClient)]
 ```
 
 Three new files in `apps/inspector/src/`:
@@ -173,9 +173,9 @@ export const App = Desktop.make({
   id: "dev.example.notes",
   windows: Desktop.window("main", { title: "Notes" }),
   rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
-  // For multiple windows or RPC surfaces, compose with Layer.mergeAll:
-  //   windows: Layer.mergeAll(Desktop.window("main", ...), Desktop.window("compose", ...))
-  //   rpcs:    Layer.mergeAll(Desktop.rpc(NotesRpcs, NotesHandlersLive), Desktop.rpc(...))
+  // For multiple windows or RPC surfaces, compose with Desktop helpers:
+  //   windows: Desktop.windows(Desktop.window("main", ...), Desktop.window("compose", ...))
+  //   rpcs:    Desktop.rpcs(Desktop.rpc(NotesRpcs, NotesHandlersLive), Desktop.rpc(...))
 })
 
 export const Manifest = Desktop.manifest(App)

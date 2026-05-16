@@ -112,7 +112,7 @@ describe("Settings", () => {
   test("invalid set value returns typed InvalidArgument before writing", async () => {
     const { store } = await makeFixture()
 
-    const exit = await Effect.runPromiseExit(store.set("counter", Counter, "not-a-number" as never))
+    const exit = await Effect.runPromiseExit(store.set("counter", Counter, "not-a-number"))
     const stored = await Effect.runPromise(store.get("counter", Schema.Unknown))
 
     expectFailure(exit, SettingsInvalidArgumentError)

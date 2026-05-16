@@ -6,7 +6,7 @@ import {
   type CspPolicy
 } from "@effect-desktop/config"
 import { cspInspectorEvent, type CspInspectorEvent } from "@effect-desktop/core"
-import { Context, Data, Effect, Layer, Option, PubSub, Schema, Scope, Stream } from "effect"
+import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Scope, Stream } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import {
   HttpApi,
@@ -205,6 +205,7 @@ const buildAssetResponse = (
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> =>
   Effect.gen(function* () {
     const nonce = yield* mintCspNonce
+    const timestamp = yield* Clock.currentTimeMillis
     const headers = cspHeaders(policy, nonce)
     yield* inspector.emit(
       cspInspectorEvent({
@@ -214,7 +215,7 @@ const buildAssetResponse = (
         source: "AppHttpServer",
         traceId: `csp:${nonce.value}`,
         outcome: headers["content-security-policy"] === undefined ? "disabled" : "applied",
-        timestamp: Date.now(),
+        timestamp,
         directives: policy.directives
       })
     )
@@ -290,14 +291,15 @@ export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolv
               })
 
             if (hasTraversal(request.url)) {
+              const timestamp = yield* Clock.currentTimeMillis
               yield* cspInspector.emit(
                 cspInspectorEvent({
                   kind: "csp",
                   decision: "blocked",
                   source: "AppHttpServer",
-                  traceId: `csp:${Date.now()}`,
+                  traceId: `csp:${timestamp}`,
                   outcome: "blocked",
-                  timestamp: Date.now(),
+                  timestamp,
                   resource: request.url,
                   reason: "path-traversal"
                 })
@@ -307,14 +309,15 @@ export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolv
 
             const url = new URL(request.url, "app://localhost")
             if (!ALLOWED_SCHEMES.has(url.protocol) || !ALLOWED_HOSTS.has(url.hostname)) {
+              const timestamp = yield* Clock.currentTimeMillis
               yield* cspInspector.emit(
                 cspInspectorEvent({
                   kind: "csp",
                   decision: "blocked",
                   source: "AppHttpServer",
-                  traceId: `csp:${Date.now()}`,
+                  traceId: `csp:${timestamp}`,
                   outcome: "blocked",
-                  timestamp: Date.now(),
+                  timestamp,
                   resource: request.url,
                   reason: "origin-not-allowed"
                 })

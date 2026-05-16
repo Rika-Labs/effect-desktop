@@ -3,12 +3,9 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -118,12 +115,11 @@ export const makeProtocolServiceLayer = (client: ProtocolClientApi): Layer.Layer
 export const makeProtocolBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<ProtocolClient> =>
-  Layer.provide(ProtocolSurface.clientLayer, makeProtocolBridgeProtocolLayer(exchange, options))
+): Layer.Layer<ProtocolClient> => ProtocolSurface.bridgeClientLayer(exchange, options)
 
 export type ProtocolRpc = RpcGroup.Rpcs<typeof ProtocolRpcGroup>
 
-export type ProtocolRpcHandlers = Parameters<typeof ProtocolRpcGroup.toLayer>[0]
+export type ProtocolRpcHandlers = RpcGroup.HandlersFrom<ProtocolRpc>
 
 export const ProtocolHandlersLive = ProtocolRpcGroup.toLayer({
   "Protocol.registerAppProtocol": (input) =>
@@ -150,6 +146,7 @@ export const ProtocolHandlersLive = ProtocolRpcGroup.toLayer({
 
 export const ProtocolSurface = NativeSurface.make("Protocol", ProtocolRpcGroup, {
   service: ProtocolClient,
+  capabilities: ProtocolMethodNames,
   handlers: ProtocolHandlersLive,
   client: (client) => protocolClientFromRpcClient(client)
 })
@@ -194,16 +191,6 @@ const protocolClientFromRpcClient = (client: DesktopRpcClient<ProtocolRpc>): Pro
       )
   } satisfies ProtocolClientApi)
 }
-
-const makeProtocolBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const validateRegisterAppProtocolInput = (
   input: ProtocolRegisterAppProtocolInput

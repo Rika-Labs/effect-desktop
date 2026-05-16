@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import { Desktop, MissingDesktopRpcClientError } from "@effect-desktop/core"
-import { Deferred, Effect, Schema, Stream } from "effect"
+import { Deferred, Effect, Schedule, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createApp, effectScope } from "vue"
 
@@ -12,6 +13,17 @@ const Root = {
     return () => null
   }
 }
+
+test("VueDesktop adapter runtime uses Effect disposal primitives", () => {
+  const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8")
+
+  expect(source).toContain("makeFrameworkRuntime(runtime)")
+  expect(source).toContain("Effect.runCallback(runtime.disposeEffect)")
+  expect(source).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(source).not.toContain("void runtime.dispose()")
+  expect(source).not.toContain("await frameworkRuntime.dispose()")
+  expect(source).not.toContain("runFrameworkPromiseExit")
+})
 
 test("VueDesktop.from exposes app-scoped composables from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
@@ -71,7 +83,7 @@ test("VueDesktop.useDesktop keeps reserved endpoint names as own properties", ()
   app.runWithContext(() => {
     const scope = effectScope()
     scope.run(() => {
-      const notes = NotesVue.useDesktop(NotesRpcs) as unknown as Record<string, unknown>
+      const notes = NotesVue.useDesktop(NotesRpcs)
       expect(Object.getPrototypeOf(notes)).toBeNull()
       expect(Object.prototype.hasOwnProperty.call(notes, "__proto__")).toBe(true)
     })
@@ -311,11 +323,12 @@ test("VueDesktop.useDesktop exposes RpcSupport metadata on generated endpoints",
 })
 
 const waitFor = async (predicate: () => boolean): Promise<void> => {
-  for (let index = 0; index < 100; index += 1) {
-    if (predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
-  expect(predicate()).toBe(true)
+  await Effect.runPromise(
+    Effect.suspend(() =>
+      predicate() ? Effect.void : Effect.fail(new Error("condition not met"))
+    ).pipe(
+      Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(100)))),
+      Effect.mapError(() => new Error("timed out waiting for condition"))
+    )
+  )
 }

@@ -12,7 +12,19 @@ import {
   HostProtocolStaleHandleError
 } from "@effect-desktop/bridge"
 import { BunServices } from "@effect/platform-bun"
-import { Cause, Deferred, Effect, Exit, Fiber, Option, PlatformError, Sink, Stream } from "effect"
+import {
+  Cause,
+  Clock,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Option,
+  PlatformError,
+  Schedule,
+  Sink,
+  Stream
+} from "effect"
 import { ChildProcessSpawner } from "effect/unstable/process"
 
 import {
@@ -80,7 +92,7 @@ processTest("Process publishes typed execution inspector events", async () => {
     { inspector, now: incrementingClock(100) }
   )
   const observed = Effect.runFork(inspector.events.pipe(Stream.take(2), Stream.runCollect))
-  await Bun.sleep(0)
+  await Effect.runPromise(Effect.yieldNow)
 
   const handle = await Effect.runPromise(fixture.service.spawn("echo", ["hi"]))
   await Effect.runPromise(handle.exit)
@@ -225,6 +237,33 @@ processTest(
     }
   }
 )
+
+processTest("Process spawn failure timestamps fall back to the Effect Clock", async () => {
+  const timestamp = 1_715_001_234_000
+  const inspector = await Effect.runPromise(makeExecutionInspectorCollector())
+  let spawnCalls = 0
+  const fixture = await makeFixture(
+    makeFakeSpawner(() => {
+      spawnCalls += 1
+      return makeFakeChild({ exit: { code: 0 }, stdout: [] })
+    }),
+    { inspector, now: () => Number.NaN }
+  )
+  const observed = Effect.runFork(inspector.events.pipe(Stream.take(1), Stream.runCollect))
+  await Effect.runPromise(Effect.yieldNow)
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service
+      .spawn("echo", ["hi"])
+      .pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
+  const events = [...(await Effect.runPromise(Fiber.join(observed)))]
+
+  expectFailure(exit, HostProtocolInvalidArgumentError)
+  expect(spawnCalls).toBe(0)
+  expect(events[0]?.status).toBe("failure")
+  expect(events[0]?.timestamp).toBe(timestamp)
+})
 
 processTest("Process spawn denies binaries by default before adapter activity", async () => {
   let spawnCalls = 0
@@ -634,9 +673,7 @@ processTest("Process stdin rejects non-byte chunks without writing bytes", async
   const fixture = await makeFixture(makeFakeSpawner(() => child))
   const handle = await Effect.runPromise(fixture.service.spawn("cat", []))
 
-  const exit = await Effect.runPromiseExit(
-    Stream.make("abc" as never).pipe(Stream.run(handle.stdin))
-  )
+  const exit = await Effect.runPromiseExit(Stream.make("abc").pipe(Stream.run(handle.stdin)))
 
   expect(child.stdinWrites).toEqual([])
   expectFailure(exit, HostProtocolInvalidArgumentError)
@@ -676,7 +713,7 @@ processTest("Process kill rejects control bytes in signal names", async () => {
   const handle = await Effect.runPromise(fixture.service.spawn("sleep", ["10"]))
   const nul = String.fromCodePoint(0)
 
-  const exit = await Effect.runPromiseExit(handle.kill(`SIG${nul}TERM` as never))
+  const exit = await Effect.runPromiseExit(handle.kill(`SIG${nul}TERM`))
 
   expectFailure(exit, HostProtocolInvalidArgumentError)
   expect(child.killedWith).toBeUndefined()
@@ -806,6 +843,32 @@ if (process.platform !== "win32") {
     expect(child.treeForceKilled).toBe(true)
   })
 
+  processTest("Process scope close suppresses kill failures", async () => {
+    const child = makeFakeChild({
+      exit: { code: 0 },
+      killError: PlatformError.systemError({
+        _tag: "Unknown",
+        description: "kill failed",
+        method: "kill",
+        module: "ChildProcessSpawner"
+      }),
+      naturalExitDelayMs: 60_000,
+      stdout: []
+    })
+    const fixture = await makeFixture(
+      makeFakeSpawner(() => child),
+      { gracefulShutdownMs: 1 }
+    )
+
+    await Effect.runPromise(fixture.service.spawn("sleep", ["30"]))
+    await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+    expect(child.kills).toEqual(["SIGTERM"])
+    expect(child.treeTerminated).toBe(true)
+    expect(await Effect.runPromise(child.isRunning)).toBe(true)
+    expect((await Effect.runPromise(fixture.registry.list())).entries).toEqual([])
+  })
+
   processTest("Process spawn works against Bun for stdout and exit code", async () => {
     const fixture = await makeFixture()
     const handle = await Effect.runPromise(
@@ -846,7 +909,7 @@ if (process.platform !== "win32") {
         const childPids = await waitForChildPids(pidFile)
 
         await Effect.runPromise(fixture.registry.closeScope("scope-main"))
-        await waitUntil(() => Promise.resolve(childPids.every((pid) => !isProcessAlive(pid))))
+        await waitUntil(() => childPids.every((pid) => !isProcessAlive(pid)))
 
         expect(childPids).toHaveLength(2)
       } finally {
@@ -950,6 +1013,7 @@ const makeFakeChild = (options: {
   readonly stderr?: readonly string[]
   readonly exit: { readonly code: number; readonly signal?: string }
   readonly killExit?: { readonly code: number; readonly signal?: string }
+  readonly killError?: PlatformError.PlatformError
   readonly naturalExitDelayMs?: number
   readonly ignoreTerminate?: boolean
   readonly completeExitOnKill?: boolean
@@ -1017,6 +1081,9 @@ const makeFakeChild = (options: {
       kills.push(signal)
       if (signal === "SIGTERM") {
         treeTerminated = true
+      }
+      if (options.killError !== undefined) {
+        return Effect.fail(options.killError)
       }
       if (options.ignoreTerminate === true && signal === "SIGTERM") {
         if (killOptions?.forceKillAfter === undefined) {
@@ -1094,16 +1161,19 @@ const decodeChunks = (chunks: readonly Uint8Array[]): string => {
   return textDecoder.decode(bytes)
 }
 
-const waitUntil = async (predicate: () => Promise<boolean>): Promise<void> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (await predicate()) {
-      return
-    }
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 10)
-    })
-  }
-  throw new Error("condition was not met")
+const waitUntil = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
+  await Effect.runPromise(
+    Effect.tryPromise({
+      try: async () => await predicate(),
+      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+    }).pipe(
+      Effect.flatMap((ready) =>
+        ready ? Effect.void : Effect.fail(new Error("condition was not met"))
+      ),
+      Effect.retry(Schedule.spaced("10 millis").pipe(Schedule.both(Schedule.recurs(50)))),
+      Effect.mapError(() => new Error("condition was not met"))
+    )
+  )
 }
 
 const incrementingClock = (start: number): (() => number) => {
@@ -1113,6 +1183,14 @@ const incrementingClock = (start: number): (() => number) => {
     return current
   }
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.void
+})
 
 const waitForChildPids = async (path: string): Promise<readonly number[]> => {
   let pids: readonly number[] = []

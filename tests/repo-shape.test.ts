@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
+import { Exit, Schema } from "effect"
 
 const REPO_ROOT = join(import.meta.dir, "..")
 
@@ -25,31 +26,53 @@ const PHASE_0_TS_TEST_MARKER = /^\s*(?:test|it)\(["']phase 0 stub compiles and r
 const PHASE_0_RUST_STUB_INDEX = /^\/\/! Phase 0 stub\.$/m
 const PHASE_0_RUST_TEST_MARKER = "fn it_compiles"
 
-interface PackageJson {
-  dependencies?: Record<string, string>
-  bin?: Record<string, string>
-  name?: string
-  scripts?: Record<string, string>
-  workspaces?: ReadonlyArray<string>
-  [key: string]: unknown
+const StringRecord = Schema.Record(Schema.String, Schema.String)
+
+const PackageJson = Schema.Struct({
+  dependencies: Schema.optionalKey(StringRecord),
+  bin: Schema.optionalKey(StringRecord),
+  name: Schema.optionalKey(Schema.String),
+  scripts: Schema.optionalKey(StringRecord),
+  workspaces: Schema.optionalKey(Schema.Array(Schema.String))
+})
+
+const PackageJsonFromString = Schema.fromJsonString(PackageJson)
+
+type PackageJson = typeof PackageJson.Type
+
+const TsConfig = Schema.Struct({
+  extends: Schema.optionalKey(Schema.String)
+})
+
+const TsConfigFromString = Schema.fromJsonString(TsConfig)
+
+type TsConfig = typeof TsConfig.Type
+
+const readPackageJson = (path: string): PackageJson => {
+  const exit = Schema.decodeUnknownExit(PackageJsonFromString)(readFileSync(path, "utf8"))
+  if (Exit.isSuccess(exit)) {
+    return exit.value
+  }
+  throw new Error(`PackageJsonParseError at ${path}`, { cause: exit.cause })
 }
 
-interface TsConfig {
-  extends?: string
-  [key: string]: unknown
+const readTsConfig = (path: string): TsConfig => {
+  const exit = Schema.decodeUnknownExit(TsConfigFromString)(readFileSync(path, "utf8"))
+  if (Exit.isSuccess(exit)) {
+    return exit.value
+  }
+  throw new Error(`TsConfigParseError at ${path}`, { cause: exit.cause })
 }
-
-const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T
 
 describe("workspaces", () => {
-  const root = readJson<PackageJson>(join(REPO_ROOT, "package.json"))
+  const root = readPackageJson(join(REPO_ROOT, "package.json"))
 
   test("root package.json declares the spec §5.4 globs", () => {
     expect(root.workspaces).toEqual(["apps/*", "packages/*"])
   })
 
   test("root package.json exposes the documented bun desktop entrypoint", () => {
-    expect(root.scripts?.desktop).toBe("bun packages/cli/src/bin.ts")
+    expect(root.scripts?.["desktop"]).toBe("bun packages/cli/src/bin.ts")
   })
 
   test("bun desktop resolves to the CLI instead of a missing Bun script", async () => {
@@ -75,10 +98,10 @@ describe("workspaces", () => {
 })
 
 describe("@effect-desktop/cli package manifest", () => {
-  const cli = readJson<PackageJson>(join(REPO_ROOT, "packages", "cli", "package.json"))
+  const cli = readPackageJson(join(REPO_ROOT, "packages", "cli", "package.json"))
 
   test("bin points at the checked-in executable entrypoint", () => {
-    expect(cli.bin?.desktop).toBe("src/bin.ts")
+    expect(cli.bin?.["desktop"]).toBe("src/bin.ts")
   })
 
   test("workspace manifest keeps first-party dependencies linked in-repo", () => {
@@ -96,7 +119,7 @@ describe("packages/*", () => {
     })
 
     test(`${name}/package.json declares all required scripts`, () => {
-      const pkg = readJson<PackageJson>(join(dir, "package.json"))
+      const pkg = readPackageJson(join(dir, "package.json"))
       const scripts = pkg.scripts ?? {}
       for (const required of REQUIRED_PACKAGE_SCRIPTS) {
         expect(scripts[required]).toBeDefined()
@@ -104,7 +127,7 @@ describe("packages/*", () => {
     })
 
     test(`${name}/tsconfig.json extends the workspace base`, () => {
-      const tsc = readJson<TsConfig>(join(dir, "tsconfig.json"))
+      const tsc = readTsConfig(join(dir, "tsconfig.json"))
       expect(tsc.extends).toBe("../../tsconfig.base.json")
     })
 

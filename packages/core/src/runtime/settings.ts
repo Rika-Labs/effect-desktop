@@ -13,6 +13,9 @@ const SettingsMetadataText = Schema.NonEmptyString.check(
   Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
 )
 const SettingsKeySchema = SettingsMetadataText
+const SettingsMutationOptionsSchema = Schema.Struct({
+  source: Schema.optionalKey(Schema.String)
+})
 
 export class SettingsResolvedInput extends Schema.Class<SettingsResolvedInput>(
   "SettingsResolvedInput"
@@ -89,15 +92,20 @@ export interface SettingsMutationOptions {
   readonly source?: string
 }
 
+export type SettingSchema<A> = Schema.Schema<A> & {
+  readonly DecodingServices: never
+  readonly EncodingServices: never
+}
+
 export interface SettingKey<A> {
   readonly name: string
-  readonly schema: Schema.Schema<A>
+  readonly schema: SettingSchema<A>
   readonly defaultValue?: A
 }
 
 export const makeSettingKey = <A>(options: {
   readonly name: string
-  readonly schema: Schema.Schema<A>
+  readonly schema: SettingSchema<A>
   readonly defaultValue?: A
 }): SettingKey<A> => Object.freeze(options)
 
@@ -118,19 +126,26 @@ export interface SettingsStore {
   readonly key: typeof makeSettingKey
   readonly get: <A>(
     key: string | SettingKey<A>,
-    schema?: Schema.Schema<A>
+    schema?: SettingSchema<A>
   ) => Effect.Effect<Option.Option<A>, SettingsError, never>
   readonly getOrDefault: <A>(
     key: string | SettingKey<A>,
-    schema?: Schema.Schema<A>,
+    schema?: SettingSchema<A>,
     defaultValue?: A
   ) => Effect.Effect<A, SettingsError, never>
-  readonly set: <A>(
-    key: string | SettingKey<A>,
-    schemaOrValue: Schema.Schema<A> | A,
-    valueOrOptions?: A | SettingsMutationOptions,
-    options?: SettingsMutationOptions
-  ) => Effect.Effect<void, SettingsError, never>
+  readonly set: {
+    <A>(
+      key: string,
+      schema: SettingSchema<A>,
+      value: unknown,
+      options?: SettingsMutationOptions
+    ): Effect.Effect<void, SettingsError, never>
+    <A>(
+      key: SettingKey<A>,
+      value: unknown,
+      options?: SettingsMutationOptions
+    ): Effect.Effect<void, SettingsError, never>
+  }
   readonly delete: (
     key: string,
     options?: SettingsMutationOptions
@@ -138,7 +153,7 @@ export interface SettingsStore {
   readonly keys: () => Effect.Effect<readonly string[], SettingsError, never>
   readonly update: <A, E, R>(
     key: string,
-    schema: Schema.Schema<A>,
+    schema: SettingSchema<A>,
     update: (current: Option.Option<A>) => Effect.Effect<A, E, R>,
     options?: SettingsMutationOptions
   ) => Effect.Effect<A, E | SettingsError, R>
@@ -169,19 +184,18 @@ const kvGet = (
       if (raw === undefined) {
         return Effect.succeed(Option.none())
       }
-      return Effect.try({
-        try: (): Option.Option<unknown> => {
-          const parsed: unknown = JSON.parse(raw)
-          return Option.some(parsed)
-        },
-        catch: (error) =>
-          new SettingsInvalidArgumentError({
-            operation,
-            field: storeKey,
-            message: formatUnknownError(error),
-            cause: Option.some(error)
-          })
-      })
+      return Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(raw).pipe(
+        Effect.map(Option.some),
+        Effect.mapError(
+          (error) =>
+            new SettingsInvalidArgumentError({
+              operation,
+              field: storeKey,
+              message: formatUnknownError(error),
+              cause: Option.some(error)
+            })
+        )
+      )
     })
   )
 
@@ -438,7 +452,7 @@ const makeStore = (
 ): SettingsStore => {
   const get = <A>(
     key: string | SettingKey<A>,
-    schema?: Schema.Schema<A>
+    schema?: SettingSchema<A>
   ): Effect.Effect<Option.Option<A>, SettingsError, never> =>
     Effect.gen(function* () {
       const resolved = yield* resolveSettingKey(key, schema, "Settings.get")
@@ -456,7 +470,7 @@ const makeStore = (
   return Object.freeze({
     key: makeSettingKey,
     get,
-    getOrDefault: <A>(key: string | SettingKey<A>, schema?: Schema.Schema<A>, defaultValue?: A) =>
+    getOrDefault: <A>(key: string | SettingKey<A>, schema?: SettingSchema<A>, defaultValue?: A) =>
       Effect.gen(function* () {
         const resolved = yield* resolveSettingKey(key, schema, "Settings.getOrDefault")
         const value = yield* get(resolved)
@@ -480,8 +494,8 @@ const makeStore = (
       }),
     set: <A>(
       key: string | SettingKey<A>,
-      schemaOrValue: Schema.Schema<A> | A,
-      valueOrOptions?: A | SettingsMutationOptions,
+      schemaOrValue: unknown,
+      valueOrOptions?: unknown,
       options?: SettingsMutationOptions
     ) =>
       Effect.gen(function* () {
@@ -530,7 +544,7 @@ const makeStore = (
       ),
     update: <A, E, R>(
       key: string,
-      schema: Schema.Schema<A>,
+      schema: SettingSchema<A>,
       updateFn: (current: Option.Option<A>) => Effect.Effect<A, E, R>,
       options?: SettingsMutationOptions
     ) =>
@@ -739,7 +753,7 @@ const isSettingKey = <A>(value: string | SettingKey<A>): value is SettingKey<A> 
 
 const resolveSettingKey = <A>(
   key: string | SettingKey<A>,
-  schema: Schema.Schema<A> | undefined,
+  schema: SettingSchema<A> | undefined,
   operation: string
 ): Effect.Effect<SettingKey<A>, SettingsInvalidArgumentError, never> =>
   Effect.gen(function* () {
@@ -765,13 +779,13 @@ const resolveSettingKey = <A>(
 
 const resolveSettingSetInput = <A>(
   key: string | SettingKey<A>,
-  schemaOrValue: Schema.Schema<A> | A,
-  valueOrOptions: A | SettingsMutationOptions | undefined,
+  schemaOrValue: unknown,
+  valueOrOptions: unknown,
   options: SettingsMutationOptions | undefined,
   operation: string
 ): Effect.Effect<
   SettingKey<A> & {
-    readonly value: A
+    readonly value: unknown
     readonly options: SettingsMutationOptions | undefined
   },
   SettingsInvalidArgumentError,
@@ -780,27 +794,67 @@ const resolveSettingSetInput = <A>(
   Effect.gen(function* () {
     if (isSettingKey(key)) {
       const resolved = yield* resolveSettingKey(key, undefined, operation)
+      const resolvedOptions = yield* decodeMutationOptions(valueOrOptions, operation)
       return {
         ...resolved,
-        value: schemaOrValue as A,
-        options: valueOrOptions as SettingsMutationOptions | undefined
+        value: schemaOrValue,
+        options: resolvedOptions
       }
     }
-    const resolved = yield* resolveSettingKey(key, schemaOrValue as Schema.Schema<A>, operation)
+    const schema = yield* resolveSettingSchema<A>(schemaOrValue, operation)
+    const resolved = yield* resolveSettingKey(key, schema, operation)
     return {
       ...resolved,
-      value: valueOrOptions as A,
+      value: valueOrOptions,
       options
     }
   })
 
+const decodeMutationOptions = (
+  options: unknown,
+  operation: string
+): Effect.Effect<SettingsMutationOptions | undefined, SettingsInvalidArgumentError, never> => {
+  if (options === undefined) {
+    return Effect.succeed(undefined)
+  }
+
+  return Schema.decodeUnknownEffect(SettingsMutationOptionsSchema)(options).pipe(
+    Effect.mapError(
+      (error) =>
+        new SettingsInvalidArgumentError({
+          operation,
+          field: "options",
+          message: formatUnknownError(error),
+          cause: Option.some(error)
+        })
+    )
+  )
+}
+
+const resolveSettingSchema = <A>(
+  schema: unknown,
+  operation: string
+): Effect.Effect<SettingSchema<A>, SettingsInvalidArgumentError, never> =>
+  isSettingSchema<A>(schema)
+    ? Effect.succeed(schema)
+    : Effect.fail(
+        new SettingsInvalidArgumentError({
+          operation,
+          field: "schema",
+          message: "schema is required when using a raw setting key",
+          cause: Option.none()
+        })
+      )
+
+const isSettingSchema = <A>(schema: unknown): schema is SettingSchema<A> => Schema.isSchema(schema)
+
 const encodeValue = <A>(
-  schema: Schema.Schema<A>,
-  value: A,
+  schema: SettingSchema<A>,
+  value: unknown,
   key: string,
   operation: string
 ): Effect.Effect<unknown, SettingsInvalidArgumentError, never> =>
-  (Schema.encodeUnknownEffect(schema)(value) as Effect.Effect<unknown, unknown, never>).pipe(
+  Schema.encodeUnknownEffect(schema)(value).pipe(
     Effect.mapError(
       (error) =>
         new SettingsInvalidArgumentError({
@@ -813,12 +867,12 @@ const encodeValue = <A>(
   )
 
 const decodeValue = <A>(
-  schema: Schema.Schema<A>,
+  schema: SettingSchema<A>,
   value: unknown,
   key: string,
   operation: string
 ): Effect.Effect<A, SettingsInvalidArgumentError, never> =>
-  (Schema.decodeUnknownEffect(schema)(value) as Effect.Effect<A, unknown, never>).pipe(
+  Schema.decodeUnknownEffect(schema)(value).pipe(
     Effect.mapError(
       (error) =>
         new SettingsInvalidArgumentError({

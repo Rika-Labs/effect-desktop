@@ -3,12 +3,8 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -17,6 +13,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-deskt
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import {
   type ClipboardCapability,
   ClipboardImage,
@@ -26,8 +23,6 @@ import {
   ClipboardText
 } from "./contracts/clipboard.js"
 import { isSupportedImageHeader } from "./contracts/image.js"
-
-const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export type ClipboardError = HostProtocolError
 
@@ -94,6 +89,14 @@ export const ClipboardMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const ClipboardCapabilityMethods = Object.freeze([
+  "readText",
+  "writeText",
+  "readImage",
+  "writeImage",
+  "clear"
+] as const satisfies readonly (typeof ClipboardMethodNames)[number][])
+
 export interface ClipboardClientApi {
   readonly readText: () => Effect.Effect<ClipboardText, ClipboardError, never>
   readonly writeText: (input: string) => Effect.Effect<void, ClipboardError, never>
@@ -141,10 +144,9 @@ export const makeClipboardServiceLayer = (client: ClipboardClientApi): Layer.Lay
 export const makeClipboardBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<ClipboardClient> =>
-  Layer.provide(ClipboardSurface.clientLayer, makeClipboardBridgeProtocolLayer(exchange, options))
+): Layer.Layer<ClipboardClient> => ClipboardSurface.bridgeClientLayer(exchange, options)
 
-export type ClipboardRpcHandlers = Parameters<typeof ClipboardRpcGroup.toLayer>[0]
+export type ClipboardRpcHandlers = RpcGroup.HandlersFrom<ClipboardRpc>
 
 export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
   "Clipboard.readText": () =>
@@ -183,6 +185,7 @@ export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
 
 export const ClipboardSurface = NativeSurface.make("Clipboard", ClipboardRpcGroup, {
   service: ClipboardClient,
+  capabilities: ClipboardCapabilityMethods,
   handlers: ClipboardHandlersLive,
   client: (client) => clipboardClientFromRpcClient(client)
 })
@@ -206,16 +209,6 @@ const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi =
 
   return Object.freeze(service)
 }
-
-const makeClipboardBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const clipboardClientFromRpcClient = (
   client: DesktopRpcClient<ClipboardRpc>
@@ -277,46 +270,17 @@ const validateClipboardImageOutput = (
       )
 
 const decodeClipboardText = (input: unknown): Effect.Effect<ClipboardText, ClipboardError, never> =>
-  decodeInput(ClipboardText, input, "Clipboard.writeText")
+  decodeNativeInput(ClipboardText, input, "Clipboard.writeText")
 
 const decodeClipboardImage = (
   input: unknown
 ): Effect.Effect<ClipboardImage, ClipboardError, never> =>
-  decodeInput(ClipboardImage, input, "Clipboard.writeImage")
-
-const decodeInput = <A>(
-  schema: Schema.Codec<A, unknown, never, never>,
-  input: unknown,
-  operation: string
-): Effect.Effect<A, ClipboardError, never> =>
-  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
-    )
-  )
+  decodeNativeInput(ClipboardImage, input, "Clipboard.writeImage")
 
 const runClipboardRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
-): Effect.Effect<A, ClipboardError, never> =>
-  effect.pipe(
-    Effect.mapError(mapClipboardRpcClientError),
-    Effect.catchDefect((defect) =>
-      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
-    )
-  )
-
-const mapClipboardRpcClientError = (error: unknown): ClipboardError =>
-  isClipboardError(error)
-    ? error
-    : makeHostProtocolInternalError("Clipboard RPC client failed", "Clipboard")
-
-const isClipboardError = (error: unknown): error is ClipboardError =>
-  typeof error === "object" &&
-  error !== null &&
-  "tag" in error &&
-  "operation" in error &&
-  "recoverable" in error
+): Effect.Effect<A, ClipboardError, never> => runNativeRpc(effect, operation, "Clipboard")
 
 function clipboardRpc<
   const Method extends string,
@@ -330,12 +294,4 @@ function clipboardRpc<
     endpoint: "mutation",
     support: NativeSurface.support.supported
   })
-}
-
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return String(error)
 }

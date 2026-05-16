@@ -12,6 +12,7 @@ import {
 } from "@effect-desktop/bridge"
 import {
   Cause,
+  Clock,
   Context,
   Deferred,
   Effect,
@@ -122,11 +123,11 @@ export interface ProcessSpawnOptions {
 export interface ProcessHandle {
   readonly resource: ManagedResourceHandle<"process", "running">
   readonly pid: number
-  readonly stdin: Sink.Sink<void, Uint8Array, never, ProcessError, never>
+  readonly stdin: Sink.Sink<void, unknown, never, ProcessError, never>
   readonly stdout: Stream.Stream<Uint8Array, ProcessError, never>
   readonly stderr: Stream.Stream<Uint8Array, ProcessError, never>
   readonly exit: Effect.Effect<ProcessExitStatus, ProcessError, never>
-  readonly kill: (signal?: ProcessSignalInput) => Effect.Effect<void, ProcessError, never>
+  readonly kill: (signal?: unknown) => Effect.Effect<void, ProcessError, never>
 }
 
 export interface ProcessSnapshot {
@@ -214,7 +215,8 @@ export const makeProcess = (
       )
     }
     const permissions = options.permissions ?? EMPTY_PROCESS_PERMISSIONS
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     const inspector = options.inspector ?? disabledExecutionInspectorCollector
     const processBudgetScope = yield* Scope.make()
     const processBudgets = yield* RcMap.make({
@@ -337,18 +339,21 @@ export const makeProcess = (
           ).pipe(Effect.uninterruptible)
         }).pipe(
           Effect.tapError((error) =>
-            inspector.publish(
-              new ExecutionEvent({
-                kind: "process",
-                status: "failure",
-                operation: "Process.spawn",
-                command,
-                ownerScope: owner.scopeId,
-                errorTag: error._tag,
-                message: error.message,
-                timestamp: safeInspectorTimestamp(now)
-              })
-            )
+            Effect.gen(function* () {
+              const timestamp = yield* safeInspectorTimestamp(now)
+              yield* inspector.publish(
+                new ExecutionEvent({
+                  kind: "process",
+                  status: "failure",
+                  operation: "Process.spawn",
+                  command,
+                  ownerScope: owner.scopeId,
+                  errorTag: error._tag,
+                  message: error.message,
+                  timestamp
+                })
+              )
+            })
           ),
           Effect.withSpan("Process.spawn", {
             attributes: {
@@ -421,7 +426,7 @@ const makeHandle = (
     )
     const stdin = child.stdin.pipe(
       Sink.mapError((error) => mapPlatformError(error, command, "Process.stdin.write")),
-      Sink.mapInputEffect((chunk: Uint8Array) => decodeStdinChunk(chunk, "Process.stdin.write"))
+      Sink.mapInputEffect((chunk: unknown) => decodeStdinChunk(chunk, "Process.stdin.write"))
     )
     const childExitStatus = child.exitCode.pipe(
       Effect.map((code) => new ProcessExitStatus({ code: Number(code) })),
@@ -472,7 +477,7 @@ const makeHandle = (
 
     return Object.freeze({
       exit,
-      kill: (signal?: ProcessSignalInput) =>
+      kill: (signal?: unknown) =>
         Effect.gen(function* kill() {
           const decodedSignal =
             signal === undefined ? undefined : yield* decodeSignalInput(signal, "Process.kill")
@@ -588,8 +593,13 @@ const offerOutputChunk = (
       return yield* Effect.fail(makeBackpressureOverflow(streamName, command, limitBytes, 1))
     }
 
+    const queueFull = yield* Queue.isFull(queue)
+    if (queueFull) {
+      return yield* Effect.fail(makeBackpressureOverflow(streamName, command, limitBytes, 1))
+    }
+
     yield* Ref.update(queuedBytes, (bytes) => bytes + chunk.byteLength)
-    const offered = Queue.offerUnsafe(queue, chunk)
+    const offered = yield* Queue.offer(queue, chunk)
     if (!offered) {
       yield* Ref.update(queuedBytes, (bytes) => Math.max(0, bytes - chunk.byteLength))
       return yield* Effect.fail(makeBackpressureOverflow(streamName, command, limitBytes, 1))
@@ -613,9 +623,11 @@ const makeBackpressureOverflow = (
     )
   })
 
-const safeInspectorTimestamp = (now: () => number): number => {
+const safeInspectorTimestamp = (now: () => number): Effect.Effect<number, never, never> => {
   const timestamp = now()
-  return Number.isFinite(timestamp) && timestamp >= 0 ? timestamp : Date.now()
+  return Number.isFinite(timestamp) && timestamp >= 0
+    ? Effect.succeed(timestamp)
+    : Clock.currentTimeMillis
 }
 
 const mapCauseToProcessError = (
@@ -644,7 +656,7 @@ const observeChildExit = (
 ): Effect.Effect<void, never, Scope.Scope> =>
   exitStatus.pipe(
     Effect.flatMap((status) => completeExit(status)),
-    Effect.catch((error: HostProtocolError) =>
+    Effect.tapError((error: HostProtocolError) =>
       Effect.gen(function* observeChildExitFailure() {
         yield* Deferred.fail(exitState, error)
         yield* Ref.set(exitObserved, true)
@@ -659,6 +671,7 @@ const observeChildExit = (
         })
       })
     ),
+    Effect.ignore,
     Effect.forkScoped({ startImmediately: true }),
     Effect.asVoid
   )
@@ -695,12 +708,13 @@ const disposeChild = (
         })
         .pipe(
           Effect.mapError((error) => mapPlatformError(error, command, "Process.dispose.kill")),
-          Effect.catch((error: HostProtocolError) =>
+          Effect.tapError((error: HostProtocolError) =>
             Effect.logWarning("Process.dispose.kill failed", {
               command,
               reason: error.message
             })
-          )
+          ),
+          Effect.ignore
         )
     }
 

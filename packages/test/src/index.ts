@@ -1,6 +1,7 @@
 import { afterEach, expect } from "bun:test"
 import { posix, sep } from "node:path"
 import {
+  Clock,
   Context,
   Data,
   Deferred,
@@ -160,6 +161,9 @@ export class MockHost extends Context.Service<MockHost, MockHostApi>()(
   "@effect-desktop/test/MockHost"
 ) {}
 
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
+
 export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
   const calls: HeadlessHostCall[] = []
   const windows = new Map<string, WindowCreateInput>()
@@ -200,10 +204,12 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           windows.delete(yield* readWindowId(request.payload, request.method))
         }
 
+        const timestamp = yield* currentTimeMillis(options.now)
+
         return new HostProtocolResponseEnvelope({
           kind: "response",
           id: request.id,
-          timestamp: options.now?.() ?? Date.now(),
+          timestamp,
           traceId: request.traceId,
           payload: responsePayload
         })
@@ -253,7 +259,6 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
   const cancels: HostProtocolCancelByRequestEnvelope[] = []
   const responses = new Map<string, BridgeClientResponse[]>()
   const streams = new Map<string, readonly unknown[]>()
-  const now = options.now ?? Date.now
 
   const enqueue = (
     method: string,
@@ -293,14 +298,30 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
 
       return Stream.fromIterable(chunks)
         .pipe(
-          Stream.map((chunk) =>
-            streamEnvelope(request, now(), new BridgeStreamDataFrame({ type: "data", chunk }))
+          Stream.mapEffect((chunk) =>
+            currentTimeMillis(options.now).pipe(
+              Effect.map((timestamp) =>
+                streamEnvelope(
+                  request,
+                  timestamp,
+                  new BridgeStreamDataFrame({ type: "data", chunk })
+                )
+              )
+            )
           )
         )
         .pipe(
           Stream.concat(
-            Stream.succeed(
-              streamEnvelope(request, now(), new BridgeStreamCompleteFrame({ type: "complete" }))
+            Stream.fromEffect(
+              currentTimeMillis(options.now).pipe(
+                Effect.map((timestamp) =>
+                  streamEnvelope(
+                    request,
+                    timestamp,
+                    new BridgeStreamCompleteFrame({ type: "complete" })
+                  )
+                )
+              )
             )
           )
         )
@@ -368,7 +389,9 @@ export const makeMemoryFilesystem = (
   options: MemoryFilesystemOptions = {}
 ): Effect.Effect<FilesystemApi, never, never> =>
   Effect.gen(function* () {
-    const memory = makeMemoryFilesystemRuntime(options)
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
+    const memory = makeMemoryFilesystemRuntime(options, now)
     return yield* makeFilesystem(registry, owner, memory.options).pipe(
       Effect.provide(memory.fileSystem)
     )
@@ -1188,16 +1211,14 @@ const makeMockPtyAdapter = (
 
 const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRecord): PtyChild => {
   let running = true
-  let resolveExit: (status: PtyExitStatus) => void
-  const exited = new Promise<PtyExitStatus>((resolve) => {
-    resolveExit = resolve
-  })
+  const exitState = Effect.runSync(Deferred.make<PtyExitStatus>())
+  const exited = Effect.runPromise(Deferred.await(exitState))
   const finish = (status: PtyExitStatus): void => {
     if (!running) {
       return
     }
     running = false
-    resolveExit(status)
+    Effect.runSync(Deferred.succeed(exitState, status).pipe(Effect.asVoid))
   }
 
   if (fixture.exit !== false) {
@@ -1211,7 +1232,7 @@ const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRec
     output: readableBytes(fixture.output ?? []),
     exited,
     write: async (chunk: Uint8Array) => {
-      await Promise.resolve()
+      await yieldMockHostTurn()
       if (!running) {
         throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
       }
@@ -1219,7 +1240,7 @@ const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRec
       record.writes.push(copyBytes(chunk))
     },
     resize: async (size: PtyResizeInput) => {
-      await Promise.resolve()
+      await yieldMockHostTurn()
       if (!running) {
         throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
       }
@@ -1227,25 +1248,27 @@ const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRec
       record.resizes.push({ rows: size.rows, cols: size.cols })
     },
     isRunning: () => running,
-    terminateTree: () =>
-      Promise.resolve().then(() => {
-        record.terminateTreeCalls += 1
-        record.killedWith = "SIGTERM"
-        finish(ptyExitStatus(undefined, "SIGTERM"))
-      }),
-    forceKillTree: () =>
-      Promise.resolve().then(() => {
-        record.forceKillTreeCalls += 1
-        record.killedWith = "SIGKILL"
-        finish(ptyExitStatus(undefined, "SIGKILL"))
-      }),
-    kill: (signal?: PtySignalInput) =>
-      Promise.resolve().then(() => {
-        record.killedWith = signal
-        finish(ptyExitStatus(undefined, signalNameForMock(signal)))
-      })
+    terminateTree: async () => {
+      await yieldMockHostTurn()
+      record.terminateTreeCalls += 1
+      record.killedWith = "SIGTERM"
+      finish(ptyExitStatus(undefined, "SIGTERM"))
+    },
+    forceKillTree: async () => {
+      await yieldMockHostTurn()
+      record.forceKillTreeCalls += 1
+      record.killedWith = "SIGKILL"
+      finish(ptyExitStatus(undefined, "SIGKILL"))
+    },
+    kill: async (signal?: PtySignalInput) => {
+      await yieldMockHostTurn()
+      record.killedWith = signal
+      finish(ptyExitStatus(undefined, signalNameForMock(signal)))
+    }
   })
 }
+
+const yieldMockHostTurn = (): Promise<void> => Effect.runPromise(Effect.yieldNow)
 
 const takePtyFixture = (
   fixtures: MockPtyFixture[],
@@ -1341,9 +1364,9 @@ interface MemoryFilesystemRuntime {
 }
 
 const makeMemoryFilesystemRuntime = (
-  options: MemoryFilesystemOptions = {}
+  options: MemoryFilesystemOptions,
+  now: () => number
 ): MemoryFilesystemRuntime => {
-  const now = options.now ?? Date.now
   const nodes = new Map<string, MemoryNode>([
     [ROOT_PATH, { kind: "directory", modifiedAtMs: now() }]
   ])
@@ -1428,15 +1451,16 @@ const makeMemoryFilesystemRuntime = (
         catch: (error) => memoryPlatformError("rename", error)
       }),
     writeFile: (path, bytes) =>
-      Effect.tryPromise({
-        try: () =>
+      Effect.try({
+        try: () => {
           writeMemoryFile(
             nodes,
             watchers,
             memoryPathLikeToString(path),
             normalizeWriteBytes(bytes),
             now()
-          ),
+          )
+        },
         catch: (error) => memoryPlatformError("writeFile", error)
       }),
     open: (path) =>
@@ -1485,7 +1509,7 @@ const makeMemoryFilesystemRuntime = (
         catch: (error) => memoryPlatformError("readLink", error)
       }),
     makeDirectory: (path, mkdirOptions) =>
-      Effect.tryPromise({
+      Effect.try({
         try: () => {
           const target = normalizeMemoryPath(path)
           const parent = nodes.get(posix.dirname(target))
@@ -1501,7 +1525,6 @@ const makeMemoryFilesystemRuntime = (
           }
           nodes.set(target, { kind: "directory", modifiedAtMs: now() })
           emitMemoryWatch(watchers, target, "create")
-          return Promise.resolve()
         },
         catch: (error) => memoryPlatformError("makeDirectory", error)
       }),
@@ -1574,22 +1597,21 @@ const writeMemoryFile = (
   path: string,
   bytes: Uint8Array,
   modifiedAtMs: number
-): Promise<void> => {
+): void => {
   const target = normalizeMemoryPath(path)
   const parentPath = posix.dirname(target)
   const parent = nodes.get(parentPath)
   if (parent?.kind !== "directory") {
-    return Promise.reject(nodeError("ENOENT", parentPath))
+    throw nodeError("ENOENT", parentPath)
   }
   const existing = nodes.get(target)
   if (existing?.kind === "directory") {
-    return Promise.reject(nodeError("EISDIR", target))
+    throw nodeError("EISDIR", target)
   }
 
   const existed = nodes.has(target)
   nodes.set(target, { kind: "file", bytes: copyBytes(bytes), modifiedAtMs })
   emitMemoryWatch(watchers, target, existed ? "update" : "create")
-  return Promise.resolve()
 }
 
 const ensureDirectory = (
@@ -1609,7 +1631,7 @@ const createDirectoryRecursive = (
   watchers: readonly MemoryWatchRegistration[],
   path: string,
   modifiedAtMs: number
-): Promise<void> => {
+): void => {
   const normalized = normalizeMemoryPath(path)
   const segments = normalized.split("/").filter((segment) => segment.length > 0)
   let current = ROOT_PATH
@@ -1621,14 +1643,12 @@ const createDirectoryRecursive = (
       continue
     }
     if (node !== undefined) {
-      return Promise.reject(nodeError("ENOTDIR", current))
+      throw nodeError("ENOTDIR", current)
     }
 
     nodes.set(current, { kind: "directory", modifiedAtMs })
     emitMemoryWatch(watchers, current, "create")
   }
-
-  return Promise.resolve()
 }
 
 type LookupMode = "follow" | "nofollow"
@@ -1744,10 +1764,7 @@ const memoryWatchEvent = (
   }
 }
 
-const memoryFile = (
-  path: string,
-  writeAllBytes: (bytes: Uint8Array) => Promise<void>
-): FileSystem.File => ({
+const memoryFile = (path: string, writeAllBytes: (bytes: Uint8Array) => void): FileSystem.File => ({
   [FileSystem.FileTypeId]: FileSystem.FileTypeId,
   fd: FileSystem.FileDescriptor(1),
   stat: Effect.fail(memoryPlatformError("stat", nodeError("ENOENT", path))),
@@ -1757,12 +1774,15 @@ const memoryFile = (
   readAlloc: () => Effect.succeed(Option.none()),
   truncate: () => Effect.void,
   write: (buffer) =>
-    Effect.tryPromise({
-      try: () => writeAllBytes(buffer).then(() => FileSystem.Size(buffer.byteLength)),
+    Effect.try({
+      try: () => {
+        writeAllBytes(buffer)
+        return FileSystem.Size(buffer.byteLength)
+      },
       catch: (error) => memoryPlatformError("write", error)
     }),
   writeAll: (buffer) =>
-    Effect.tryPromise({
+    Effect.try({
       try: () => writeAllBytes(buffer),
       catch: (error) => memoryPlatformError("writeAll", error)
     })

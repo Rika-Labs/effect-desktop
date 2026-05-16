@@ -107,6 +107,45 @@ test("ApprovalBroker rejects the ninth distinct queued request for one actor", a
   }
 })
 
+test("ApprovalBroker starts queued prompts after the active prompt completes", async () => {
+  const activeStarted = await Effect.runPromise(Deferred.make<void>())
+  const releaseActive = await Effect.runPromise(Deferred.make<void>())
+  const promptCalls: string[] = []
+  const prompt: ApprovalPromptPort = {
+    prompt: (request) =>
+      Effect.gen(function* () {
+        promptCalls.push(request.id)
+        if (request.id === "active") {
+          yield* Deferred.succeed(activeStarted, undefined)
+          yield* Deferred.await(releaseActive)
+        }
+        return outcome(request, "approved-once", 1_100)
+      })
+  }
+  const broker = await Effect.runPromise(makeApprovalBroker({ prompt, now: () => 1_000 }))
+  const active = Effect.runFork(
+    broker.ask(approvalRequest("active", "operation.active", "window-main", "active"))
+  )
+
+  await Effect.runPromise(Deferred.await(activeStarted))
+  const queued = Effect.runFork(
+    broker.ask(approvalRequest("queued", "operation.queued", "window-main", "queued"))
+  )
+  await Effect.runPromise(Effect.yieldNow)
+  expect(promptCalls).toEqual(["active"])
+
+  await Effect.runPromise(Deferred.succeed(releaseActive, undefined))
+  const results = await Effect.runPromise(
+    Effect.all([Fiber.join(active), Fiber.join(queued)]).pipe(Effect.timeoutOption("50 millis"))
+  )
+
+  expect(Option.isSome(results)).toBe(true)
+  if (Option.isSome(results)) {
+    expect(results.value.map((current) => current.requestId)).toEqual(["active", "queued"])
+  }
+  expect(promptCalls).toEqual(["active", "queued"])
+})
+
 test("ApprovalBroker continues coalesced prompts after starter fiber interruption", async () => {
   const promptStarted = await Effect.runPromise(Deferred.make<void>())
   const releasePrompt = await Effect.runPromise(Deferred.make<void>())
@@ -207,7 +246,7 @@ test("ApprovalBroker returns typed failures for invalid input and audit failure"
   )
 
   const invalid = await Effect.runPromiseExit(
-    broker.ask({ id: "", operation: "x", actor: "window-main" } as never)
+    broker.ask({ id: "", operation: "x", actor: "window-main" })
   )
   const audit = await Effect.runPromiseExit(
     broker.ask(approvalRequest("request-1", "network.connect", "window-main", "api.example.com"))

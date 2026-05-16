@@ -7,7 +7,7 @@ import {
   HostProtocolResourceBusyError,
   HostProtocolStaleHandleError
 } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Option, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Option, Schedule, Stream } from "effect"
 
 import { PermissionActor } from "./permission-registry.js"
 import {
@@ -442,6 +442,7 @@ ptyTest("PTY output coalesces small chunks up to the byte window", async () => {
 })
 
 ptyTest("PTY output flushes a quiet small chunk when the coalescing window expires", async () => {
+  const now = fixedSequenceClock([100, 106])
   const fixture = await makeFixture(
     makeFakeAdapter(() =>
       makeFakeChild({
@@ -451,7 +452,7 @@ ptyTest("PTY output flushes a quiet small chunk when the coalescing window expir
         naturalExitDelayMs: 60_000
       })
     ),
-    { budgets: { outputBufferBytes: 16, outputCoalesceBytes: 4, outputCoalesceMs: 5 } }
+    { budgets: { outputBufferBytes: 16, outputCoalesceBytes: 4, outputCoalesceMs: 5 }, now }
   )
   const handle = await Effect.runPromise(
     fixture.service.open({
@@ -533,7 +534,7 @@ ptyTest("PTY rejects invalid output overflow policies before adapter open", asyn
         outputCoalesceBytes: 2,
         outputCoalesceMs: 1_000,
         outputOverflow: "surprise"
-      } as unknown as PtyBudgetPolicy
+      }
     }
   )
 
@@ -582,7 +583,7 @@ ptyTest("PTY write rejects non-byte chunks before adapter activity", async () =>
     })
   )
 
-  const exit = await Effect.runPromiseExit(handle.write("echo hi\n" as never))
+  const exit = await Effect.runPromiseExit(handle.write("echo hi\n"))
   await Effect.runPromise(fixture.registry.closeScope("scope-main"))
 
   expect(child.writes).toEqual([])
@@ -740,11 +741,66 @@ ptyTest("PTY scope close escalates to SIGKILL when SIGTERM is ignored", async ()
   expect(child.isRunning()).toBe(false)
 })
 
+ptyTest("PTY scope close escalates when terminateTree fails", async () => {
+  const child = makeFakeChild({
+    output: [],
+    exit: { code: 0 },
+    naturalExitDelayMs: 60_000,
+    terminateError: new Error("terminate failed")
+  })
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => child),
+    { gracefulShutdownMs: 1 }
+  )
+
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(child.terminateTreeCalls).toBe(1)
+  expect(child.forceKillTreeCalls).toBe(1)
+  expect(child.killedWith).toBe("SIGKILL")
+  expect(child.isRunning()).toBe(false)
+})
+
+ptyTest("PTY scope close suppresses forceKillTree failures", async () => {
+  const child = makeFakeChild({
+    output: [],
+    exit: { code: 0 },
+    forceKillError: new Error("force kill failed"),
+    ignoredSignals: ["SIGTERM"],
+    naturalExitDelayMs: 60_000
+  })
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => child),
+    { gracefulShutdownMs: 1 }
+  )
+
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(child.terminateTreeCalls).toBe(1)
+  expect(child.forceKillTreeCalls).toBe(1)
+  expect(child.isRunning()).toBe(true)
+})
+
 const makeFixture = async (
   adapter?: PtyAdapter,
   options: {
     readonly budgets?: PtyBudgetPolicy
     readonly gracefulShutdownMs?: number
+    readonly now?: () => number
     readonly permissions?: PtyPermissionPolicy
   } = {}
 ): Promise<{ readonly registry: ResourceRegistryApi; readonly service: PtyApi }> => {
@@ -759,6 +815,7 @@ const makeService = (
   options: {
     readonly budgets?: PtyBudgetPolicy
     readonly gracefulShutdownMs?: number
+    readonly now?: () => number
     readonly permissions?: PtyPermissionPolicy
   } = {}
 ) =>
@@ -769,6 +826,7 @@ const makeService = (
       ...(options.gracefulShutdownMs === undefined
         ? {}
         : { gracefulShutdownMs: options.gracefulShutdownMs }),
+      ...(options.now === undefined ? {} : { now: options.now }),
       permissions: options.permissions ?? ALLOW_TEST_PTY_PERMISSIONS
     })
   )
@@ -798,6 +856,8 @@ const makeFakeChild = (options: {
   readonly exitError?: unknown
   readonly killExitDelayMs?: number
   readonly naturalExitDelayMs?: number
+  readonly terminateError?: unknown
+  readonly forceKillError?: unknown
   readonly ignoredSignals?: readonly PtySignalInput[]
   readonly ignoreKill?: boolean
   readonly keepOutputOpen?: boolean
@@ -810,12 +870,8 @@ const makeFakeChild = (options: {
   let forceKillTreeCalls = 0
   let running = true
   let settled = false
-  let resolveExit: (status: PtyExitStatus) => void
-  let rejectExit: (error: unknown) => void
-  const exited = new Promise<PtyExitStatus>((resolve, reject) => {
-    resolveExit = resolve
-    rejectExit = reject
-  })
+  const exitState = Effect.runSync(Deferred.make<PtyExitStatus, unknown>())
+  const exited = Effect.runPromise(Deferred.await(exitState))
   const finish = (signal?: string): void => {
     if (settled) {
       return
@@ -823,15 +879,18 @@ const makeFakeChild = (options: {
     settled = true
     clearTimeout(naturalExitTimer)
     running = false
-    resolveExit(
-      new PtyExitStatus({
-        code: options.exit.code,
-        ...(signal === undefined
-          ? options.exit.signal === undefined
-            ? {}
-            : { signal: options.exit.signal }
-          : { signal })
-      })
+    Effect.runSync(
+      Deferred.succeed(
+        exitState,
+        new PtyExitStatus({
+          code: options.exit.code,
+          ...(signal === undefined
+            ? options.exit.signal === undefined
+              ? {}
+              : { signal: options.exit.signal }
+            : { signal })
+        })
+      ).pipe(Effect.asVoid)
     )
   }
   const fail = (error: unknown): void => {
@@ -841,7 +900,7 @@ const makeFakeChild = (options: {
     settled = true
     clearTimeout(naturalExitTimer)
     running = false
-    rejectExit(error)
+    Effect.runSync(Deferred.fail(exitState, error).pipe(Effect.asVoid))
   }
   const naturalExitTimer = setTimeout(() => {
     if (options.exitError === undefined) {
@@ -877,10 +936,16 @@ const makeFakeChild = (options: {
     isRunning: () => running,
     terminateTree: async () => {
       terminateTreeCalls += 1
+      if (options.terminateError !== undefined) {
+        throw options.terminateError
+      }
       await killFakeChild("SIGTERM")
     },
     forceKillTree: async () => {
       forceKillTreeCalls += 1
+      if (options.forceKillError !== undefined) {
+        throw options.forceKillError
+      }
       await killFakeChild("SIGKILL")
     },
     kill: async (signal) => {
@@ -928,16 +993,28 @@ const decodeChunks = (chunks: readonly Uint8Array[]): string => {
   return textDecoder.decode(bytes)
 }
 
-const waitUntil = async (predicate: () => Promise<boolean>): Promise<void> => {
-  const deadline = Date.now() + 1_000
-  while (Date.now() < deadline) {
-    if (await predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
+const waitUntil = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
+  await Effect.runPromise(
+    Effect.tryPromise({
+      try: async () => await predicate(),
+      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+    }).pipe(
+      Effect.flatMap((ready) =>
+        ready ? Effect.void : Effect.fail(new Error("timed out waiting for condition"))
+      ),
+      Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(200)))),
+      Effect.mapError(() => new Error("timed out waiting for condition"))
+    )
+  )
+}
 
-  throw new Error("timed out waiting for condition")
+const fixedSequenceClock = (values: readonly number[]): (() => number) => {
+  let index = 0
+  return () => {
+    const value = values[index] ?? values.at(-1)
+    index += 1
+    return value ?? 0
+  }
 }
 
 const expectFailure = <E>(

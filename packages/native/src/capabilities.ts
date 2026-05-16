@@ -1,27 +1,14 @@
 import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
-import type { DesktopRpcSchemaDoc } from "@effect-desktop/core"
+import {
+  DesktopNativeRegistry,
+  DesktopNativeRegistryLive,
+  DesktopPermissionRegistryLive,
+  type DesktopNativeLayer,
+  type DesktopRpcSchemaDoc
+} from "@effect-desktop/core"
 import { Context, Data, Effect, Layer, Option } from "effect"
 
-import { AppSurface } from "./app.js"
-import { ClipboardSurface } from "./clipboard.js"
-import { ContextMenuSurface } from "./context-menu.js"
-import { CrashReporterSurface } from "./crash-reporter.js"
-import { DialogSurface } from "./dialog.js"
-import { DockSurface } from "./dock.js"
-import { GlobalShortcutSurface } from "./global-shortcut.js"
-import { MenuSurface } from "./menu.js"
-import { NotificationSurface } from "./notification.js"
-import { PathSurface } from "./path.js"
-import { PowerMonitorSurface } from "./power-monitor.js"
-import { ProtocolSurface } from "./protocol.js"
-import { SafeStorageSurface } from "./safe-storage.js"
-import { ScreenSurface } from "./screen.js"
-import { ShellSurface } from "./shell.js"
-import { SystemAppearanceSurface } from "./system-appearance.js"
-import { TraySurface } from "./tray.js"
-import { UpdaterSurface } from "./updater.js"
-import { WebViewSurface } from "./webview.js"
-import { WindowSurface } from "./window.js"
+import { all as NativeAll, capabilities as nativeCapabilities } from "./native.js"
 
 export type NativeCapabilitySupport = RpcSupportMetadata
 
@@ -47,6 +34,13 @@ export class NativeCapabilityManifestError extends Data.TaggedError(
   readonly message: string
 }> {}
 
+export class NativeCapabilityRegistryError extends Data.TaggedError(
+  "NativeCapabilityRegistryError"
+)<{
+  readonly message: string
+  readonly cause: unknown
+}> {}
+
 export class UnsupportedCapability extends Data.TaggedError("UnsupportedCapability")<{
   readonly tag: string
   readonly reason: string
@@ -67,29 +61,6 @@ export class NativeCapabilities extends Context.Service<
   NativeCapabilities,
   NativeCapabilitiesApi
 >()("@effect-desktop/native/NativeCapabilities") {}
-
-const NativeCapabilitySurfaces: readonly NativeCapabilitySurface[] = Object.freeze([
-  AppSurface,
-  ClipboardSurface,
-  ContextMenuSurface,
-  CrashReporterSurface,
-  DialogSurface,
-  DockSurface,
-  GlobalShortcutSurface,
-  MenuSurface,
-  NotificationSurface,
-  PathSurface,
-  PowerMonitorSurface,
-  ProtocolSurface,
-  SafeStorageSurface,
-  ScreenSurface,
-  ShellSurface,
-  SystemAppearanceSurface,
-  TraySurface,
-  UpdaterSurface,
-  WebViewSurface,
-  WindowSurface
-])
 
 export const makeNativeCapabilityManifest = (
   surfaces: Iterable<NativeCapabilitySurface>
@@ -145,9 +116,12 @@ export const makeNativeCapabilities = (
   makeNativeCapabilityManifest(surfaces).pipe(Effect.map(capabilitiesFromManifest))
 
 export const makeNativeCapabilitiesLayer = (
-  surfaces: Iterable<NativeCapabilitySurface> = NativeCapabilitySurfaces
+  nativeLayer: DesktopNativeLayer = nativeCapabilities(NativeAll)
 ): Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never> =>
-  Layer.effect(NativeCapabilities, makeNativeCapabilities(surfaces))
+  Layer.effect(
+    NativeCapabilities,
+    makeNativeCapabilities(snapshotNativeCapabilitySurfacesSync(nativeLayer))
+  )
 
 export const NativeCapabilitiesLive: Layer.Layer<
   NativeCapabilities,
@@ -204,3 +178,31 @@ const unsupportedCapability = (
     reason: support.reason,
     message: `unsupported native capability: ${tag}`
   })
+
+function snapshotNativeCapabilitySurfacesSync(
+  nativeLayer: DesktopNativeLayer
+): readonly NativeCapabilitySurface[] {
+  const composed = Layer.provideMerge(
+    nativeLayer,
+    Layer.mergeAll(DesktopNativeRegistryLive, DesktopPermissionRegistryLive)
+  )
+  try {
+    return Effect.runSync(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(composed)
+          const registry = Context.get(context, DesktopNativeRegistry)
+          const registrations = yield* registry.snapshot
+          return registrations.map((registration) =>
+            Object.freeze({ schemaDocs: registration.schemaDocs })
+          )
+        })
+      )
+    )
+  } catch (cause) {
+    throw new NativeCapabilityRegistryError({
+      message: "NativeCapabilities requires the native layer to build synchronously.",
+      cause
+    })
+  }
+}

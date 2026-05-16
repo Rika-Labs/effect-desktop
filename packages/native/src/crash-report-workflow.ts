@@ -45,12 +45,12 @@ const submitError = (status: number, message: string): CrashReportSubmitError =>
 const crashReportGroup = EventGroup.empty
   .add({
     tag: "crash-report-submitted",
-    primaryKey: (p: unknown) => (p as CrashReport).id,
+    primaryKey: (p) => p.id,
     payload: CrashReport
   })
   .add({
     tag: "crash-report-dropped",
-    primaryKey: (p: unknown) => (p as CrashReport).id,
+    primaryKey: (p) => p.id,
     payload: CrashReport
   })
 
@@ -89,12 +89,10 @@ const makeCrashSubmitActivity = (report: CrashReport, endpointUrl: string) =>
       Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.asVoid,
       Effect.retry({ schedule: DesktopSchedules.crashReportSubmission }),
-      Effect.catch((e: HttpClientError.HttpClientError) =>
-        Effect.fail(
-          submitError(
-            e.response?.status ?? 0,
-            e.response === undefined ? e.message : `HTTP ${String(e.response.status)}`
-          )
+      Effect.mapError((e: HttpClientError.HttpClientError) =>
+        submitError(
+          e.response?.status ?? 0,
+          e.response === undefined ? e.message : `HTTP ${String(e.response.status)}`
         )
       )
     )

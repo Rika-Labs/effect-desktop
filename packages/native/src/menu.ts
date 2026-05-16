@@ -2,6 +2,7 @@ import {
   P,
   type DesktopRpcClient,
   CommandRegistry,
+  makeResourceId,
   PermissionActor,
   PermissionContext,
   type CommandRegistryError,
@@ -15,7 +16,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
   HostProtocolUnsupportedError,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
@@ -30,6 +30,7 @@ import {
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/menu.js"
 import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
@@ -107,6 +108,13 @@ export const MenuMethodNames = Object.freeze([
   "capability"
 ] as const)
 
+const MenuCapabilityMethods = Object.freeze([
+  "setApplicationMenu",
+  "setWindowMenu",
+  "clear",
+  "bindCommand"
+] as const satisfies readonly (typeof MenuMethodNames)[number][])
+
 export interface MenuClientApi {
   readonly setApplicationMenu: (
     template: MenuTemplateOptions
@@ -170,7 +178,7 @@ export const makeMenuBridgeClientLayer = (
 
 export type MenuRpc = RpcGroup.Rpcs<typeof MenuRpcGroup>
 
-export type MenuRpcHandlers = Parameters<typeof MenuRpcGroup.toLayer>[0]
+export type MenuRpcHandlers = RpcGroup.HandlersFrom<MenuRpc>
 
 export const MenuHandlersLive = MenuRpcGroup.toLayer({
   "Menu.setApplicationMenu": (input) =>
@@ -200,6 +208,7 @@ export const MenuHandlersLive = MenuRpcGroup.toLayer({
 
 export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
   service: MenuClient,
+  capabilities: MenuCapabilityMethods,
   handlers: MenuHandlersLive,
   client: (client) => menuClientFromRpcClient(client, undefined)
 })
@@ -280,14 +289,15 @@ const invokeMenuCommand = (
     )
     .pipe(
       Effect.asVoid,
-      Effect.catch((error: CommandRegistryError) =>
+      Effect.tapError((error: CommandRegistryError) =>
         Effect.logWarning("Menu command invocation failed", {
           commandId,
           error: commandBindingWarningError(error),
           itemId,
           windowId
         })
-      )
+      ),
+      Effect.ignore
     )
 }
 
@@ -311,7 +321,7 @@ const menuClientFromRpcClient = (
       ),
     clear: (input = {}) =>
       decodeMenuClearInput(
-        input.window === undefined ? {} : { window: toWindowHandle(input.window as WindowHandle) }
+        input.window === undefined ? {} : { window: toWindowHandle(input.window) }
       ).pipe(Effect.flatMap((decoded) => runMenuRpc(client["Menu.clear"](decoded), "Menu.clear"))),
     bindCommand: (itemId, commandId) =>
       decodeMenuBindCommandInput({ itemId, commandId }).pipe(
@@ -344,34 +354,8 @@ const makeMenuBridgeProtocolLayer = (
 const subscribeMenuEvent = (
   exchange: BridgeClientExchange | undefined,
   method: "Menu.Activated"
-): Stream.Stream<MenuActivatedEvent, MenuError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeMenuEventEnvelope(method, envelope)))
-}
-
-const decodeMenuEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<MenuActivatedEvent, MenuError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(MenuActivatedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
-}
+): Stream.Stream<MenuActivatedEvent, MenuError, never> =>
+  subscribeNativeEvent(exchange, method, MenuActivatedEvent)
 
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
@@ -383,7 +367,7 @@ const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   })
 
 const menuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
-  `menu-command:${itemId}:${commandId}` as ResourceId
+  makeResourceId(`menu-command:${itemId}:${commandId}`)
 
 const toWindowHandle = (handle: WindowHandle): MenuWindowHandle =>
   Object.freeze({
@@ -392,7 +376,7 @@ const toWindowHandle = (handle: WindowHandle): MenuWindowHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as MenuWindowHandle
+  })
 
 const decodeMenuSetApplicationMenuInput = (
   input: unknown

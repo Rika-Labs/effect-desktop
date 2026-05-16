@@ -1,7 +1,7 @@
 import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { fileURLToPath } from "node:url"
 
-import { Console, Data, Effect, FileSystem, Path } from "effect"
+import { Console, Data, Effect, FileSystem, Path, Schema } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { Argument, Command, type CliError } from "effect/unstable/cli"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
@@ -164,10 +164,12 @@ const readJson = <A>(
 ): Effect.Effect<A, PackInstallableCliError> =>
   Effect.gen(function* () {
     const content = yield* fs.readFileString(path).pipe(mapPlatformError(`failed to read ${path}`))
-    return yield* Effect.try({
-      try: () => JSON.parse(content) as A,
-      catch: (cause) => new PackInstallableCliError({ message: `failed to parse ${path}`, cause })
-    })
+    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+      Effect.map((value) => value as A),
+      Effect.mapError(
+        (cause) => new PackInstallableCliError({ message: `failed to parse ${path}`, cause })
+      )
+    )
   })
 
 const writeJson = (

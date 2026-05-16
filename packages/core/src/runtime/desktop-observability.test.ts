@@ -81,7 +81,7 @@ test("DesktopObservability embedded mode starts registered collectors", async ()
 
 test("DesktopObservability rejects invalid and underspecified standalone modes", async () => {
   const invalidMode = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(DesktopObservability.layer({ mode: "unknown" as never })))
+    Effect.scoped(Layer.build(DesktopObservability.layer({ mode: "unknown" })))
   )
   const missingUrl = await Effect.runPromiseExit(
     Effect.scoped(Layer.build(DesktopObservability.layer({ mode: "standalone-inspector" })))

@@ -11,22 +11,63 @@ effect_version: 4
 > Full references: [`reference/native/`](reference/native/) — one page per service.
 
 Native services expose host-backed desktop capability through Effect services and RPC groups.
+Apps select native capabilities by passing generated `Native` selections to `Desktop.native(...)`.
 
-## Service pattern
+## App composition
 
-Most native modules follow the same public shape:
+Select only the native surfaces the app uses:
+
+```ts
+Desktop.make({
+  id: "com.acme.app",
+  windows: Desktop.window("main", { title: "Acme" }),
+  native: Desktop.native(Native.Clipboard.readText)
+})
+```
+
+`Native.all` registers every built-in native surface and grants every privileged native method:
+
+```ts
+Desktop.make({
+  id: "com.acme.native",
+  windows: Desktop.window("main", { title: "Native" }),
+  native: Desktop.native(Native.all)
+})
+```
+
+Each native surface exposes grouped capability data when an app intentionally grants an entire surface:
+
+```ts
+Desktop.make({
+  id: "com.acme.windows",
+  windows: Desktop.window("main", { title: "Windows" }),
+  native: Desktop.native(Native.Window.all)
+})
+```
+
+Pass `Native.Clipboard` directly to `Desktop.native(...)` only when the app needs support metadata or unprivileged status methods without granting native authority.
+
+## Module shape
+
+Native modules keep one source of truth for service, RPC, client, host, support, and
+permission facts:
 
 - `<Name>Rpcs` — canonical RPC group.
 - `<Name>Surface` — generated surface metadata.
 - `<Name>` — runtime Effect service.
 - `<Name>Client` — client service.
-- `<Name>Live`, `<Name>HandlersLive` — live host-backed layers.
-- `make<Name>ClientLayer`, `make<Name>ServiceLayer`, `make<Name>BridgeClientLayer`, `makeHost<Name>RpcRuntime`.
+- `Native.<Name>.<method>` — app-composition capability selection for one privileged native method.
+- `Native.<Name>.all` — app-composition capability selection for one native surface.
+- `Desktop.native(Native.<Name>)` — availability-only selection with no authority grant.
+- `Native.capabilities(...)`, `Native.available(...)` — lower-level helpers that return native declaration layers.
+- `<Name>Live`, `<Name>HandlersLive` — runtime layers behind the native capability selection.
+- `make<Name>ClientLayer`, `make<Name>ServiceLayer` — deterministic test seams, not
+  app-composition APIs.
 - `<Name>MethodNames`, `<Name>RpcEvents`, typed errors, handlers, and API types.
 
 This is the [layer-first contract](explanation/layer-first-design.md) applied uniformly.
 
-Native service authors should use the internal native surface authoring path, not ad hoc RPC construction. Each endpoint must carry schemas, endpoint kind, support metadata, and authority metadata together. `NativeCapabilities` reads the resulting surface docs, so the public support manifest uses the same source of truth as handlers, clients, tests, and renderer descriptors.
+Native service authors should use the internal native surface authoring path, not ad hoc RPC construction. Each endpoint must carry schemas, endpoint kind, support metadata, and authority metadata together. `NativeCapabilities` reads the selected native registrations, so the public support manifest uses the same source of truth as handlers, clients, tests, and renderer descriptors.
 
 ## Current native modules
 

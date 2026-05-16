@@ -3,10 +3,8 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   RpcGroup,
+  hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   HostProtocolRequestEnvelope,
@@ -82,6 +80,12 @@ export const ScreenMethodNames = Object.freeze([
   "isSupported"
 ] as const)
 
+const ScreenCapabilityMethods = Object.freeze([
+  "getDisplays",
+  "getPrimaryDisplay",
+  "getPointerPoint"
+] as const satisfies readonly (typeof ScreenMethodNames)[number][])
+
 export interface ScreenClientApi {
   readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>
   readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
@@ -146,6 +150,7 @@ export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
 
 export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
   service: ScreenClient,
+  capabilities: ScreenCapabilityMethods,
   handlers: ScreenHandlersLive,
   client: (client) => screenClientFromRpcClient(client)
 })
@@ -160,25 +165,17 @@ export const makeScreenBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: ScreenBridgeClientOptions = {}
 ): Layer.Layer<ScreenClient> =>
-  Layer.provide(ScreenSurface.clientLayer, makeScreenBridgeProtocolLayer(exchange, options))
+  ScreenSurface.bridgeClientLayer(exchange, {
+    ...options,
+    normalizeRequest: normalizeScreenBridgeRequest
+  })
 
-export type ScreenRpcHandlers = Parameters<typeof ScreenRpcGroup.toLayer>[0]
+export type ScreenRpcHandlers = RpcGroup.HandlersFrom<ScreenRpc>
 
 export const makeHostScreenRpcRuntime = (
   handlers: ScreenRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> => ScreenSurface.hostRuntime(handlers, runtimeOptions)
-
-const makeScreenBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: ScreenBridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, {
-      ...options,
-      normalizeRequest: normalizeScreenBridgeRequest
-    }).pipe(Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options)))
-  )
 
 const normalizeScreenBridgeRequest = (
   request: HostProtocolRequestEnvelope
@@ -219,7 +216,10 @@ const runScreenRpc = <A, E>(
 ): Effect.Effect<A, ScreenError, never> => effect.pipe(Effect.mapError(mapScreenRpcClientError))
 
 const mapScreenRpcClientError = (error: unknown): ScreenError =>
-  isScreenError(error) ? error : makeHostProtocolInternalError("Screen RPC client failed", "Screen")
+  isScreenError(error)
+    ? error
+    : (hostProtocolErrorFromRpcClientError(error) ??
+      makeHostProtocolInternalError("Screen RPC client failed", "Screen"))
 
 const isScreenError = (error: unknown): error is ScreenError =>
   typeof error === "object" &&

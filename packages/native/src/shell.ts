@@ -4,12 +4,9 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -132,12 +129,11 @@ export const makeShellServiceLayer = (client: ShellClientApi): Layer.Layer<Shell
 export const makeShellBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<ShellClient> =>
-  Layer.provide(ShellSurface.clientLayer, makeShellBridgeProtocolLayer(exchange, options))
+): Layer.Layer<ShellClient> => ShellSurface.bridgeClientLayer(exchange, options)
 
 export type ShellRpc = RpcGroup.Rpcs<typeof ShellRpcGroup>
 
-export type ShellRpcHandlers = Parameters<typeof ShellRpcGroup.toLayer>[0]
+export type ShellRpcHandlers = RpcGroup.HandlersFrom<ShellRpc>
 
 export const ShellHandlersLive = ShellRpcGroup.toLayer({
   "Shell.openExternal": (input) =>
@@ -170,6 +166,7 @@ export const ShellHandlersLive = ShellRpcGroup.toLayer({
 
 export const ShellSurface = NativeSurface.make("Shell", ShellRpcGroup, {
   service: ShellClient,
+  capabilities: ShellMethodNames,
   handlers: ShellHandlersLive,
   client: (client) => shellClientFromRpcClient(client)
 })
@@ -213,16 +210,6 @@ const shellClientFromRpcClient = (client: DesktopRpcClient<ShellRpc>): ShellClie
 
   return Object.freeze(shellClient)
 }
-
-const makeShellBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const validateExternalUrl = (
   input: ShellOpenExternalInput

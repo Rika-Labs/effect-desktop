@@ -28,19 +28,37 @@ import type { Rpc, RpcGroup } from "effect/unstable/rpc"
  * If any of those become real requirements, this is the file that grows. Until
  * then, treat it as a thin boundary, not as an architectural primitive.
  */
+export type TypedDesktopRpcRegistrationGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
+  readonly requests: ReadonlyMap<string, Rpc.Any>
+}
+
 export type DesktopRpcRegistrationGroup = RpcGroup.Any & {
   readonly requests: ReadonlyMap<string, Rpc.Any>
 }
 
-export interface DesktopRpcRegistration<E = unknown, R = unknown> {
-  readonly group: DesktopRpcRegistrationGroup
-  readonly handlers: Layer.Layer<unknown, E, R>
+export interface DesktopRpcRegistration<Rpcs extends Rpc.Any, E = unknown, R = unknown> {
+  readonly group: TypedDesktopRpcRegistrationGroup<Rpcs>
+  readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+  readonly serverLayer: Layer.Layer<never, unknown, unknown>
 }
 
-export type AnyDesktopRpcRegistration = DesktopRpcRegistration<unknown, unknown>
+/**
+ * Erased registry snapshot. `register(...)` preserves the typed group/handler
+ * relationship at the declaration boundary; once stored with other RPC groups,
+ * the concrete `Rpcs` union is existential. `serverLayer` is constructed while
+ * `Rpcs` is still concrete, so the runtime spine does not need to rebuild a
+ * typed `RpcServer.layer(...)` from erased data.
+ */
+export interface AnyDesktopRpcRegistration<E = unknown, R = unknown> {
+  readonly group: DesktopRpcRegistrationGroup
+  readonly handlers: Layer.Layer<never, E, R>
+  readonly serverLayer: Layer.Layer<never, unknown, unknown>
+}
 
 export interface DesktopRpcRegistryApi {
-  readonly register: (registration: AnyDesktopRpcRegistration) => Effect.Effect<void>
+  readonly register: <Rpcs extends Rpc.Any, E, R>(
+    registration: DesktopRpcRegistration<Rpcs, E, R>
+  ) => Effect.Effect<void>
   readonly snapshot: Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>>
 }
 
@@ -54,7 +72,7 @@ export const makeDesktopRpcRegistry = (): DesktopRpcRegistryApi => {
   return {
     register: (registration) =>
       Effect.sync(() => {
-        entries.push(registration)
+        entries.push(eraseRegistration(registration))
       }),
     snapshot: Effect.sync(() => Object.freeze([...entries]))
   }
@@ -64,3 +82,12 @@ export const DesktopRpcRegistryLive: Layer.Layer<DesktopRpcRegistry> = Layer.eff
   DesktopRpcRegistry,
   Effect.sync(makeDesktopRpcRegistry)
 )
+
+const eraseRegistration = <Rpcs extends Rpc.Any, E, R>(
+  registration: DesktopRpcRegistration<Rpcs, E, R>
+): AnyDesktopRpcRegistration =>
+  // Registry snapshots are heterogeneous. The typed group/handler relation is
+  // preserved inside each object but existential once stored beside other
+  // groups; consumers that know their declaration layer E/R can narrow the
+  // snapshot at that boundary.
+  registration as unknown as AnyDesktopRpcRegistration

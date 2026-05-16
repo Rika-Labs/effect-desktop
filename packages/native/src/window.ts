@@ -5,15 +5,12 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostWindowClientOptions,
   type HostWindowExchange,
-  makeDesktopClientProtocol,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   makeStaleHandleError,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -22,8 +19,8 @@ import {
   P,
   PermissionRegistry,
   ResourceRegistry,
-  type DesktopRpcClient,
-  type ResourceId
+  makeResourceId,
+  type DesktopRpcClient
 } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
@@ -105,13 +102,7 @@ export const makeWindowServiceLayer = (client: WindowClientApi): Layer.Layer<Win
 export const makeWindowBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: WindowBridgeClientOptions = {}
-): Layer.Layer<WindowClient> =>
-  Layer.effect(WindowClient)(
-    Effect.gen(function* () {
-      const client = yield* RpcClient.make(WindowSupportedRpcs)
-      return windowClientFromRpcClient(client)
-    })
-  ).pipe(Layer.provide(makeWindowBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<WindowClient> => WindowSurface.bridgeClientLayer(exchange, options)
 
 export type WindowRpcHandlers = ReturnType<typeof makeHostWindowHandlers>
 
@@ -130,6 +121,7 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
 
 export const WindowSurface = NativeSurface.make("Window", WindowRpcGroup, {
   service: WindowClient,
+  capabilities: WindowMethodNames,
   handlers: WindowHandlersLive,
   client: windowClientFromRpcClient
 })
@@ -167,16 +159,6 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
 
   return Object.freeze(service)
 }
-
-const makeWindowBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: WindowBridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
   return Object.freeze({
@@ -263,7 +245,7 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
         const handle = yield* registry
           .register({
             kind: "window",
-            id: created.windowId as ResourceId,
+            id: makeResourceId(created.windowId),
             ownerScope,
             state: "open"
           })

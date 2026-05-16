@@ -14,7 +14,7 @@ test("Telemetry records redacted structured logs and publishes bounded snapshots
   const telemetry = await Effect.runPromise(makeTelemetry({ maxLogs: 1, now: () => 100 }))
 
   const observed = Effect.runFork(telemetry.observeLogs().pipe(Stream.take(2), Stream.runCollect))
-  await Bun.sleep(0)
+  await Effect.runPromise(Effect.yieldNow)
   await Effect.runPromise(
     telemetry.log({
       level: "info",
@@ -257,7 +257,7 @@ test("EffectTelemetryCollector captures Effect logs, spans, metrics, and causes 
     )
   )
   expect(Exit.isFailure(exit)).toBe(true)
-  await Bun.sleep(0)
+  await Effect.runPromise(Effect.yieldNow)
   await Effect.runPromise(telemetry.collectEffectMetrics())
 
   const snapshot = await Effect.runPromise(telemetry.snapshot())
@@ -305,7 +305,7 @@ test("withDesktopSpan attaches Effect span and log annotations to telemetry snap
       )
     )
   )
-  await Bun.sleep(0)
+  await Effect.runPromise(Effect.yieldNow)
 
   const snapshot = await Effect.runPromise(telemetry.snapshot())
   const span = snapshot.traces.find((trace) => trace.name === "Desktop.Operation")

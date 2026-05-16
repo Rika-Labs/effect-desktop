@@ -1,4 +1,4 @@
-import { Effect, Option, Queue, Scope, Schema } from "effect"
+import { Clock, Effect, Option, Queue, Scope, Schema } from "effect"
 import { RpcClient, RpcClientError, RpcMessage, RpcServer } from "effect/unstable/rpc"
 
 export const HOST_PING_METHOD = "host.ping"
@@ -1019,11 +1019,12 @@ interface ResolvedDesktopProtocolOptions {
 }
 
 const resolveProtocolOptions = (
-  options: DesktopProtocolOptions
+  options: DesktopProtocolOptions,
+  defaultNow: () => number
 ): ResolvedDesktopProtocolOptions => ({
   windowId: options.windowId ?? "",
   originToken: options.originToken ?? "",
-  now: options.now ?? Date.now,
+  now: options.now ?? defaultNow,
   nextRequestId:
     options.nextRequestId === undefined
       ? (clientId, requestId) => clientRequestId(clientId, requestId)
@@ -1150,12 +1151,36 @@ const RpcPermissionDeniedError = Schema.Struct({
   message: Schema.String
 })
 
+const hostProtocolErrorToRpcClientError = (
+  error: HostProtocolError
+): RpcClientError.RpcClientError =>
+  new RpcClientError.RpcClientError({
+    reason: new RpcClientError.RpcClientDefect({
+      message: error.message,
+      cause: error
+    })
+  })
+
+export const hostProtocolErrorFromRpcClientError = (
+  error: unknown
+): HostProtocolError | undefined => {
+  if (!(error instanceof RpcClientError.RpcClientError)) {
+    return undefined
+  }
+  const reason = error.reason
+  if (!(reason instanceof RpcClientError.RpcClientDefect) || !isHostProtocolError(reason.cause)) {
+    return undefined
+  }
+  return decodeUnknownHostProtocolError(reason.cause, StrictParseOptions)
+}
+
 export const makeDesktopClientProtocol = (
   transport: DesktopTransportSend & DesktopTransportRun,
   options: DesktopProtocolOptions = {}
 ): Effect.Effect<RpcClient.Protocol["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
-    const resolved = resolveProtocolOptions(options)
+    const clock = yield* Clock.Clock
+    const resolved = resolveProtocolOptions(options, () => clock.currentTimeMillisUnsafe())
 
     let writeToClient: ClientWriteFn = (_clientId, _response) => Effect.void
     const requestClients = new Map<
@@ -1211,7 +1236,7 @@ export const makeDesktopClientProtocol = (
               requestClients.set(transportRequestId, { clientId: _clientId, requestId })
               clientRequestIds.set(clientRequestId(_clientId, requestId), transportRequestId)
               yield* transport.send(envelope)
-            }) as unknown as Effect.Effect<void, RpcClientError.RpcClientError>
+            }).pipe(Effect.mapError(hostProtocolErrorToRpcClientError))
           }
           if (request._tag === "Interrupt") {
             return Effect.gen(function* () {
@@ -1234,7 +1259,7 @@ export const makeDesktopClientProtocol = (
                   traceId
                 })
               )
-            }) as unknown as Effect.Effect<void, RpcClientError.RpcClientError>
+            }).pipe(Effect.mapError(hostProtocolErrorToRpcClientError))
           }
           return Effect.void
         },
@@ -1308,7 +1333,8 @@ export const makeDesktopServerProtocol = (
   options: DesktopProtocolOptions = {}
 ): Effect.Effect<RpcServer.Protocol["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
-    const resolved = resolveProtocolOptions(options)
+    const clock = yield* Clock.Clock
+    const resolved = resolveProtocolOptions(options, () => clock.currentTimeMillisUnsafe())
     const disconnects = yield* Queue.unbounded<number>()
     const hostRequestIds = new Map<string, string>()
     const serverRequestIds = new Map<

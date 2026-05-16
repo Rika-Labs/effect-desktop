@@ -49,7 +49,7 @@ export const makeReleaseFileSystem = (): Effect.Effect<
       exists: (path) => fs.exists(path),
       lstat: (path) =>
         Effect.tryPromise({
-          try: () => lstat(path).then(releaseFileInfoFromNodeStats),
+          try: async () => releaseFileInfoFromNodeStats(await lstat(path)),
           catch: (cause) => cause
         }),
       makeDirectory: (path) => fs.makeDirectory(path, { recursive: true }),

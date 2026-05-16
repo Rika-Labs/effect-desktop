@@ -83,7 +83,7 @@ export const App = Desktop.make({
 export const Manifest = Desktop.manifest(App)
 ```
 
-`Desktop.make` ties everything together: app id, declared windows, RPC surfaces, providers, permissions. Each `Desktop.window(id, spec, services?)` self-registers with the framework; compose multiple via `Layer.mergeAll(Desktop.window(...), Desktop.window(...))`. `Desktop.manifest` produces the value the renderer needs to know which contracts to expose.
+`Desktop.make` ties everything together: app id, declared windows, RPC surfaces, providers, permissions. Each `Desktop.window(id, spec, services?)` self-registers with the framework; compose multiple via `Desktop.windows(Desktop.window(...), Desktop.window(...))`. `Desktop.manifest` produces the value the renderer needs to know which contracts to expose.
 
 ## 4. The renderer
 

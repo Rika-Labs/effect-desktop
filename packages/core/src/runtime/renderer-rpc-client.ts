@@ -4,7 +4,7 @@ import {
   type DesktopTransportRun,
   type DesktopTransportSend
 } from "@effect-desktop/bridge"
-import { Context, Effect, Exit, Layer, Scope, Stream } from "effect"
+import { Clock, Context, Effect, Exit, Layer, Scope, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc"
 
 import type { DesktopAppManifest, DesktopRpcsLayer } from "./desktop-app.js"
@@ -25,8 +25,6 @@ import {
   type RendererInspectorCollectorApi
 } from "./inspector-events.js"
 
-type RpcGroupWithRequests = DesktopRpcRegistrationGroup
-
 export type DesktopRendererRpcTransport = DesktopTransportSend & DesktopTransportRun
 
 export type DesktopRendererRpcClientMethod = (
@@ -36,6 +34,11 @@ export type DesktopRendererRpcClientMethod = (
 export type DesktopRendererRpcClient = Readonly<Record<string, DesktopRendererRpcClientMethod>>
 
 export type DesktopRendererRpcClientMap = ReadonlyMap<RpcGroup.Any, DesktopRendererRpcClient>
+
+type DesktopRendererRpcFlatClient = RpcClient.RpcClient.Flat<Rpc.Any, unknown>
+type DesktopRendererRpcScopedResult =
+  | Effect.Effect<unknown, unknown, Scope.Scope>
+  | Stream.Stream<unknown, unknown, Scope.Scope>
 
 export interface RendererRpcClientsApi {
   readonly clients: DesktopRendererRpcClientMap
@@ -181,19 +184,9 @@ const acquireDesktopRendererRpcTestClients = (
     const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>()
     for (const registration of registrations) {
       const group = registration.group
-      // Cast invariants:
-      //   group: RpcGroup.RpcGroup<Rpc.Any> — heterogeneous registry holds
-      //     groups with disjoint Rpc unions; widen to Rpc.Any for RpcTest.makeClient.
-      //   handlers: Layer.Layer<any, any, any> — handler R requirements are
-      //     stored as data on the registration and irrelevant to test-client
-      //     wire shape; provide as-is to the RpcTest client layer.
-      //   rpcClient → Record<string, DesktopRendererRpcClientMethod | undefined>:
-      //     RpcTest.makeClient returns a typed client; the renderer surface
-      //     consumes it as a string-keyed dispatch table. The shapes are
-      //     equivalent at runtime; TypeScript can't narrow them without help.
-      const rpcClient = (yield* RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>).pipe(
-        Effect.provide(registration.handlers)
-      )) as unknown as Readonly<Record<string, DesktopRendererRpcClientMethod | undefined>>
+      const rpcClient = yield* RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>, {
+        flatten: true
+      }).pipe(Effect.provide(registration.handlers))
       const client = makeRpcTestGroupClient(
         group,
         rpcClient,
@@ -204,111 +197,87 @@ const acquireDesktopRendererRpcTestClients = (
       clients.set(group, client)
     }
     return { clients }
-    // Cast invariant: Effect.gen here returns Effect<{clients}, any, Scope.Scope>
-    // because RpcTest.makeClient widens E/R to any. The function contract
-    // promises (..., never, Scope.Scope) — the caller-visible error channel is
-    // empty because every per-registration failure inside the loop bubbles up
-    // and aborts. Restate the type to keep the boundary callable.
-  }) as unknown as Effect.Effect<RendererRpcClientsApi, never, Scope.Scope>
+  })
 
 const snapshotRegistrations = (
   rpcs: DesktopRpcsLayer<never, never>
-): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>, never, never> =>
+): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration<never, never>>, never, never> =>
   Effect.scoped(
     Effect.gen(function* () {
-      // Cast invariant: identical to snapshotRegistrationsSync in desktop-app.ts.
       // Desktop.rpc layers only do Effect.sync(register), so handler R/E are
       // erased here for the build-and-snapshot path — they are reapplied at
       // RpcTest.makeClient(...) time with Effect.provide(handlers) above.
-      const composed = Layer.provideMerge(
-        rpcs as unknown as Layer.Layer<never, never, DesktopRpcRegistry>,
-        DesktopRpcRegistryLive
-      )
+      const composed = Layer.provideMerge(rpcs, DesktopRpcRegistryLive)
       const context = yield* Layer.build(composed)
       const registry = Context.get(context, DesktopRpcRegistry)
-      return yield* registry.snapshot
+      const snapshot = yield* registry.snapshot
+      // The input declaration layer is `DesktopRpcsLayer<never, never>`, so all
+      // registrations built through it have no handler-layer failure or runtime
+      // requirement even though the registry stores a heterogeneous snapshot.
+      return snapshot as ReadonlyArray<AnyDesktopRpcRegistration<never, never>>
     })
   )
 
 const makeGroupClient = (
-  group: RpcGroupWithRequests,
+  group: DesktopRpcRegistrationGroup,
   protocol: RpcClient.Protocol["Service"],
   options: DesktopRendererRpcClientLayerOptions
 ): Effect.Effect<DesktopRendererRpcClient, never, Scope.Scope> =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
     const rpcClient = yield* Effect.provideService(
-      RpcClient.make(group as RpcGroup.RpcGroup<Rpc.Any>),
+      RpcClient.make(group as RpcGroup.RpcGroup<Rpc.Any>, { flatten: true }),
       RpcClient.Protocol,
       protocol
-    ) as unknown as Effect.Effect<
-      Readonly<Record<string, DesktopRendererRpcClientMethod>>,
-      never,
-      Scope.Scope
-    >
-    const entries = Array.from(group.requests.keys()).map((tag) => [
-      tag,
-      (input: unknown): ReturnType<DesktopRendererRpcClientMethod> => {
-        const method = rpcClient[tag]
-        if (method === undefined) {
-          throw makeMissingDesktopRpcClientError(
-            options.framework,
-            tag,
-            `No renderer RPC client method is installed for ${tag}`
-          )
-        }
-        return instrumentRendererRpcMethod(
-          provideRendererRpcMethodScope(method(input), scope),
+    )
+    const client: Record<string, DesktopRendererRpcClientMethod> = {}
+    for (const tag of group.requests.keys()) {
+      client[tag] = (input: unknown): ReturnType<DesktopRendererRpcClientMethod> =>
+        instrumentRendererRpcMethod(
+          provideRendererRpcMethodScope(callRendererRpcFlatClient(rpcClient, tag, input), scope),
           tag,
           options.framework,
           options.inspector ?? disabledRendererInspectorCollector,
           options.now
         )
-      }
-    ])
-    return Object.freeze(Object.fromEntries(entries)) as DesktopRendererRpcClient
+    }
+    return Object.freeze(client)
   })
 
 const makeRpcTestGroupClient = (
-  group: RpcGroupWithRequests,
-  rpcClient: Readonly<Record<string, DesktopRendererRpcClientMethod | undefined>>,
+  group: DesktopRpcRegistrationGroup,
+  rpcClient: DesktopRendererRpcFlatClient,
   scope: Scope.Scope,
   framework: DesktopFramework,
   inspector: RendererInspectorCollectorApi
 ): DesktopRendererRpcClient => {
-  const entries = Array.from(group.requests.keys()).map((tag) => [
-    tag,
-    (input: unknown): ReturnType<DesktopRendererRpcClientMethod> => {
-      const method = rpcClient[tag]
-      if (method === undefined) {
-        throw makeMissingDesktopRpcClientError(
-          framework,
-          tag,
-          `No renderer RPC test client method is installed for ${tag}`
-        )
-      }
-      return instrumentRendererRpcMethod(
-        provideRendererRpcMethodScope(method(input), scope),
+  const client: Record<string, DesktopRendererRpcClientMethod> = {}
+  for (const tag of group.requests.keys()) {
+    client[tag] = (input: unknown): ReturnType<DesktopRendererRpcClientMethod> =>
+      instrumentRendererRpcMethod(
+        provideRendererRpcMethodScope(callRendererRpcFlatClient(rpcClient, tag, input), scope),
         tag,
         framework,
         inspector
       )
-    }
-  ])
-  return Object.freeze(Object.fromEntries(entries)) as DesktopRendererRpcClient
+  }
+  return Object.freeze(client)
 }
 
+const callRendererRpcFlatClient = (
+  rpcClient: DesktopRendererRpcFlatClient,
+  tag: string,
+  input: unknown
+): DesktopRendererRpcScopedResult =>
+  rpcClient(tag, input as never) as DesktopRendererRpcScopedResult
+
 const provideRendererRpcMethodScope = (
-  result: ReturnType<DesktopRendererRpcClientMethod>,
+  result: DesktopRendererRpcScopedResult,
   scope: Scope.Scope
 ): ReturnType<DesktopRendererRpcClientMethod> =>
   Effect.isEffect(result)
-    ? Scope.provide(result as Effect.Effect<unknown, unknown, Scope.Scope>, scope)
-    : Stream.provideService(
-        result as Stream.Stream<unknown, unknown, Scope.Scope>,
-        Scope.Scope,
-        scope
-      )
+    ? Scope.provide(result, scope)
+    : Stream.provideService(result, Scope.Scope, scope)
 
 const instrumentRendererRpcMethod = (
   result: ReturnType<DesktopRendererRpcClientMethod>,
@@ -377,12 +346,15 @@ const publishRendererRpcEvent = (
   framework: DesktopFramework,
   now: (() => number) | undefined
 ): Effect.Effect<void, never, never> =>
-  inspector.publish(
-    new RendererInspectorEvent({
-      kind,
-      status,
-      operation,
-      framework,
-      timestamp: now?.() ?? Date.now()
-    })
-  )
+  Effect.gen(function* () {
+    const timestamp = now === undefined ? yield* Clock.currentTimeMillis : now()
+    yield* inspector.publish(
+      new RendererInspectorEvent({
+        kind,
+        status,
+        operation,
+        framework,
+        timestamp
+      })
+    )
+  })

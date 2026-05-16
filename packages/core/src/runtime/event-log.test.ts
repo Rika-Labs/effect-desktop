@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test"
-import { Effect, Fiber, Layer, Stream } from "effect"
+import { Cause, Clock, Effect, Exit, Fiber, Layer, Stream } from "effect"
+import { EventJournal, EventLog as EffectEventLog } from "effect/unstable/eventlog"
 
 import {
   DesktopEventLog,
   DesktopEventLogEvent,
   DesktopEventLogLive,
-  DesktopEventLogNoopInspectorLive
+  DesktopEventLogNoopInspectorLive,
+  makeDesktopEventLog
 } from "./event-log.js"
 import {
   EventLogInspectorCollector,
@@ -105,6 +107,63 @@ test("DesktopEventLog publishes typed Inspector events", async () => {
   expect(event?.operation).toBe("EventLog.recover")
 })
 
+test("DesktopEventLog query Inspector events use the Effect Clock", async () => {
+  const timestamp = 1_715_000_999_000
+  const event = await Effect.runPromise(
+    Effect.gen(function* () {
+      const collectors = yield* makeInspectorCollectors()
+      const layer = DesktopEventLogLive().pipe(
+        Layer.provide(Layer.succeed(EventLogInspectorCollector, collectors.eventLog))
+      )
+      const fiber = yield* collectors.eventLog.events.pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild({ startImmediately: true })
+      )
+
+      yield* Effect.gen(function* () {
+        const eventLog = yield* DesktopEventLog
+        yield* eventLog.query()
+      }).pipe(Effect.provide(layer), Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+
+      const events = yield* Fiber.join(fiber)
+      return events[0]
+    })
+  )
+
+  expect(event).toBeInstanceOf(EventLogInspectorEvent)
+  expect(event?.kind).toBe("query")
+  expect(event?.timestamp).toBe(timestamp)
+})
+
+test("DesktopEventLog query failure publishes Inspector event and preserves journal error", async () => {
+  const timestamp = 1_715_000_999_001
+  const journalError = new EventJournal.EventJournalError({
+    cause: "boom",
+    method: "entries"
+  })
+  const collectors = await Effect.runPromise(makeInspectorCollectors())
+  const eventLog = await Effect.runPromise(
+    makeDesktopEventLog(failingEventLog(journalError), collectors.eventLog)
+  )
+  const fiber = Effect.runFork(collectors.eventLog.events.pipe(Stream.take(1), Stream.runCollect))
+
+  const exit = await Effect.runPromiseExit(
+    eventLog.query().pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
+  const events = [...(await Effect.runPromise(Fiber.join(fiber)))]
+
+  expectFailure(exit, EventJournal.EventJournalError)
+  expect(events[0]).toMatchObject({
+    errorTag: "EventJournalError",
+    kind: "query",
+    message: "entries failed",
+    operation: "DesktopEventLog.query",
+    status: "failure",
+    timestamp
+  })
+})
+
 test("DesktopEventLog exposes read-only transitions as typed Inspector events", async () => {
   const event = await Effect.runPromise(
     Effect.gen(function* () {
@@ -141,3 +200,32 @@ test("DesktopEventLog exposes read-only transitions as typed Inspector events", 
   expect(event?.kind).toBe("read-only-transition")
   expect(event?.operation).toBe("EventLog.readOnly")
 })
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.void
+})
+
+const failingEventLog = (
+  error: EventJournal.EventJournalError
+): EffectEventLog.EventLog["Service"] =>
+  Object.freeze({
+    destroy: Effect.fail(error),
+    entries: Effect.fail(error),
+    write: () => Effect.fail(error)
+  } satisfies EffectEventLog.EventLog["Service"])
+
+const expectFailure = (
+  exit: Exit.Exit<unknown, EventJournal.EventJournalError>,
+  errorType: abstract new (...args: never[]) => unknown
+): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+
+  if (Exit.isFailure(exit)) {
+    const fail = exit.cause.reasons.find(Cause.isFailReason)
+    expect(fail?.error).toBeInstanceOf(errorType)
+  }
+}

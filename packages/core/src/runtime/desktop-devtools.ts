@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Clock, Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
   type InspectorCollectorsApi,
@@ -34,23 +34,31 @@ export const makeDesktopDevtools = (
     events: Stream.mergeAll(
       [
         collectors.events.pipe(
-          Stream.map(
-            (event) =>
-              new DesktopRuntimeEvent({
-                source: "inspector",
-                timestampMs: inspectorTimestamp(event),
-                inspector: event
-              })
+          Stream.mapEffect((event) =>
+            inspectorTimestamp(event).pipe(
+              Effect.map(
+                (timestampMs) =>
+                  new DesktopRuntimeEvent({
+                    source: "inspector",
+                    timestampMs,
+                    inspector: event
+                  })
+              )
+            )
           )
         ),
         telemetry.eventFeed.pipe(
-          Stream.map(
-            (event) =>
-              new DesktopRuntimeEvent({
-                source: "telemetry",
-                timestampMs: telemetryTimestamp(event),
-                telemetry: event
-              })
+          Stream.mapEffect((event) =>
+            telemetryTimestamp(event).pipe(
+              Effect.map(
+                (timestampMs) =>
+                  new DesktopRuntimeEvent({
+                    source: "telemetry",
+                    timestampMs,
+                    telemetry: event
+                  })
+              )
+            )
           )
         )
       ],
@@ -101,17 +109,26 @@ export const streamDevtoolsToTransport = (
     )
   )
 
-const inspectorTimestamp = (event: InspectorEvent): number =>
-  event.execution?.timestamp ??
-  event.filesystem?.timestamp ??
-  event.nativeHost?.timestamp ??
-  event.persistence?.timestamp ??
-  event.workflow?.timestamp ??
-  event.eventLog?.timestamp ??
-  event.renderer?.timestamp ??
-  Date.now()
+const inspectorTimestamp = (event: InspectorEvent): Effect.Effect<number, never, never> =>
+  event.execution?.timestamp !== undefined
+    ? Effect.succeed(event.execution.timestamp)
+    : event.filesystem?.timestamp !== undefined
+      ? Effect.succeed(event.filesystem.timestamp)
+      : event.nativeHost?.timestamp !== undefined
+        ? Effect.succeed(event.nativeHost.timestamp)
+        : event.persistence?.timestamp !== undefined
+          ? Effect.succeed(event.persistence.timestamp)
+          : event.workflow?.timestamp !== undefined
+            ? Effect.succeed(event.workflow.timestamp)
+            : event.eventLog?.timestamp !== undefined
+              ? Effect.succeed(event.eventLog.timestamp)
+              : event.renderer?.timestamp !== undefined
+                ? Effect.succeed(event.renderer.timestamp)
+                : Clock.currentTimeMillis
 
-const telemetryTimestamp = (event: InspectorTelemetryEvent): number => {
+const telemetryTimestamp = (
+  event: InspectorTelemetryEvent
+): Effect.Effect<number, never, never> => {
   switch (event.kind) {
     case "log":
       return telemetryRecordTimestamp(event.record)
@@ -120,25 +137,29 @@ const telemetryTimestamp = (event: InspectorTelemetryEvent): number => {
     case "metric":
       return telemetryMetricTimestamp(event.metric)
     case "cause":
-      return event.timestamp
+      return Effect.succeed(event.timestamp)
   }
 }
 
-const telemetryRecordTimestamp = (record: unknown): number =>
-  hasNumberProperty(record, "timestamp") ? record.timestamp : Date.now()
+const telemetryRecordTimestamp = (record: unknown): Effect.Effect<number, never, never> =>
+  hasNumberProperty(record, "timestamp")
+    ? Effect.succeed(record.timestamp)
+    : Clock.currentTimeMillis
 
-const telemetrySpanTimestamp = (span: unknown): number => {
+const telemetrySpanTimestamp = (span: unknown): Effect.Effect<number, never, never> => {
   if (hasNumberProperty(span, "endedAt")) {
-    return span.endedAt
+    return Effect.succeed(span.endedAt)
   }
   if (hasNumberProperty(span, "startedAt")) {
-    return span.startedAt
+    return Effect.succeed(span.startedAt)
   }
-  return Date.now()
+  return Clock.currentTimeMillis
 }
 
-const telemetryMetricTimestamp = (metric: unknown): number =>
-  hasNumberProperty(metric, "updatedAt") ? metric.updatedAt : Date.now()
+const telemetryMetricTimestamp = (metric: unknown): Effect.Effect<number, never, never> =>
+  hasNumberProperty(metric, "updatedAt")
+    ? Effect.succeed(metric.updatedAt)
+    : Clock.currentTimeMillis
 
 const hasNumberProperty = <K extends string>(value: unknown, key: K): value is Record<K, number> =>
   typeof value === "object" &&
