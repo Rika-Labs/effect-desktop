@@ -1,6 +1,6 @@
 ---
 title: WebView (native)
-description: Embedded browser views. Phase 6+ surface.
+description: Embedded browser views.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,11 +8,44 @@ effect_version: 4
 
 # `WebView`
 
-Embedded browser views (sub-WebView within a window). Methods are reserved for Phase 6+.
+Embedded browser views inside desktop windows.
 
-## Capability
+## Import
 
-`webViewCapability(options)` builds the matching `PermissionRegistry` declaration.
+```ts
+import { Desktop } from "@effect-desktop/core"
+import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/native"
+```
+
+## Methods
+
+| Method                | Payload                   | Success                |
+| --------------------- | ------------------------- | ---------------------- |
+| `create`              | `{ id?, window?, route? }` | `{ id, window }`       |
+| `loadRoute`           | `{ webview, route }`      | `void`                 |
+| `loadUrl`             | `{ webview, url }`        | `void`                 |
+| `reload`              | `{ webview }`             | `void`                 |
+| `goBack`              | `{ webview }`             | `void`                 |
+| `goForward`           | `{ webview }`             | `void`                 |
+| `captureScreenshot`   | `{ webview }`             | screenshot data        |
+| `setNavigationPolicy` | `{ webview, policy }`     | `void`                 |
+| `capability`          | `{ name, platform?, mode? }` | `{ supported: boolean }` |
+| `destroy`             | `{ webview }`             | `void`                 |
+
+## App composition
+
+```ts
+Desktop.make({
+  id: "com.acme.webview",
+  windows: Desktop.window("main", { title: "WebView" }),
+  native: Desktop.native(Native.webView),
+  permissions: Native.permissions(...Native.Permissions.webView.all)
+})
+```
+
+`Native.webView` is the app-composition layer for `Desktop.native(...)`.
+`Native.Permissions.webView.*` grants WebView authority. `webViewCapability(...)`
+is a platform and runtime-mode support helper; it does not grant permission.
 
 ## Errors
 
@@ -20,7 +53,8 @@ Embedded browser views (sub-WebView within a window). Methods are reserved for P
 
 ## Status
 
-The contract is declared and `WebViewRpcs` exists. Methods land in a later phase. The capability check pattern is in place so app code can reserve usage now.
+The contract is declared through `WebViewRpcs`, and platform-limited operations
+are exposed through typed support checks.
 
 ## Related
 
