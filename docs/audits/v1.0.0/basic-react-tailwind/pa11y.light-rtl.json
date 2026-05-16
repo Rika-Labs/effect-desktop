@@ -1,6 +1,0 @@
-{
-  "url": "https://templates.effect-desktop.local/basic-react-tailwind/dist/index.html?dir=rtl&lang=ar&color-scheme=light",
-  "runner": "pa11y",
-  "standard": "WCAG2AA",
-  "issues": []
-}

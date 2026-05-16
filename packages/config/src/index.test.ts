@@ -4,9 +4,15 @@ import { Effect, Exit } from "effect"
 import {
   cspWeakenings,
   DEFAULT_CSP_DIRECTIVES,
+  DEFAULT_CSP_POLICY,
+  decodeDesktopConfig,
   defineDesktopConfig,
+  effectiveCspPolicy,
   formatProductionCheckReport,
+  makeCspNonce,
+  mergeDesktopConfig,
   ProductionCheckInvalidInput,
+  renderCspPolicy,
   renderDefaultCsp,
   renderEffectiveCsp,
   runProductionCheck,
@@ -34,6 +40,15 @@ test("CSP defaults render the spec policy with a nonce", () => {
   expect(renderDefaultCsp("abc123")).toBe(HOST_DEFAULT_CSP_FOR_NONCE("abc123"))
 })
 
+test("CSP defaults are schema-backed ordered policy data", () => {
+  expect(DEFAULT_CSP_POLICY.directives.map((directive) => directive.name)).toEqual(
+    DEFAULT_CSP_DIRECTIVES.map(([directive]) => directive)
+  )
+  expect(renderCspPolicy(DEFAULT_CSP_POLICY, makeCspNonce("abc123"))).toBe(
+    HOST_DEFAULT_CSP_FOR_NONCE("abc123")
+  )
+})
+
 test("defineDesktopConfig accepts the documented app config shape", () => {
   const config = defineDesktopConfig({
     app: {
@@ -42,13 +57,16 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
       version: "1.0.0"
     },
     runtime: {
-      engine: "bun",
+      engine: "node",
       entry: "src/app.ts"
     },
     renderer: {
       framework: "react",
       styling: "tailwind",
       entry: "src/renderer/main.tsx"
+    },
+    web: {
+      engine: "chrome"
     },
     native: {
       host: "rust-wry-tao",
@@ -104,6 +122,8 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
   })
 
   expect(config.app.version).toBe("1.0.0")
+  expect(config.runtime.engine).toBe("node")
+  expect(config.web.engine).toBe("chrome")
 })
 
 test("defineDesktopConfig rejects invalid app metadata types at compile time", () => {
@@ -117,6 +137,95 @@ test("defineDesktopConfig rejects invalid app metadata types at compile time", (
   })
 
   expect(config.app?.id).toBe("dev.example.app")
+})
+
+test("decodeDesktopConfig accepts schema-coded windows and signing config", async () => {
+  const config = await Effect.runPromise(
+    decodeDesktopConfig({
+      app: { id: "dev.example.app", name: "Example", version: "1.0.0" },
+      signing: {
+        macos: {
+          identity: "Developer ID Application: Example Inc."
+        }
+      },
+      windows: [
+        {
+          height: 768,
+          id: "main",
+          title: "Main",
+          width: 1024
+        }
+      ]
+    })
+  )
+
+  expect(Array.isArray(config.windows)).toBe(true)
+  expect(config.signing).toEqual({
+    macos: {
+      identity: "Developer ID Application: Example Inc."
+    }
+  })
+})
+
+test("decodeDesktopConfig defaults web engine to system when web config is present", async () => {
+  const config = await Effect.runPromise(
+    decodeDesktopConfig({
+      web: {}
+    })
+  )
+
+  expect(config.web?.engine).toBe("system")
+})
+
+test("decodeDesktopConfig normalizes legacy chromium web engine to chrome", async () => {
+  const config = await Effect.runPromise(
+    decodeDesktopConfig({
+      web: { engine: "chromium" }
+    })
+  )
+
+  expect(config.web?.engine).toBe("chrome")
+})
+
+test("decodeDesktopConfig rejects non-json windows and signing values", async () => {
+  for (const invalid of [
+    { windows: "main" },
+    { signing: "Developer ID Application: Example Inc." },
+    { windows: [{ id: "main", onOpen: () => undefined }] }
+  ]) {
+    const exit = await Effect.runPromiseExit(decodeDesktopConfig(invalid))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+})
+
+test("mergeDesktopConfig combines decoded shared and app config by typed policy", () => {
+  const merged = mergeDesktopConfig(
+    {
+      app: { id: "shared", name: "Shared", version: "1.0.0" },
+      env: { dev: { OVERRIDE: "shared", SHARED: "1" } },
+      protocol: { limits: { maxFrameBytes: 1024 } },
+      web: { engine: "system" },
+      signing: { macos: { identity: "shared" } },
+      windows: { defaults: { titleBarStyle: "default" } }
+    },
+    {
+      app: { id: "app" },
+      env: { dev: { OVERRIDE: "app" } },
+      protocol: { limits: { maxConcurrentRequestsPerWindow: 4 } },
+      web: { engine: "chromium" },
+      windows: [{ id: "main" }]
+    }
+  )
+
+  expect(merged.app).toEqual({ id: "app", name: "Shared", version: "1.0.0" })
+  expect(merged.env).toEqual({ dev: { OVERRIDE: "app", SHARED: "1" } })
+  expect(merged.protocol?.limits).toEqual({
+    maxConcurrentRequestsPerWindow: 4,
+    maxFrameBytes: 1024
+  })
+  expect(merged.web).toEqual({ engine: "chrome" })
+  expect(merged.signing).toEqual({ macos: { identity: "shared" } })
+  expect(merged.windows).toEqual([{ id: "main" }])
 })
 
 test("CSP rendering rejects nonce tokens that can alter header structure", () => {
@@ -198,6 +307,9 @@ test("CSP config can tighten a default directive", () => {
   expect(cspWeakenings(csp)).toEqual([])
   expect(renderEffectiveCsp(csp, "abc123")).toContain("connect-src 'self';")
   expect(renderEffectiveCsp(csp, "abc123")).not.toContain("connect-src 'self' app:")
+  expect(
+    effectiveCspPolicy(csp).directives.find((directive) => directive.name === "connect-src")
+  ).toMatchObject({ values: ["'self'"] })
 })
 
 test("CSP config normalizes mixed-case directive names", () => {
@@ -662,7 +774,7 @@ test("ProductionChecker rule registry covers the current production rule set", a
       requireTypedBridge: false,
       rendererNativeAccess: true,
       requirePermissions: false,
-      externalNavigation: "allow" as never,
+      externalNavigation: "allow",
       csp: { disabled: true },
       redaction: { defaultPatternEnabled: false }
     },
@@ -813,7 +925,7 @@ test("ProductionChecker rejects empty config paths", async () => {
       configPath: "",
       config: {
         security: { externalNavigation: "deny" }
-      } as never
+      }
     })
   )
   const whitespaceExit = await Effect.runPromiseExit(
@@ -821,14 +933,14 @@ test("ProductionChecker rejects empty config paths", async () => {
       configPath: "   ",
       config: {
         security: { externalNavigation: "deny" }
-      } as never
+      }
     })
   )
   const absentExit = await Effect.runPromiseExit(
     runProductionCheck({
       config: {
         security: { externalNavigation: "deny" }
-      } as never
+      }
     })
   )
 
@@ -850,7 +962,7 @@ test("ProductionChecker rejects malformed renderer file inputs", async () => {
   const exit = await Effect.runPromiseExit(
     runProductionCheck({
       config: {},
-      rendererFiles: [{ path: "src/renderer/main.ts" } as never]
+      rendererFiles: [{ path: "src/renderer/main.ts" }]
     })
   )
 

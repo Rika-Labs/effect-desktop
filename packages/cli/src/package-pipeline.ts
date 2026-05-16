@@ -1,26 +1,43 @@
 import { createHash } from "node:crypto"
-import {
-  chmod,
-  copyFile,
-  lstat,
-  mkdir,
-  readlink,
-  readdir,
-  readFile,
-  rm,
-  stat,
-  writeFile
-} from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
-export type PackageOs = "linux" | "macos" | "windows"
-export type PackageArch = "arm64" | "x64"
-export type PackageTarget = `${PackageOs}-${PackageArch}`
-export type PackagePlatform = "linux" | "macos" | "windows"
-export type PackageArtifactKind = "app" | "dmg" | "zip" | "msi" | "appimage" | "deb" | "rpm"
+import type { DesktopProviderBudget } from "@effect-desktop/core"
+
+import {
+  ReleaseFileSystem,
+  runReleaseFileSystem,
+  type ReleaseFileInfo
+} from "./release-file-system.js"
+import { runReleaseTool } from "./release-tool-runner.js"
+import {
+  appImageArch,
+  artifactKindsForTarget,
+  debArch,
+  decodeDesktopTarget,
+  desktopArtifactExtension,
+  desktopPlatformDirectory,
+  detectDesktopHostTarget,
+  hostBinaryName,
+  isDesktopArtifactKind,
+  resolveDesktopHostTarget,
+  resolveDesktopTarget,
+  rpmArch,
+  wixArch
+} from "./targets.js"
+import type {
+  DesktopArtifactKind,
+  DesktopOs,
+  DesktopTarget,
+  DesktopTargetId,
+  UnsupportedDesktopHostTargetError
+} from "./targets.js"
+
+export type PackageTarget = DesktopTargetId
+export type PackagePlatform = DesktopOs
+export type PackageArtifactKind = DesktopArtifactKind
 export type PackageStepName =
   | "macos-app"
   | "macos-dmg"
@@ -128,12 +145,21 @@ export interface PackageArtifactReport {
   readonly appVersion: string
   readonly sizeBytes: number
   readonly sha256: string
+  readonly providerBudgetChecks: readonly PackageProviderBudgetCheckReport[]
   readonly linuxIntegration?: {
     readonly desktopFile: string
     readonly appStreamId: string
     readonly flatpakAppId: string
     readonly snapName: string
   }
+}
+
+export interface PackageProviderBudgetCheckReport {
+  readonly provider: DesktopProviderBudget
+  readonly metric: "artifact-bytes"
+  readonly budget: number
+  readonly actual: number
+  readonly status: "pass" | "fail"
 }
 
 export interface PackageStepReport {
@@ -151,8 +177,16 @@ export interface DesktopPackageReport {
   readonly target: PackageTarget
   readonly layoutPath: string
   readonly outputPath: string
+  readonly providers: PackageProviderReport | undefined
   readonly artifacts: readonly PackageArtifactReport[]
   readonly steps: readonly PackageStepReport[]
+}
+
+export interface PackageProviderReport {
+  readonly runtime: AppManifest["runtimeManifest"]["engine"]
+  readonly runtimePackaging: "source"
+  readonly webEngine: "system" | "chrome"
+  readonly providerBudgets: readonly DesktopProviderBudget[]
 }
 
 interface PackagePlan {
@@ -167,6 +201,7 @@ interface PackagePlan {
   readonly artifactKinds: readonly PackageArtifactKind[]
   readonly safeAppName: string
   readonly linuxPackageName: string
+  readonly providers: PackageProviderReport | undefined
 }
 
 interface AppConfig {
@@ -183,9 +218,17 @@ interface AppManifest {
   readonly version: string
   readonly target: PackageTarget
   readonly renderer: { readonly path: string }
-  readonly runtime: { readonly entry: string }
+  readonly runtimeManifest: {
+    readonly engine: "bun" | "node"
+    readonly entry: string
+    readonly executable: string
+    readonly args: readonly string[]
+    readonly env: Readonly<Record<string, string>>
+  }
   readonly nativeHost: { readonly binary: string }
 }
+
+const RUNTIME_ENGINES = ["bun", "node"] as const
 
 interface PlannedArtifact {
   readonly kind: PackageArtifactKind
@@ -241,6 +284,7 @@ export const runDesktopPackage = (
       target: plan.target,
       layoutPath: plan.layoutPath,
       outputPath: plan.outputPath,
+      providers: plan.providers,
       artifacts,
       steps
     }
@@ -249,56 +293,37 @@ export const runDesktopPackage = (
   })
 
 export const detectPackageHostTarget = (): PackageTarget | undefined => {
-  const os = process.platform === "darwin" ? "macos" : process.platform
-  const arch = process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : undefined
-  if ((os === "linux" || os === "macos" || os === "win32") && arch !== undefined) {
-    return `${os === "win32" ? "windows" : os}-${arch}` as PackageTarget
-  }
-  return undefined
+  return detectDesktopHostTarget()
 }
 
 export const runPackageCommand: PackageCommandRunner = (invocation) =>
-  Effect.tryPromise({
-    try: async () => {
-      const spawned =
-        invocation.env === undefined
-          ? Bun.spawn([invocation.command, ...invocation.args], {
-              cwd: invocation.cwd,
-              stdout: "ignore",
-              stderr: "pipe"
-            })
-          : Bun.spawn([invocation.command, ...invocation.args], {
-              cwd: invocation.cwd,
-              env: { ...globalThis.process.env, ...invocation.env },
-              stdout: "ignore",
-              stderr: "pipe"
-            })
-      const stderr = await readStreamText(spawned.stderr)
-      const exitCode = await spawned.exited
-      if (exitCode !== 0) {
-        const failure = {
-          step: invocation.step,
-          command: [invocation.command, ...invocation.args],
-          cwd: invocation.cwd,
-          exitCode,
-          message: `${invocation.step} command exited with ${exitCode}`
-        }
-        throw new PackageCommandFailedError({
-          ...(stderr.length === 0 ? failure : { ...failure, stderr })
-        })
-      }
-    },
-    catch: (cause) =>
-      cause instanceof PackageCommandFailedError
-        ? cause
-        : new PackageCommandFailedError({
-            step: invocation.step,
-            command: [invocation.command, ...invocation.args],
-            cwd: invocation.cwd,
-            exitCode: undefined,
-            message: formatUnknownError(cause)
-          })
+  Effect.gen(function* () {
+    const result = yield* runReleaseTool({ ...invocation, stdout: "ignore", stderr: "pipe" }).pipe(
+      Effect.mapError((cause) => packageCommandError(invocation, undefined, cause))
+    )
+    if (result.exitCode !== 0) {
+      return yield* Effect.fail(packageCommandError(invocation, result.exitCode, result.stderr))
+    }
   })
+
+const packageCommandError = (
+  invocation: PackageCommandInvocation,
+  exitCode: number | undefined,
+  cause: unknown
+): PackageCommandFailedError => {
+  const stderr = typeof cause === "string" ? cause : undefined
+  return new PackageCommandFailedError({
+    step: invocation.step,
+    command: [invocation.command, ...invocation.args],
+    cwd: invocation.cwd,
+    exitCode,
+    message:
+      exitCode === undefined
+        ? formatUnknownError(cause)
+        : `${invocation.step} command exited with ${exitCode}`,
+    ...(stderr === undefined || stderr.length === 0 ? {} : { stderr })
+  })
+}
 
 const normalizePackagePlan = (
   rawConfig: unknown,
@@ -307,14 +332,19 @@ const normalizePackagePlan = (
     readonly target: PackageTarget
     readonly artifact: string | undefined
   }
-): Effect.Effect<PackagePlan, PackageConfigError | PackageUnsupportedArtifactError, never> =>
+): Effect.Effect<
+  PackagePlan,
+  PackageConfigError | PackageFileError | PackageUnsupportedArtifactError,
+  never
+> =>
   Effect.gen(function* () {
     const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
     const appId = yield* readSafeAppId(config.app?.id, "app.id")
     const appName = yield* readLineSafeString(config.app?.name, "app.name")
     const appVersion = yield* readSemverString(config.app?.version, "app.version")
-    const platform = platformFromTarget(options.target)
+    const platform = desktopPlatformDirectory(options.target)
+    const layoutPath = resolvePath(appRoot, join("build", "effect-desktop", options.target))
     const artifactKinds = yield* resolveArtifactKinds(options.artifact, options.target)
     const safeAppName = safeArtifactName(appName)
     if (safeAppName === "." || safeAppName === "..") {
@@ -331,15 +361,60 @@ const normalizePackagePlan = (
       appName,
       appVersion,
       appRoot,
-      layoutPath: resolvePath(appRoot, join("build", "effect-desktop", options.target)),
+      layoutPath,
       outputPath: resolvePath(appRoot, join("dist", "desktop", platform)),
       target: options.target,
       platform,
       artifactKinds,
       safeAppName,
-      linuxPackageName: linuxPackageName(appId, appName)
+      linuxPackageName: linuxPackageName(appId, appName),
+      providers: yield* readBuildProviderReport(layoutPath)
     }
   })
+
+const readBuildProviderReport = (
+  layoutPath: string
+): Effect.Effect<PackageProviderReport | undefined, PackageFileError, never> =>
+  Effect.gen(function* () {
+    const reportPath = join(layoutPath, "build-report.json")
+    if (!(yield* pathExists(reportPath))) {
+      return undefined
+    }
+    const report = yield* readJson<unknown>(reportPath)
+    if (
+      !isRecord(report) ||
+      !isRecord(report["providers"]) ||
+      !Array.isArray(report["providerBudgets"])
+    ) {
+      return undefined
+    }
+    const providers = report["providers"]
+    const runtime = providers["runtime"]
+    const runtimePackaging = providers["runtimePackaging"]
+    const webEngine = providers["webEngine"]
+    if (
+      (runtime !== "bun" && runtime !== "node") ||
+      runtimePackaging !== "source" ||
+      (webEngine !== "system" && webEngine !== "chrome")
+    ) {
+      return undefined
+    }
+    return {
+      runtime,
+      runtimePackaging,
+      webEngine,
+      providerBudgets: report["providerBudgets"].filter(isProviderBudget)
+    }
+  })
+
+const isProviderBudget = (value: unknown): value is DesktopProviderBudget =>
+  isRecord(value) &&
+  typeof value["id"] === "string" &&
+  value["kind"] === "runtime" &&
+  typeof value["package"] === "string" &&
+  typeof value["importPath"] === "string" &&
+  typeof value["startupBudgetMs"] === "number" &&
+  typeof value["bundleBudgetKb"] === "number"
 
 const validateBuildLayout = (
   plan: PackagePlan
@@ -383,7 +458,7 @@ const validateBuildLayout = (
       )
     }
     yield* statPath(join(plan.layoutPath, manifest.renderer.path))
-    yield* statPath(join(plan.layoutPath, manifest.runtime.entry))
+    yield* statPath(join(plan.layoutPath, manifest.runtimeManifest.entry))
     yield* statPath(join(plan.layoutPath, manifest.nativeHost.binary))
   })
 
@@ -398,20 +473,109 @@ const decodeAppManifest = (
   const name = readManifestString(value, "name", path)
   const version = readManifestString(value, "version", path)
   const target = readManifestTarget(value, path)
-  const renderer = readNestedManifestString(value, "renderer", "path", path)
-  const runtime = readNestedManifestString(value, "runtime", "entry", path)
-  const nativeHost = readNestedManifestString(value, "nativeHost", "binary", path)
-  return Effect.all({ id, name, version, target, renderer, runtime, nativeHost }).pipe(
+  const renderer = readNestedManifestPath(value, "renderer", "path", path)
+  const runtimeManifest = readRuntimeManifest(value["runtimeManifest"], path)
+  const nativeHost = readNestedManifestPath(value, "nativeHost", "binary", path)
+  return Effect.all({ id, name, version, target, renderer, runtimeManifest, nativeHost }).pipe(
     Effect.map((manifest) => ({
       id: manifest.id,
       name: manifest.name,
       version: manifest.version,
       target: manifest.target,
       renderer: { path: manifest.renderer },
-      runtime: { entry: manifest.runtime },
+      runtimeManifest: manifest.runtimeManifest,
       nativeHost: { binary: manifest.nativeHost }
     }))
   )
+}
+
+const readRuntimeManifest = (
+  value: unknown,
+  path: string
+): Effect.Effect<AppManifest["runtimeManifest"], PackageFileError, never> => {
+  if (!isRecord(value)) {
+    return packageManifestError(path, "app-manifest.json field runtimeManifest must be an object")
+  }
+  const engine = readRuntimeEngine(value["engine"], path)
+  const entry = readManifestPath(value, "runtimeManifest.entry", path)
+  const executable = readLineSafeManifestString(value, "runtimeManifest.executable", path)
+  const args = readRuntimeArgs(value["args"], path)
+  const env = readRuntimeEnv(value["env"], path)
+  return Effect.all({ engine, entry, executable, args, env }).pipe(
+    Effect.flatMap((runtime) =>
+      runtime.executable !== runtime.engine
+        ? packageManifestError(
+            path,
+            "app-manifest.json field runtimeManifest.executable must match runtimeManifest.engine"
+          )
+        : runtime.args.length !== 1 || runtime.args[0] !== runtime.entry
+          ? packageManifestError(
+              path,
+              "app-manifest.json field runtimeManifest.args must exactly equal [runtimeManifest.entry]"
+            )
+          : Effect.succeed(runtime)
+    )
+  )
+}
+
+const readRuntimeEngine = (
+  value: unknown,
+  path: string
+): Effect.Effect<AppManifest["runtimeManifest"]["engine"], PackageFileError, never> =>
+  isRuntimeEngine(value)
+    ? Effect.succeed(value)
+    : packageManifestError(
+        path,
+        `app-manifest.json field runtimeManifest.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
+      )
+
+const isRuntimeEngine = (value: unknown): value is AppManifest["runtimeManifest"]["engine"] =>
+  typeof value === "string" && RUNTIME_ENGINES.some((engine) => engine === value)
+
+const readRuntimeArgs = (
+  value: unknown,
+  path: string
+): Effect.Effect<readonly string[], PackageFileError, never> => {
+  if (!Array.isArray(value)) {
+    return packageManifestError(
+      path,
+      "app-manifest.json field runtimeManifest.args must be an array"
+    )
+  }
+  const args: string[] = []
+  for (const [index, item] of value.entries()) {
+    if (!isLineSafeString(item)) {
+      return packageManifestError(
+        path,
+        `app-manifest.json field runtimeManifest.args[${index}] must be a line-safe string`
+      )
+    }
+    args.push(item)
+  }
+  return Effect.succeed(Object.freeze(args))
+}
+
+const readRuntimeEnv = (
+  value: unknown,
+  path: string
+): Effect.Effect<Readonly<Record<string, string>>, PackageFileError, never> => {
+  if (!isRecord(value)) {
+    return packageManifestError(
+      path,
+      "app-manifest.json field runtimeManifest.env must be an object"
+    )
+  }
+  const env: Record<string, string> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (!isRuntimeEnvKey(key) || !isLineSafeString(item)) {
+      return packageManifestError(
+        path,
+        `app-manifest.json field runtimeManifest.env.${key} must be a line-safe string without =`
+      )
+    }
+    env[key] = item
+  }
+  return Effect.succeed(Object.freeze(env))
 }
 
 const readManifestString = (
@@ -425,14 +589,64 @@ const readManifestString = (
     : packageManifestError(path, `app-manifest.json field ${field} must be a string`)
 }
 
+const readLineSafeManifestString = (
+  record: Readonly<Record<PropertyKey, unknown>>,
+  field: string,
+  path: string
+): Effect.Effect<string, PackageFileError, never> => {
+  const value = record[field.slice(field.lastIndexOf(".") + 1)]
+  return isLineSafeString(value)
+    ? Effect.succeed(value)
+    : packageManifestError(path, `app-manifest.json field ${field} must be a line-safe string`)
+}
+
+const readManifestPath = (
+  record: Readonly<Record<PropertyKey, unknown>>,
+  field: string,
+  path: string
+): Effect.Effect<string, PackageFileError, never> =>
+  readLineSafeManifestString(record, field, path).pipe(
+    Effect.flatMap((manifestPath) =>
+      isContainedManifestPath(manifestPath)
+        ? Effect.succeed(manifestPath)
+        : packageManifestError(
+            path,
+            `app-manifest.json field ${field} must be a relative path inside the build layout`
+          )
+    )
+  )
+
+const isLineSafeString = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  !value.includes("\0") &&
+  !value.includes("\r") &&
+  !value.includes("\n")
+
+const isContainedManifestPath = (value: string): boolean =>
+  !isAbsolute(value) &&
+  !value.includes("\\") &&
+  value.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+
+const isRuntimeEnvKey = (value: string): boolean => isLineSafeString(value) && !value.includes("=")
+
 const readManifestTarget = (
   record: Readonly<Record<PropertyKey, unknown>>,
   path: string
 ): Effect.Effect<PackageTarget, PackageFileError, never> => {
   const value = record["target"]
-  return typeof value === "string" && isPackageTarget(value)
-    ? Effect.succeed(value)
-    : packageManifestError(path, "app-manifest.json field target must be a package target")
+  return decodeDesktopTarget(value).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      () =>
+        new PackageFileError({
+          operation: "validate",
+          path,
+          message: "app-manifest.json field target must be a package target",
+          cause: undefined
+        })
+    )
+  )
 }
 
 const readNestedManifestString = (
@@ -453,6 +667,23 @@ const readNestedManifestString = (
         `app-manifest.json field ${objectField}.${stringField} must be a string`
       )
 }
+
+const readNestedManifestPath = (
+  record: Readonly<Record<PropertyKey, unknown>>,
+  objectField: string,
+  stringField: string,
+  path: string
+): Effect.Effect<string, PackageFileError, never> =>
+  readNestedManifestString(record, objectField, stringField, path).pipe(
+    Effect.flatMap((manifestPath) =>
+      isLineSafeString(manifestPath) && isContainedManifestPath(manifestPath)
+        ? Effect.succeed(manifestPath)
+        : packageManifestError(
+            path,
+            `app-manifest.json field ${objectField}.${stringField} must be a relative path inside the build layout`
+          )
+    )
+  )
 
 const packageManifestError = (
   path: string,
@@ -683,6 +914,7 @@ const writeArtifactMetadata = (
       fileName: basename(artifactPath),
       sizeBytes: digest.sizeBytes,
       sha256: digest.sha256,
+      providerBudgetChecks: packageProviderBudgetChecks(plan, digest.sizeBytes),
       ...(plan.platform === "linux"
         ? {
             linuxIntegration: {
@@ -706,12 +938,28 @@ const writeArtifactMetadata = (
       appName: plan.appName,
       appVersion: plan.appVersion,
       sizeBytes: digest.sizeBytes,
-      sha256: digest.sha256
+      sha256: digest.sha256,
+      providerBudgetChecks: packageProviderBudgetChecks(plan, digest.sizeBytes)
+    }
+  })
+
+const packageProviderBudgetChecks = (
+  plan: PackagePlan,
+  artifactBytes: number
+): readonly PackageProviderBudgetCheckReport[] =>
+  (plan.providers?.providerBudgets ?? []).map((provider) => {
+    const budget = provider.bundleBudgetKb * 1024
+    return {
+      provider,
+      metric: "artifact-bytes",
+      budget,
+      actual: artifactBytes,
+      status: artifactBytes <= budget ? "pass" : "fail"
     }
   })
 
 const plannedArtifact = (plan: PackagePlan, kind: PackageArtifactKind): PlannedArtifact => {
-  const extension = artifactExtension(kind)
+  const extension = desktopArtifactExtension(kind)
   const name = `${plan.safeAppName}-${plan.appVersion}-${plan.target}.${extension}`
   const rootPath = join(plan.outputPath, name)
   return {
@@ -739,7 +987,7 @@ const resolveArtifactKinds = (
       })
     )
   }
-  if (isPackageArtifactKind(requested) && platformKinds.includes(requested)) {
+  if (isDesktopArtifactKind(requested) && platformKinds.includes(requested)) {
     return Effect.succeed([requested])
   }
   return Effect.fail(
@@ -747,97 +995,49 @@ const resolveArtifactKinds = (
       artifact: requested,
       target,
       message: `artifact ${requested} is not part of the ${target} package set`,
-      remediation: "Use the default artifact set from docs/SPEC.md §23.2."
+      remediation: "Use the default artifact set from engineering/SPEC.md §23.2."
     })
   )
 }
 
-const artifactKindsForTarget = (target: PackageTarget): readonly PackageArtifactKind[] => {
-  if (target.startsWith("macos-")) {
-    return ["app", "dmg", "zip"]
-  }
-  if (target.startsWith("windows-")) {
-    return ["msi"]
-  }
-  return ["appimage", "deb", "rpm"]
-}
-
-const isPackageArtifactKind = (value: string): value is PackageArtifactKind =>
-  value === "app" ||
-  value === "dmg" ||
-  value === "zip" ||
-  value === "msi" ||
-  value === "appimage" ||
-  value === "deb" ||
-  value === "rpm"
-
 const resolvePackageTarget = (
   requested: string | undefined,
-  hostTarget: PackageTarget
+  hostTarget: DesktopTarget
 ): Effect.Effect<PackageTarget, PackageUnsupportedTargetError, never> => {
-  const target = requested ?? hostTarget
-  if (!isPackageTarget(target)) {
-    return Effect.fail(
-      new PackageUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `unsupported package target ${target}`,
-        remediation:
-          "Run `bun desktop doctor` on a supported host and choose the matching --platform."
-      })
+  return resolveDesktopTarget(requested, hostTarget).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      (error) =>
+        new PackageUnsupportedTargetError({
+          target: error.target,
+          hostTarget: error.hostTarget,
+          message:
+            error.reason === "unsupported"
+              ? `unsupported package target ${error.target}`
+              : `target ${error.target} does not match host ${error.hostTarget}`,
+          remediation:
+            error.reason === "unsupported"
+              ? "Run `bun desktop doctor` on a supported host and choose the matching --platform."
+              : "Cross-platform package artifacts are out of scope. Package on the matching host."
+        })
     )
-  }
-  if (target !== hostTarget) {
-    return Effect.fail(
-      new PackageUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `target ${target} does not match host ${hostTarget}`,
-        remediation:
-          "Cross-platform package artifacts are out of scope. Package on the matching host."
-      })
-    )
-  }
-  return Effect.succeed(target)
+  )
 }
 
 const resolveHostTarget = (
   override: PackageTarget | undefined
-): Effect.Effect<PackageTarget, PackageUnsupportedHostError, never> => {
-  const hostTarget = override ?? detectPackageHostTarget()
-  if (hostTarget !== undefined) {
-    return Effect.succeed(hostTarget)
-  }
-  return Effect.fail(
-    new PackageUnsupportedHostError({
-      platform: process.platform,
-      arch: process.arch,
-      message: `unsupported host ${process.platform}-${process.arch}`,
-      remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
-    })
+): Effect.Effect<DesktopTarget, PackageUnsupportedHostError, never> =>
+  resolveDesktopHostTarget(override).pipe(
+    Effect.mapError(
+      (error: UnsupportedDesktopHostTargetError) =>
+        new PackageUnsupportedHostError({
+          platform: error.platform,
+          arch: error.arch,
+          message: `unsupported host ${error.platform}-${error.arch}`,
+          remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
+        })
+    )
   )
-}
-
-const isPackageTarget = (value: string): value is PackageTarget =>
-  value === "linux-x64" ||
-  value === "linux-arm64" ||
-  value === "macos-x64" ||
-  value === "macos-arm64" ||
-  value === "windows-x64" ||
-  value === "windows-arm64"
-
-const platformFromTarget = (target: PackageTarget): PackagePlatform => {
-  if (target.startsWith("macos-")) {
-    return "macos"
-  }
-  if (target.startsWith("windows-")) {
-    return "windows"
-  }
-  return "linux"
-}
-
-const artifactExtension = (kind: PackageArtifactKind): string =>
-  kind === "appimage" ? "AppImage" : kind
 
 const safeArtifactName = (name: string): string => name.replace(/[^A-Za-z0-9._-]+/g, "-")
 
@@ -847,20 +1047,6 @@ const linuxPackageName = (appId: string, appName: string): string => {
 }
 
 const macosAppBundlePath = (plan: PackagePlan): string => plannedArtifact(plan, "app").artifactPath
-
-const hostBinaryName = (target: PackageTarget): string =>
-  target.startsWith("windows-") ? "host.exe" : "host"
-
-const wixArch = (target: PackageTarget): string => (target.endsWith("-arm64") ? "arm64" : "x64")
-
-const appImageArch = (target: PackageTarget): string =>
-  target.endsWith("-arm64") ? "aarch64" : "x86_64"
-
-const packageArch = (target: PackageTarget): string =>
-  target.endsWith("-arm64") ? "arm64" : "amd64"
-
-const rpmArch = (target: PackageTarget): string =>
-  target.endsWith("-arm64") ? "aarch64" : "x86_64"
 
 const appUpgradeCode = (appId: string): string => {
   const bytes = createHash("sha256").update(`effect-desktop:msi-upgrade:${appId}`).digest()
@@ -980,7 +1166,7 @@ const stageDebRoot = (
         `Version: ${plan.appVersion}`,
         "Section: utils",
         "Priority: optional",
-        `Architecture: ${packageArch(plan.target)}`,
+        `Architecture: ${debArch(plan.target)}`,
         "Maintainer: Effect Desktop <maintainers@example.invalid>",
         `Description: ${plan.appName}`,
         ""
@@ -1220,16 +1406,25 @@ const loadConfig = (path: string): Effect.Effect<unknown, PackageConfigError, ne
   })
 
 const readJson = <A>(path: string): Effect.Effect<A, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: async () => JSON.parse(await readFile(path, "utf8")) as A,
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "read-json",
-        path,
-        message: `failed to read JSON ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const content = yield* fs.readFileString(path)
+      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+        Effect.map((value) => value as A)
+      )
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "read-json",
+          path,
+          message: `failed to read JSON ${path}`,
+          cause
+        })
+    )
+  )
 
 const digestPath = (
   path: string
@@ -1372,115 +1567,168 @@ const writeFileEffect = (
 ): Effect.Effect<void, PackageFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(dirname(path))
-    yield* Effect.tryPromise({
-      try: () => writeFile(path, content),
-      catch: (cause) =>
-        new PackageFileError({
-          operation: "write",
-          path,
-          message: `failed to write ${path}`,
-          cause
-        })
-    })
+    yield* runReleaseFileSystem(
+      Effect.gen(function* () {
+        const fs = yield* ReleaseFileSystem
+        yield* fs.writeFileString(path, content)
+      })
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new PackageFileError({
+            operation: "write",
+            path,
+            message: `failed to write ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const readFileEffect = (path: string): Effect.Effect<Uint8Array, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readFile(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
 const makeDirectory = (path: string): Effect.Effect<void, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => mkdir(path, { recursive: true }),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "mkdir",
-        path,
-        message: `failed to create ${path}`,
-        cause
-      })
-  }).pipe(Effect.asVoid)
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.makeDirectory(path)
+    })
+  ).pipe(
+    Effect.asVoid,
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "mkdir",
+          path,
+          message: `failed to create ${path}`,
+          cause
+        })
+    )
+  )
 
 const removePath = (path: string): Effect.Effect<void, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => rm(path, { recursive: true, force: true }),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "rm",
-        path,
-        message: `failed to remove ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.remove(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "rm",
+          path,
+          message: `failed to remove ${path}`,
+          cause
+        })
+    )
+  )
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => readdir(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "readdir",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readDirectory(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "readdir",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const statPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof stat>>, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => stat(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "stat",
-        path,
-        message: `failed to stat ${path}`,
-        cause
-      })
-  })
+const statPath = (path: string): Effect.Effect<ReleaseFileInfo, PackageFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.stat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "stat",
+          path,
+          message: `failed to stat ${path}`,
+          cause
+        })
+    )
+  )
 
-const pathExists = (path: string): Effect.Effect<boolean, never, never> =>
-  Effect.promise(async () => {
-    try {
-      await stat(path)
-      return true
-    } catch {
-      return false
-    }
-  })
+const pathExists = (path: string): Effect.Effect<boolean, PackageFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.exists(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "exists",
+          path,
+          message: `failed to check whether ${path} exists`,
+          cause
+        })
+    )
+  )
 
-const lstatPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof lstat>>, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => lstat(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "lstat",
-        path,
-        message: `failed to lstat ${path}`,
-        cause
-      })
-  })
+const lstatPath = (path: string): Effect.Effect<ReleaseFileInfo, PackageFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.lstat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "lstat",
+          path,
+          message: `failed to lstat ${path}`,
+          cause
+        })
+    )
+  )
 
 const readlinkPath = (path: string): Effect.Effect<string, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => readlink(path),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "readlink",
-        path,
-        message: `failed to readlink ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readLink(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "readlink",
+          path,
+          message: `failed to readlink ${path}`,
+          cause
+        })
+    )
+  )
 
 const resolveContainedSymlink = (
   root: string,
@@ -1513,29 +1761,41 @@ const copyFileEffect = (
 ): Effect.Effect<void, PackageFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(dirname(destination))
-    yield* Effect.tryPromise({
-      try: () => copyFile(source, destination),
-      catch: (cause) =>
-        new PackageFileError({
-          operation: "copy",
-          path: source,
-          message: `failed to copy ${source} to ${destination}`,
-          cause
-        })
-    })
+    yield* runReleaseFileSystem(
+      Effect.gen(function* () {
+        const fs = yield* ReleaseFileSystem
+        yield* fs.copyFile(source, destination)
+      })
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new PackageFileError({
+            operation: "copy",
+            path: source,
+            message: `failed to copy ${source} to ${destination}`,
+            cause
+          })
+      )
+    )
   })
 
 const chmodEffect = (path: string, mode: number): Effect.Effect<void, PackageFileError, never> =>
-  Effect.tryPromise({
-    try: () => chmod(path, mode),
-    catch: (cause) =>
-      new PackageFileError({
-        operation: "chmod",
-        path,
-        message: `failed to chmod ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.chmod(path, mode)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "chmod",
+          path,
+          message: `failed to chmod ${path}`,
+          cause
+        })
+    )
+  )
 
 const resolvePath = (cwd: string, path: string): string =>
   isAbsolute(path) ? path : resolve(cwd, path)
@@ -1553,16 +1813,3 @@ const escapeXml = (value: string): string =>
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
-
-const readStreamText = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  while (true) {
-    const read = await reader.read()
-    if (read.done) {
-      break
-    }
-    chunks.push(read.value)
-  }
-  return await new Blob(chunks).text()
-}

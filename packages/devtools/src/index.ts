@@ -2,24 +2,31 @@ import {
   CommandRegistry,
   type CommandInvocationRecord,
   type CommandSnapshot,
-  redact,
+  InspectorSafetyPolicy,
+  type InspectorSafetySummary,
   Worker,
   type WorkerSnapshot
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Stream } from "effect"
+import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 export * from "./shell.js"
 export * from "./live-panels.js"
 export * from "./diagnostics-panels.js"
 export * from "./performance-overlay.js"
-export * from "./devtools-server.js"
 export * from "./event-log-panel.js"
 export * from "./workflows-panel.js"
 export * from "./reactivity-panel.js"
 export * from "./persistence-panel.js"
 export * from "./logs-panel.js"
 export * from "./cluster-panel.js"
+export * from "./layer-graph-panel.js"
 export * from "./snapshot-client.js"
+export * from "./inspector-events.js"
+export * from "./testing.js"
+export * from "./lifecycle-collectors.js"
+export * from "./inspector-views.js"
+export * from "./embedded-inspector-panel.js"
+export * from "./desktop-inspector.js"
 
 export interface CommandsDevtoolsApi {
   readonly list: () => Effect.Effect<readonly CommandSnapshot[], never, never>
@@ -42,6 +49,7 @@ export const CommandsDevtoolsLive = Layer.effect(CommandsDevtools)(
 
 export interface WorkersSnapshot {
   readonly workers: readonly WorkerSnapshot[]
+  readonly safety: InspectorSafetySummary
 }
 
 export interface WorkersDevtoolsApi {
@@ -53,23 +61,33 @@ export class WorkersDevtools extends Context.Service<WorkersDevtools, WorkersDev
   "@effect-desktop/devtools/WorkersDevtools"
 ) {}
 
-export const WorkersDevtoolsLive = Layer.effect(WorkersDevtools)(
+export const WorkersDevtoolsLive: Layer.Layer<
+  WorkersDevtools,
+  never,
+  Worker | InspectorSafetyPolicy
+> = Layer.effect(WorkersDevtools)(
   Effect.gen(function* () {
     const workers = yield* Worker
+    const inspectorSafety = yield* InspectorSafetyPolicy
     const list = (): Effect.Effect<WorkersSnapshot, never, never> =>
       Effect.gen(function* () {
         const workerRows = yield* workers.list()
-        return redact({ workers: workerRows })
+        const decision = yield* inspectorSafety.sanitize({
+          source: "devtools.workers",
+          payload: { workers: workerRows } satisfies Omit<WorkersSnapshot, "safety">
+        })
+        if (Option.isNone(decision.value)) {
+          return { workers: [], safety: decision.summary } satisfies WorkersSnapshot
+        }
+        return {
+          ...decision.value.value,
+          safety: decision.summary
+        } satisfies WorkersSnapshot
       })
 
     return Object.freeze({
       list,
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep("16 millis").pipe(Effect.andThen(list())))
-          )
-        )
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced("16 millis"))
     } satisfies WorkersDevtoolsApi)
   })
 )

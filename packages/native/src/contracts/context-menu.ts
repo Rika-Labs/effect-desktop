@@ -1,10 +1,10 @@
-import { BridgeRpc } from "@effect-desktop/bridge"
+import { ResourceHandleSchema } from "@effect-desktop/core"
 import { Schema } from "effect"
 
 import { MenuTemplate } from "./menu.js"
 import { PrintableNonEmptyString } from "./strings.js"
 
-const WindowResource = BridgeRpc.Resource("window", "open")
+const WindowResource = ResourceHandleSchema("window", "open")
 const ContextMenuCoordinate = Schema.Number.check(
   Schema.isFinite(),
   Schema.isGreaterThanOrEqualTo(0)
@@ -20,7 +20,7 @@ export class ContextMenuPosition extends Schema.Class<ContextMenuPosition>("Cont
 export class ContextMenuShowInput extends Schema.Class<ContextMenuShowInput>(
   "ContextMenuShowInput"
 )({
-  window: WindowResource.schema,
+  window: WindowResource,
   template: MenuTemplate,
   position: ContextMenuPosition
 }) {}

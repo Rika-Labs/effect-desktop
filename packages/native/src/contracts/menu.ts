@@ -1,9 +1,9 @@
-import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
+import { ResourceHandleSchema, type ResourceHandle } from "@effect-desktop/core"
 import { Schema } from "effect"
 
 import { PrintableNonEmptyString } from "./strings.js"
 
-const WindowResource = BridgeRpc.Resource("window", "open")
+const WindowResource = ResourceHandleSchema("window", "open")
 const MenuPlatform = Schema.Literals(["macos", "windows", "linux"])
 const MenuCapabilityName = Schema.Literals(["application menu", "window menu", "command binding"])
 
@@ -18,7 +18,7 @@ const MenuItemBase = {
 
 export type MenuPlatform = Schema.Schema.Type<typeof MenuPlatform>
 export type MenuCapabilityName = Schema.Schema.Type<typeof MenuCapabilityName>
-export type MenuWindowHandle = BridgeResourceHandle<"window", "open">
+export type MenuWindowHandle = ResourceHandle<"window", "open">
 
 export const MenuItem = Schema.Struct({
   type: Schema.Literal("item"),
@@ -44,15 +44,15 @@ export interface MenuSubmenuShape {
 
 export type MenuTemplateEntry = MenuItem | MenuSeparator | MenuSubmenuShape
 
-export const MenuSubmenu: Schema.Schema<MenuSubmenuShape> = Schema.Struct({
+export const MenuSubmenu: Schema.Codec<MenuSubmenuShape> = Schema.Struct({
   type: Schema.Literal("submenu"),
   id: PrintableNonEmptyString,
   label: PrintableNonEmptyString,
   enabled: Schema.optionalKey(Schema.Boolean),
-  items: Schema.Array(Schema.suspend((): Schema.Schema<MenuTemplateEntry> => MenuTemplateEntry))
+  items: Schema.Array(Schema.suspend((): Schema.Codec<MenuTemplateEntry> => MenuTemplateEntry))
 })
 
-export const MenuTemplateEntry: Schema.Schema<MenuTemplateEntry> = Schema.suspend(() =>
+export const MenuTemplateEntry: Schema.Codec<MenuTemplateEntry> = Schema.suspend(() =>
   Schema.Union([MenuItem, MenuSeparator, MenuSubmenu])
 )
 
@@ -71,12 +71,12 @@ export class MenuSetApplicationMenuInput extends Schema.Class<MenuSetApplication
 export class MenuSetWindowMenuInput extends Schema.Class<MenuSetWindowMenuInput>(
   "MenuSetWindowMenuInput"
 )({
-  window: WindowResource.schema,
+  window: WindowResource,
   template: MenuTemplate
 }) {}
 
 export class MenuClearInput extends Schema.Class<MenuClearInput>("MenuClearInput")({
-  window: Schema.optionalKey(WindowResource.schema)
+  window: Schema.optionalKey(WindowResource)
 }) {}
 
 export type MenuClearOptions = Schema.Schema.Type<typeof MenuClearInput>

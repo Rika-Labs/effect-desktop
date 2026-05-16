@@ -1,11 +1,14 @@
 import {
-  redact,
+  emptyInspectorSafetySummary,
+  InspectorSafetyPolicy,
+  type InspectorSafetyPolicyApi,
+  type InspectorSafetySummary,
   Telemetry,
   type TelemetryLogRecord,
   type TelemetryMetricSnapshot,
   type TelemetryTraceSpan
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Option, Stream } from "effect"
+import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
 
@@ -18,6 +21,7 @@ export interface DiagnosticsPanelsSnapshot {
   readonly logs: readonly TelemetryLogRecord[]
   readonly traces: readonly TraceGroup[]
   readonly metrics: readonly TelemetryMetricSnapshot[]
+  readonly safety: InspectorSafetySummary
 }
 
 export interface DiagnosticsPanelsApi {
@@ -28,6 +32,7 @@ export interface DiagnosticsPanelsApi {
 export interface DiagnosticsPanelsOptions {
   readonly maxRows?: number
   readonly frameInterval?: `${number} millis`
+  readonly inspectorSafety?: InspectorSafetyPolicyApi
 }
 
 export class DiagnosticsPanels extends Context.Service<DiagnosticsPanels, DiagnosticsPanelsApi>()(
@@ -36,35 +41,46 @@ export class DiagnosticsPanels extends Context.Service<DiagnosticsPanels, Diagno
 
 export const DiagnosticsPanelsLive = (
   options: DiagnosticsPanelsOptions = {}
-): Layer.Layer<DiagnosticsPanels, never, Telemetry> =>
+): Layer.Layer<DiagnosticsPanels, never, Telemetry | InspectorSafetyPolicy> =>
   Layer.effect(DiagnosticsPanels)(makeDiagnosticsPanels(options))
 
 export const makeDiagnosticsPanels = (
   options: DiagnosticsPanelsOptions = {}
-): Effect.Effect<DiagnosticsPanelsApi, never, Telemetry> =>
+): Effect.Effect<DiagnosticsPanelsApi, never, Telemetry | InspectorSafetyPolicy> =>
   Effect.gen(function* () {
     const telemetry = yield* Telemetry
+    const inspectorSafety = options.inspectorSafety ?? (yield* InspectorSafetyPolicy)
     const maxRows = positiveRowLimit(options.maxRows, 256)
     const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
     const list = (): Effect.Effect<DiagnosticsPanelsSnapshot, never, never> =>
       Effect.gen(function* () {
         const snapshot = yield* telemetry.snapshot()
-        return redact({
-          logs: snapshot.logs.slice(-maxRows),
-          traces: groupTraceSpans(selectTraceProjectionSpans(snapshot.traces, maxRows)),
-          metrics: snapshot.metrics.slice(-maxRows)
-        } satisfies DiagnosticsPanelsSnapshot)
+        const decision = yield* inspectorSafety.sanitize({
+          source: "devtools.diagnostics",
+          payload: {
+            logs: snapshot.logs.slice(-maxRows),
+            traces: groupTraceSpans(selectTraceProjectionSpans(snapshot.traces, maxRows)),
+            metrics: snapshot.metrics.slice(-maxRows)
+          } satisfies Omit<DiagnosticsPanelsSnapshot, "safety">
+        })
+        if (Option.isNone(decision.value)) {
+          return {
+            logs: [],
+            traces: [],
+            metrics: [],
+            safety: decision.summary
+          } satisfies DiagnosticsPanelsSnapshot
+        }
+        return {
+          ...decision.value.value,
+          safety: decision.summary
+        } satisfies DiagnosticsPanelsSnapshot
       })
 
     return Object.freeze({
       list,
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep(frameInterval).pipe(Effect.andThen(list())))
-          )
-        )
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced(frameInterval))
     } satisfies DiagnosticsPanelsApi)
   })
 
@@ -125,3 +141,10 @@ const addPendingParent = (pendingParents: Set<string>, span: TelemetryTraceSpan)
 }
 
 const traceSpanKey = (span: TelemetryTraceSpan): string => `${span.traceId}\u0000${span.spanId}`
+
+export const emptyDiagnosticsPanelsSnapshot = Object.freeze({
+  logs: [],
+  traces: [],
+  metrics: [],
+  safety: emptyInspectorSafetySummary
+} satisfies DiagnosticsPanelsSnapshot)

@@ -1,6 +1,6 @@
 # @effect-desktop/core
 
-> **Status:** Phase 2 runtime entry exists; the public API remains reserved for Phase 4+. See `docs/SPEC.md`.
+> **Status:** Phase 2 runtime entry exists; the public API remains reserved for Phase 4+. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -10,70 +10,69 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 
 The package exports runtime primitives as they land by phase. Phase 16 adds the
 `PermissionRegistry`, `ApprovalBroker`, and `AuditEvents` services to the Phase
-15 `SQLite`, `Settings`, `EventLog`, `Transport`, `WindowState`, `Secrets`, and
+15 `SqlClientLive`, `Settings`, `Transport`, `WindowState`, `Secrets`, and
 `RedactionFilter` services/utilities for scope-bound local storage, app-owned
 protocol transport, platform-backed credential storage, and human-visible
 emission safety.
 
+### Desktop RPC surfaces
+
+`Desktop.Rpc.surface(name, group, options)` packages one Effect `RpcGroup` into the Layer-first artifacts needed by a framework capability: server layer, generated client layer, deterministic test client layer, schema docs, and contract-law checks.
+
+The `RpcGroup` remains the source of truth for endpoint tags, schemas, endpoint kind metadata, capability metadata, and support metadata. Use the direct surface shape when the public service is the generated `DesktopRpcClient<Rpcs>`. Use the mapped shape when a capability already owns a durable service API and needs to hide generated RPC calls behind it.
+
+`Desktop.Rpc.supportedGroup(group)` filters a descriptor group to RPCs annotated as supported. Unsupported RPCs remain available to schema docs and descriptors, but they are absent from `SupportedDesktopRpcClient<Rpcs>`.
+
+`packages/native/src/screen.ts` is the current full surface proof. `packages/native/src/window.ts` is the supported-client proof: `WindowRpcs` keeps the full descriptor surface, while `WindowSupportedRpcs` generates only the callable `create` and `close` client methods.
+
 ### SQLite
 
-`SQLite` wraps `bun:sqlite` behind Effect values. `connect({ path, ownerScope })`
-opens a database and registers the connection in `ResourceRegistry` under the
-given scope. `query`, `exec`, `prepare`, and prepared statement methods all
-return typed `Effect` values with `SqliteError` failures instead of throwing.
+SQLite uses Effect SQL directly. `SqlClientLive({ filename, ownerScope })`
+validates the desktop boundary, checks `sqlite.open` for file-backed databases,
+registers a scoped `sqlite` resource, and then delegates query execution,
+transactions, prepared statements, and driver errors to
+`@effect/sql-sqlite-bun`.
 
-Transactions are explicit Effect programs: `connection.transaction(effect)` runs
-`BEGIN`, executes the supplied Effect, commits on success, and rolls back when
-the Effect fails. Connections and prepared statements close when their owning
-scope closes.
-
-SQLite error codes are mapped to typed tags: `Constraint`, `Busy`, `Locked`,
-`Corrupt`, `IoError`, `InvalidArgument`, and `InvalidState`.
+Application code should depend on `SqlClient` and `SqlModel`, not on a local
+connection wrapper. Use `sql.withTransaction(effect)` for transactions and
+`SqlModel.makeRepository` for typed table access.
 
 ### Settings
 
-`Settings` is a typed key/value store built on `SQLite`. `open` validates the
-database path, owner scope, namespace, and schema version before opening the
-database. `get`, `set`, `delete`, `keys`, and `update` validate values through
-Effect Schema and return typed `SettingsError` values instead of throwing.
+`Settings` is a typed preference/configuration store built on Effect
+`KeyValueStore`. Use `SqlClient` for app records and query-shaped data.
+`Settings.layer(...)` validates the database path, namespace, and schema version
+before opening the store. `Settings.window(...)` binds the same store to the
+current `Desktop.window(...)` context. `get`, `set`, `delete`, `keys`, and
+`update` validate values through Effect Schema and return typed `SettingsError`
+values instead of throwing.
 
 `set` is last-writer-wins. `update` runs inside a SQLite transaction, so
 read-modify-write calls for the same database connection serialize. Versioned
 migrations run in the same transaction as the metadata update and emit
-`SettingsMigrated` events. When opening detects a corrupt database and an
-explicit `backupPath` is provided, Settings replaces the corrupt file with the
-backup and reopens it; backup copy failures return
+`SettingsMigrated` events. When layer construction detects a corrupt database
+and an explicit `backupPath` is provided, Settings replaces the corrupt file
+with the backup and reopens it; backup copy failures return
 `SettingsRecoveredFromBackup`.
 
 The `changes()` stream emits `{ key, oldValue, newValue, source }` for writes,
 and `migrated()` replays recent migration events for observers that subscribe
-after open.
+after construction.
 
 ### EventLog
 
-`EventLog` is a SQLite-backed append-only event stream for audit, replay,
-debugging, and recovery. `append({ type, payload })` validates input, writes the
-event in a SQLite transaction, applies the configured retention ring, publishes
-to the live tail after commit, and returns the assigned monotonic event id.
-
-`query({ from, to, type, limit })` returns events in event-id order. `subscribe`
-first replays from the requested cursor, then follows committed live events
-through a bounded PubSub stream. `maxEvents` bounds the stored ring by deleting
-the oldest committed rows after each append.
-
-SQLite is configured with `PRAGMA synchronous = FULL` when the log opens, so
-committed appends use SQLite's durability path. Underlying `SQLITE_FULL` errors
-map to `EventLogFull`; once a log is read-only, appends fail while query and
-subscribe continue.
+Effect Desktop keeps the raw `effect/unstable/eventlog` primitive as the
+advanced dependency and exposes `@effect-desktop/core/runtime/event-log` for
+desktop policy. `DesktopEventLog` owns the closed desktop operation event
+schema, redaction before append, bounded query results, identity setup, and
+Inspector emission for append, query, recovery, and read-only transitions.
 
 ### AuditEvents
 
 `AuditEvents` is the typed audit surface for permission-relevant runtime
-transitions. `emit(event)` writes closed `audit/<kind>` rows into `EventLog`
-after running the shared redaction filter, so secret-shaped fields in structured
-details are replaced before persistence. `query(options)` and
-`subscribe(options)` expose the same redacted rows through the underlying
-`EventLog` export and live-tail APIs.
+transitions. `emit(event)` writes closed `audit/<kind>` rows through the Effect
+`EventLog` service after running the shared redaction filter, so secret-shaped
+fields in structured details are replaced before persistence.
 
 Permission and approval services emit structured audit rows for grants, denials,
 revocations, expiry, one-time consumption, use, approval requests, approval
@@ -96,12 +95,12 @@ broker has approved a request. Callers execute privileged work through
 Decision order is fixed: explicit deny, revoked/expired/consumed,
 approval-denied, approval, allow, then default deny. Filesystem roots authorize
 descendant paths, while process commands, network hosts, secret namespaces, and
-native invoke methods match explicit declared entries. When an `EventLogStore`
-is supplied, every check writes a structured `AuditEvents` row with the
-normalized capability, actor, resource, source, and trace id. Grant lifecycle
-transitions write typed audit rows for grant, use, revoke, expire, and one-time
-consumption. Revoked, expired, and consumed grants fail as typed Effect values
-instead of thrown exceptions.
+native invoke methods match explicit declared entries. When an `AuditEventsApi`
+is supplied, every check writes a structured audit row with the normalized
+capability, actor, resource, source, and trace id. Grant lifecycle transitions
+write typed audit rows for grant, use, revoke, expire, and one-time consumption.
+Revoked, expired, and consumed grants fail as typed Effect values instead of
+thrown exceptions.
 
 `listDecisions()` and `observeDecisions()` expose the registry-owned permission
 decision history for devtools. This keeps denial reasons and remediation hints
@@ -211,10 +210,10 @@ without reaching into raw host transport internals. `send`, `receive`, and
 ### WindowState
 
 `WindowState` persists per-window geometry and UI state across launches.
-`persist(windowId, state)` writes the window record atomically, `restore(windowId)`
-returns that one window when present, and `restoreAll()` restores every persisted
-window independently. `clear(windowId)` removes one window; `clear()` removes the
-full store.
+`WindowState.window(...)` binds the service to the current `Desktop.window(...)`
+context. `persist(state)` writes the current window record atomically,
+`restore()` returns that one window when present, and `clear()` removes the
+current window record while leaving other windows intact.
 
 Restore applies caller-provided bounds validation and display snapping. When the
 stored rectangle is off every configured display, it snaps to the primary
@@ -232,20 +231,21 @@ native storage, checks explicit `secrets.read` / `secrets.write` namespace
 permissions, and maps missing keys or unavailable safe storage into typed
 `SecretsError` values.
 
-Secret bytes stay in `SecretValue`, whose string and JSON forms are redacted.
-When an `EventLogStore` is supplied, each successful operation writes a
-`secret accessed` audit event with namespace, key, outcome, and trace id, never
-the secret value. There are no long-lived handles; cleanup is the caller's
-explicit disposal of returned `SecretValue` copies.
+Secret bytes stay in Effect `Redacted.Redacted<Uint8Array>` values whose string
+and JSON forms are redacted. When an `AuditEventsApi` is supplied, each
+successful operation writes a `secret accessed` audit event with namespace, key,
+outcome, and trace id, never the secret value. There are no long-lived handles;
+callers can wipe returned byte values with `wipeSecretBytes`.
 
 ### RedactionFilter
 
 `RedactionFilter.redact(record)` walks structured data and replaces values for
-field names matching the §14.10 secret pattern with `"[REDACTED]"`. The filter
-preserves object shape, supports additional patterns and explicit allowlist
-paths, and returns the original object when no field changes. Bridge error
-emission and CrashReporter breadcrumb details use the same filter before values
-reach renderer-visible or crash-report surfaces.
+field names matching the §14.10 secret pattern with an Effect `Redacted` value.
+The filter preserves object shape, supports additional patterns and explicit
+allowlist paths, and returns the original object when no field changes. Bridge
+error emission and CrashReporter breadcrumb details materialize redacted leaves
+to strings before values reach renderer-visible or crash-report protocol
+surfaces.
 
 ## Runtime entry
 
@@ -259,73 +259,88 @@ The runtime entry emits exactly one newline-terminated JSON ready event to stdou
 { "event": "runtime.ready", "version": "0.0.0" }
 ```
 
-After the ready line, the runtime uses the framed stdio transport to call the
-required `host.version` and `host.ping` handshake methods, then calls
-`Window.create`. When `EFFECT_DESKTOP_WINDOW_SMOKE_TEST=1`, it also calls
-`Window.destroy` for the returned `WindowId` before exiting.
+Startup windows must be declared through `EFFECT_DESKTOP_APP_MODULE` or
+`EFFECT_DESKTOP_STARTUP_WINDOWS`. Launch fails before host negotiation when no
+startup window is declared; the runtime does not synthesize a default window.
+
+After the ready line and startup-window validation, the runtime uses the framed
+stdio transport to call the required `host.version` and `host.ping` handshake
+methods, then calls `Window.create` for each declared window. When
+`EFFECT_DESKTOP_WINDOW_SMOKE_TEST` is an Effect Config boolean true value such
+as `1`, `true`, `yes`, or `on`, it also calls `Window.destroy` for each returned
+`WindowId` before exiting.
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+See `engineering/SPEC.md` for the package's normative non-goals.
 
 ## Usage
 
 ```ts
-import { Effect } from "effect"
-import { ResourceRegistryLive, SQLite, SQLiteLive } from "@effect-desktop/core"
+import { Effect, Layer } from "effect"
+import {
+  PermissionRegistry,
+  ResourceRegistryLive,
+  SqlClient,
+  SqlClientLive,
+  makePermissionRegistry
+} from "@effect-desktop/core"
 
 const program = Effect.gen(function* () {
-  const sqlite = yield* SQLite
-  const connection = yield* sqlite.connect({ path: ":memory:", ownerScope: "window-main" })
-  yield* connection.exec("CREATE TABLE users (name TEXT UNIQUE)")
-  yield* connection.transaction(connection.exec("INSERT INTO users (name) VALUES (?)", ["Ada"]))
-  return yield* connection.query("SELECT name FROM users")
+  const sql = yield* SqlClient
+  yield* sql`CREATE TABLE users (name TEXT UNIQUE)`
+  yield* sql.withTransaction(sql`INSERT INTO users (name) VALUES (${"Ada"})`)
+  return yield* sql`SELECT name FROM users`
 })
 
+const PermissionRegistryLive = Layer.effect(PermissionRegistry)(makePermissionRegistry())
+const SqliteLive = SqlClientLive({ filename: ":memory:", ownerScope: "window-main" })
+
 await Effect.runPromise(
-  program.pipe(Effect.provide(SQLiteLive), Effect.provide(ResourceRegistryLive))
+  program.pipe(
+    Effect.provide(SqliteLive),
+    Effect.provide(PermissionRegistryLive),
+    Effect.provide(ResourceRegistryLive),
+    Effect.scoped
+  )
 )
 ```
 
 ```ts
-import { Effect, Schema } from "effect"
-import { ResourceRegistryLive, makeSettings, SQLite, SQLiteLive } from "@effect-desktop/core"
+import { realpath } from "node:fs/promises"
+
+import { Effect, Layer, Schema } from "effect"
+import {
+  PermissionRegistry,
+  ResourceRegistryLive,
+  Settings,
+  makePermissionRegistry
+} from "@effect-desktop/core"
+
+const settingsPath = "settings.sqlite"
 
 const program = Effect.gen(function* () {
-  const sqlite = yield* SQLite
-  const settings = yield* makeSettings(sqlite)
-  const store = yield* settings.open({
-    path: "settings.sqlite",
-    ownerScope: "window-main",
-    schemaVersion: 1
-  })
+  const store = yield* Settings
   yield* store.set("user.name", Schema.String, "alice")
   return yield* store.getOrDefault("user.name", Schema.String, "anonymous")
 })
 
-await Effect.runPromise(
-  program.pipe(Effect.provide(SQLiteLive), Effect.provide(ResourceRegistryLive))
-)
-```
-
-```ts
-import { Effect } from "effect"
-import { makeEventLog, ResourceRegistryLive, SQLite, SQLiteLive } from "@effect-desktop/core"
-
-const program = Effect.gen(function* () {
-  const sqlite = yield* SQLite
-  const eventLog = yield* makeEventLog(sqlite)
-  const log = yield* eventLog.open({
-    path: "events.sqlite",
-    ownerScope: "window-main",
-    maxEvents: 10_000
+const PermissionRegistryLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const permissions = yield* makePermissionRegistry()
+    const root = yield* Effect.tryPromise(() => realpath(".")).pipe(Effect.orDie)
+    yield* permissions.declare({ kind: "sqlite.open", roots: [root], audit: "always" })
+    return Layer.succeed(PermissionRegistry, permissions)
   })
-  const id = yield* log.append({ type: "user.created", payload: { name: "alice" } })
-  return yield* log.query({ from: id })
-})
+)
 
 await Effect.runPromise(
-  program.pipe(Effect.provide(SQLiteLive), Effect.provide(ResourceRegistryLive))
+  program.pipe(
+    Effect.provide(Settings.layer({ path: settingsPath, schemaVersion: 1 })),
+    Effect.provide(PermissionRegistryLive),
+    Effect.provide(ResourceRegistryLive),
+    Effect.scoped
+  )
 )
 ```
 

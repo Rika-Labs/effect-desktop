@@ -1,7 +1,9 @@
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { unlink } from "node:fs/promises"
 
-import { Cause, Effect, Schedule, Schema } from "effect"
+import { DesktopDurations, DesktopSchedules } from "@effect-desktop/core"
+import { Cause, Effect, Schema } from "effect"
 import { HttpClient as HttpClientNs } from "effect/unstable/http"
 import { Activity, DurableClock, DurableDeferred, Workflow } from "effect/unstable/workflow"
 
@@ -47,19 +49,16 @@ const checkUpdate = (manifestUrl: string) =>
       const client = yield* HttpClientTag
       const response = yield* client
         .get(manifestUrl)
-        .pipe(Effect.mapError((e) => new UpdateError({ stage: "check", message: String(e) })))
+        .pipe(Effect.mapError((e) => new UpdateError({ stage: "check", message: formatCause(e) })))
       const json = yield* response.json.pipe(
-        Effect.mapError((e) => new UpdateError({ stage: "check", message: String(e) }))
+        Effect.mapError((e) => new UpdateError({ stage: "check", message: formatCause(e) }))
       )
       return yield* Schema.decodeUnknownEffect(UpdateManifest)(json).pipe(
-        Effect.mapError((e) => new UpdateError({ stage: "check", message: String(e) }))
+        Effect.mapError((e) => new UpdateError({ stage: "check", message: formatCause(e) }))
       )
     })
   })
 
-const downloadSchedule = Schedule.jittered(Schedule.exponential("500 millis")).pipe(
-  Schedule.andThen(Schedule.recurs(5))
-)
 const STAGED_VERSION_PATTERN = /^[A-Za-z0-9._-]+$/
 
 const downloadBundle = (url: string) =>
@@ -71,8 +70,8 @@ const downloadBundle = (url: string) =>
       const client = yield* HttpClientTag
       const buf = yield* client.get(url).pipe(
         Effect.flatMap((response) => response.arrayBuffer),
-        Effect.retry(downloadSchedule),
-        Effect.mapError((e) => new UpdateError({ stage: "download", message: String(e) }))
+        Effect.retry(DesktopSchedules.updateBundleDownload),
+        Effect.mapError((e) => new UpdateError({ stage: "download", message: formatCause(e) }))
       )
       return new Uint8Array(buf)
     })
@@ -88,7 +87,7 @@ const verifySignature = (bytes: Uint8Array, manifest: UpdateManifest) =>
       const updater = yield* Updater
       const result = yield* updater
         .check({ currentVersion: manifest.version })
-        .pipe(Effect.mapError((e) => new UpdateError({ stage: "verify", message: String(e) })))
+        .pipe(Effect.mapError((e) => new UpdateError({ stage: "verify", message: formatCause(e) })))
       if (!result.available) {
         return yield* Effect.fail(
           new UpdateError({
@@ -121,7 +120,7 @@ const stageBundle = (bytes: Uint8Array, version: string) =>
           await Bun.write(tmpPath, bytes)
           return tmpPath
         },
-        catch: (e) => new UpdateError({ stage: "stage", message: String(e) })
+        catch: (e) => new UpdateError({ stage: "stage", message: formatCause(e) })
       })
     })
   })
@@ -131,7 +130,7 @@ const deleteStaged = (path: string): Effect.Effect<void> =>
     try: async () => {
       const f = Bun.file(path)
       if (await f.exists()) {
-        await import("node:fs/promises").then((m) => m.unlink(path))
+        await unlink(path)
       }
     },
     catch: () => undefined
@@ -145,9 +144,20 @@ const applyUpdate = Activity.make({
     const updater = yield* Updater
     yield* updater
       .installAndRestart({})
-      .pipe(Effect.mapError((e) => new UpdateError({ stage: "apply", message: String(e) })))
+      .pipe(Effect.mapError((e) => new UpdateError({ stage: "apply", message: formatCause(e) })))
   })
 })
+
+const formatCause = (cause: unknown): string => {
+  if (cause instanceof Error) {
+    return cause.message
+  }
+  if (typeof cause === "string") {
+    return cause
+  }
+  const json = JSON.stringify(cause)
+  return json ?? "undefined"
+}
 
 export const UpdateWorkflowLayer = UpdateWorkflow.toLayer((payload: UpdatePayload) =>
   Effect.gen(function* () {
@@ -181,9 +191,9 @@ export const UpdateWorkflowLayer = UpdateWorkflow.toLayer((payload: UpdatePayloa
   })
 )
 
-export const scheduleUpdateChecks = (manifestUrl: string): Effect.Effect<never, never, never> =>
-  Effect.gen(function* () {
-    while (true) {
+export const scheduleUpdateChecks = (manifestUrl: string) =>
+  Effect.forever(
+    Effect.gen(function* () {
       const checkResult = yield* Effect.gen(function* () {
         const client = yield* HttpClientTag
         const response = yield* client.get(manifestUrl)
@@ -199,9 +209,9 @@ export const scheduleUpdateChecks = (manifestUrl: string): Effect.Effect<never, 
         )
       }
 
-      yield* DurableClock.sleep({ name: "weekly-poll", duration: "7 days" })
-    }
-  }) as Effect.Effect<never, never, never>
+      yield* DurableClock.sleep({ name: "weekly-poll", duration: DesktopDurations.updateCheckPoll })
+    })
+  )
 
 export const resolveUserPrompt = (token: DurableDeferred.Token, accepted: boolean) =>
   DurableDeferred.succeed(userPrompt, { token, value: accepted })

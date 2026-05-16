@@ -11,7 +11,7 @@ owns the transport, and Solid owns accessors, signals, owners, and cleanup.
 ## Public API
 
 - `SolidDesktop.from(manifest)` creates an adapter for one desktop app manifest.
-- `DesktopRoot` installs the renderer RPC runtime for a Solid tree.
+- `DesktopRoot` installs the scoped renderer RPC client layer for a Solid tree.
 - `render(children, mount, options?)` renders a Solid tree with desktop context.
 - `useDesktop(group)` derives endpoints from the imported `RpcGroup`.
 - Query endpoints expose `createQuery(input?)`.
@@ -26,7 +26,7 @@ applications rely on the host-installed renderer transport.
 ## Non-goals
 
 - This package does not define desktop APIs. Use `Rpc.make`, `RpcGroup.make`, and
-  `Desktop.Rpcs.layer(...)` in app code.
+  `Desktop.rpc(group, handlers)` in app code (compose multiple via `Desktop.rpcs`).
 - This package does not open startup windows. Startup windows belong to
   `Desktop.make({ windows })` and the host runtime.
 - This package does not expose raw bridge client maps as the normal public API.
@@ -66,9 +66,9 @@ bun test packages/solid/src/index.test.ts
 bun run typecheck
 ```
 
-Tests can pass an in-memory renderer transport to `DesktopRoot` or `render`.
-Disposing the Solid owner closes the renderer RPC runtime and interrupts active
-streams.
+Tests can pass `RpcTest`-backed RPC layers to `DesktopRoot` or `render`.
+Disposing the Solid owner disposes the managed renderer RPC client layer and
+interrupts active streams.
 
 ## Platform notes
 
@@ -78,7 +78,8 @@ own their Solid runtime version.
 
 ## Internal architecture
 
-The adapter builds a renderer RPC runtime from the desktop manifest, a transport,
-and `RpcClient.make(group)`. Solid context stores only the derived runtime client
-map. `useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
+The adapter builds a `ManagedRuntime` from a scoped renderer RPC client layer.
+That layer uses a host transport with `RpcClient.make(group)` or test RPC layers
+with `RpcTest`. Solid context stores only the derived client map.
+`useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
 Solid-native primitives, and attaches support metadata to each endpoint.

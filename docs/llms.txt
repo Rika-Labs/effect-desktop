@@ -1,0 +1,16 @@
+# Effect Desktop documentation
+
+> A Diátaxis-organized site for the Effect Desktop framework. Tutorials (learning), how-to guides (tasks), reference (lookup), explanation (understanding). All grounded in the current repository — every reference symbol can be grepped in `packages/`.
+
+This file mirrors the root `/llms.txt` for agents that fetch the docs path directly.
+
+## Contents
+
+See [`/llms.txt`](../llms.txt) at the repository root for the full index. The same sections apply here.
+
+## Quick links
+
+- [Documentation landing page](README.md)
+- [Start: install](start/install.md), [first app](start/first-app.md)
+- [Tutorials](tutorials/), [How-to guides](how-to/), [Reference](reference/), [Explanation](explanation/)
+- [Contributing to the docs](contributing/docs.md)

@@ -22,10 +22,6 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./api": {
-      "types": "./src/api.ts",
-      "default": "./src/api.ts"
-    },
     "./current-window": {
       "types": "./src/current-window.ts",
       "default": "./src/current-window.ts"
@@ -34,9 +30,17 @@
       "types": "./src/desktop.tsx",
       "default": "./src/desktop.tsx"
     },
+    "./platform-browser": {
+      "types": "./src/platform-browser.ts",
+      "default": "./src/platform-browser.ts"
+    },
     "./sql-pglite": {
       "types": "./src/sql-pglite.ts",
       "default": "./src/sql-pglite.ts"
+    },
+    "./sqlite-wasm": {
+      "types": "./src/sqlite-wasm.ts",
+      "default": "./src/sqlite-wasm.ts"
     },
     "./storage/idb": {
       "types": "./src/storage/idb.ts",
@@ -52,8 +56,8 @@
     }
   },
   "scripts": {
-    "check": "tsc --noEmit -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "tsgo --singleThreaded --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --singleThreaded --noEmit -p tsconfig.json",
     "test": "bun test",
     "lint": "oxlint ."
   },
@@ -61,9 +65,8 @@
     "@effect-desktop/bridge": "workspace:*",
     "@effect-desktop/core": "workspace:*",
     "@effect-desktop/native": "workspace:*",
-    "@effect/platform-browser": "4.0.0-beta.60",
-    "@effect/sql-sqlite-wasm": "4.0.0-beta.60",
-    "@effect/wa-sqlite": "^0.1.2",
+    "@effect-desktop/platform-browser": "workspace:*",
+    "@effect/atom-react": "4.0.0-beta.60",
     "effect": "4.0.0-beta.60"
   },
   "peerDependencies": {
@@ -74,9 +77,5 @@
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
-  },
-  "optionalDependencies": {
-    "@effect/sql-pglite": "4.0.0-beta.60",
-    "@electric-sql/pglite": "^0.4.4"
   }
 }

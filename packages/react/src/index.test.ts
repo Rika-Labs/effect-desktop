@@ -1,36 +1,19 @@
 import { expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
-import {
-  HostProtocolResponseEnvelope,
-  HostProtocolStreamByRequestEnvelope,
-  makeHostProtocolInvalidOutputError,
-  makeHostProtocolInvalidStateError,
-  RpcEndpoint,
-  RpcSupport,
-  type HostProtocolEnvelope,
-  type HostProtocolError
-} from "@effect-desktop/bridge"
+import { existsSync, readFileSync } from "node:fs"
+import { makeHostProtocolInvalidStateError, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import {
   Desktop,
   DuplicateDesktopRpcNameError,
-  MissingDesktopRpcClientError,
-  type DesktopRendererRpcTransport
+  MissingDesktopRpcClientError
 } from "@effect-desktop/core"
-import { AsyncResult } from "effect/unstable/reactivity"
-import { Cause, Effect, Exit, Fiber, Option, Queue, Schema, Stream } from "effect"
+import { AsyncResult, Atom } from "effect/unstable/reactivity"
+import { Cause, Effect, Exit, Option, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
 import {
-  BrowserHttpClient,
-  BrowserKeyValueStore,
   createUnavailableDesktopClient,
-  IndexedDb,
-  IndexedDbDatabase,
-  IndexedDbQueryBuilder,
-  IndexedDbTable,
-  IndexedDbVersion,
   DesktopProvider,
   MissingDesktopContextError,
   ReactDesktop,
@@ -40,6 +23,7 @@ import {
   windows,
   type PermissionState,
   useDesktop,
+  useAtomValue,
   usePermission,
   useWindow
 } from "./index.js"
@@ -50,11 +34,62 @@ import { disposeRuntime } from "./provider.js"
 // Regression coverage may mention the old placeholder marker:
 // "phase 0 stub compiles and runs" without triggering the repo-shape gate.
 
+const ReactPackageExportTarget = Schema.Union([
+  Schema.String,
+  Schema.Struct({
+    types: Schema.optionalKey(Schema.String),
+    default: Schema.optionalKey(Schema.String)
+  })
+])
+
+const ReactPackageJson = Schema.Struct({
+  exports: Schema.Record(Schema.String, ReactPackageExportTarget)
+})
+
+const decodeReactPackageJson = Schema.decodeUnknownSync(Schema.fromJsonString(ReactPackageJson))
+
+const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
+const reactPackageRootUrl = new URL("../", import.meta.url)
+const reactPackageIndexUrl = new URL("index.ts", import.meta.url)
+
+test("React package exports point at checked-in source files", () => {
+  const packageJson = decodeReactPackageJson(readFileSync(reactPackageJsonUrl, "utf8"))
+  const missing: string[] = []
+
+  for (const [subpath, target] of Object.entries(packageJson.exports)) {
+    if (typeof target === "string") {
+      if (!existsSync(new URL(target, reactPackageRootUrl))) {
+        missing.push(`${subpath}:default:${target}`)
+      }
+      continue
+    }
+
+    for (const condition of ["types", "default"] as const) {
+      const relativePath = target[condition]
+      if (relativePath === undefined) {
+        missing.push(`${subpath}:${condition}:<missing condition>`)
+      } else if (!existsSync(new URL(relativePath, reactPackageRootUrl))) {
+        missing.push(`${subpath}:${condition}:${relativePath}`)
+      }
+    }
+  }
+
+  expect(missing).toEqual([])
+})
+
+test("React package root does not export browser storage services", () => {
+  const source = readFileSync(reactPackageIndexUrl, "utf8")
+
+  expect(source).not.toContain("BrowserKeyValueStore")
+  expect(source).not.toContain("IndexedDb")
+  expect(source).not.toContain("RendererSqlite")
+  expect(source).not.toContain("indexedDbStorage")
+  expect(source).not.toContain("keyValueStorage")
+})
+
 const unavailableWindow: DesktopWindowClient = {
   create: () =>
     Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.create")),
-  setTitle: () =>
-    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.setTitle")),
   close: () => Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.close"))
 }
 
@@ -62,14 +97,14 @@ test("disposeRuntime reports cleanup defects through onCleanupError", async () =
   const failures: Array<{ context: string; error: unknown }> = []
   disposeRuntime(
     {
-      dispose: () => Promise.reject(new Error("dispose failed"))
+      disposeEffect: Effect.die(new Error("dispose failed"))
     },
     (error, context) => {
       failures.push({ context, error })
     }
   )
 
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Effect.runPromise(Effect.yieldNow)
   expect(failures).toEqual([{ context: "runtime cleanup", error: expect.anything() }])
 })
 
@@ -83,6 +118,15 @@ test("DesktopProvider renders children without crashing (SSR)", () => {
     createElement(DesktopProvider, { client: desktop }, createElement(Child))
   )
   expect(html).toBe("<span>child</span>")
+})
+
+test("DesktopProvider exposes the upstream Effect atom registry", () => {
+  const count = Atom.make(42)
+  const Probe = () => createElement("span", null, useAtomValue(count))
+
+  expect(
+    renderToStaticMarkup(createElement(DesktopProvider, { client: desktop }, createElement(Probe)))
+  ).toBe("<span>42</span>")
 })
 
 test("hooks model a missing provider without throwing", () => {
@@ -177,6 +221,26 @@ test("useDesktopQuery defaults to reload-only dependencies for inline operations
   expect(source).not.toContain("deps === undefined ? [reloads, operation]")
 })
 
+test("React adapter lifecycle paths use the shared scoped framework helper", () => {
+  const desktopSource = readFileSync(new URL("./desktop.tsx", import.meta.url), "utf8")
+  const mutationSource = readFileSync(new URL("./mutation.ts", import.meta.url), "utf8")
+  const desktopHookSource = readFileSync(new URL("./hooks/desktop.ts", import.meta.url), "utf8")
+  const streamHookSource = readFileSync(new URL("./hooks/stream.ts", import.meta.url), "utf8")
+
+  expect(desktopSource).toContain("makeFrameworkRuntime(runtime)")
+  expect(desktopSource).toContain("Effect.runCallback(runtime.disposeEffect)")
+  expect(desktopSource).not.toContain("void runtime.dispose()")
+  expect(desktopSource).not.toContain("await frameworkRuntime.dispose()")
+  expect(mutationSource).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(mutationSource).not.toContain("runIdRef")
+  expect(mutationSource).not.toContain("mountedRef")
+  expect(mutationSource).not.toContain("runFrameworkPromiseExit")
+  expect(desktopHookSource).toContain("makeFrameworkScopedOperation(defaultRuntime)")
+  expect(desktopHookSource).not.toContain("runFrameworkPromiseExit")
+  expect(streamHookSource).toContain("makeFrameworkScopedOperation(runtime)")
+  expect(streamHookSource).not.toContain("let active")
+})
+
 test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
     RpcEndpoint.query
@@ -186,31 +250,19 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
     success: Schema.String
   })
   const NotesRpcs = RpcGroup.make(ListNotes, CreateNote)
-  const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.List": () => Effect.succeed(["inbox"]),
-          "Notes.Create": ({ title }) => Effect.succeed(`note:${title}`)
-        })
-      )
-    )
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.List": () => Effect.succeed(["inbox"]),
+      "Notes.Create": ({ title }) => Effect.succeed(`note:${title}`)
+    })
   )
-  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const transport = makeRpcTransport({
-    "Notes.List": () => Effect.succeed(["inbox"]),
-    "Notes.Create": (input) => {
-      const title = (input as { readonly title?: unknown }).title
-      return Effect.succeed(`note:${typeof title === "string" ? title : "untitled"}`)
-    }
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
+  const rpcs = NotesLayer
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs)
     const list = notes.list.useQuery()
@@ -224,41 +276,33 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
   }
 
   expect(
-    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { transport }, createElement(Probe)))
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>initial:idle</span>")
 })
 
 test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", () => {
   const Reserved = Rpc.make("Notes.__proto__", { success: Schema.String }).pipe(RpcEndpoint.query)
   const NotesRpcs = RpcGroup.make(Reserved)
-  const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.__proto__": () => Effect.succeed("ok")
-        })
-      )
-    )
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.__proto__": () => Effect.succeed("ok")
+    })
   )
-  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const transport = makeRpcTransport({
-    "Notes.__proto__": () => Effect.succeed("ok")
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
+  const rpcs = NotesLayer
   const Probe = () => {
-    const notes = NotesReact.useDesktop(NotesRpcs) as unknown as Record<string, unknown>
+    const notes = NotesReact.useDesktop(NotesRpcs)
     const hasReserved = Object.prototype.hasOwnProperty.call(notes, "__proto__")
     return createElement("span", null, `${Object.getPrototypeOf(notes) === null}:${hasReserved}`)
   }
 
   expect(
-    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { transport }, createElement(Probe)))
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>true:true</span>")
 })
 
@@ -266,59 +310,41 @@ test("ReactDesktop.useDesktop rejects colliding endpoint names", () => {
   const ProjectList = Rpc.make("Projects.List", { success: Schema.Array(Schema.String) })
   const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })
   const CollidingRpcs = RpcGroup.make(ProjectList, TaskList)
-  const CollidingApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Lists"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        CollidingRpcs,
-        CollidingRpcs.toLayer({
-          "Projects.List": () => Effect.succeed(["project"]),
-          "Tasks.List": () => Effect.succeed(["task"])
-        })
-      )
-    )
+  const CollidingLayer = Desktop.rpc(
+    CollidingRpcs,
+    CollidingRpcs.toLayer({
+      "Projects.List": () => Effect.succeed(["project"]),
+      "Tasks.List": () => Effect.succeed(["task"])
+    })
   )
-  const CollidingReact = ReactDesktop.from(Desktop.manifest(CollidingApp))
-  const transport = makeRpcTransport({
-    "Projects.List": () => Effect.succeed(["project"]),
-    "Tasks.List": () => Effect.succeed(["task"])
+  const CollidingApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Lists" }),
+    rpcs: CollidingLayer
   })
+  const CollidingReact = ReactDesktop.from(Desktop.manifest(CollidingApp))
+  const rpcs = CollidingLayer
   const Probe = () => {
     CollidingReact.useDesktop(CollidingRpcs)
     return createElement("span", null, "mounted")
   }
 
   expect(() =>
-    renderToStaticMarkup(
-      createElement(CollidingReact.DesktopRoot, { transport }, createElement(Probe))
-    )
+    renderToStaticMarkup(createElement(CollidingReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toThrow(DuplicateDesktopRpcNameError)
 })
 
-test("ReactDesktop.useDesktop fails loudly without a generated root or transport", () => {
+test("ReactDesktop.useDesktop fails loudly without a generated root or renderer RPC layers", () => {
   const Ping = Rpc.make("Notes.Ping")
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.Ping": () => Effect.void
-        })
-      )
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: Desktop.rpc(
+      NotesRpcs,
+      NotesRpcs.toLayer({
+        "Notes.Ping": () => Effect.void
+      })
     )
-  )
+  })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const Probe = () => {
     NotesReact.useDesktop(NotesRpcs)
@@ -332,43 +358,68 @@ test("ReactDesktop.useDesktop fails loudly without a generated root or transport
 })
 
 test("ReactDesktop.useDesktop exposes RpcSupport metadata on generated endpoints", () => {
+  type SupportedQueryEndpoint = {
+    readonly useQuery: unknown
+    readonly support: { readonly status: string }
+    readonly isSupported: boolean
+  }
   const Unsupported = Rpc.make("Notes.Unsupported", { success: Schema.String }).pipe(
     RpcEndpoint.query,
     RpcSupport.unsupported("host method is unavailable")
   )
   const NotesRpcs = RpcGroup.make(Unsupported)
-  const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
-  }).pipe(
-    Desktop.provide(
-      Desktop.Rpcs.layer(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.Unsupported": () => Effect.succeed("unused")
-        })
-      )
-    )
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Unsupported": () => Effect.succeed("unused")
+    })
   )
-  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
-  const transport = makeRpcTransport({
-    "Notes.Unsupported": () => Effect.succeed("unused")
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
   })
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
+  const rpcs = NotesLayer
   const Probe = () => {
     const notes = NotesReact.useDesktop(NotesRpcs)
-    return createElement(
-      "span",
-      null,
-      `${notes.unsupported.isSupported}:${notes.unsupported.support.status}`
-    )
+    const endpoint: SupportedQueryEndpoint = notes.unsupported
+    return createElement("span", null, `${endpoint.isSupported}:${endpoint.support.status}`)
   }
 
   expect(
-    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { transport }, createElement(Probe)))
+    renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>false:unsupported</span>")
+})
+
+test("ReactDesktop generated no-payload stream hooks accept stream options", () => {
+  const Tail = Rpc.make("Notes.Tail", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  })
+  const NotesRpcs = RpcGroup.make(Tail)
+  const NotesLayer = Desktop.rpc(
+    NotesRpcs,
+    NotesRpcs.toLayer({
+      "Notes.Tail": () => Stream.make("a", "b", "c")
+    })
+  )
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    rpcs: NotesLayer
+  })
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
+  const Probe = () => {
+    const notes = NotesReact.useDesktop(NotesRpcs)
+    const tail = notes.tail.useStream({ capacity: 0, onItem: () => undefined })
+    return createElement("span", null, `${tail.status}:${tail.data.length}`)
+  }
+
+  expect(
+    renderToStaticMarkup(
+      createElement(NotesReact.DesktopRoot, { rpcs: NotesLayer }, createElement(Probe))
+    )
+  ).toBe("<span>idle:0</span>")
 })
 
 test("usePermission exports the deferred shape", () => {
@@ -424,174 +475,8 @@ test("AsyncResult is re-exported from package index", () => {
   expect(typeof AsyncResult.isFailure).toBe("function")
 })
 
-type RpcTransportHandler = (
-  payload: unknown
-) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>
-
-const makeRpcTransport = (
-  handlers: Readonly<Record<string, RpcTransportHandler>>
-): DesktopRendererRpcTransport => {
-  const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
-  const fibers = new Map<string, Fiber.Fiber<void, unknown>>()
-  return {
-    send: (envelope) => {
-      if (envelope.kind === "cancel" && envelope.id !== undefined) {
-        const fiber = fibers.get(envelope.id)
-        if (fiber === undefined) {
-          return Effect.void
-        }
-        fibers.delete(envelope.id)
-        return Fiber.interrupt(fiber).pipe(Effect.asVoid)
-      }
-      if (envelope.kind !== "request") {
-        return Effect.void
-      }
-      const handler = handlers[envelope.method]
-      if (handler === undefined) {
-        return Queue.offer(
-          queue,
-          responseEnvelope(envelope, {
-            error: makeHostProtocolInvalidOutputError(envelope.method, "missing test handler")
-          })
-        )
-      }
-      const result = handler(envelope.payload)
-      if (Stream.isStream(result)) {
-        return Effect.gen(function* () {
-          const fiber = yield* Effect.forkDetach(
-            Effect.exit(
-              Stream.runForEach(result, (item) =>
-                Queue.offer(queue, streamEnvelope(envelope, item))
-              )
-            ).pipe(
-              Effect.flatMap((exit) => Queue.offer(queue, responseFromExit(envelope, exit))),
-              Effect.asVoid
-            ),
-            { startImmediately: true }
-          )
-          fibers.set(envelope.id, fiber)
-        })
-      }
-      return Effect.exit(result).pipe(
-        Effect.flatMap((exit) => Queue.offer(queue, responseFromExit(envelope, exit)))
-      )
-    },
-    run: (onEnvelope) => Effect.forever(Queue.take(queue).pipe(Effect.flatMap(onEnvelope)))
-  }
-}
-
-const responseFromExit = (
-  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
-  exit: Exit.Exit<unknown, unknown>
-): HostProtocolResponseEnvelope =>
-  Exit.isSuccess(exit)
-    ? responseEnvelope(request, { payload: exit.value === undefined ? null : exit.value })
-    : responseEnvelope(request, { error: hostProtocolErrorFromCause(request.method, exit.cause) })
-
-const responseEnvelope = (
-  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
-  fields: { readonly payload?: unknown; readonly error?: HostProtocolError }
-): HostProtocolResponseEnvelope =>
-  new HostProtocolResponseEnvelope({
-    kind: "response",
-    id: request.id,
-    timestamp: 0,
-    traceId: request.traceId,
-    ...fields
-  })
-
-const streamEnvelope = (
-  request: Extract<HostProtocolEnvelope, { readonly kind: "request" }>,
-  payload: unknown
-): HostProtocolStreamByRequestEnvelope =>
-  new HostProtocolStreamByRequestEnvelope({
-    kind: "stream",
-    id: request.id,
-    timestamp: 0,
-    traceId: request.traceId,
-    payload
-  })
-
-const hostProtocolErrorFromCause = (
-  method: string,
-  cause: Cause.Cause<unknown>
-): HostProtocolError => {
-  const failure = cause.reasons.find(Cause.isFailReason)
-  return failure?.error instanceof Error || typeof failure?.error === "string"
-    ? makeHostProtocolInvalidOutputError(method, String(failure.error))
-    : makeHostProtocolInvalidOutputError(method, String(cause))
-}
-
-test("platform-browser IndexedDbTable.make produces a typed table descriptor", () => {
-  const DraftTable = IndexedDbTable.make({
-    name: "drafts",
-    schema: Schema.Struct({
-      id: Schema.Number,
-      body: Schema.String
-    }),
-    keyPath: "id",
-    autoIncrement: true
-  })
-
-  expect(DraftTable.tableName).toBe("drafts")
-  expect(DraftTable.autoIncrement).toBe(true)
-  expect(DraftTable.keyPath).toBe("id")
-})
-
-test("platform-browser IndexedDbVersion.make accepts a table descriptor", () => {
-  const DraftTable = IndexedDbTable.make({
-    name: "drafts",
-    schema: Schema.Struct({
-      id: Schema.Number,
-      body: Schema.String
-    }),
-    keyPath: "id",
-    autoIncrement: true
-  })
-
-  const v1 = IndexedDbVersion.make(DraftTable)
-
-  expect(v1.tables.has("drafts")).toBe(true)
-  expect(v1.tables.size).toBe(1)
-})
-
 test("storage/idb exposes migration builder helper", () => {
   expect(typeof makeMigration).toBe("function")
-})
-
-test("platform-browser IndexedDbDatabase.make produces a schema builder", () => {
-  const DraftTable = IndexedDbTable.make({
-    name: "drafts",
-    schema: Schema.Struct({
-      id: Schema.Number,
-      body: Schema.String
-    }),
-    keyPath: "id",
-    autoIncrement: true
-  })
-
-  const v1 = IndexedDbVersion.make(DraftTable)
-
-  const schema = IndexedDbDatabase.make(v1, (tx) =>
-    tx.createObjectStore("drafts").pipe(Effect.asVoid)
-  )
-
-  expect(typeof schema.layer).toBe("function")
-  expect(schema.version).toBe(v1)
-})
-
-test("platform-browser BrowserKeyValueStore exports layerLocalStorage and layerSessionStorage", () => {
-  expect(typeof BrowserKeyValueStore.layerLocalStorage).toBe("object")
-  expect(typeof BrowserKeyValueStore.layerSessionStorage).toBe("object")
-})
-
-test("platform-browser BrowserHttpClient exports layerFetch and layerXMLHttpRequest", () => {
-  expect(typeof BrowserHttpClient.layerFetch).toBe("object")
-  expect(typeof BrowserHttpClient.layerXMLHttpRequest).toBe("object")
-})
-
-test("platform-browser IndexedDb exports layerWindow", () => {
-  expect(typeof IndexedDb.layerWindow).toBe("object")
 })
 
 test("storage/kv exposes key-value layers", () => {
@@ -603,8 +488,4 @@ test("storage/idb exposes schema constructor helpers", () => {
   expect(typeof makeTable).toBe("function")
   expect(typeof makeVersion).toBe("function")
   expect(typeof makeDatabase).toBe("function")
-})
-
-test("platform-browser IndexedDbQueryBuilder exports make", () => {
-  expect(typeof IndexedDbQueryBuilder.make).toBe("function")
 })

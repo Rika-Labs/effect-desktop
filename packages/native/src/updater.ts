@@ -1,19 +1,23 @@
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
-  HostProtocolError as HostProtocolErrorSchema,
-  HostProtocolUnsupportedError,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
+  makeDesktopClientProtocol,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
+  RpcClient,
+  type RpcCapabilityMetadata,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   UpdaterCheckInput,
   UpdaterCheckResult,
@@ -31,46 +35,42 @@ export type UpdaterDownloadOptions = Schema.Schema.Type<typeof UpdaterDownloadIn
 
 export type UpdaterInstallOptions = Schema.Schema.Type<typeof UpdaterInstallInput>
 
-export const UpdaterRpcSpec = Object.freeze({
-  check: {
-    input: UpdaterCheckInput,
-    output: UpdaterCheckResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.check"
-  },
-  download: {
-    input: UpdaterDownloadInput,
-    output: UpdaterStatusResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.download"
-  },
-  install: {
-    input: UpdaterInstallInput,
-    output: UpdaterStatusResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.install"
-  },
-  installAndRestart: {
-    input: UpdaterInstallInput,
-    output: UpdaterStatusResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.installAndRestart"
-  },
-  getStatus: {
-    input: Schema.Void,
-    output: UpdaterStatusResult,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.getStatus"
-  },
-  readyForRestart: {
-    input: Schema.Void,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission: "native.invoke:Updater.readyForRestart"
-  }
-}) satisfies BridgeRpcSpec
-
-export type UpdaterRpcSpec = typeof UpdaterRpcSpec
+export const UpdaterCheck = updaterRpc(
+  "check",
+  UpdaterCheckInput,
+  UpdaterCheckResult,
+  P.nativeInvoke({ primitive: "Updater", methods: ["check"] })
+)
+export const UpdaterDownload = updaterRpc(
+  "download",
+  UpdaterDownloadInput,
+  UpdaterStatusResult,
+  P.nativeInvoke({ primitive: "Updater", methods: ["download"] })
+)
+export const UpdaterInstall = updaterRpc(
+  "install",
+  UpdaterInstallInput,
+  UpdaterStatusResult,
+  P.nativeInvoke({ primitive: "Updater", methods: ["install"] })
+)
+export const UpdaterInstallAndRestart = updaterRpc(
+  "installAndRestart",
+  UpdaterInstallInput,
+  UpdaterStatusResult,
+  P.nativeInvoke({ primitive: "Updater", methods: ["installAndRestart"] })
+)
+export const UpdaterGetStatus = updaterRpc(
+  "getStatus",
+  Schema.Void,
+  UpdaterStatusResult,
+  P.nativeInvoke({ primitive: "Updater", methods: ["getStatus"] })
+)
+export const UpdaterReadyForRestart = updaterRpc(
+  "readyForRestart",
+  Schema.Void,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Updater", methods: ["readyForRestart"] })
+)
 
 export const UpdaterRpcEvents = Object.freeze({
   PreparingRestart: { payload: UpdaterPreparingRestartEvent }
@@ -78,12 +78,25 @@ export const UpdaterRpcEvents = Object.freeze({
 
 export type UpdaterRpcEvents = typeof UpdaterRpcEvents
 
-export const UpdaterRpcs: BridgeRpcGroup<"Updater", UpdaterRpcSpec, UpdaterRpcEvents> =
-  BridgeRpc.group("Updater", UpdaterRpcSpec, UpdaterRpcEvents)
-
-export const UpdaterMethodNames = Object.freeze(
-  Object.keys(UpdaterRpcSpec) as ReadonlyArray<keyof UpdaterRpcSpec>
+const UpdaterRpcGroup = RpcGroup.make(
+  UpdaterCheck,
+  UpdaterDownload,
+  UpdaterInstall,
+  UpdaterInstallAndRestart,
+  UpdaterGetStatus,
+  UpdaterReadyForRestart
 )
+
+export const UpdaterRpcs: RpcGroup.RpcGroup<UpdaterRpc> = UpdaterRpcGroup
+
+export const UpdaterMethodNames = Object.freeze([
+  "check",
+  "download",
+  "install",
+  "installAndRestart",
+  "getStatus",
+  "readyForRestart"
+] as const)
 
 export interface UpdaterClientApi {
   readonly check: (
@@ -115,22 +128,24 @@ export type UpdaterServiceApi = UpdaterClientApi
 
 export class Updater extends Context.Service<Updater, UpdaterServiceApi>()(
   "@effect-desktop/native/Updater"
-) {}
+) {
+  static readonly layer = Layer.effect(Updater)(
+    Effect.gen(function* () {
+      const client = yield* UpdaterClient
+      return Updater.of({
+        check: (options) => client.check(options),
+        download: (options) => client.download(options),
+        install: (options) => client.install(options),
+        installAndRestart: (options) => client.installAndRestart(options),
+        getStatus: () => client.getStatus(),
+        readyForRestart: () => client.readyForRestart(),
+        onPreparingRestart: () => client.onPreparingRestart()
+      } satisfies UpdaterServiceApi)
+    })
+  )
+}
 
-export const UpdaterLive = Layer.effect(Updater)(
-  Effect.gen(function* () {
-    const client = yield* UpdaterClient
-    return Object.freeze({
-      check: (options) => client.check(options),
-      download: (options) => client.download(options),
-      install: (options) => client.install(options),
-      installAndRestart: (options) => client.installAndRestart(options),
-      getStatus: () => client.getStatus(),
-      readyForRestart: () => client.readyForRestart(),
-      onPreparingRestart: () => client.onPreparingRestart()
-    } satisfies UpdaterServiceApi)
-  })
-)
+export const UpdaterLive = Updater.layer
 
 export const makeUpdaterClientLayer = (client: UpdaterClientApi): Layer.Layer<UpdaterClient> =>
   Layer.succeed(UpdaterClient)(client)
@@ -142,80 +157,193 @@ export const makeUpdaterBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
 ): Layer.Layer<UpdaterClient> =>
-  Layer.succeed(UpdaterClient)(makeUpdaterBridgeClient(exchange, options))
+  Layer.effect(
+    UpdaterClient,
+    RpcClient.make(UpdaterRpcGroup).pipe(
+      Effect.map((client) =>
+        updaterClientFromRpcClient(client, () =>
+          subscribeUpdaterEvent(exchange, "Updater.PreparingRestart")
+        )
+      )
+    )
+  ).pipe(Layer.provide(makeUpdaterBridgeProtocolLayer(exchange, options)))
 
-export const makeHostUpdaterBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<UpdaterRpcSpec>>(
-  handlers: Handlers
-): BridgeRpcLayer<"Updater", UpdaterRpcSpec, Handlers, UpdaterRpcEvents> =>
-  BridgeRpc.layer(UpdaterRpcs)(handlers)
+export type UpdaterRpc = RpcGroup.Rpcs<typeof UpdaterRpcGroup>
+
+export type UpdaterRpcHandlers = RpcGroup.HandlersFrom<UpdaterRpc>
+
+export const UpdaterHandlersLive = UpdaterRpcGroup.toLayer({
+  "Updater.check": (input) =>
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      return yield* updater.check(input)
+    }),
+  "Updater.download": (input) =>
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      return yield* updater.download(input)
+    }),
+  "Updater.install": (input) =>
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      return yield* updater.install(input)
+    }),
+  "Updater.installAndRestart": (input) =>
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      return yield* updater.installAndRestart(input)
+    }),
+  "Updater.getStatus": () =>
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      return yield* updater.getStatus()
+    }),
+  "Updater.readyForRestart": () =>
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      yield* updater.readyForRestart()
+    })
+})
+
+export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
+  service: UpdaterClient,
+  capabilities: UpdaterMethodNames,
+  handlers: UpdaterHandlersLive,
+  client: (client) =>
+    updaterClientFromRpcClient(client, () =>
+      Stream.fail(
+        makeHostProtocolInvalidOutputError(
+          "Updater.PreparingRestart",
+          "event exchange does not support subscriptions"
+        )
+      )
+    )
+})
+
+export const makeHostUpdaterRpcRuntime = (
+  handlers: UpdaterRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> => UpdaterSurface.hostRuntime(handlers, runtimeOptions)
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
-const makeUpdaterBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
+const updaterClientFromRpcClient = (
+  client: DesktopRpcClient<UpdaterRpc>,
+  onPreparingRestart: () => Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never>
 ): UpdaterClientApi => {
-  const client = Client({ Updater: UpdaterRpcs }, exchange, options).Updater
   return Object.freeze({
     check: (input = {}) =>
-      decodeUpdaterCheckInput(input, "Updater.check").pipe(Effect.flatMap(client.check)),
+      decodeUpdaterCheckInput(input, "Updater.check").pipe(
+        Effect.flatMap((decoded) =>
+          runUpdaterRpc(client["Updater.check"](decoded), "Updater.check")
+        )
+      ),
     download: (input = {}) =>
-      decodeUpdaterDownloadInput(input, "Updater.download").pipe(Effect.flatMap(client.download)),
+      decodeUpdaterDownloadInput(input, "Updater.download").pipe(
+        Effect.flatMap((decoded) =>
+          runUpdaterRpc(client["Updater.download"](decoded), "Updater.download")
+        )
+      ),
     install: (input = {}) =>
-      decodeUpdaterInstallInput(input, "Updater.install").pipe(Effect.flatMap(client.install)),
+      decodeUpdaterInstallInput(input, "Updater.install").pipe(
+        Effect.flatMap((decoded) =>
+          runUpdaterRpc(client["Updater.install"](decoded), "Updater.install")
+        )
+      ),
     installAndRestart: (input = {}) =>
       decodeUpdaterInstallInput(input, "Updater.installAndRestart").pipe(
-        Effect.flatMap(client.installAndRestart)
+        Effect.flatMap((decoded) =>
+          runUpdaterRpc(client["Updater.installAndRestart"](decoded), "Updater.installAndRestart")
+        )
       ),
-    getStatus: () => client.getStatus(),
-    readyForRestart: () => client.readyForRestart(),
-    onPreparingRestart: () => client.events.PreparingRestart
+    getStatus: () => runUpdaterRpc(client["Updater.getStatus"](undefined), "Updater.getStatus"),
+    readyForRestart: () =>
+      runUpdaterRpc(client["Updater.readyForRestart"](undefined), "Updater.readyForRestart"),
+    onPreparingRestart
   } satisfies UpdaterClientApi)
 }
+
+const makeUpdaterBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
+
+const subscribeUpdaterEvent = (
+  exchange: BridgeClientExchange,
+  method: "Updater.PreparingRestart"
+): Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never> =>
+  subscribeNativeEvent(exchange, method, UpdaterPreparingRestartEvent, StrictParseOptions)
 
 const decodeUpdaterCheckInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterCheckInput, UpdaterError, never> =>
-  decodeInput(UpdaterCheckInput, input, operation) as Effect.Effect<
-    UpdaterCheckInput,
-    UpdaterError,
-    never
-  >
+  decodeInput(UpdaterCheckInput, input, operation)
 
 const decodeUpdaterDownloadInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterDownloadInput, UpdaterError, never> =>
-  decodeInput(UpdaterDownloadInput, input, operation) as Effect.Effect<
-    UpdaterDownloadInput,
-    UpdaterError,
-    never
-  >
+  decodeInput(UpdaterDownloadInput, input, operation)
 
 const decodeUpdaterInstallInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterInstallInput, UpdaterError, never> =>
-  decodeInput(UpdaterInstallInput, input, operation) as Effect.Effect<
-    UpdaterInstallInput,
-    UpdaterError,
-    never
-  >
+  decodeInput(UpdaterInstallInput, input, operation)
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, UpdaterError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, UpdaterError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
+
+function updaterRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+  return NativeSurface.rpc("Updater", method, {
+    payload,
+    success,
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
+}
+
+const runUpdaterRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, UpdaterError, never> =>
+  effect.pipe(
+    Effect.mapError(mapUpdaterRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapUpdaterRpcClientError = (error: unknown): UpdaterError =>
+  isUpdaterError(error)
+    ? error
+    : makeHostProtocolInternalError("Updater RPC client failed", "Updater")
+
+const isUpdaterError = (error: unknown): error is UpdaterError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
@@ -224,29 +352,3 @@ const formatUnknownError = (error: unknown): string => {
 
   return String(error)
 }
-
-export const makeUnsupportedUpdaterClient = (): UpdaterClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, UpdaterError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, UpdaterError, never> =>
-    Stream.fail(unsupportedError(method))
-  return Object.freeze({
-    check: () => unsupportedEffect<UpdaterCheckResult>("Updater.check"),
-    download: () => unsupportedEffect<UpdaterStatusResult>("Updater.download"),
-    install: () => unsupportedEffect<UpdaterStatusResult>("Updater.install"),
-    installAndRestart: () => unsupportedEffect<UpdaterStatusResult>("Updater.installAndRestart"),
-    getStatus: () => unsupportedEffect<UpdaterStatusResult>("Updater.getStatus"),
-    readyForRestart: () => unsupportedEffect<void>("Updater.readyForRestart"),
-    onPreparingRestart: () =>
-      unsupportedStream<UpdaterPreparingRestartEvent>("Updater.PreparingRestart")
-  } satisfies UpdaterClientApi)
-}
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "phase-22",
-    message: `unsupported Updater method until Phase 22: ${method}`,
-    operation: method,
-    recoverable: false
-  })

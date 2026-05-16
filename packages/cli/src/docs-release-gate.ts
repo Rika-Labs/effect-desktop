@@ -1,7 +1,10 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join, relative } from "node:path"
 
-import { Data, Effect, Option } from "effect"
+import { DesktopTimeouts } from "@effect-desktop/core"
+import { Data, Duration, Effect, Option, Schema } from "effect"
+
+import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
+import { runReleaseTool } from "./release-tool-runner.js"
 
 export interface DocsReleaseGateOptions {
   readonly cwd: string
@@ -96,32 +99,31 @@ interface RunnableBlock {
 
 const MANIFEST_PATH = "docs/docs-manifest.json"
 const RUNNABLE_BLOCK_PATTERN = /```([^\n`]*)\n([\s\S]*?)```/g
-const SPEC_SOURCE = "docs/SPEC.md §25.3"
-const DEFAULT_EXAMPLE_TIMEOUT_MILLIS = 10_000
+const SPEC_SOURCE = "engineering/SPEC.md §25.3"
 const REQUIRED_SPEC_PAGES: ReadonlyMap<string, string> = new Map([
-  ["installation", "docs/user/installation.md"],
-  ["quickstart", "docs/user/quickstart.md"],
-  ["concepts", "docs/user/concepts.md"],
-  ["architecture-overview", "docs/user/architecture-overview.md"],
-  ["app-config", "docs/user/app-config.md"],
-  ["windows", "docs/user/windows.md"],
-  ["typed-apis", "docs/user/typed-apis.md"],
-  ["bridge", "docs/user/bridge.md"],
-  ["native-services", "docs/user/native-services.md"],
-  ["resources", "docs/user/resources.md"],
-  ["processes", "docs/user/processes.md"],
-  ["ptys", "docs/user/ptys.md"],
-  ["filesystem", "docs/user/filesystem.md"],
-  ["storage", "docs/user/storage.md"],
-  ["permissions", "docs/user/permissions.md"],
-  ["commands", "docs/user/commands.md"],
-  ["devtools", "docs/user/devtools.md"],
-  ["testing", "docs/user/testing.md"],
-  ["packaging", "docs/user/packaging.md"],
-  ["signing", "docs/user/signing.md"],
-  ["updating", "docs/user/updating.md"],
-  ["troubleshooting", "docs/user/troubleshooting.md"],
-  ["contribution-guide", "docs/user/contribution-guide.md"]
+  ["installation", "docs/installation.md"],
+  ["quickstart", "docs/quickstart.md"],
+  ["concepts", "docs/concepts.md"],
+  ["architecture-overview", "docs/architecture-overview.md"],
+  ["app-config", "docs/app-config.md"],
+  ["windows", "docs/windows.md"],
+  ["typed-apis", "docs/typed-apis.md"],
+  ["bridge", "docs/bridge.md"],
+  ["native-services", "docs/native-services.md"],
+  ["resources", "docs/resources.md"],
+  ["processes", "docs/processes.md"],
+  ["ptys", "docs/ptys.md"],
+  ["filesystem", "docs/filesystem.md"],
+  ["storage", "docs/storage.md"],
+  ["permissions", "docs/permissions.md"],
+  ["commands", "docs/commands.md"],
+  ["devtools", "docs/devtools.md"],
+  ["testing", "docs/testing.md"],
+  ["packaging", "docs/packaging.md"],
+  ["signing", "docs/signing.md"],
+  ["updating", "docs/updating.md"],
+  ["troubleshooting", "docs/troubleshooting.md"],
+  ["contribution-guide", "docs/contribution-guide.md"]
 ])
 const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["installation", ["runCli", "desktop --help"]],
@@ -130,7 +132,7 @@ const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = ne
   ["architecture-overview", ["HostProtocolRequestEnvelope", "Desktop"]],
   ["app-config", ["defineDesktopConfig"]],
   ["windows", ["WindowRpcs", "WindowMethodNames"]],
-  ["typed-apis", ["RpcGroup", "Handlers"]],
+  ["typed-apis", ["RpcGroup", "makeDesktopRpcHandlerRuntime"]],
   ["bridge", ["HostProtocolEnvelope", "Client"]],
   ["native-services", ["ClipboardRpcs", "DialogRpcs", "WindowRpcs"]],
   ["resources", ["ResourceRegistry", "ManagedResource"]],
@@ -161,7 +163,7 @@ export const runDocsReleaseGate = (
     const pageReports: DocsPageReport[] = []
     const examples: DocsExampleReport[] = []
     const runner = options.commandRunner ?? runDocsExample
-    const exampleTimeoutMillis = options.exampleTimeoutMillis ?? DEFAULT_EXAMPLE_TIMEOUT_MILLIS
+    const exampleTimeoutMillis = options.exampleTimeoutMillis ?? DesktopTimeouts.docsExampleMillis
 
     for (const page of manifest.pages) {
       const absolutePath = join(options.cwd, page.path)
@@ -177,13 +179,12 @@ export const runDocsReleaseGate = (
         )
       }
       const body = yield* readText(absolutePath).pipe(
-        Effect.catch((error) =>
-          Effect.fail(
+        Effect.mapError(
+          (error) =>
             new DocsGateMissingPageError({
               page,
               message: `required docs page ${page.path} is missing or unreadable: ${error.message}`
             })
-          )
         )
       )
       if (body.trim().length === 0) {
@@ -393,7 +394,9 @@ const runDocsExampleWithTimeout = (
   timeoutMillis: number
 ): Effect.Effect<void, DocsGateExampleFailedError | DocsGateFileError, never> =>
   Effect.gen(function* () {
-    const result = yield* runner(invocation).pipe(Effect.timeoutOption(`${timeoutMillis} millis`))
+    const result = yield* runner(invocation).pipe(
+      Effect.timeoutOption(Duration.millis(timeoutMillis))
+    )
     if (Option.isSome(result)) {
       return result.value
     }
@@ -409,150 +412,130 @@ const runDocsExampleWithTimeout = (
 const runDocsExample: DocsExampleRunner = (invocation) =>
   Effect.gen(function* () {
     const directory = yield* makeTempDirectory(invocation.cwd)
-    let child: ReturnType<typeof Bun.spawn> | undefined
     const effect = Effect.gen(function* () {
       const file = join(directory, `docs-example-${invocation.blockIndex}.ts`)
       yield* writeText(file, invocation.code)
-      const runningChild = yield* Effect.try({
-        try: () =>
-          Bun.spawn(["bun", file], {
-            cwd: invocation.cwd,
-            stdout: "ignore",
-            stderr: "pipe"
-          }),
-        catch: (cause) =>
-          new DocsGateExampleFailedError({
-            file: invocation.file,
-            blockIndex: invocation.blockIndex,
-            message: `failed to start docs example ${invocation.file}#${invocation.blockIndex}`,
-            cause
-          })
-      })
-      child = runningChild
-      const exitCode = yield* waitForDocsExampleExit(runningChild, invocation)
-      const stderr = yield* Effect.tryPromise({
-        try: () => new Response(runningChild.stderr).text(),
-        catch: (cause) =>
-          new DocsGateExampleFailedError({
-            file: invocation.file,
-            blockIndex: invocation.blockIndex,
-            message: `failed to read docs example stderr ${invocation.file}#${invocation.blockIndex}`,
-            cause
-          })
-      })
-      if (exitCode !== 0) {
+      const result = yield* runReleaseTool({
+        step: `docs-example-${invocation.blockIndex}`,
+        command: "bun",
+        args: [file],
+        cwd: invocation.cwd,
+        stdout: "ignore",
+        stderr: "pipe"
+      }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new DocsGateExampleFailedError({
+              file: invocation.file,
+              blockIndex: invocation.blockIndex,
+              message: `failed to start docs example ${invocation.file}#${invocation.blockIndex}`,
+              cause
+            })
+        )
+      )
+      if (result.exitCode !== 0) {
         return yield* Effect.fail(
           new DocsGateExampleFailedError({
             file: invocation.file,
             blockIndex: invocation.blockIndex,
-            message: `docs example ${invocation.file}#${invocation.blockIndex} exited with ${exitCode}`,
-            exitCode,
-            stderr
+            message: `docs example ${invocation.file}#${invocation.blockIndex} exited with ${result.exitCode}`,
+            exitCode: result.exitCode,
+            stderr: result.stderr
           })
         )
       }
     })
-    yield* effect.pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          child?.kill()
-        }).pipe(Effect.ignore)
-      ),
-      Effect.ensuring(removePath(directory).pipe(Effect.ignore))
-    )
+    yield* effect.pipe(Effect.ensuring(removePath(directory).pipe(Effect.ignore)))
   })
-
-const waitForDocsExampleExit = (
-  child: ReturnType<typeof Bun.spawn>,
-  invocation: DocsExampleInvocation
-): Effect.Effect<number, DocsGateExampleFailedError, never> =>
-  Effect.tryPromise({
-    try: () => child.exited,
-    catch: (cause) =>
-      new DocsGateExampleFailedError({
-        file: invocation.file,
-        blockIndex: invocation.blockIndex,
-        message: `failed while waiting for docs example ${invocation.file}#${invocation.blockIndex}`,
-        cause
-      })
-  }).pipe(
-    Effect.timeoutOption(`${DEFAULT_EXAMPLE_TIMEOUT_MILLIS} millis`),
-    Effect.flatMap((result) => {
-      if (Option.isSome(result)) {
-        return Effect.succeed(result.value)
-      }
-      return Effect.fail(
-        new DocsGateExampleFailedError({
-          file: invocation.file,
-          blockIndex: invocation.blockIndex,
-          message: `docs example ${invocation.file}#${invocation.blockIndex} timed out after ${DEFAULT_EXAMPLE_TIMEOUT_MILLIS}ms`
-        })
-      )
-    })
-  )
 
 const readJson = <A>(path: string): Effect.Effect<A, DocsGateFileError, never> =>
   Effect.gen(function* () {
     const body = yield* readText(path)
-    return yield* Effect.try({
-      try: () => JSON.parse(body) as A,
-      catch: (cause) =>
-        new DocsGateFileError({
-          operation: "parse",
-          path,
-          message: `failed to parse ${path}`,
-          cause
-        })
-    })
+    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
+      Effect.map((value) => value as A),
+      Effect.mapError(
+        (cause) =>
+          new DocsGateFileError({
+            operation: "parse",
+            path,
+            message: `failed to parse ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const readText = (path: string): Effect.Effect<string, DocsGateFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path, "utf8"),
-    catch: (cause) =>
-      new DocsGateFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readFileString(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DocsGateFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
 const writeText = (path: string, text: string): Effect.Effect<void, DocsGateFileError, never> =>
-  Effect.tryPromise({
-    try: () => writeFile(path, text),
-    catch: (cause) =>
-      new DocsGateFileError({
-        operation: "write",
-        path,
-        message: `failed to write ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.writeFileString(path, text)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DocsGateFileError({
+          operation: "write",
+          path,
+          message: `failed to write ${path}`,
+          cause
+        })
+    )
+  )
 
 const makeTempDirectory = (cwd: string): Effect.Effect<string, DocsGateFileError, never> =>
-  Effect.tryPromise({
-    try: () => mkdtemp(join(cwd, ".docs-examples-")),
-    catch: (cause) =>
-      new DocsGateFileError({
-        operation: "mkdtemp",
-        path: cwd,
-        message: "failed to create docs example temp directory",
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.makeTempDirectory({ directory: cwd, prefix: ".docs-examples-" })
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DocsGateFileError({
+          operation: "mkdtemp",
+          path: cwd,
+          message: "failed to create docs example temp directory",
+          cause
+        })
+    )
+  )
 
 const removePath = (path: string): Effect.Effect<void, DocsGateFileError, never> =>
-  Effect.tryPromise({
-    try: () => rm(path, { recursive: true, force: true }),
-    catch: (cause) =>
-      new DocsGateFileError({
-        operation: "rm",
-        path,
-        message: `failed to remove ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.remove(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DocsGateFileError({
+          operation: "rm",
+          path,
+          message: `failed to remove ${path}`,
+          cause
+        })
+    )
+  )
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null

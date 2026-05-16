@@ -40,3 +40,6 @@ windows-sys = { workspace = true, features = [
   "Win32_UI_HiDpi",
   "Win32_UI_Shell"
 ] }
+
+[build-dependencies]
+serde_json.workspace = true

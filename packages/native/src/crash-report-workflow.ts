@@ -1,5 +1,6 @@
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
-import { Effect, Layer, Schedule, Schema } from "effect"
+import { DesktopSchedules } from "@effect-desktop/core"
+import { Clock, Effect, Layer, Random, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 import {
   FetchHttpClient,
@@ -11,7 +12,7 @@ import {
 import { PersistedQueue } from "effect/unstable/persistence"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
-import type { CrashReportUploadHandler } from "./crash-reporter.js"
+import type { CrashReporterError } from "./crash-reporter.js"
 import { CrashReporterBreadcrumbInput } from "./contracts/crash-reporter.js"
 
 export class CrashReport extends Schema.Class<CrashReport>("CrashReport")({
@@ -44,12 +45,12 @@ const submitError = (status: number, message: string): CrashReportSubmitError =>
 const crashReportGroup = EventGroup.empty
   .add({
     tag: "crash-report-submitted",
-    primaryKey: (p: unknown) => (p as CrashReport).id,
+    primaryKey: (p) => p.id,
     payload: CrashReport
   })
   .add({
     tag: "crash-report-dropped",
-    primaryKey: (p: unknown) => (p as CrashReport).id,
+    primaryKey: (p) => p.id,
     payload: CrashReport
   })
 
@@ -64,11 +65,6 @@ export const CrashReportGroupLayer = EventLog.group(crashReportGroup, (handlers)
 export const CrashReportReactivityLayer = EventLog.groupReactivity(crashReportGroup, [
   "crash-reports"
 ])
-
-const submissionRetrySchedule = Schedule.exponential("1 second").pipe(
-  Schedule.jittered,
-  Schedule.both(Schedule.recurs(10))
-)
 
 export const CrashSubmissionWorkflow = Workflow.make({
   name: "CrashSubmission",
@@ -92,13 +88,11 @@ const makeCrashSubmitActivity = (report: CrashReport, endpointUrl: string) =>
       HttpClient.execute,
       Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.asVoid,
-      Effect.retry({ schedule: submissionRetrySchedule }),
-      Effect.catch((e: HttpClientError.HttpClientError) =>
-        Effect.fail(
-          submitError(
-            e.response?.status ?? 0,
-            e.response === undefined ? e.message : `HTTP ${String(e.response.status)}`
-          )
+      Effect.retry({ schedule: DesktopSchedules.crashReportSubmission }),
+      Effect.mapError((e: HttpClientError.HttpClientError) =>
+        submitError(
+          e.response?.status ?? 0,
+          e.response === undefined ? e.message : `HTTP ${String(e.response.status)}`
         )
       )
     )
@@ -127,35 +121,42 @@ export interface CrashReportQueueUploadHandlerOptions {
   readonly platform?: string
 }
 
+export type CrashReportQueueUploadHandler = (
+  breadcrumbs: ReadonlyArray<CrashReporterBreadcrumbInput>
+) => Effect.Effect<void, CrashReporterError, never>
+
 export const makeCrashReportQueueUploadHandler = (
   options: CrashReportQueueUploadHandlerOptions = {}
-): Effect.Effect<CrashReportUploadHandler, never, PersistedQueue.PersistedQueueFactory> =>
+): Effect.Effect<CrashReportQueueUploadHandler, never, PersistedQueue.PersistedQueueFactory> =>
   Effect.gen(function* () {
     const queue = yield* makeCrashReportQueue
-    const now = options.now ?? Date.now
-    const nextId =
-      options.id ?? (() => `crash-${String(now())}-${Math.random().toString(36).slice(2)}`)
+    const now = options.now === undefined ? Clock.currentTimeMillis : Effect.sync(options.now)
 
-    return (breadcrumbs) => {
-      const id = nextId()
-      const report = new CrashReport({
-        id,
-        breadcrumbs,
-        capturedAt: now(),
-        ...(options.appVersion === undefined ? {} : { appVersion: options.appVersion }),
-        ...(options.platform === undefined ? {} : { platform: options.platform })
-      })
-      return queue.offer(report, { id }).pipe(
-        Effect.asVoid,
-        Effect.mapError((error) =>
-          makeHostProtocolInvalidStateError(
-            "queue-offer-failed",
-            error instanceof Error ? error.message : String(error),
-            "CrashReporter.flush"
+    return (breadcrumbs) =>
+      Effect.gen(function* () {
+        const capturedAt = yield* now
+        const id =
+          options.id === undefined
+            ? `crash-${String(capturedAt)}-${yield* Random.nextUUIDv4}`
+            : options.id()
+        const report = new CrashReport({
+          id,
+          breadcrumbs,
+          capturedAt,
+          ...(options.appVersion === undefined ? {} : { appVersion: options.appVersion }),
+          ...(options.platform === undefined ? {} : { platform: options.platform })
+        })
+        yield* queue.offer(report, { id }).pipe(
+          Effect.asVoid,
+          Effect.mapError((error) =>
+            makeHostProtocolInvalidStateError(
+              "queue-offer-failed",
+              error instanceof Error ? error.message : String(error),
+              "CrashReporter.flush"
+            )
           )
         )
-      )
-    }
+      })
   })
 
 export const makeCrashSubmissionWorkflowLayer = (endpointUrl: string) =>

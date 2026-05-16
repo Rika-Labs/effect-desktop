@@ -5,11 +5,7 @@ import { NextDesktop } from "./index.js"
 
 test("NextDesktop.from exposes the React desktop adapter behind a client boundary module", () => {
   const NotesApp = Desktop.make({
-    windows: {
-      main: {
-        title: "Notes"
-      }
-    }
+    windows: Desktop.window("main", { title: "Notes" })
   })
   const NotesManifest = Desktop.manifest(NotesApp)
   const NotesNext = NextDesktop.from(NotesManifest)

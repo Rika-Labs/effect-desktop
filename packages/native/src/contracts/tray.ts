@@ -1,12 +1,12 @@
-import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
+import { ResourceHandleSchema, type ResourceHandle } from "@effect-desktop/core"
 import { Schema } from "effect"
 
 import { MenuTemplate } from "./menu.js"
 import { BridgeSafeNonEmptyString, PrintableNonEmptyString } from "./strings.js"
 
-export const TrayResource = BridgeRpc.Resource("tray", "open")
+export const TrayResource = ResourceHandleSchema("tray", "open")
 
-export type TrayHandle = BridgeResourceHandle<"tray", "open">
+export type TrayHandle = ResourceHandle<"tray", "open">
 
 export const TrayIcon = BridgeSafeNonEmptyString.check(Schema.isPattern(/^(?!file:)/iu))
 
@@ -21,26 +21,26 @@ export class TrayCreateInput extends Schema.Class<TrayCreateInput>("TrayCreateIn
 export type TrayCreateOptions = Schema.Schema.Type<typeof TrayCreateInput>
 
 export class TraySetIconInput extends Schema.Class<TraySetIconInput>("TraySetIconInput")({
-  tray: TrayResource.schema,
+  tray: TrayResource,
   icon: TrayIcon
 }) {}
 
 export class TraySetTooltipInput extends Schema.Class<TraySetTooltipInput>("TraySetTooltipInput")({
-  tray: TrayResource.schema,
+  tray: TrayResource,
   tooltip: TrayTooltip
 }) {}
 
 export class TraySetMenuInput extends Schema.Class<TraySetMenuInput>("TraySetMenuInput")({
-  tray: TrayResource.schema,
+  tray: TrayResource,
   menu: MenuTemplate
 }) {}
 
 export class TrayDestroyInput extends Schema.Class<TrayDestroyInput>("TrayDestroyInput")({
-  tray: TrayResource.schema
+  tray: TrayResource
 }) {}
 
 export class TrayActivatedEvent extends Schema.Class<TrayActivatedEvent>("TrayActivatedEvent")({
-  tray: TrayResource.schema,
+  tray: TrayResource,
   ownerWindowId: Schema.optionalKey(Schema.NonEmptyString)
 }) {}
 

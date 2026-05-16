@@ -1,9 +1,31 @@
-import { copyFile, lstat, mkdir, readlink, readdir, rm, stat, writeFile } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  readFile,
+  readlink,
+  readdir,
+  rm,
+  stat,
+  writeFile
+} from "node:fs/promises"
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { HOST_PROTOCOL_VERSION } from "@effect-desktop/bridge"
 import {
+  provider,
+  providers,
+  Provider,
+  runtimeGraph,
+  runtimeGraphSnapshot,
+  type DesktopProviderBudget,
+  type DesktopWindowsLayer,
+  type LayerGraphSnapshot
+} from "@effect-desktop/core"
+import {
+  Clock,
   Console,
   Data,
   Effect,
@@ -12,18 +34,29 @@ import {
   Option,
   Path,
   Ref,
+  Result,
+  Schema,
   Sink,
   Stdio,
   Terminal
 } from "effect"
 import { Command, Flag } from "effect/unstable/cli"
 import * as ChildProcessSpawnerModule from "effect/unstable/process"
+import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
+  decodeDesktopConfig,
+  effectiveCspPolicy,
   formatProductionCheckReport,
+  mergeDesktopConfig,
   runProductionCheck,
+  type CspConfig,
+  type CspPolicy,
+  type DesktopConfig,
   type ProductionCheckFile,
-  type ProductionSecurityConfig
+  type ProductionSecurityConfig,
+  type RuntimeEngine,
+  type WebEngine
 } from "@effect-desktop/config"
 
 import {
@@ -84,6 +117,14 @@ import {
   type PublishPipelineError
 } from "./update-manifest.js"
 import {
+  DesktopReleaseReport,
+  ReleaseConfig,
+  ReleaseError,
+  runReleaseWorkflow,
+  type ReleasePhase,
+  type ReleaseWorkflowApi
+} from "./release-workflow.js"
+import {
   formatPublicApiError,
   formatPublicApiReport,
   runPublicApiCheck
@@ -100,6 +141,19 @@ import {
   runAccessibilityGate
 } from "./accessibility-gate.js"
 import { formatSemverGuardError, formatSemverGuardReport, runSemverGuard } from "./semver-guard.js"
+import {
+  decodeDesktopTarget,
+  detectDesktopHostTarget,
+  hostBinaryName,
+  hostBuildOutputPath,
+  resolveDesktopHostTarget,
+  resolveDesktopTarget
+} from "./targets.js"
+import type {
+  DesktopTarget,
+  DesktopTargetId,
+  UnsupportedDesktopHostTargetError
+} from "./targets.js"
 
 export {
   runDesktopPackage,
@@ -115,11 +169,16 @@ export {
   type PackageTarget
 } from "./package-pipeline.js"
 export {
+  DoctorDiagnostic,
+  DoctorEnvironment,
+  DoctorEvidence,
   DoctorMissing,
+  formatDoctorReport,
   runDesktopDoctor,
   type DesktopDoctorReport,
   type DoctorCommandInvocation,
   type DoctorCommandOutput,
+  type DoctorEnvironmentApi,
   type DoctorCommandRunner,
   type DoctorProbeName,
   type DoctorProbeResult,
@@ -170,6 +229,62 @@ export {
   type UpdateArtifactManifest,
   type UpdateManifest
 } from "./update-manifest.js"
+export {
+  ReleaseWorkflow,
+  ReleaseWorkflowLayer,
+  ReleaseWorkflowServices
+} from "./release-workflow.js"
+export {
+  DesktopReleaseReport,
+  ReleaseConfig,
+  ReleaseError,
+  runReleaseWorkflow,
+  type ReleasePhase,
+  type ReleaseWorkflowApi
+} from "./release-workflow.js"
+export {
+  DesktopArch,
+  DesktopArtifact,
+  DesktopArtifactKind,
+  DesktopOs,
+  DesktopTarget,
+  DesktopTargetId,
+  DesktopTargetIds,
+  MacosDesktopTargetId,
+  UnsupportedDesktopHostTargetError,
+  UnsupportedDesktopTargetError,
+  appImageArch,
+  artifactKindsForTarget,
+  debArch,
+  decodeDesktopTarget,
+  desktopArtifactExtension,
+  desktopArtifactsForTarget,
+  desktopPlatformDirectory,
+  desktopTargetId,
+  detectDesktopHostTarget,
+  hostBinaryName,
+  hostBuildOutputPath,
+  isDesktopArtifactKind,
+  isDesktopTargetId,
+  isMacosDesktopTargetId,
+  parseDesktopTargetId,
+  resolveDesktopHostTarget,
+  resolveMacosDesktopHostTarget,
+  resolveDesktopTarget,
+  rpmArch,
+  wixArch
+} from "./targets.js"
+export {
+  ReleaseToolRunner,
+  ReleaseToolRunnerLive,
+  ToolError,
+  makeReleaseToolRunner,
+  runReleaseTool,
+  type ReleaseToolRunnerApi,
+  type ToolInvocation,
+  type ToolOutputMode,
+  type ToolResult
+} from "./release-tool-runner.js"
 export {
   runPublicApiCheck,
   type PublicApiChange,
@@ -241,6 +356,7 @@ export {
   type SemverPolicyManifest,
   type SemverReleaseKind
 } from "./semver-guard.js"
+import { runReleaseTool } from "./release-tool-runner.js"
 
 export class CliUsageError extends Error {
   public override readonly name = "CliUsageError"
@@ -289,11 +405,16 @@ export type BuildPipelineError =
   | BuildCommandFailedError
   | BuildFileError
 
-export type BuildOs = "linux" | "macos" | "windows"
-export type BuildArch = "arm64" | "x64"
-export type BuildTarget = `${BuildOs}-${BuildArch}`
-export type BuildStepName = "renderer" | "runtime" | "native-host" | "bridge" | "manifest"
-const DEFAULT_RUNTIME_ENGINE = "bun"
+export type BuildTarget = DesktopTargetId
+export type BuildStepName =
+  | "renderer"
+  | "runtime"
+  | "native-host"
+  | "webview-runtime"
+  | "bridge"
+  | "manifest"
+const DEFAULT_RUNTIME_ENGINE: RuntimeEngine = "bun"
+const RUNTIME_ENGINES = ["bun", "node"] as const satisfies readonly RuntimeEngine[]
 const DEFAULT_RENDERER_FRAMEWORK = "react"
 const DEFAULT_RENDERER_STYLING = "tailwind"
 const DEFAULT_PROFILE = "dev"
@@ -327,39 +448,16 @@ const ROOT_HELP = [
   "Usage: desktop <command> [options]",
   "",
   "Commands:",
-  "  init",
-  "  dev",
   "  build",
   "  package",
   "  sign",
   "  notarize",
   "  publish",
-  "  typecheck",
-  "  lint",
-  "  test",
+  "  release",
   "  doctor",
-  "  info",
-  "  generate-types",
-  "  migrate",
-  "  clean",
-  "  inspect",
-  "  replay",
   "  check",
   ""
 ].join("\n")
-const DEFERRED_COMMANDS = [
-  "init",
-  "dev",
-  "typecheck",
-  "lint",
-  "test",
-  "info",
-  "generate-types",
-  "migrate",
-  "clean",
-  "inspect",
-  "replay"
-] as const
 const JSON_VALUE_FLAGS = new Set([
   "--artifact",
   "--config",
@@ -421,6 +519,13 @@ const CLI_FLAG_SPECS: ReadonlyMap<string, CliFlagSpec> = new Map([
     }
   ],
   [
+    "release",
+    {
+      boolean: new Set(["--json", "--help", "-h"]),
+      value: new Set(["--config", "--platform", "--artifact", "--version"])
+    }
+  ],
+  [
     "doctor",
     {
       boolean: new Set(["--ci", "--json", "--help", "-h"]),
@@ -433,11 +538,7 @@ const CLI_FLAG_SPECS: ReadonlyMap<string, CliFlagSpec> = new Map([
       boolean: new Set([...CHECK_MODE_FLAGS, "--write", "--json", "--help", "-h"]),
       value: new Set(["--config", "--renderer", "--platform", "--artifact"])
     }
-  ],
-  ...DEFERRED_COMMANDS.map((command): readonly [string, CliFlagSpec] => [
-    command,
-    { boolean: new Set(["--json", "--help", "-h"]), value: new Set() }
-  ])
+  ]
 ])
 
 export interface CliRunOptions {
@@ -455,6 +556,7 @@ export interface CliRunOptions {
   readonly platform?: NodeJS.Platform
   readonly arch?: string
   readonly bunVersion?: string
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export interface CommandInvocation {
@@ -462,6 +564,7 @@ export interface CommandInvocation {
   readonly command: string
   readonly args: readonly string[]
   readonly cwd: string
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export type CommandRunner = (
@@ -474,6 +577,10 @@ export interface BuildStepReport {
   readonly cwd?: string
   readonly elapsedMs: number
   readonly outputPath: string
+  readonly provider?: string
+  readonly cacheKey: string
+  readonly status: "rebuilt" | "reused"
+  readonly reason: string
 }
 
 export interface DesktopBuildReport {
@@ -481,10 +588,39 @@ export interface DesktopBuildReport {
   readonly appName: string
   readonly appVersion: string
   readonly target: BuildTarget
+  readonly providers: {
+    readonly runtime: RuntimeEngine
+    readonly runtimePackaging: "source"
+    readonly webEngine: WebEngine
+  }
+  readonly providerBudgets: readonly DesktopProviderBudget[]
+  readonly providerMeasurements: readonly ProviderMeasurementReport[]
   readonly layoutPath: string
   readonly appManifestPath: string
   readonly bridgeManifestPath: string
   readonly steps: readonly BuildStepReport[]
+}
+
+export interface ProviderMeasurementReport {
+  readonly provider: DesktopProviderBudget
+  readonly runtimePackaging: "source"
+  readonly webEngine: WebEngine
+  readonly target: BuildTarget
+  readonly runtimePayloadBytes: number
+  readonly runtimeBuildMs: number
+  readonly startup: {
+    readonly runtimeBootMs: number | null
+    readonly firstWindowVisibleMs: number | null
+    readonly bridgeReadyMs: number | null
+  }
+  readonly checks: readonly ProviderBudgetCheckReport[]
+}
+
+export interface ProviderBudgetCheckReport {
+  readonly metric: "runtime-payload-bytes" | "runtime-boot-ms"
+  readonly budget: number
+  readonly actual: number | null
+  readonly status: "pass" | "fail" | "unmeasured"
 }
 
 export interface DesktopBuildOptions {
@@ -495,6 +631,7 @@ export interface DesktopBuildOptions {
   readonly commandRunner: CommandRunner
   readonly now: () => number
   readonly hostTarget: BuildTarget | undefined
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 interface BuildPlan {
@@ -505,10 +642,15 @@ interface BuildPlan {
   readonly buildTargets: readonly BuildTarget[]
   readonly appRoot: string
   readonly configPath: string
-  readonly runtimeEngine: "bun"
+  readonly runtimeEngine: RuntimeEngine
   readonly runtimeEntry: string
+  readonly runtimeExecutable: RuntimeEngine
+  readonly runtimeArgs: readonly string[]
   readonly rendererFramework: "react"
   readonly rendererStyling: "tailwind"
+  readonly webEngine: WebEngine
+  readonly webEngineRuntimeSource: string | undefined
+  readonly webEngineRuntimePath: string | undefined
   readonly rendererEntry: string
   readonly rendererDistPath: string
   readonly runtimeEntryPath: string
@@ -526,6 +668,7 @@ interface BuildPlan {
   readonly security: {
     readonly externalNavigation: BuildExternalNavigationPolicy
     readonly devtoolsInProd: boolean
+    readonly csp: CspPolicy
   }
   readonly protocols: readonly { readonly scheme: string; readonly handler: string | undefined }[]
   readonly windows: unknown
@@ -541,6 +684,22 @@ interface BuildPlan {
       }
     | undefined
   readonly target: BuildTarget
+  readonly layerGraph: LayerGraphSnapshot
+}
+
+interface BuildCacheManifest {
+  readonly nodes?: Readonly<Record<string, BuildCacheNode | undefined>>
+}
+
+interface BuildCacheNode {
+  readonly cacheKey?: string
+}
+
+interface BuildNodePlan {
+  readonly name: BuildStepName
+  readonly provider?: string
+  readonly cacheKey: string
+  readonly outputPath: string
 }
 
 interface AppConfig {
@@ -559,12 +718,16 @@ interface AppConfig {
     readonly entry?: unknown
     readonly dist?: unknown
   }
+  readonly web?: {
+    readonly engine?: unknown
+  }
   readonly build?: {
     readonly targets?: unknown
   }
   readonly security?: {
     readonly externalNavigation?: unknown
     readonly devtoolsInProd?: unknown
+    readonly csp?: CspConfig
   }
   readonly env?: unknown
   readonly protocol?: {
@@ -604,6 +767,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
     }
 
     const exitCodeRef = yield* Ref.make(0)
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
 
     const fail = (code: number): Effect.Effect<void, never, never> => Ref.set(exitCodeRef, code)
 
@@ -623,17 +788,21 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             platform: Option.getOrUndefined(flags.platform),
             profile: flags.profile,
             commandRunner: options.commandRunner ?? runCommand,
-            now: options.now ?? Date.now,
+            now,
             hostTarget: options.hostTarget
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatBuildError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatBuildErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatBuildError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatBuildErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -669,17 +838,21 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             platform: Option.getOrUndefined(flags.platform),
             artifact: Option.getOrUndefined(flags.artifact),
             commandRunner: options.packageCommandRunner ?? runPackageCommand,
-            now: options.now ?? Date.now,
+            now,
             hostTarget: options.hostTarget
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatPackageError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatPackageErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatPackageError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatPackageErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -713,17 +886,22 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             configPath: flags.config,
             platform: Option.getOrUndefined(flags.platform),
             commandRunner: options.signCommandRunner ?? runSignCommand,
-            now: options.now ?? Date.now,
-            hostTarget: options.hostTarget
+            now,
+            hostTarget: options.hostTarget,
+            env: options.env ?? process.env
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatSignError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatSignErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatSignError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatSignErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -761,17 +939,22 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             configPath: flags.config,
             platform: Option.getOrUndefined(flags.platform),
             commandRunner: options.notarizeCommandRunner ?? runNotarizeCommand,
-            now: options.now ?? Date.now,
-            hostTarget: macosTarget
+            now,
+            hostTarget: macosTarget,
+            env: options.env ?? process.env
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatNotarizeError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatNotarizeErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatNotarizeError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatNotarizeErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -804,16 +987,21 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             cwd: options.cwd,
             configPath: flags.config,
             platform: Option.getOrUndefined(flags.platform),
-            now: options.now ?? Date.now
+            now,
+            env: options.env ?? process.env
           }).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                if (flags.json) {
-                  options.writeStderr(`${JSON.stringify(formatPublishError(error), null, 2)}\n`)
-                } else {
-                  options.writeStderr(`${formatPublishErrorText(error)}\n`)
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatPublishError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatPublishErrorText(error)}\n`)
+                  }
+                  return undefined
                 }
-                return undefined
               })
             )
           )
@@ -833,6 +1021,61 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       )
     )
 
+    const releaseCmd = Command.make(
+      "release",
+      {
+        config: Flag.string("config").pipe(Flag.withDefault("desktop.config.ts")),
+        platform: Flag.optional(Flag.string("platform")),
+        artifact: Flag.optional(Flag.string("artifact")),
+        version: Flag.optional(Flag.string("version")),
+        json: Flag.boolean("json").pipe(Flag.withDefault(false))
+      },
+      (flags) =>
+        Effect.gen(function* () {
+          const platform = Option.getOrUndefined(flags.platform)
+          const artifact = Option.getOrUndefined(flags.artifact)
+          const version = Option.getOrUndefined(flags.version)
+          const report = yield* runReleaseWorkflow(
+            new ReleaseConfig({
+              configPath: flags.config,
+              ...(platform === undefined ? {} : { platform }),
+              ...(artifact === undefined ? {} : { artifact }),
+              ...(version === undefined ? {} : { version })
+            }),
+            makeReleaseWorkflowApi(options, now)
+          ).pipe(
+            Effect.provide(WorkflowEngine.layerMemory),
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatReleaseError(error), null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatReleaseErrorText(error)}\n`)
+                  }
+                  return undefined
+                }
+              })
+            )
+          )
+          if (report === undefined) {
+            yield* fail(1)
+            return
+          }
+          if (flags.json) {
+            options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+          } else {
+            options.writeStdout(formatReleaseReport(report))
+          }
+        })
+    ).pipe(
+      Command.withDescription(
+        "Run package, sign, notarize when needed, and publish as a resumable release workflow."
+      )
+    )
+
     const doctorCmd = Command.make(
       "doctor",
       {
@@ -849,7 +1092,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             platform: options.platform ?? process.platform,
             arch: options.arch ?? process.arch,
             bunVersion: options.bunVersion ?? Bun.version,
-            commandRunner: options.doctorCommandRunner ?? runDoctorCommand
+            commandRunner: options.doctorCommandRunner ?? runDoctorCommand,
+            env: options.env ?? process.env
           })
           if (flags.json) {
             if (report.passed) {
@@ -924,33 +1168,14 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
       )
     )
 
-    const deferredCommands = DEFERRED_COMMANDS.map((name) =>
-      Command.make(
-        name,
-        {
-          json: Flag.boolean("json").pipe(Flag.withDefault(false))
-        },
-        (flags) =>
-          Effect.gen(function* () {
-            const error = deferredCommandError(name)
-            if (flags.json) {
-              options.writeStderr(`${JSON.stringify(error, null, 2)}\n`)
-            } else {
-              options.writeStderr(`${error.tag}: ${error.message}\nNext: ${error.remediation}\n`)
-            }
-            yield* fail(1)
-          })
-      ).pipe(Command.withDescription(`Deferred desktop ${name} command.`))
-    )
-
     const desktopCmd = Command.make("desktop").pipe(
       Command.withSubcommands([
-        ...deferredCommands,
         buildCmd,
         packageCmd,
         signCmd,
         notarizeCmd,
         publishCmd,
+        releaseCmd,
         doctorCmd,
         checkCmd
       ])
@@ -959,7 +1184,8 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
     const cliLayer = makeCliLayer(options)
 
     yield* Command.runWith(desktopCmd, { version: "0.0.0" })(options.argv).pipe(
-      Effect.catch(() => fail(1)),
+      Effect.tapError(() => fail(1)),
+      Effect.ignore,
       Effect.provide(cliLayer)
     )
 
@@ -1050,20 +1276,6 @@ const formatCliUsageError = (
   message: error.message
 })
 
-const deferredCommandError = (
-  command: (typeof DEFERRED_COMMANDS)[number]
-): {
-  readonly tag: "CliDeferredCommand"
-  readonly command: string
-  readonly message: string
-  readonly remediation: string
-} => ({
-  tag: "CliDeferredCommand",
-  command,
-  message: `desktop ${command} is declared but not implemented in this milestone`,
-  remediation: "Use the implemented build/package/sign/notarize/publish/doctor/check commands."
-})
-
 export const runDesktopBuild = (
   options: DesktopBuildOptions
 ): Effect.Effect<DesktopBuildReport, BuildPipelineError, never> =>
@@ -1075,78 +1287,128 @@ export const runDesktopBuild = (
     const plan = yield* normalizeBuildPlan(config, {
       profile: options.profile,
       configPath: absoluteConfigPath,
-      hostTarget,
+      hostTarget: hostTarget.id,
       target
     })
 
-    yield* removePath(plan.layoutPath)
     yield* makeDirectory(plan.layoutPath)
+    const cache = yield* readBuildCache(plan)
 
-    const renderer = yield* runStep(options, plan, {
+    const rendererNode = yield* makeRendererBuildNode(plan)
+    const renderer = yield* runBuildNode(options, cache, rendererNode, {
       name: "renderer",
       command: "bun",
       args: ["run", "build"],
-      cwd: plan.appRoot,
-      outputPath: join(plan.layoutPath, "renderer")
+      cwd: plan.appRoot
     })
-    yield* copyDirectory(plan.rendererDistPath, renderer.outputPath)
+    if (renderer.status === "rebuilt") {
+      yield* removePath(renderer.outputPath)
+      yield* copyDirectory(plan.rendererDistPath, renderer.outputPath)
+    }
 
-    const runtime = yield* runStep(options, plan, {
+    const runtimeNode = yield* makeRuntimeBuildNode(plan)
+    const runtime = yield* runBuildNode(options, cache, runtimeNode, {
       name: "runtime",
       command: "bun",
       args: [
         "build",
         plan.runtimeEntryPath,
-        "--target=bun",
+        `--target=${plan.runtimeEngine}`,
         "--outdir",
         join(plan.layoutPath, "runtime")
       ],
-      cwd: options.cwd,
-      outputPath: join(plan.layoutPath, "runtime")
+      cwd: options.cwd
     })
-
-    const nativeHost = yield* runStep(options, plan, {
+    const nativeHostNode = yield* makeNativeHostBuildNode(plan, options.cwd)
+    const nativeHost = yield* runBuildNode(options, cache, nativeHostNode, {
       name: "native-host",
       command: "cargo",
       args: ["build", "-p", "host", "--release"],
-      cwd: options.cwd,
-      outputPath: join(plan.layoutPath, "native", hostBinaryName(target))
+      cwd: options.cwd
     })
-    yield* makeDirectory(dirname(nativeHost.outputPath))
-    yield* copyFileEffect(hostBuildOutputPath(options.cwd, target), nativeHost.outputPath)
+    if (nativeHost.status === "rebuilt") {
+      yield* makeDirectory(dirname(nativeHost.outputPath))
+      yield* copyFileEffect(hostBuildOutputPath(options.cwd, target), nativeHost.outputPath)
+    }
 
-    const bridge = yield* writeBridgeManifest(plan, options.now)
-    const manifest = yield* writeAppManifest(plan)
-    const report = newBuildReport(plan, [renderer, runtime, nativeHost, bridge, manifest])
+    const webviewRuntime =
+      plan.webEngine === "chrome"
+        ? yield* copyWebViewRuntimeBuildNode(options, cache, plan)
+        : undefined
+    const bridgeNode = makeBridgeBuildNode(plan)
+    const bridge = yield* writeBridgeManifest(plan, options.now, cache, bridgeNode)
+    const manifestNode = makeManifestBuildNode(
+      plan,
+      webviewRuntime === undefined
+        ? [renderer, runtime, nativeHost, bridge]
+        : [renderer, runtime, nativeHost, webviewRuntime, bridge]
+    )
+    const manifest = yield* writeAppManifest(plan, cache, manifestNode)
+    const providerMeasurement = yield* measureBuildProvider(plan, runtime)
+    const report = newBuildReport(
+      plan,
+      webviewRuntime === undefined
+        ? [renderer, runtime, nativeHost, bridge, manifest]
+        : [renderer, runtime, nativeHost, webviewRuntime, bridge, manifest],
+      [providerMeasurement]
+    )
     yield* writeJson(join(plan.layoutPath, "build-report.json"), report)
+    yield* writeBuildCache(plan, report)
 
     return report
   })
 
-const runStep = (
+const runBuildNode = (
   options: DesktopBuildOptions,
-  _plan: BuildPlan,
-  step: Omit<BuildStepReport, "elapsedMs" | "command" | "cwd"> & {
+  cache: BuildCacheManifest,
+  node: BuildNodePlan,
+  step: {
+    readonly name: BuildStepName
     readonly command: string
     readonly args: readonly string[]
     readonly cwd: string
+    readonly env?: Readonly<Record<string, string | undefined>>
   }
-): Effect.Effect<BuildStepReport, BuildCommandFailedError, never> =>
+): Effect.Effect<BuildStepReport, BuildCommandFailedError | BuildFileError, never> =>
   Effect.gen(function* () {
+    const cached = yield* canReuseBuildNode(cache, node)
+    if (cached) {
+      return {
+        name: node.name,
+        command: [step.command, ...step.args],
+        cwd: step.cwd,
+        elapsedMs: 0,
+        outputPath: node.outputPath,
+        ...(node.provider === undefined ? {} : { provider: node.provider }),
+        cacheKey: node.cacheKey,
+        status: "reused",
+        reason: "cache key matched existing output"
+      }
+    }
+
+    yield* removePath(node.outputPath)
     const start = options.now()
     yield* options.commandRunner({
-      step: step.name,
+      step: node.name,
       command: step.command,
       args: step.args,
-      cwd: step.cwd
+      cwd: step.cwd,
+      ...(step.env === undefined ? {} : { env: step.env })
     })
     const elapsedMs = Math.max(0, options.now() - start)
     return {
-      name: step.name,
+      name: node.name,
       command: [step.command, ...step.args],
       cwd: step.cwd,
       elapsedMs,
-      outputPath: step.outputPath
+      outputPath: node.outputPath,
+      ...(node.provider === undefined ? {} : { provider: node.provider }),
+      cacheKey: node.cacheKey,
+      status: "rebuilt",
+      reason:
+        cache.nodes?.[node.name]?.cacheKey === undefined
+          ? "no prior cache key"
+          : "cache key changed or output missing"
     }
   })
 
@@ -1167,6 +1429,12 @@ const normalizeBuildPlan = (
     const runtimeEngine = yield* readRuntimeEngine(config.runtime?.engine)
     const rendererFramework = yield* readRendererFramework(config.renderer?.framework)
     const rendererStyling = yield* readRendererStyling(config.renderer?.styling)
+    const webEngine = yield* readWebEngine(config.web?.engine)
+    const webEngineRuntimeSource = yield* readWebEngineRuntimeSource(
+      appRoot,
+      webEngine,
+      options.target
+    )
     const rendererEntry = yield* readRequiredExistingFile(
       config.renderer?.entry,
       "renderer.entry",
@@ -1208,6 +1476,11 @@ const normalizeBuildPlan = (
       )
     }
     const updateManifestInput = yield* readUpdateFields(config.update, appVersion)
+    const layerGraph = yield* runtimeGraphSnapshot({
+      id: appId,
+      windows: [] satisfies DesktopWindowsLayer<never>,
+      providers: providerLayerForBuildConfig(runtimeEngine, webEngine)
+    })
 
     return {
       appId,
@@ -1216,11 +1489,16 @@ const normalizeBuildPlan = (
       profile,
       rendererFramework,
       rendererStyling,
+      webEngine,
+      webEngineRuntimeSource,
+      webEngineRuntimePath: webEngineRuntimeSource === undefined ? undefined : "native/chrome",
       rendererEntry,
       appRoot,
       configPath: options.configPath,
       runtimeEngine,
       runtimeEntry: `runtime/${runtimeEntryOutputName}`,
+      runtimeExecutable: runtimeEngine,
+      runtimeArgs: [`runtime/${runtimeEntryOutputName}`],
       rendererDistPath,
       runtimeEntryPath,
       rendererEntryPath,
@@ -1232,7 +1510,8 @@ const normalizeBuildPlan = (
       buildTargets,
       updateManifestInput,
       layoutPath: resolvePath(appRoot, join("build", "effect-desktop", options.target)),
-      target: options.target
+      target: options.target,
+      layerGraph
     }
   })
 
@@ -1262,117 +1541,300 @@ const readOptionalString = (
   )
 }
 
+const makeRendererBuildNode = (
+  plan: BuildPlan
+): Effect.Effect<BuildNodePlan, BuildFileError, never> =>
+  hashBuildInputs([
+    ["renderer.framework", plan.rendererFramework],
+    ["renderer.entry", plan.rendererEntry],
+    ["renderer.entry.sha256", yieldableFileDigest(plan.rendererEntryPath)]
+  ]).pipe(
+    Effect.map((cacheKey) => ({
+      name: "renderer" as const,
+      provider: `renderer:${plan.rendererFramework}`,
+      cacheKey,
+      outputPath: join(plan.layoutPath, "renderer")
+    }))
+  )
+
+const makeRuntimeBuildNode = (
+  plan: BuildPlan
+): Effect.Effect<BuildNodePlan, BuildFileError, never> =>
+  hashBuildInputs([
+    ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["runtime.entry", plan.runtimeEntry],
+    ["runtime.entry.sha256", yieldableFileDigest(plan.runtimeEntryPath)],
+    ["bridge.protocol", HOST_PROTOCOL_VERSION]
+  ]).pipe(
+    Effect.map((cacheKey) => ({
+      name: "runtime" as const,
+      provider: `runtime:${plan.layerGraph.providers.runtime}`,
+      cacheKey,
+      outputPath: join(plan.layoutPath, "runtime")
+    }))
+  )
+
+const makeNativeHostBuildNode = (
+  plan: BuildPlan,
+  repoRoot: string
+): Effect.Effect<BuildNodePlan, BuildFileError, never> =>
+  hashBuildInputs([
+    ["native.host", "rust-wry-tao"],
+    ["web.engine", plan.webEngine],
+    ["target", plan.target],
+    [
+      "host.sources.sha256",
+      hashExistingTrees([
+        join(repoRoot, "crates", "host"),
+        join(repoRoot, "crates", "host-protocol")
+      ])
+    ]
+  ]).pipe(
+    Effect.map((cacheKey) => ({
+      name: "native-host" as const,
+      provider: `webview:${plan.webEngine}`,
+      cacheKey,
+      outputPath: join(plan.layoutPath, "native", hostBinaryName(plan.target))
+    }))
+  )
+
+const makeWebViewRuntimeBuildNode = (
+  plan: BuildPlan
+): Effect.Effect<BuildNodePlan, BuildFileError, never> => {
+  const source = plan.webEngineRuntimeSource
+  return hashBuildInputs([
+    ["web.engine", plan.webEngine],
+    ["web.runtime.source", source ?? ""],
+    ["web.runtime.sources.sha256", source === undefined ? "" : hashExistingTrees([source])]
+  ]).pipe(
+    Effect.map((cacheKey) => ({
+      name: "webview-runtime" as const,
+      provider: `webview:${plan.webEngine}`,
+      cacheKey,
+      outputPath: join(plan.layoutPath, plan.webEngineRuntimePath ?? "native/chrome")
+    }))
+  )
+}
+
+const copyWebViewRuntimeBuildNode = (
+  options: DesktopBuildOptions,
+  cache: BuildCacheManifest,
+  plan: BuildPlan
+): Effect.Effect<BuildStepReport, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const source = plan.webEngineRuntimeSource
+    if (source === undefined) {
+      return yield* Effect.fail(
+        new BuildFileError({
+          operation: "read",
+          path: join(plan.appRoot, "native", "chrome", plan.target),
+          message: "web.engine chrome requires a bundled Chrome runtime",
+          cause: undefined
+        })
+      )
+    }
+    const node = yield* makeWebViewRuntimeBuildNode(plan)
+    const cached = yield* canReuseBuildNode(cache, node)
+    if (cached) {
+      return reusedBuildStep(node)
+    }
+    const start = options.now()
+    yield* removePath(node.outputPath)
+    yield* copyDirectory(source, node.outputPath)
+    return {
+      name: node.name,
+      elapsedMs: Math.max(0, options.now() - start),
+      outputPath: node.outputPath,
+      ...(node.provider === undefined ? {} : { provider: node.provider }),
+      cacheKey: node.cacheKey,
+      status: "rebuilt",
+      reason: buildNodeRebuildReason(cache, node)
+    }
+  })
+
+const makeBridgeBuildNode = (plan: BuildPlan): BuildNodePlan => ({
+  name: "bridge",
+  cacheKey: stableHash([
+    ["bridge.protocol", HOST_PROTOCOL_VERSION],
+    ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["provider.webview", plan.layerGraph.providers.webview]
+  ]),
+  outputPath: join(plan.layoutPath, "bridge", "bridge-manifest.json")
+})
+
+const makeManifestBuildNode = (
+  plan: BuildPlan,
+  dependencies: readonly BuildStepReport[]
+): BuildNodePlan => ({
+  name: "manifest",
+  cacheKey: stableHash([
+    ["app.id", plan.appId],
+    ["app.version", plan.appVersion],
+    ["target", plan.target],
+    ["provider.runtime", plan.layerGraph.providers.runtime],
+    ["provider.webview", plan.layerGraph.providers.webview],
+    ["web.engine", plan.webEngine],
+    ["dependencies", dependencies.map((dependency) => [dependency.name, dependency.cacheKey])]
+  ]),
+  outputPath: join(plan.layoutPath, "app-manifest.json")
+})
+
+const hashBuildInputs = (
+  inputs: readonly (readonly [string, string | Effect.Effect<string, BuildFileError, never>])[]
+): Effect.Effect<string, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const resolved: Array<readonly [string, string]> = []
+    for (const [key, value] of inputs) {
+      resolved.push([key, Effect.isEffect(value) ? yield* value : value])
+    }
+    return stableHash(resolved)
+  })
+
+const yieldableFileDigest = (path: string): Effect.Effect<string, BuildFileError, never> =>
+  Effect.tryPromise({
+    try: async () =>
+      createHash("sha256")
+        .update(await readFile(path))
+        .digest("hex"),
+    catch: (cause) =>
+      new BuildFileError({
+        operation: "read",
+        path,
+        message: `failed to hash ${path}`,
+        cause
+      })
+  })
+
+const hashExistingTrees = (
+  roots: readonly string[]
+): Effect.Effect<string, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const entries: Array<readonly [string, string]> = []
+    for (const root of roots) {
+      const exists = yield* pathExists(root)
+      if (!exists) {
+        continue
+      }
+      const files = yield* listRegularFiles(root)
+      for (const file of files) {
+        const digest = yield* yieldableFileDigest(file)
+        entries.push([relative(root, file), digest])
+      }
+    }
+    return stableHash(entries)
+  })
+
+const listRegularFiles = (root: string): Effect.Effect<readonly string[], BuildFileError, never> =>
+  Effect.gen(function* () {
+    const result: string[] = []
+    const entries = yield* readDirectory(root)
+    for (const entry of entries) {
+      const path = join(root, entry)
+      const entryStat = yield* lstatPath(path)
+      if (entryStat.isDirectory()) {
+        result.push(...(yield* listRegularFiles(path)))
+      } else if (entryStat.isFile()) {
+        result.push(path)
+      }
+    }
+    return result.sort()
+  })
+
+const stableHash = (value: unknown): string =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex")
+
 const resolveBuildTarget = (
   requested: string | undefined,
-  hostTarget: BuildTarget
+  hostTarget: DesktopTarget
 ): Effect.Effect<BuildTarget, BuildUnsupportedTargetError, never> => {
-  const target = requested ?? hostTarget
-  if (!isBuildTarget(target)) {
-    return Effect.fail(
-      new BuildUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `unsupported build target ${target}`,
-        remediation:
-          "Run `bun desktop doctor` on a supported host and choose the matching --platform."
-      })
+  return resolveDesktopTarget(requested, hostTarget).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      (error) =>
+        new BuildUnsupportedTargetError({
+          target: error.target,
+          hostTarget: error.hostTarget,
+          message:
+            error.reason === "unsupported"
+              ? `unsupported build target ${error.target}`
+              : `target ${error.target} does not match host ${error.hostTarget}`,
+          remediation:
+            error.reason === "unsupported"
+              ? "Run `bun desktop doctor` on a supported host and choose the matching --platform."
+              : "Cross-platform outputs are out of scope for this build slice. Run `bun desktop doctor` on the matching host or use the default target."
+        })
     )
-  }
-  if (target !== hostTarget) {
-    return Effect.fail(
-      new BuildUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `target ${target} does not match host ${hostTarget}`,
-        remediation:
-          "Cross-platform outputs are out of scope for this build slice. Run `bun desktop doctor` on the matching host or use the default target."
-      })
-    )
-  }
-
-  return Effect.succeed(target)
+  )
 }
 
 export const detectHostTarget = (): BuildTarget | undefined => {
-  const os = process.platform === "darwin" ? "macos" : process.platform
-  const arch = process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : undefined
-  if ((os === "linux" || os === "macos" || os === "win32") && arch !== undefined) {
-    return `${os === "win32" ? "windows" : os}-${arch}` as BuildTarget
-  }
-  return undefined
+  return detectDesktopHostTarget()
 }
 
 const resolveHostTarget = (
   override: BuildTarget | undefined
-): Effect.Effect<BuildTarget, BuildUnsupportedHostError, never> => {
-  const hostTarget = override ?? detectHostTarget()
-  if (hostTarget !== undefined) {
-    return Effect.succeed(hostTarget)
-  }
-
-  return Effect.fail(
-    new BuildUnsupportedHostError({
-      platform: process.platform,
-      arch: process.arch,
-      message: `unsupported host ${process.platform}-${process.arch}`,
-      remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
-    })
+): Effect.Effect<DesktopTarget, BuildUnsupportedHostError, never> =>
+  resolveDesktopHostTarget(override).pipe(
+    Effect.mapError(
+      (error: UnsupportedDesktopHostTargetError) =>
+        new BuildUnsupportedHostError({
+          platform: error.platform,
+          arch: error.arch,
+          message: `unsupported host ${error.platform}-${error.arch}`,
+          remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
+        })
+    )
   )
-}
-
-const isBuildTarget = (value: string): value is BuildTarget =>
-  value === "linux-x64" ||
-  value === "linux-arm64" ||
-  value === "macos-x64" ||
-  value === "macos-arm64" ||
-  value === "windows-x64" ||
-  value === "windows-arm64"
 
 const runCommand: CommandRunner = (invocation) =>
-  Effect.tryPromise({
-    try: async () => {
-      const process = Bun.spawn([invocation.command, ...invocation.args], {
-        cwd: invocation.cwd,
-        stdout: "pipe",
-        stderr: "pipe"
-      })
-      const [stdout, stderr, exitCode] = await Promise.all([
-        readBoundedStreamText(process.stdout),
-        readBoundedStreamText(process.stderr),
-        process.exited
-      ])
-      if (exitCode !== 0) {
-        throw new BuildCommandFailedError({
-          step: invocation.step,
-          command: [invocation.command, ...invocation.args],
-          cwd: invocation.cwd,
-          exitCode,
-          message: `${invocation.step} command exited with ${exitCode}`,
-          ...(stdout.length === 0 ? {} : { stdout }),
-          ...(stderr.length === 0 ? {} : { stderr })
-        })
-      }
-    },
-    catch: (cause) =>
-      cause instanceof BuildCommandFailedError
-        ? cause
-        : new BuildCommandFailedError({
+  Effect.gen(function* () {
+    const result = yield* runReleaseTool({
+      ...invocation,
+      stdout: "pipe",
+      stderr: "pipe",
+      maxStdoutChars: MAX_COMMAND_OUTPUT_CHARS,
+      maxStderrChars: MAX_COMMAND_OUTPUT_CHARS
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new BuildCommandFailedError({
             step: invocation.step,
             command: [invocation.command, ...invocation.args],
             cwd: invocation.cwd,
             exitCode: undefined,
             message: formatUnknownError(cause)
           })
+      )
+    )
+    if (result.exitCode !== 0) {
+      return yield* Effect.fail(
+        new BuildCommandFailedError({
+          step: invocation.step,
+          command: result.command,
+          cwd: result.cwd,
+          exitCode: result.exitCode,
+          message: `${invocation.step} command exited with ${result.exitCode}`,
+          ...(result.stdout.length === 0 ? {} : { stdout: result.stdout }),
+          ...(result.stderr.length === 0 ? {} : { stderr: result.stderr })
+        })
+      )
+    }
   })
 
 const writeBridgeManifest = (
-  plan: BuildPlan,
-  now: () => number
+  _plan: BuildPlan,
+  now: () => number,
+  cache: BuildCacheManifest,
+  node: BuildNodePlan
 ): Effect.Effect<BuildStepReport, BuildFileError, never> =>
   Effect.gen(function* () {
+    const cached = yield* canReuseBuildNode(cache, node)
+    if (cached) {
+      return reusedBuildStep(node)
+    }
+
     const start = now()
-    const path = join(plan.layoutPath, "bridge", "bridge-manifest.json")
-    yield* writeJson(path, {
+    yield* writeJson(node.outputPath, {
       protocolVersion: HOST_PROTOCOL_VERSION,
       generatedAt: new Date(0).toISOString(),
       rpcGroups: [],
@@ -1381,15 +1843,26 @@ const writeBridgeManifest = (
     return {
       name: "bridge",
       elapsedMs: Math.max(0, now() - start),
-      outputPath: path
+      outputPath: node.outputPath,
+      cacheKey: node.cacheKey,
+      status: "rebuilt",
+      reason: buildNodeRebuildReason(cache, node)
     }
   })
 
-const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, BuildFileError, never> =>
+const writeAppManifest = (
+  plan: BuildPlan,
+  cache: BuildCacheManifest,
+  node: BuildNodePlan
+): Effect.Effect<BuildStepReport, BuildFileError, never> =>
   Effect.gen(function* () {
-    const path = join(plan.layoutPath, "app-manifest.json")
+    const cached = yield* canReuseBuildNode(cache, node)
+    if (cached) {
+      return reusedBuildStep(node)
+    }
+
     const protocolSchemes = plan.protocols.map((protocol) => protocol.scheme)
-    yield* writeJson(path, {
+    yield* writeJson(node.outputPath, {
       id: plan.appId,
       name: plan.appName,
       version: plan.appVersion,
@@ -1404,7 +1877,12 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
       },
       hostManifest: {
         nativeHost: "rust-wry-tao",
-        systemWebView: "system-webview",
+        ...(plan.webEngine === "system" ? { systemWebView: "system-webview" } : {}),
+        webEngine: plan.webEngine,
+        webEngineRuntime: plan.webEngine === "chrome" ? "cef" : "system-webview",
+        ...(plan.webEngineRuntimePath === undefined
+          ? {}
+          : { webEnginePath: plan.webEngineRuntimePath }),
         windows: plan.windows,
         protocols: protocolSchemes,
         signingHints: {}
@@ -1412,6 +1890,8 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
       runtimeManifest: {
         engine: plan.runtimeEngine,
         entry: plan.runtimeEntry,
+        executable: plan.runtimeExecutable,
+        args: plan.runtimeArgs,
         env: plan.targetEnv,
         permissions: {},
         telemetry: { enabled: true },
@@ -1421,7 +1901,7 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
         framework: plan.rendererFramework,
         entry: plan.rendererEntry,
         assetBaseUrl: "app://localhost/",
-        csp: {},
+        csp: plan.security.csp,
         navigationPolicy: plan.security.externalNavigation,
         devtoolsInProd: plan.security.devtoolsInProd
       },
@@ -1429,12 +1909,12 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
         assetBaseUrl: "app://localhost/",
         path: "renderer"
       },
-      runtime: {
-        engine: plan.runtimeEngine,
-        entry: plan.runtimeEntry
-      },
       nativeHost: {
         binary: `native/${hostBinaryName(plan.target)}`
+      },
+      providers: {
+        runtime: plan.layerGraph.providers.runtime,
+        webview: plan.layerGraph.providers.webview
       },
       bridge: {
         manifest: "bridge/bridge-manifest.json"
@@ -1460,33 +1940,219 @@ const writeAppManifest = (plan: BuildPlan): Effect.Effect<BuildStepReport, Build
     return {
       name: "manifest",
       elapsedMs: 0,
-      outputPath: path
+      outputPath: node.outputPath,
+      cacheKey: node.cacheKey,
+      status: "rebuilt",
+      reason: buildNodeRebuildReason(cache, node)
     }
   })
 
+const readBuildCache = (
+  plan: BuildPlan
+): Effect.Effect<BuildCacheManifest, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const path = buildCachePath(plan)
+    const exists = yield* pathExists(path)
+    if (!exists) {
+      return {}
+    }
+    const content = yield* readTextFile(path)
+    const parsed = yield* Effect.option(parseBuildCache(path, content))
+    return Option.match(parsed, {
+      onNone: () => ({}),
+      onSome: (value) => (isBuildCacheManifest(value) ? value : {})
+    })
+  })
+
+const writeBuildCache = (
+  plan: BuildPlan,
+  report: DesktopBuildReport
+): Effect.Effect<void, BuildFileError, never> =>
+  writeJson(buildCachePath(plan), {
+    nodes: Object.fromEntries(report.steps.map((step) => [step.name, { cacheKey: step.cacheKey }]))
+  })
+
+const buildCachePath = (plan: BuildPlan): string => join(plan.layoutPath, ".build-cache.json")
+
+const parseBuildCache = (
+  path: string,
+  content: string
+): Effect.Effect<unknown, BuildFileError, never> =>
+  Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+    Effect.mapError(
+      (cause) =>
+        new BuildFileError({
+          operation: "read",
+          path,
+          message: `failed to parse ${path}`,
+          cause
+        })
+    )
+  )
+
+const canReuseBuildNode = (
+  cache: BuildCacheManifest,
+  node: BuildNodePlan
+): Effect.Effect<boolean, BuildFileError, never> =>
+  Effect.gen(function* () {
+    if (cache.nodes?.[node.name]?.cacheKey !== node.cacheKey) {
+      return false
+    }
+    return yield* pathExists(node.outputPath)
+  })
+
+const reusedBuildStep = (node: BuildNodePlan): BuildStepReport => ({
+  name: node.name,
+  elapsedMs: 0,
+  outputPath: node.outputPath,
+  ...(node.provider === undefined ? {} : { provider: node.provider }),
+  cacheKey: node.cacheKey,
+  status: "reused",
+  reason: "cache key matched existing output"
+})
+
+const buildNodeRebuildReason = (cache: BuildCacheManifest, node: BuildNodePlan): string =>
+  cache.nodes?.[node.name]?.cacheKey === undefined
+    ? "no prior cache key"
+    : "cache key changed or output missing"
+
+const isBuildCacheManifest = (value: unknown): value is BuildCacheManifest =>
+  typeof value === "object" && value !== null
+
 const newBuildReport = (
   plan: BuildPlan,
-  steps: readonly BuildStepReport[]
+  steps: readonly BuildStepReport[],
+  providerMeasurements: readonly ProviderMeasurementReport[]
 ): DesktopBuildReport => ({
   appId: plan.appId,
   appName: plan.appName,
   appVersion: plan.appVersion,
   target: plan.target,
+  providers: {
+    runtime: plan.runtimeEngine,
+    runtimePackaging: "source",
+    webEngine: plan.webEngine
+  },
+  providerBudgets: providerMeasurements.map((measurement) => measurement.provider),
+  providerMeasurements,
   layoutPath: plan.layoutPath,
   appManifestPath: join(plan.layoutPath, "app-manifest.json"),
   bridgeManifestPath: join(plan.layoutPath, "bridge", "bridge-manifest.json"),
   steps
 })
 
+const measureBuildProvider = (
+  plan: BuildPlan,
+  runtimeStep: BuildStepReport
+): Effect.Effect<ProviderMeasurementReport, BuildFileError | BuildConfigError, never> =>
+  Effect.gen(function* () {
+    const runtimePayloadBytes = yield* directoryPayloadBytes(runtimeStep.outputPath)
+    const providerBudget = yield* providerBudgetForRuntime(plan)
+    return providerMeasurementReport({
+      providerBudget,
+      webEngine: plan.webEngine,
+      target: plan.target,
+      runtimePayloadBytes,
+      runtimeBuildMs: runtimeStep.elapsedMs
+    })
+  })
+
+const providerBudgetForRuntime = (
+  plan: Pick<BuildPlan, "appId" | "runtimeEngine">
+): Effect.Effect<DesktopProviderBudget, BuildConfigError, never> =>
+  runtimeGraph({
+    id: plan.appId,
+    windows: [] satisfies DesktopWindowsLayer<never>,
+    providers: providerLayerForBuildConfig(plan.runtimeEngine, "system")
+  }).pipe(
+    Effect.map((graph) => graph.providerBudgets[0]),
+    Effect.flatMap((budget) =>
+      budget === undefined
+        ? Effect.fail(
+            new BuildConfigError({
+              field: "runtime.engine",
+              message: `runtime provider ${plan.runtimeEngine} did not expose a provider budget`
+            })
+          )
+        : Effect.succeed(budget)
+    ),
+    Effect.mapError(
+      (error) =>
+        new BuildConfigError({
+          field: "runtime.engine",
+          message: error.message
+        })
+    )
+  )
+
+const providerLayerForBuildConfig = (runtimeEngine: RuntimeEngine, webEngine: WebEngine) =>
+  providers(
+    provider(runtimeEngine === "node" ? Provider.Runtime.node : Provider.Runtime.bun),
+    provider(webEngine === "chrome" ? Provider.WebView.chrome : Provider.WebView.system)
+  )
+
+const providerMeasurementReport = (options: {
+  readonly providerBudget: DesktopProviderBudget
+  readonly webEngine: WebEngine
+  readonly target: BuildTarget
+  readonly runtimePayloadBytes: number
+  readonly runtimeBuildMs: number
+}): ProviderMeasurementReport => {
+  const runtimePayloadBudget = options.providerBudget.bundleBudgetKb * 1024
+  return {
+    provider: options.providerBudget,
+    runtimePackaging: "source",
+    webEngine: options.webEngine,
+    target: options.target,
+    runtimePayloadBytes: options.runtimePayloadBytes,
+    runtimeBuildMs: options.runtimeBuildMs,
+    startup: {
+      runtimeBootMs: null,
+      firstWindowVisibleMs: null,
+      bridgeReadyMs: null
+    },
+    checks: [
+      {
+        metric: "runtime-payload-bytes",
+        budget: runtimePayloadBudget,
+        actual: options.runtimePayloadBytes,
+        status: options.runtimePayloadBytes <= runtimePayloadBudget ? "pass" : "fail"
+      },
+      {
+        metric: "runtime-boot-ms",
+        budget: options.providerBudget.startupBudgetMs,
+        actual: null,
+        status: "unmeasured"
+      }
+    ]
+  }
+}
+
 const formatBuildReport = (report: DesktopBuildReport): string =>
   [
     "Effect Desktop build",
     `app               ${report.appId}`,
     `target            ${report.target}`,
+    [
+      "providers",
+      `runtime:${report.providers.runtime}`,
+      `packaging:${report.providers.runtimePackaging}`,
+      `web:${report.providers.webEngine}`
+    ].join("         "),
     `layout            ${report.layoutPath}`,
+    ...report.providerMeasurements.map((measurement) =>
+      [
+        "provider budget",
+        `${measurement.provider.id}`,
+        `runtime=${measurement.runtimePayloadBytes}b/${measurement.provider.bundleBudgetKb}kb`,
+        `startup=unmeasured/${measurement.provider.startupBudgetMs}ms`
+      ].join("   ")
+    ),
     ...report.steps.map(
       (step) =>
-        `${step.name.padEnd(17)} ${step.elapsedMs.toString().padStart(4)}ms ${step.outputPath}`
+        `${step.name.padEnd(17)} ${step.status.padEnd(7)} ${step.elapsedMs
+          .toString()
+          .padStart(4)}ms ${step.provider ?? "provider:none"} ${step.reason} ${step.outputPath}`
     ),
     ""
   ].join("\n")
@@ -1532,6 +2198,16 @@ const formatPackageReport = (report: DesktopPackageReport): string =>
     "Effect Desktop package",
     `app               ${report.appId}`,
     `target            ${report.target}`,
+    ...(report.providers === undefined
+      ? []
+      : [
+          [
+            "providers",
+            `runtime:${report.providers.runtime}`,
+            `packaging:${report.providers.runtimePackaging}`,
+            `web:${report.providers.webEngine}`
+          ].join("         ")
+        ]),
     `output            ${report.outputPath}`,
     ...report.artifacts.map(
       (artifact) =>
@@ -1708,8 +2384,8 @@ const readOptionalSemver = (
 
 const loadAndMergeBuildConfig = (path: string): Effect.Effect<AppConfig, BuildConfigError, never> =>
   Effect.gen(function* () {
-    const rawConfig = yield* loadConfig(path).pipe(Effect.map((value) => value as AppConfig))
-    const appConfig = normalizeBuildConfig(rawConfig)
+    const rawConfig = yield* loadConfig(path)
+    const appConfig = yield* decodeBuildConfig(rawConfig, path)
     const sharedConfigPath = yield* readOptionalString(
       appConfig.workspace?.sharedConfigPath,
       "workspace.sharedConfigPath"
@@ -1718,114 +2394,106 @@ const loadAndMergeBuildConfig = (path: string): Effect.Effect<AppConfig, BuildCo
       return appConfig
     }
     const workspaceRoot = dirname(path)
-    const rawSharedConfig = yield* loadConfig(resolvePath(workspaceRoot, sharedConfigPath)).pipe(
-      Effect.map((value) => value as AppConfig)
-    )
-    const sharedConfig = normalizeBuildConfig(rawSharedConfig)
-    return mergeBuildConfig(sharedConfig, appConfig)
+    const resolvedSharedConfigPath = resolvePath(workspaceRoot, sharedConfigPath)
+    const rawSharedConfig = yield* loadConfig(resolvedSharedConfigPath)
+    const sharedConfig = yield* decodeBuildConfig(rawSharedConfig, resolvedSharedConfigPath)
+    return mergeDesktopConfig(
+      sharedConfig as DesktopConfig,
+      appConfig as DesktopConfig
+    ) as AppConfig
   })
 
-const normalizeBuildConfig = (rawConfig: unknown): AppConfig =>
-  isRecord(rawConfig) ? (rawConfig as AppConfig) : {}
+const decodeBuildConfig = (
+  rawConfig: unknown,
+  path: string
+): Effect.Effect<AppConfig, BuildConfigError, never> =>
+  decodeDesktopConfig(rawConfig, `desktop build config ${path}`).pipe(
+    Effect.map((config) => config as AppConfig),
+    Effect.mapError(
+      (error) =>
+        new BuildConfigError({
+          field: "default",
+          message: formatBuildConfigDecodeMessage(error.message)
+        })
+    )
+  )
 
-const mergeBuildConfig = (shared: AppConfig, app: AppConfig): AppConfig => {
-  const env = mergeRecordMap(shared.env, app.env)
-  const protocols =
-    Array.isArray(app.protocols) && app.protocols.length > 0
-      ? app.protocols
-      : Array.isArray(shared.protocols)
-        ? shared.protocols
-        : undefined
-  const workspace = app.workspace ?? shared.workspace
-  const windows = app.windows ?? shared.windows
-
-  return {
-    app: {
-      ...shared.app,
-      ...app.app
-    },
-    runtime: {
-      ...shared.runtime,
-      ...app.runtime
-    },
-    renderer: {
-      ...shared.renderer,
-      ...app.renderer
-    },
-    build: {
-      ...shared.build,
-      ...app.build
-    },
-    security: {
-      ...shared.security,
-      ...app.security
-    },
-    ...(env === undefined ? {} : { env }),
-    protocol: {
-      limits: {
-        ...extractRecord(shared.protocol?.limits),
-        ...extractRecord(app.protocol?.limits)
-      }
-    },
-    ...(protocols === undefined ? {} : { protocols }),
-    native: {
-      ...shared.native,
-      ...app.native
-    },
-    ...(workspace === undefined ? {} : { workspace }),
-    update: {
-      ...shared.update,
-      ...app.update
-    },
-    ...(windows === undefined ? {} : { windows })
+const formatBuildConfigDecodeMessage = (message: string): string => {
+  if (message.includes('["runtime"]["engine"]')) {
+    return `runtime.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
   }
+  if (message.includes('["web"]["engine"]')) {
+    return "web.engine must be one of system, chrome"
+  }
+  if (message.includes('["security"]["externalNavigation"]')) {
+    return 'security.externalNavigation must be "deny" or "ask"'
+  }
+  return message
 }
 
-const mergeRecordMap = (shared: unknown, local: unknown): Record<string, unknown> | undefined => {
-  if (shared === undefined && local === undefined) {
-    return undefined
-  }
-  const merged: Record<string, unknown> = {}
-  if (isRecord(shared)) {
-    for (const key of Object.keys(shared)) {
-      const value = shared[key]
-      if (isRecord(value)) {
-        merged[key] = mergeRecordMap(merged[key], value)
-      } else {
-        merged[key] = value
-      }
-    }
-  }
-  if (isRecord(local)) {
-    for (const key of Object.keys(local)) {
-      const value = local[key]
-      const existing = merged[key]
-      if (isRecord(existing) && isRecord(value)) {
-        merged[key] = mergeRecordMap(existing, value)
-      } else {
-        merged[key] = value
-      }
-    }
-  }
-  return merged
-}
-
-const extractRecord = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {})
-
-const readRuntimeEngine = (value: unknown): Effect.Effect<"bun", BuildConfigError, never> =>
+const readRuntimeEngine = (value: unknown): Effect.Effect<RuntimeEngine, BuildConfigError, never> =>
   readOptionalString(value, "runtime.engine").pipe(
     Effect.map((rawEngine) => rawEngine ?? DEFAULT_RUNTIME_ENGINE),
     Effect.flatMap((runtimeEngine) =>
-      runtimeEngine === DEFAULT_RUNTIME_ENGINE
+      isRuntimeEngine(runtimeEngine)
         ? Effect.succeed(runtimeEngine)
         : Effect.fail(
             new BuildConfigError({
               field: "runtime.engine",
-              message: `runtime.engine must be ${DEFAULT_RUNTIME_ENGINE}`
+              message: `runtime.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
             })
           )
     )
   )
+
+const isRuntimeEngine = (value: string): value is RuntimeEngine =>
+  RUNTIME_ENGINES.some((engine) => engine === value)
+
+const readWebEngine = (value: unknown): Effect.Effect<WebEngine, BuildConfigError, never> =>
+  readOptionalString(value, "web.engine").pipe(
+    Effect.map((rawEngine) => rawEngine ?? "system"),
+    Effect.flatMap((webEngine) =>
+      webEngine === "system" || webEngine === "chrome" || webEngine === "chromium"
+        ? Effect.succeed(webEngine === "chromium" ? "chrome" : webEngine)
+        : Effect.fail(
+            new BuildConfigError({
+              field: "web.engine",
+              message: "web.engine must be one of system, chrome"
+            })
+          )
+    )
+  )
+
+const readWebEngineRuntimeSource = (
+  appRoot: string,
+  webEngine: WebEngine,
+  target: BuildTarget
+): Effect.Effect<string | undefined, BuildConfigError, never> => {
+  if (webEngine !== "chrome") {
+    return Effect.succeed(undefined)
+  }
+
+  const source = join(appRoot, "native", "chrome", target)
+  return pathExists(source).pipe(
+    Effect.mapError(
+      () =>
+        new BuildConfigError({
+          field: "web.engine",
+          message: `failed to inspect bundled Chromium/CEF assets at native/chrome/${target}`
+        })
+    ),
+    Effect.flatMap((exists) =>
+      exists
+        ? Effect.succeed(source)
+        : Effect.fail(
+            new BuildConfigError({
+              field: "web.engine",
+              message: `web.engine chrome requires bundled Chromium/CEF assets at native/chrome/${target}`
+            })
+          )
+    )
+  )
+}
 
 const readRendererFramework = (value: unknown): Effect.Effect<"react", BuildConfigError, never> =>
   readOptionalString(value, "renderer.framework").pipe(
@@ -1865,7 +2533,13 @@ const readRequiredExistingFile = (
   readRequiredString(value, field).pipe(
     Effect.flatMap((path) =>
       readContainedAppPath(root, path, field).pipe(
-        Effect.flatMap((containedPath) => statPath(containedPath)),
+        Effect.flatMap((containedPath) =>
+          statPath(containedPath).pipe(
+            Effect.mapError(
+              () => new BuildConfigError({ field, message: `${field} must exist at ${path}` })
+            )
+          )
+        ),
         Effect.flatMap((stats) =>
           stats.isDirectory()
             ? Effect.fail(
@@ -1875,9 +2549,6 @@ const readRequiredExistingFile = (
                 })
               )
             : Effect.succeed(path)
-        ),
-        Effect.catch(() =>
-          Effect.fail(new BuildConfigError({ field, message: `${field} must exist at ${path}` }))
         )
       )
     )
@@ -1916,7 +2587,7 @@ const readProtocols = (
     if (value === undefined) {
       return []
     }
-    if (!Array.isArray(value)) {
+    if (!isUnknownArray(value)) {
       return yield* Effect.fail(
         new BuildConfigError({ field: "protocols", message: "protocols must be an array" })
       )
@@ -2043,7 +2714,11 @@ const readProtocolLimit = (
 const readBuildSecurity = (
   value: AppConfig["security"]
 ): Effect.Effect<
-  { readonly externalNavigation: BuildExternalNavigationPolicy; readonly devtoolsInProd: boolean },
+  {
+    readonly externalNavigation: BuildExternalNavigationPolicy
+    readonly devtoolsInProd: boolean
+    readonly csp: CspPolicy
+  },
   BuildConfigError,
   never
 > =>
@@ -2054,7 +2729,7 @@ const readBuildSecurity = (
       "security.devtoolsInProd",
       false
     )
-    return { externalNavigation, devtoolsInProd }
+    return { externalNavigation, devtoolsInProd, csp: effectiveCspPolicy(value?.csp) }
   })
 
 const readExternalNavigation = (
@@ -2091,36 +2766,39 @@ const readBuildTargets = (
   value: unknown,
   defaultTarget: BuildTarget,
   field: string
-): Effect.Effect<readonly BuildTarget[], BuildConfigError, never> => {
-  if (value === undefined) {
-    return Effect.succeed([defaultTarget])
-  }
-  if (!Array.isArray(value)) {
-    return Effect.fail(
-      new BuildConfigError({ field, message: `${field} must be an array of build targets` })
-    )
-  }
-  const targets: BuildTarget[] = []
-  for (const raw of value) {
-    if (typeof raw !== "string") {
-      return Effect.fail(
+): Effect.Effect<readonly BuildTarget[], BuildConfigError, never> =>
+  Effect.gen(function* () {
+    if (value === undefined) {
+      return [defaultTarget]
+    }
+    if (!Array.isArray(value)) {
+      return yield* Effect.fail(
         new BuildConfigError({ field, message: `${field} must be an array of build targets` })
       )
     }
-    if (!isBuildTarget(raw)) {
-      return Effect.fail(
-        new BuildConfigError({
-          field,
-          message: `${field} must include only known targets, not ${raw}`
-        })
+    const targets: BuildTarget[] = []
+    for (const raw of value) {
+      if (typeof raw !== "string") {
+        return yield* Effect.fail(
+          new BuildConfigError({ field, message: `${field} must be an array of build targets` })
+        )
+      }
+      const target = yield* decodeDesktopTarget(raw).pipe(
+        Effect.map((target) => target.id),
+        Effect.mapError(
+          () =>
+            new BuildConfigError({
+              field,
+              message: `${field} must include only known targets, not ${raw}`
+            })
+        )
       )
+      if (!targets.includes(target)) {
+        targets.push(target)
+      }
     }
-    if (!targets.includes(raw)) {
-      targets.push(raw)
-    }
-  }
-  return Effect.succeed(targets)
-}
+    return targets
+  })
 
 const readWindowsConfig = (value: unknown): Effect.Effect<unknown, BuildConfigError, never> => {
   if (value === undefined) {
@@ -2164,7 +2842,10 @@ const validateWindowOptions = (value: unknown, field: string): BuildConfigError 
   }
 
   const titleBarStyle = value["titleBarStyle"]
-  if (titleBarStyle !== undefined && !WINDOW_TITLE_BAR_STYLES.has(String(titleBarStyle))) {
+  if (
+    titleBarStyle !== undefined &&
+    (typeof titleBarStyle !== "string" || !WINDOW_TITLE_BAR_STYLES.has(titleBarStyle))
+  ) {
     return new BuildConfigError({
       field: `${field}.titleBarStyle`,
       message: `${field}.titleBarStyle must be default, hidden, hiddenInset, or customButtonsOnHover`
@@ -2544,6 +3225,77 @@ const formatPublishErrorText = (error: PublishPipelineError): string => {
     : `${formatted.tag}: ${formatted.message}\nNext: ${formatted.remediation}`
 }
 
+const formatReleaseReport = (report: DesktopReleaseReport): string =>
+  [
+    "Effect Desktop release",
+    `app               ${report.appId}`,
+    `version           ${report.appVersion}`,
+    `target            ${report.target}`,
+    `manifest          ${report.manifestPath}`,
+    ...report.phases.map((phase) => {
+      const status = phase.skipped === true ? "skipped" : `${phase.artifacts} artifacts`
+      return `${phase.phase.padEnd(17)} ${status}`
+    }),
+    ""
+  ].join("\n")
+
+const formatReleaseError = (
+  error: ReleaseError
+): { readonly tag: string; readonly phase: ReleasePhase; readonly message: string } => ({
+  tag: error._tag,
+  phase: error.phase,
+  message: error.message
+})
+
+const formatReleaseErrorText = (error: ReleaseError): string => {
+  const formatted = formatReleaseError(error)
+  return `${formatted.tag}: ${formatted.phase}: ${formatted.message}`
+}
+
+const makeReleaseWorkflowApi = (options: CliRunOptions, now: () => number): ReleaseWorkflowApi => ({
+  package: (config) =>
+    runDesktopPackage({
+      cwd: options.cwd,
+      configPath: config.configPath,
+      platform: config.platform,
+      artifact: config.artifact,
+      commandRunner: options.packageCommandRunner ?? runPackageCommand,
+      now,
+      hostTarget: options.hostTarget
+    }),
+  sign: (config) =>
+    runDesktopSign({
+      cwd: options.cwd,
+      configPath: config.configPath,
+      platform: config.platform,
+      commandRunner: options.signCommandRunner ?? runSignCommand,
+      now,
+      hostTarget: options.hostTarget,
+      env: options.env ?? process.env
+    }),
+  notarize: (config) =>
+    runDesktopNotarize({
+      cwd: options.cwd,
+      configPath: config.configPath,
+      platform: config.platform,
+      commandRunner: options.notarizeCommandRunner ?? runNotarizeCommand,
+      now,
+      hostTarget:
+        options.hostTarget === "macos-arm64" || options.hostTarget === "macos-x64"
+          ? options.hostTarget
+          : undefined,
+      env: options.env ?? process.env
+    }),
+  publish: (config) =>
+    runDesktopPublish({
+      cwd: options.cwd,
+      configPath: config.configPath,
+      platform: config.platform,
+      now,
+      env: options.env ?? process.env
+    })
+})
+
 const loadConfig = (path: string): Effect.Effect<unknown, BuildConfigError, never> =>
   Effect.gen(function* () {
     const module = yield* Effect.tryPromise({
@@ -2588,6 +3340,20 @@ const copyDirectory = (
   source: string,
   destination: string
 ): Effect.Effect<void, BuildFileError, never> => copyContainedDirectory(source, destination, source)
+
+const directoryPayloadBytes = (path: string): Effect.Effect<number, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const pathStat = yield* statPath(path)
+    if (!pathStat.isDirectory()) {
+      return Number(pathStat.size)
+    }
+    const entries = yield* readDirectory(path)
+    let total = 0
+    for (const entry of entries) {
+      total += yield* directoryPayloadBytes(join(path, entry))
+    }
+    return total
+  })
 
 const copyContainedDirectory = (
   root: string,
@@ -2653,6 +3419,26 @@ const removePath = (path: string): Effect.Effect<void, BuildFileError, never> =>
         cause
       })
   })
+
+const readTextFile = (path: string): Effect.Effect<string, BuildFileError, never> =>
+  Effect.tryPromise({
+    try: () => readFile(path, "utf8"),
+    catch: (cause) =>
+      new BuildFileError({
+        operation: "read",
+        path,
+        message: `failed to read ${path}`,
+        cause
+      })
+  })
+
+const pathExists = (path: string): Effect.Effect<boolean, BuildFileError, never> =>
+  lstatPath(path).pipe(
+    Effect.as(true),
+    Effect.catch((error) =>
+      isNotFoundError(error.cause) ? Effect.succeed(false) : Effect.fail(error)
+    )
+  )
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], BuildFileError, never> =>
   Effect.tryPromise({
@@ -2752,48 +3538,16 @@ const isPathInside = (root: string, path: string): boolean => {
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath))
 }
 
-const hostBuildOutputPath = (repoRoot: string, target: BuildTarget): string =>
-  join(repoRoot, "target", "release", hostBinaryName(target))
-
-const hostBinaryName = (target: BuildTarget): string =>
-  target.startsWith("windows-") ? "host.exe" : "host"
-
 const pathToFileUrl = (path: string): string => pathToFileURL(path).href
 
 const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
   typeof value === "object" && value !== null
 
+const isUnknownArray = (value: unknown): value is readonly unknown[] => Array.isArray(value)
+
+const isNotFoundError = (cause: unknown): boolean => isRecord(cause) && cause["code"] === "ENOENT"
+
 const MAX_COMMAND_OUTPUT_CHARS = 16_384
-
-const readBoundedStreamText = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  let result = ""
-  let truncated = false
-
-  try {
-    while (true) {
-      const chunk = await reader.read()
-      if (chunk.done) {
-        break
-      }
-      if (result.length < MAX_COMMAND_OUTPUT_CHARS) {
-        result += decoder.decode(chunk.value, { stream: true })
-        if (result.length > MAX_COMMAND_OUTPUT_CHARS) {
-          result = result.slice(0, MAX_COMMAND_OUTPUT_CHARS)
-          truncated = true
-        }
-      } else {
-        truncated = true
-      }
-    }
-    result += decoder.decode()
-  } finally {
-    reader.releaseLock()
-  }
-
-  return truncated ? `${result}\n[output truncated]` : result
-}
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
@@ -2942,17 +3696,21 @@ const runReproCheckHandler = (
           hostTarget: options.hostTarget
         })
     }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatReproError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else if (formatted.report === undefined) {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          } else {
-            options.writeStderr(formatReproReport(formatted.report))
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatReproError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else if (formatted.report === undefined) {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            } else {
+              options.writeStderr(formatReproReport(formatted.report))
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -2977,17 +3735,21 @@ const runApiCheckHandler = (
       cwd: options.cwd,
       updateSnapshots: flags.write
     }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatPublicApiError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else if (formatted.report === undefined) {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          } else {
-            options.writeStderr(formatPublicApiReport(formatted.report))
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatPublicApiError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else if (formatted.report === undefined) {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            } else {
+              options.writeStderr(formatPublicApiReport(formatted.report))
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3009,15 +3771,19 @@ const runDocsCheckHandler = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const report = yield* runDocsReleaseGate({ cwd: options.cwd }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatDocsReleaseGateError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatDocsReleaseGateError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3039,15 +3805,19 @@ const runReleaseCheckHandler = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const report = yield* runReleaseGate({ cwd: options.cwd }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatReleaseGateError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatReleaseGateError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3069,15 +3839,19 @@ const runA11yCheckHandler = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const report = yield* runAccessibilityGate({ cwd: options.cwd }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatAccessibilityGateError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatAccessibilityGateError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3099,17 +3873,21 @@ const runSemverCheckHandler = (
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const report = yield* runSemverGuard({ cwd: options.cwd }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const formatted = formatSemverGuardError(error)
-          if (flags.json) {
-            options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
-          } else if (formatted.report === undefined) {
-            options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
-          } else {
-            options.writeStderr(formatSemverGuardReport(formatted.report))
+      Effect.result,
+      Effect.map(
+        Result.match({
+          onSuccess: (report) => report,
+          onFailure: (error) => {
+            const formatted = formatSemverGuardError(error)
+            if (flags.json) {
+              options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+            } else if (formatted.report === undefined) {
+              options.writeStderr(`${formatted.tag}: ${formatted.message}\n`)
+            } else {
+              options.writeStderr(formatSemverGuardReport(formatted.report))
+            }
+            return undefined
           }
-          return undefined
         })
       )
     )
@@ -3171,7 +3949,6 @@ const makeCliLayer = (options: CliRunOptions): Layer.Layer<CliEnvironment, never
       Effect.die("spawn not supported in non-interactive CLI")
     )
   )
-
   const format = (args: ReadonlyArray<unknown>): string =>
     args.map((a) => (typeof a === "string" ? a : String(a))).join(" ")
 

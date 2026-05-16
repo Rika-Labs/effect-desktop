@@ -1,4 +1,9 @@
-import { Context, Effect, Layer, Logger, LogLevel, Ref, Stream } from "effect"
+import {
+  InspectorSafetyPolicy,
+  type InspectorSafetyPolicyApi,
+  type InspectorSafetySummary
+} from "@effect-desktop/core"
+import { Context, Effect, Layer, Logger, LogLevel, Option, Ref, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
 
@@ -9,12 +14,14 @@ export interface LogsPanelRecord {
   readonly level: LogsPanelLevel
   readonly message: string
   readonly fiber: string
+  readonly safety: InspectorSafetySummary
 }
 
 export interface LogsPanelSnapshot {
   readonly records: readonly LogsPanelRecord[]
   readonly totalCount: number
   readonly levelFilter: LogsPanelLevel
+  readonly safety: InspectorSafetySummary
 }
 
 export interface LogsPanelApi {
@@ -28,22 +35,26 @@ export interface LogsPanelOptions {
   readonly maxRows?: number
   readonly levelFilter?: LogsPanelLevel
   readonly frameInterval?: `${number} millis`
+  readonly inspectorSafety?: InspectorSafetyPolicyApi
 }
 
 export class LogsPanel extends Context.Service<LogsPanel, LogsPanelApi>()(
   "@effect-desktop/devtools/LogsPanel"
 ) {}
 
-export const LogsPanelLive = (options: LogsPanelOptions = {}): Layer.Layer<LogsPanel> =>
+export const LogsPanelLive = (
+  options: LogsPanelOptions = {}
+): Layer.Layer<LogsPanel, never, InspectorSafetyPolicy> =>
   Layer.effect(LogsPanel)(makeLogsPanel(options))
 
 export const makeLogsPanel = (
   options: LogsPanelOptions = {}
-): Effect.Effect<LogsPanelApi, never, never> =>
+): Effect.Effect<LogsPanelApi, never, InspectorSafetyPolicy> =>
   Effect.gen(function* () {
     const maxRows = positiveRowLimit(options.maxRows, 1_024)
     const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
     const levelRef = yield* Ref.make<LogsPanelLevel>(options.levelFilter ?? "Debug")
+    const inspectorSafety = options.inspectorSafety ?? (yield* InspectorSafetyPolicy)
     const buffer: LogsPanelRecord[] = []
 
     const captureLogger: Logger.Logger<unknown, void> = Logger.make(
@@ -52,11 +63,21 @@ export const makeLogsPanel = (
         if (level === undefined) {
           return
         }
+        const decision = inspectorSafety.sanitizeSync({
+          source: "devtools.logs.record",
+          payload: {
+            timestamp: opts.date.getTime(),
+            level,
+            message: String(opts.message),
+            fiber: String(opts.fiber.id)
+          } satisfies Omit<LogsPanelRecord, "safety">
+        })
+        if (Option.isNone(decision.value)) {
+          return
+        }
         const record: LogsPanelRecord = {
-          timestamp: opts.date.getTime(),
-          level,
-          message: String(opts.message),
-          fiber: String(opts.fiber.id)
+          ...decision.value.value,
+          safety: decision.summary
         }
         buffer.push(record)
         if (buffer.length > maxRows) {
@@ -75,19 +96,15 @@ export const makeLogsPanel = (
         return {
           records: filtered,
           totalCount: all.length,
-          levelFilter: filter
+          levelFilter: filter,
+          safety: yield* inspectorSafety.snapshot()
         } satisfies LogsPanelSnapshot
       })
 
     return Object.freeze({
       list,
       setLevelFilter: (level) => Ref.set(levelRef, level),
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep(frameInterval).pipe(Effect.andThen(list())))
-          )
-        ),
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced(frameInterval)),
       layer: () => Logger.layer([captureLogger])
     } satisfies LogsPanelApi)
   })
@@ -106,6 +123,9 @@ const logLevelToPanel = (level: LogLevel.LogLevel): LogsPanelLevel | undefined =
       return "Error"
     case "Fatal":
       return "Fatal"
+    case "All":
+    case "None":
+      return undefined
     default:
       return undefined
   }

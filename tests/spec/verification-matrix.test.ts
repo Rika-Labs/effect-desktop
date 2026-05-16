@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { Exit, Schema } from "effect"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..")
-const SPEC_PATH = join(REPO_ROOT, "docs", "SPEC.md")
-const MATRIX_PATH = join(REPO_ROOT, "docs", "verification-matrix.json")
+const SPEC_PATH = join(REPO_ROOT, "engineering", "SPEC.md")
+const MATRIX_PATH = join(REPO_ROOT, "engineering", "verification-matrix.json")
 const CI_PATH = join(REPO_ROOT, ".github", "workflows", "ci.yml")
 
 const REQUIRED_CELLS = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"] as const
@@ -12,40 +13,44 @@ const OPTIONAL_CELLS = ["windows-arm64", "linux-arm64"] as const
 
 const githubHostedCiRunners = new Set(["ubuntu-latest", "macos-latest", "windows-latest"])
 
-interface VerificationMatrix {
-  schemaVersion: number
-  requiredCells: readonly string[]
-  optionalCells: readonly string[]
-  ciCells: readonly MatrixCiCell[]
-  manualGateCells: readonly MatrixManualGateCell[]
-  defaults: MatrixRowDefaults
-  rows: Record<string, MatrixRowOverride>
-}
+const MatrixCiCell = Schema.Struct({
+  cell: Schema.String,
+  runner: Schema.String,
+  headless: Schema.Boolean
+})
 
-interface MatrixCiCell {
-  cell: string
-  runner: string
-  headless: boolean
-}
+const MatrixManualGateCell = Schema.Struct({
+  cell: Schema.String,
+  reason: Schema.String,
+  path: Schema.String
+})
 
-interface MatrixManualGateCell {
-  cell: string
-  reason: string
-  path: string
-}
+const MatrixRowDefaults = Schema.Struct({
+  cells: Schema.Array(Schema.String),
+  headless: Schema.Boolean,
+  requiresHardware: Schema.Boolean
+})
 
-interface MatrixRowDefaults {
-  cells: readonly string[]
-  headless: boolean
-  requiresHardware: boolean
-}
+const MatrixRowOverride = Schema.Struct({
+  cells: Schema.optionalKey(Schema.Array(Schema.String)),
+  headless: Schema.optionalKey(Schema.Boolean),
+  requiresHardware: Schema.optionalKey(Schema.Boolean),
+  manualGates: Schema.optionalKey(Schema.Array(Schema.String))
+})
 
-interface MatrixRowOverride {
-  cells?: readonly string[]
-  headless?: boolean
-  requiresHardware?: boolean
-  manualGates?: readonly string[]
-}
+const VerificationMatrix = Schema.Struct({
+  schemaVersion: Schema.Number,
+  requiredCells: Schema.Array(Schema.String),
+  optionalCells: Schema.Array(Schema.String),
+  ciCells: Schema.Array(MatrixCiCell),
+  manualGateCells: Schema.Array(MatrixManualGateCell),
+  defaults: MatrixRowDefaults,
+  rows: Schema.Record(Schema.String, MatrixRowOverride)
+})
+
+const VerificationMatrixJson = Schema.fromJsonString(VerificationMatrix)
+
+type VerificationMatrix = typeof VerificationMatrix.Type
 
 interface ResolvedRow {
   id: string
@@ -82,20 +87,29 @@ const readText = (path: string): Result<string, MatrixFileError> => {
   }
 }
 
-const parseJson = <A>(path: string, body: string): Result<A, MatrixJsonError> => {
-  try {
-    return ok(JSON.parse(body) as A)
-  } catch (cause) {
-    return err({ _tag: "MatrixJsonError", path, cause })
+const parseVerificationMatrix = (
+  path: string,
+  body: string
+): Result<VerificationMatrix, MatrixJsonError> => {
+  const exit = Schema.decodeUnknownExit(VerificationMatrixJson)(body)
+  if (Exit.isSuccess(exit)) {
+    return ok(exit.value)
   }
+  return err({ _tag: "MatrixJsonError", path, cause: exit.cause })
 }
 
-const unwrap = <A, E>(result: Result<A, E>): A => {
-  expect(result._tag).toBe("Ok")
-  if (result._tag === "Err") {
-    return undefined as never
+const unwrap = <
+  A,
+  E extends { readonly _tag: string; readonly path?: string; readonly cause?: unknown }
+>(
+  result: Result<A, E>
+): A => {
+  if (result._tag === "Ok") {
+    return result.value
   }
-  return result.value
+  const error = result.error
+  const path = error.path === undefined ? "" : ` at ${error.path}`
+  throw new Error(`${error._tag}${path}`, { cause: error.cause })
 }
 
 const loadFixture = (): {
@@ -104,7 +118,7 @@ const loadFixture = (): {
   readonly spec: string
 } => {
   const matrixBody = unwrap(readText(MATRIX_PATH))
-  const matrix = unwrap(parseJson<VerificationMatrix>(MATRIX_PATH, matrixBody))
+  const matrix = unwrap(parseVerificationMatrix(MATRIX_PATH, matrixBody))
   const spec = unwrap(readText(SPEC_PATH))
   const ci = unwrap(readText(CI_PATH))
 
@@ -131,7 +145,7 @@ const resolveRow = (id: string): ResolvedRow => {
 }
 
 describe("verification matrix", () => {
-  test("declares the required and optional cells from docs/SPEC.md §20.10", () => {
+  test("declares the required and optional cells from engineering/SPEC.md §20.10", () => {
     expect(matrix.requiredCells).toEqual(REQUIRED_CELLS)
     expect(matrix.optionalCells).toEqual(OPTIONAL_CELLS)
   })

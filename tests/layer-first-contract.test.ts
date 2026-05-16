@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const REPO_ROOT = join(import.meta.dir, "..")
-const CONTRACT_PATH = join(REPO_ROOT, "docs", "architecture", "layer-first-contract.md")
+const CONTRACT_PATH = join(REPO_ROOT, "engineering", "architecture", "layer-first-contract.md")
 const README_PATH = join(REPO_ROOT, "README.md")
 const AGENTS_PATH = join(REPO_ROOT, "AGENTS.md")
 
@@ -32,7 +32,7 @@ describe("Layer-first framework contract", () => {
     const readme = readFileSync(README_PATH, "utf8")
     const agents = readFileSync(AGENTS_PATH, "utf8")
 
-    expect(readme).toContain("docs/architecture/layer-first-contract.md")
-    expect(agents).toContain("docs/architecture/layer-first-contract.md")
+    expect(readme).toContain("engineering/architecture/layer-first-contract.md")
+    expect(agents).toContain("engineering/architecture/layer-first-contract.md")
   })
 })

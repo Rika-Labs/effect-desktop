@@ -1,9 +1,9 @@
-import { BridgeRpc } from "@effect-desktop/bridge"
+import { ResourceHandleSchema } from "@effect-desktop/core"
 import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString } from "./strings.js"
 
-const WindowResource = BridgeRpc.Resource("window", "open")
+const WindowResource = ResourceHandleSchema("window", "open")
 
 export const GlobalShortcutSupportReason = Schema.Literals([
   "wayland-no-global-shortcut",
@@ -16,7 +16,7 @@ export class GlobalShortcutRegisterInput extends Schema.Class<GlobalShortcutRegi
   "GlobalShortcutRegisterInput"
 )({
   accelerator: BridgeSafeNonEmptyString,
-  registrarWindow: WindowResource.schema
+  registrarWindow: WindowResource
 }) {}
 
 export class GlobalShortcutAcceleratorInput extends Schema.Class<GlobalShortcutAcceleratorInput>(

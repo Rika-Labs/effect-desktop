@@ -246,10 +246,10 @@ mod tests {
 
     #[test]
     fn process_polish_trims_app_user_model_id() {
-        let polish = WindowsProcessPolish::new(" dev.effect-desktop.playground ".to_string())
+        let polish = WindowsProcessPolish::new(" dev.effect-desktop.inspector ".to_string())
             .expect("valid app id");
 
-        assert_eq!(polish.app_user_model_id(), "dev.effect-desktop.playground");
+        assert_eq!(polish.app_user_model_id(), "dev.effect-desktop.inspector");
     }
 
     #[test]
@@ -267,7 +267,7 @@ mod tests {
         fs::create_dir_all(&native).expect("native dir");
         fs::write(
             root.join("app-manifest.json"),
-            r#"{"id":"dev.effect-desktop.playground"}"#,
+            r#"{"id":"dev.effect-desktop.inspector"}"#,
         )
         .expect("app manifest");
         let exe = native.join("host.exe");
@@ -276,7 +276,7 @@ mod tests {
             .expect("manifest app id")
             .expect("polish");
 
-        assert_eq!(polish.app_user_model_id(), "dev.effect-desktop.playground");
+        assert_eq!(polish.app_user_model_id(), "dev.effect-desktop.inspector");
         fs::remove_dir_all(root).expect("cleanup");
     }
 

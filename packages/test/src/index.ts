@@ -1,6 +1,21 @@
 import { afterEach, expect } from "bun:test"
 import { posix, sep } from "node:path"
-import { Context, Data, Effect, Exit, Layer, Option, Stream } from "effect"
+import {
+  Clock,
+  Context,
+  Data,
+  Deferred,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  Option,
+  Queue,
+  Sink,
+  Stream
+} from "effect"
+import * as PlatformError from "effect/PlatformError"
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 import {
   BridgeStreamCompleteFrame,
@@ -18,19 +33,16 @@ import {
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   hostProtocolErrorRecoverableDefault,
-  makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidStateError,
   makeHostHandshakeClient,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolNotFoundError,
-  makeStaleHandleError,
   makeHostWindowClient,
   type BridgeClient,
   type BridgeClientExchange,
   type BridgeClientOptions,
   type BridgeClientResponse,
-  type BridgeRpcGroup,
-  type BridgeResourceHandle,
+  type BridgeContract,
   type HostHandshakeClient,
   type HostProtocolError,
   type HostProtocolInvalidArgumentError,
@@ -40,33 +52,32 @@ import {
 } from "@effect-desktop/bridge"
 import {
   ResourceRegistry,
-  SecretValue,
   Filesystem,
   PermissionRegistry,
+  PermissionActor,
   Process,
   ProcessExitStatus,
+  ProcessSpawnInput,
   PTY,
   PtyExitStatus,
   Telemetry,
+  makeSecretBytes,
   makeResourceRegistry,
   makeFilesystem,
   makePermissionRegistry,
   makeProcess,
   makePty,
   makeTelemetry,
-  type FilesystemAdapter,
+  ResourceOwner,
   type FilesystemApi,
   type FilesystemOptions,
   type FilesystemPermissionPolicy,
-  type FilesystemWatcher,
   type PermissionRegistryOptions,
-  type ProcessAdapter,
   type ProcessApi,
   type ProcessBudgetPolicy,
-  type ProcessChild,
   type ProcessPermissionPolicy,
   type ProcessSignalInput,
-  type ProcessSpawnInput,
+  unsafeSecretBytes,
   type PtyAdapter,
   type PtyApi,
   type PtyBudgetPolicy,
@@ -75,13 +86,13 @@ import {
   type PtyPermissionPolicy,
   type PtyResizeInput,
   type PtySignalInput,
-  type RawFilesystemEvent,
   type RegistrySnapshot,
   type ResourceEntry,
-  type ResourceHandle,
+  type ManagedResourceHandle,
   type ResourceRegistryApi,
   type ResourceId,
   type ResourceKind,
+  type ResourceOwnerApi,
   type SecretsSafeStorageApi,
   type TelemetryInvalidArgumentError,
   type TelemetryOptions
@@ -150,6 +161,9 @@ export class MockHost extends Context.Service<MockHost, MockHostApi>()(
   "@effect-desktop/test/MockHost"
 ) {}
 
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
+
 export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
   const calls: HeadlessHostCall[] = []
   const windows = new Map<string, WindowCreateInput>()
@@ -190,10 +204,12 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           windows.delete(yield* readWindowId(request.payload, request.method))
         }
 
+        const timestamp = yield* currentTimeMillis(options.now)
+
         return new HostProtocolResponseEnvelope({
           kind: "response",
           id: request.id,
-          timestamp: options.now?.() ?? Date.now(),
+          timestamp,
           traceId: request.traceId,
           payload: responsePayload
         })
@@ -213,22 +229,17 @@ export interface MockBridgeCall {
 
 export interface MockBridgeApi {
   readonly exchange: BridgeClientExchange
-  readonly client: <Contracts extends Readonly<Record<string, BridgeRpcGroup>>>(
+  readonly client: <Contracts extends Readonly<Record<string, BridgeContract>>>(
     contracts: Contracts,
     options?: BridgeClientOptions
   ) => BridgeClient<Contracts>
   readonly calls: () => readonly MockBridgeCall[]
   readonly cancels: () => readonly HostProtocolCancelByRequestEnvelope[]
-  readonly disposedResources: () => readonly BridgeResourceHandle[]
   readonly succeed: (
     method: string,
     payload: unknown
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly fail: (method: string, error: unknown) => Effect.Effect<void, HostProtocolError, never>
-  readonly resource: (
-    method: string,
-    handle: BridgeResourceHandle
-  ) => Effect.Effect<void, HostProtocolError, never>
   readonly streamChunks: (
     method: string,
     chunks: readonly unknown[]
@@ -241,16 +252,13 @@ export class MockBridge extends Context.Service<MockBridge, MockBridgeApi>()(
 
 export interface MockBridgeOptions {
   readonly now?: () => number
-  readonly registry?: ResourceRegistryApi
 }
 
 export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi => {
   const calls: MockBridgeCall[] = []
   const cancels: HostProtocolCancelByRequestEnvelope[] = []
-  const disposedResources: BridgeResourceHandle[] = []
   const responses = new Map<string, BridgeClientResponse[]>()
   const streams = new Map<string, readonly unknown[]>()
-  const now = options.now ?? Date.now
 
   const enqueue = (
     method: string,
@@ -290,14 +298,30 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
 
       return Stream.fromIterable(chunks)
         .pipe(
-          Stream.map((chunk) =>
-            streamEnvelope(request, now(), new BridgeStreamDataFrame({ type: "data", chunk }))
+          Stream.mapEffect((chunk) =>
+            currentTimeMillis(options.now).pipe(
+              Effect.map((timestamp) =>
+                streamEnvelope(
+                  request,
+                  timestamp,
+                  new BridgeStreamDataFrame({ type: "data", chunk })
+                )
+              )
+            )
           )
         )
         .pipe(
           Stream.concat(
-            Stream.succeed(
-              streamEnvelope(request, now(), new BridgeStreamCompleteFrame({ type: "complete" }))
+            Stream.fromEffect(
+              currentTimeMillis(options.now).pipe(
+                Effect.map((timestamp) =>
+                  streamEnvelope(
+                    request,
+                    timestamp,
+                    new BridgeStreamCompleteFrame({ type: "complete" })
+                  )
+                )
+              )
             )
           )
         )
@@ -305,24 +329,7 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
     cancel: (request: HostProtocolCancelByRequestEnvelope) =>
       Effect.sync(() => {
         cancels.push(request)
-      }),
-    resource: {
-      dispose: (handle: BridgeResourceHandle) =>
-        Effect.gen(function* () {
-          disposedResources.push(handle)
-
-          if (options.registry === undefined) {
-            return
-          }
-
-          const coreHandle = bridgeHandleToCoreHandle(handle)
-          const entry = yield* Effect.mapError(options.registry.assertFresh(coreHandle), (error) =>
-            makeStaleHandleError("Resource.dispose", handle, error.actualGeneration)
-          )
-
-          yield* entry.handle.dispose()
-        })
-    }
+      })
   })
 
   return Object.freeze({
@@ -338,7 +345,6 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
         })
       ),
     cancels: () => cancels.slice(),
-    disposedResources: () => disposedResources.slice(),
     succeed: (method, payload) =>
       validateJsonPayload(method, payload).pipe(
         Effect.flatMap((validated) => enqueue(method, { kind: "success", payload: validated }))
@@ -347,27 +353,6 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
       validateJsonPayload(method, error).pipe(
         Effect.flatMap((validated) => enqueue(method, { kind: "failure", error: validated }))
       ),
-    resource: (method, handle) =>
-      Effect.gen(function* () {
-        if (options.registry === undefined) {
-          yield* validateJsonPayload(method, handle)
-          yield* enqueue(method, { kind: "success", payload: handle })
-          return
-        }
-
-        const registered = yield* options.registry
-          .register({
-            kind: handle.kind,
-            id: handle.id as ResourceId,
-            ownerScope: handle.ownerScope,
-            state: handle.state,
-            reusableId: true
-          })
-          .pipe(Effect.orDie)
-        const payload = coreHandleToBridgeHandle(registered)
-        yield* validateJsonPayload(method, payload)
-        yield* enqueue(method, { kind: "success", payload })
-      }),
     streamChunks: (method, chunks) =>
       Effect.gen(function* () {
         yield* Effect.forEach(chunks, (chunk) => validateJsonPayload(method, chunk))
@@ -400,18 +385,27 @@ export interface MemoryFilesystemOptions {
 
 export const makeMemoryFilesystem = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: MemoryFilesystemOptions = {}
 ): Effect.Effect<FilesystemApi, never, never> =>
-  makeFilesystem(registry, memoryFilesystemOptions(options))
+  Effect.gen(function* () {
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
+    const memory = makeMemoryFilesystemRuntime(options, now)
+    return yield* makeFilesystem(registry, owner, memory.options).pipe(
+      Effect.provide(memory.fileSystem)
+    )
+  })
 
 export const MemoryFilesystemLive = (
   options: MemoryFilesystemOptions = {}
-): Layer.Layer<Filesystem, never, ResourceRegistry> =>
+): Layer.Layer<Filesystem, never, ResourceOwner | ResourceRegistry> =>
   Layer.effect(
     Filesystem,
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
-      return yield* makeMemoryFilesystem(registry, options)
+      return yield* makeMemoryFilesystem(registry, owner, options)
     })
   )
 
@@ -423,7 +417,6 @@ export interface MockProcessFixture {
   readonly command?: string
   readonly args?: readonly string[]
   readonly pid?: number
-  readonly childPids?: readonly number[]
   readonly stdout?: readonly Uint8Array[]
   readonly stderr?: readonly Uint8Array[]
   readonly exit?: ProcessExitStatus | { readonly code: number; readonly signal?: string } | false
@@ -453,28 +446,35 @@ export interface MockProcessApi extends ProcessApi {
 
 export const makeMockProcess = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: MockProcessOptions = {}
 ): Effect.Effect<MockProcessApi, HostProtocolInvalidArgumentError, never> => {
   const calls: MutableMockProcessSpawnRecord[] = []
-  return makeProcess(registry, {
-    adapter: makeMockProcessAdapter(options, calls),
+  return makeProcess(registry, owner, {
     ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
     ...(options.gracefulShutdownMs === undefined
       ? {}
       : { gracefulShutdownMs: options.gracefulShutdownMs }),
     ...(options.permissions === undefined ? {} : { permissions: options.permissions }),
     ...(options.now === undefined ? {} : { now: options.now })
-  }).pipe(Effect.map((api) => Object.freeze({ ...api, calls: () => cloneProcessCalls(calls) })))
+  }).pipe(
+    Effect.provideService(
+      ChildProcessSpawner.ChildProcessSpawner,
+      makeMockProcessSpawner(options, calls)
+    ),
+    Effect.map((api) => Object.freeze({ ...api, calls: () => cloneProcessCalls(calls) }))
+  )
 }
 
 export const MockProcessLive = (
   options: MockProcessOptions = {}
-): Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceRegistry> =>
+): Layer.Layer<Process, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry> =>
   Layer.effect(
     Process,
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
-      return yield* makeMockProcess(registry, options)
+      return yield* makeMockProcess(registry, owner, options)
     })
   )
 
@@ -513,10 +513,11 @@ export interface MockPtyApi extends PtyApi {
 
 export const makeMockPty = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: MockPtyOptions = {}
 ): Effect.Effect<MockPtyApi, HostProtocolInvalidArgumentError, never> => {
   const calls: MutableMockPtyOpenRecord[] = []
-  return makePty(registry, {
+  return makePty(registry, owner, {
     adapter: makeMockPtyAdapter(options, calls),
     ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
     ...(options.gracefulShutdownMs === undefined
@@ -526,19 +527,20 @@ export const makeMockPty = (
   }).pipe(Effect.map((api) => Object.freeze({ ...api, calls: () => clonePtyCalls(calls) })))
 }
 
-export const MockPtyLive = (
+export const MockPtyLayer = (
   options: MockPtyOptions = {}
-): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry> =>
+): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry> =>
   Layer.effect(
     PTY,
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
-      return yield* makeMockPty(registry, options)
+      return yield* makeMockPty(registry, owner, options)
     })
   )
 
 export const MockPTY = Object.freeze({
-  layer: MockPtyLive
+  layer: MockPtyLayer
 })
 
 export interface HeadlessRuntimeLayerOptions {
@@ -559,6 +561,7 @@ type HeadlessRuntimeServices =
   | Filesystem
   | Process
   | PTY
+  | ResourceOwner
   | ResourceRegistry
   | Telemetry
   | PermissionRegistry
@@ -609,10 +612,11 @@ const makeHeadlessRuntimeContext = (
     const telemetry = yield* makeTelemetry(options.telemetry)
     const permissions = yield* makePermissionRegistry(options.permissions)
     const host = makeMockHost(options.host)
-    const bridge = makeMockBridge({ ...options.bridge, registry })
-    const filesystem = yield* makeMemoryFilesystem(registry, options.filesystem)
-    const process = yield* makeMockProcess(registry, options.process)
-    const pty = yield* makeMockPty(registry, options.pty)
+    const bridge = makeMockBridge(options.bridge)
+    const owner = makeTestResourceOwner(DEFAULT_HEADLESS_SCOPE)
+    const filesystem = yield* makeMemoryFilesystem(registry, owner, options.filesystem)
+    const process = yield* makeMockProcess(registry, owner, options.process)
+    const pty = yield* makeMockPty(registry, owner, options.pty)
 
     return Context.add(
       PermissionRegistry,
@@ -637,7 +641,12 @@ const makeHeadlessRuntimeContext = (
               Context.add(
                 Filesystem,
                 filesystem
-              )(Context.add(MockBridge, bridge)(Context.make(MockHost, host)))
+              )(
+                Context.add(
+                  ResourceOwner,
+                  owner
+                )(Context.add(MockBridge, bridge)(Context.make(MockHost, host)))
+              )
             )
           )
         )
@@ -679,7 +688,7 @@ export const makeMemorySecretsSafeStorage = (
     set: (key, value) =>
       available
         ? Effect.sync(() => {
-            values.set(key, value.unsafeBytes())
+            values.set(key, unsafeSecretBytes(value))
           })
         : Effect.fail(unsupportedSafeStorage("SafeStorage.set")),
     get: (key) =>
@@ -690,7 +699,7 @@ export const makeMemorySecretsSafeStorage = (
               return yield* Effect.fail(secretNotFound(key, "SafeStorage.get"))
             }
 
-            return SecretValue.fromBytes(value)
+            return makeSecretBytes(value)
           })
         : Effect.fail(unsupportedSafeStorage("SafeStorage.get")),
     delete: (key) =>
@@ -717,7 +726,7 @@ export const runHeadless = <A, E, R>(
   Effect.gen(function* () {
     const registry = yield* makeResourceRegistry()
     const host = makeMockHost(options)
-    const windowResources = new Map<string, ResourceHandle<"window", "open">>()
+    const windowResources = new Map<string, ManagedResourceHandle<"window", "open">>()
     const rawWindow = makeHostWindowClient(host, hostClientOptions(options))
     const runtime: HeadlessRuntime = {
       calls: host.calls,
@@ -881,7 +890,7 @@ const isJsonPayload = (
   if (typeof value !== "object") {
     return false
   }
-  if (seen.has(value as object)) {
+  if (seen.has(value)) {
     return false
   }
 
@@ -893,7 +902,7 @@ const isJsonPayload = (
   if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
     return false
   }
-  seen.add(value as object)
+  seen.add(value)
   return Object.values(value).every((item) => isJsonPayload(item, seen, false))
 }
 
@@ -961,22 +970,6 @@ const streamEnvelope = (
     payload
   })
 
-const bridgeHandleToCoreHandle = (handle: BridgeResourceHandle): ResourceHandle =>
-  Object.freeze({
-    ...handle,
-    id: handle.id as ResourceId,
-    dispose: () => Effect.void
-  })
-
-const coreHandleToBridgeHandle = (handle: ResourceHandle): BridgeResourceHandle =>
-  Object.freeze({
-    kind: handle.kind,
-    id: handle.id,
-    generation: handle.generation,
-    ownerScope: handle.ownerScope,
-    state: handle.state
-  })
-
 interface MutableMockProcessSpawnRecord {
   readonly input: ProcessSpawnInput
   readonly pid: number
@@ -997,18 +990,25 @@ interface MutableMockPtyOpenRecord {
   forceKillTreeCalls: number
 }
 
-const makeMockProcessAdapter = (
+const makeMockProcessSpawner = (
   options: MockProcessOptions,
   calls: MutableMockProcessSpawnRecord[]
-): ProcessAdapter => {
+): ChildProcessSpawner.ChildProcessSpawner["Service"] => {
   let nextPid = 10_000
   const fixtures = [...(options.processes ?? [])]
 
-  return {
-    spawn: (input) => {
+  return ChildProcessSpawner.make((command) =>
+    Effect.gen(function* () {
+      const input = processSpawnInputFromCommand(command)
       const fixture = takeProcessFixture(fixtures, input)
       if (fixture === undefined) {
-        throw mockNodeError("EINVAL", `missing MockProcess fixture for ${input.command}`)
+        return yield* Effect.fail(
+          PlatformError.badArgument({
+            description: `missing MockProcess fixture for ${input.command}`,
+            method: "spawn",
+            module: "MockProcess"
+          })
+        )
       }
       const pid = fixture.pid ?? nextPid++
       const record: MutableMockProcessSpawnRecord = {
@@ -1023,73 +1023,113 @@ const makeMockProcessAdapter = (
       calls.push(record)
 
       return makeMockProcessChild(fixture, record)
-    }
-  }
+    })
+  )
 }
 
 const makeMockProcessChild = (
   fixture: MockProcessFixture,
   record: MutableMockProcessSpawnRecord
-): ProcessChild => {
+): ChildProcessSpawner.ChildProcessHandle => {
   let running = true
-  let resolveExit: (status: ProcessExitStatus) => void
-  const exited = new Promise<ProcessExitStatus>((resolve) => {
-    resolveExit = resolve
-  })
-  const finish = (status: ProcessExitStatus): void => {
-    if (!running) {
-      return
-    }
-    running = false
-    resolveExit(status)
-  }
-
-  if (fixture.exit !== false) {
-    setTimeout(() => {
-      finish(processExitStatus(fixture.exit))
-    }, 0)
-  }
-
-  return Object.freeze({
-    pid: record.pid,
-    stdout: readableBytes(fixture.stdout ?? []),
-    stderr: readableBytes(fixture.stderr ?? []),
-    exited,
-    writeStdin: async (chunk: Uint8Array) => {
-      await Promise.resolve()
-      if (!running) {
-        throw mockNodeError("EINVAL", `MockProcess ${record.input.command} is not running`)
-      }
-
-      record.stdin.push(copyBytes(chunk))
-    },
-    closeStdin: async () => {
-      await Promise.resolve()
+  const exitState = Effect.runSync(Deferred.make<ProcessExitStatus, never>())
+  const finish = (status: ProcessExitStatus): Effect.Effect<void, never, never> =>
+    Effect.sync(() => {
       if (!running) {
         return
       }
+      running = false
+    }).pipe(Effect.andThen(Deferred.succeed(exitState, status)), Effect.asVoid)
 
-      record.stdinClosed = true
-    },
-    isRunning: () => running,
-    terminateTree: () =>
-      Promise.resolve().then(() => {
+  if (fixture.exit !== false) {
+    setTimeout(() => {
+      Effect.runFork(finish(processExitStatus(fixture.exit)))
+    }, 0)
+  }
+
+  return ChildProcessSpawner.makeHandle({
+    all: streamBytes(fixture.stdout ?? []),
+    exitCode: Deferred.await(exitState).pipe(
+      Effect.flatMap((status) =>
+        status.signal === undefined
+          ? Effect.succeed(ChildProcessSpawner.ExitCode(status.code))
+          : Effect.fail(
+              PlatformError.systemError({
+                _tag: "Unknown",
+                description: `Process interrupted due to receipt of signal: '${status.signal}'`,
+                method: "exitCode",
+                module: "MockProcess"
+              })
+            )
+      )
+    ),
+    getInputFd: () => Sink.drain,
+    getOutputFd: () => Stream.empty,
+    isRunning: Effect.sync(() => running),
+    kill: (options) => {
+      const signal = options?.killSignal ?? "SIGTERM"
+      if (signal === "SIGTERM") {
         record.terminateTreeCalls += 1
-        record.killedWith = "SIGTERM"
-        finish(processExitStatus(undefined, "SIGTERM"))
-      }),
-    forceKillTree: () =>
-      Promise.resolve().then(() => {
+      }
+      if (signal === "SIGKILL") {
         record.forceKillTreeCalls += 1
-        record.killedWith = "SIGKILL"
-        finish(processExitStatus(undefined, "SIGKILL"))
-      }),
-    kill: (signal?: ProcessSignalInput) => {
+      }
       record.killedWith = signal
-      finish(processExitStatus(undefined, signalNameForMock(signal)))
+      return finish(processExitStatus(undefined, signal))
     },
-    childPids: fixture.childPids ?? []
+    pid: ChildProcessSpawner.ProcessId(record.pid),
+    stderr: streamBytes(fixture.stderr ?? []),
+    stdin: Sink.forEach((chunk: Uint8Array) =>
+      running
+        ? Effect.sync(() => {
+            record.stdin.push(copyBytes(chunk))
+          })
+        : Effect.fail(
+            PlatformError.badArgument({
+              description: `MockProcess ${record.input.command} is not running`,
+              method: "stdin",
+              module: "MockProcess"
+            })
+          )
+    ).pipe(
+      Sink.ensuring(
+        Effect.sync(() => {
+          record.stdinClosed = true
+        })
+      )
+    ),
+    stdout: streamBytes(fixture.stdout ?? []),
+    unref: Effect.succeed(Effect.void)
   })
+}
+
+const processSpawnInputFromCommand = (command: ChildProcess.Command): ProcessSpawnInput => {
+  if (!ChildProcess.isStandardCommand(command)) {
+    return new ProcessSpawnInput({
+      args: [],
+      command: "mock-piped-process",
+      ownerScope: "mock-process"
+    })
+  }
+
+  return new ProcessSpawnInput({
+    args: [...command.args],
+    command: command.command,
+    ownerScope: "mock-process",
+    ...(command.options.cwd === undefined ? {} : { cwd: command.options.cwd }),
+    ...(command.options.env === undefined ? {} : { env: definedEnv(command.options.env) }),
+    ...(typeof command.options.shell === "boolean" ? { shell: command.options.shell } : {})
+  })
+}
+
+const definedEnv = (env: Readonly<Record<string, string | undefined>>): Record<string, string> => {
+  const defined: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) {
+      defined[key] = value
+    }
+  }
+  return defined
 }
 
 const takeProcessFixture = (
@@ -1136,6 +1176,9 @@ const processExitStatus = (
           : { signal: fallbackSignal })
       })
 
+const streamBytes = (chunks: readonly Uint8Array[]): Stream.Stream<Uint8Array> =>
+  Stream.fromIterable(chunks).pipe(Stream.map(copyBytes))
+
 const makeMockPtyAdapter = (
   options: MockPtyOptions,
   calls: MutableMockPtyOpenRecord[]
@@ -1168,16 +1211,14 @@ const makeMockPtyAdapter = (
 
 const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRecord): PtyChild => {
   let running = true
-  let resolveExit: (status: PtyExitStatus) => void
-  const exited = new Promise<PtyExitStatus>((resolve) => {
-    resolveExit = resolve
-  })
+  const exitState = Effect.runSync(Deferred.make<PtyExitStatus>())
+  const exited = Effect.runPromise(Deferred.await(exitState))
   const finish = (status: PtyExitStatus): void => {
     if (!running) {
       return
     }
     running = false
-    resolveExit(status)
+    Effect.runSync(Deferred.succeed(exitState, status).pipe(Effect.asVoid))
   }
 
   if (fixture.exit !== false) {
@@ -1191,41 +1232,43 @@ const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRec
     output: readableBytes(fixture.output ?? []),
     exited,
     write: async (chunk: Uint8Array) => {
-      await Promise.resolve()
       if (!running) {
         throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
       }
 
+      await yieldMockHostTurn()
       record.writes.push(copyBytes(chunk))
     },
     resize: async (size: PtyResizeInput) => {
-      await Promise.resolve()
       if (!running) {
         throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
       }
 
+      await yieldMockHostTurn()
       record.resizes.push({ rows: size.rows, cols: size.cols })
     },
     isRunning: () => running,
-    terminateTree: () =>
-      Promise.resolve().then(() => {
-        record.terminateTreeCalls += 1
-        record.killedWith = "SIGTERM"
-        finish(ptyExitStatus(undefined, "SIGTERM"))
-      }),
-    forceKillTree: () =>
-      Promise.resolve().then(() => {
-        record.forceKillTreeCalls += 1
-        record.killedWith = "SIGKILL"
-        finish(ptyExitStatus(undefined, "SIGKILL"))
-      }),
-    kill: (signal?: PtySignalInput) =>
-      Promise.resolve().then(() => {
-        record.killedWith = signal
-        finish(ptyExitStatus(undefined, signalNameForMock(signal)))
-      })
+    terminateTree: async () => {
+      await yieldMockHostTurn()
+      record.terminateTreeCalls += 1
+      record.killedWith = "SIGTERM"
+      finish(ptyExitStatus(undefined, "SIGTERM"))
+    },
+    forceKillTree: async () => {
+      await yieldMockHostTurn()
+      record.forceKillTreeCalls += 1
+      record.killedWith = "SIGKILL"
+      finish(ptyExitStatus(undefined, "SIGKILL"))
+    },
+    kill: async (signal?: PtySignalInput) => {
+      await yieldMockHostTurn()
+      record.killedWith = signal
+      finish(ptyExitStatus(undefined, signalNameForMock(signal)))
+    }
   })
 }
+
+const yieldMockHostTurn = (): Promise<void> => Effect.runPromise(Effect.yieldNow)
 
 const takePtyFixture = (
   fixtures: MockPtyFixture[],
@@ -1282,7 +1325,7 @@ const readableBytes = (chunks: readonly Uint8Array[]): ReadableStream<Uint8Array
 const stringArraysEqual = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index])
 
-const signalNameForMock = (signal: ProcessSignalInput | undefined): string =>
+const signalNameForMock = (signal: string | number | undefined): string =>
   typeof signal === "string" ? signal : signal === undefined ? "SIGTERM" : String(signal)
 
 const mockNodeError = (code: string, message: string): NodeJS.ErrnoException =>
@@ -1309,19 +1352,21 @@ interface MemorySymlink {
 
 interface MemoryWatchRegistration {
   readonly directory: string
-  readonly listener: (event: RawFilesystemEvent) => void
+  readonly listener: (event: FileSystem.WatchEvent) => void
   closed: boolean
 }
 
 const ROOT_PATH = "/"
 
-const memoryFilesystemOptions = (options: MemoryFilesystemOptions): FilesystemOptions => ({
-  adapter: makeMemoryFilesystemAdapter(options),
-  ...(options.permissions === undefined ? {} : { permissions: options.permissions })
-})
+interface MemoryFilesystemRuntime {
+  readonly fileSystem: Layer.Layer<FileSystem.FileSystem>
+  readonly options: FilesystemOptions
+}
 
-const makeMemoryFilesystemAdapter = (options: MemoryFilesystemOptions = {}): FilesystemAdapter => {
-  const now = options.now ?? Date.now
+const makeMemoryFilesystemRuntime = (
+  options: MemoryFilesystemOptions,
+  now: () => number
+): MemoryFilesystemRuntime => {
   const nodes = new Map<string, MemoryNode>([
     [ROOT_PATH, { kind: "directory", modifiedAtMs: now() }]
   ])
@@ -1345,145 +1390,205 @@ const makeMemoryFilesystemAdapter = (options: MemoryFilesystemOptions = {}): Fil
     })
   }
 
-  const adapter: FilesystemAdapter = {
-    readFile: ((path) =>
-      Promise.resolve().then(() => {
-        const canonicalPath = resolveExistingPath(nodes, memoryPathLikeToString(path))
-        const node = nodes.get(canonicalPath)
-        if (node?.kind !== "file") {
-          return Promise.reject(nodeError("EISDIR", canonicalPath))
-        }
-        return Buffer.from(copyBytes(node.bytes))
-      })) as FilesystemAdapter["readFile"],
-    realpath: ((path) =>
-      Promise.resolve(
-        toPlatformMemoryPath(resolveExistingPath(nodes, memoryPathLikeToString(path)))
-      )) as FilesystemAdapter["realpath"],
-    rename: (from, to) => {
-      const fromPath = resolveExistingPath(nodes, memoryPathLikeToString(from))
-      const toPath = normalizeMemoryPath(memoryPathLikeToString(to))
-      const node = nodes.get(fromPath)
-      if (node === undefined) {
-        return Promise.reject(nodeError("ENOENT", fromPath))
-      }
-      const parentPath = posix.dirname(toPath)
-      const parent = nodes.get(parentPath)
-      if (parent?.kind !== "directory") {
-        return Promise.reject(nodeError("ENOENT", parentPath))
-      }
-      const destination = nodes.get(toPath)
-      if (destination?.kind === "directory") {
-        return Promise.reject(nodeError("EISDIR", toPath))
-      }
-      const descendants = childPaths(nodes, toPath)
-      if (descendants.length > 0) {
-        return Promise.reject(nodeError("ENOTEMPTY", toPath))
-      }
-      if (node.kind === "directory" && isDescendant(toPath, fromPath)) {
-        return Promise.reject(nodeError("EINVAL", toPath))
-      }
-
-      nodes.delete(fromPath)
-      nodes.set(toPath, cloneNode(node))
-      if (node.kind === "directory") {
-        for (const childPath of childPaths(nodes, fromPath)) {
-          const child = nodes.get(childPath)
-          if (child !== undefined) {
-            nodes.delete(childPath)
-            nodes.set(`${toPath}${childPath.slice(fromPath.length)}`, cloneNode(child))
-          }
-        }
-      }
-      emitMemoryWatch(watchers, fromPath, "rename")
-      emitMemoryWatch(watchers, toPath, "rename")
-      return Promise.resolve()
-    },
-    writeFile: ((path, bytes) =>
-      writeMemoryFile(
-        nodes,
-        watchers,
-        memoryPathLikeToString(path),
-        normalizeWriteBytes(bytes),
-        now()
-      )) as FilesystemAdapter["writeFile"],
-    writeFileSynced: (path, bytes) => writeMemoryFile(nodes, watchers, path, bytes, now()),
-    stat: ((path) => {
-      const canonicalPath = lookupPath(nodes, memoryPathLikeToString(path), "nofollow")
-      const node = nodes.get(canonicalPath)
-      if (node === undefined) {
-        return Promise.reject(nodeError("ENOENT", canonicalPath))
-      }
-      return Promise.resolve(memoryStats(node, canonicalPath))
-    }) as FilesystemAdapter["stat"],
-    mkdir: (path, mkdirOptions) => {
-      const target = normalizeMemoryPath(path)
-      const parent = nodes.get(posix.dirname(target))
-      if (parent?.kind !== "directory" && mkdirOptions?.recursive !== true) {
-        return Promise.reject(nodeError("ENOENT", posix.dirname(target)))
-      }
-
-      if (mkdirOptions?.recursive === true) {
-        return createDirectoryRecursive(nodes, watchers, target, now())
-      } else {
-        if (nodes.has(target)) {
-          return Promise.reject(nodeError("EEXIST", target))
-        }
-        nodes.set(target, { kind: "directory", modifiedAtMs: now() })
-      }
-      emitMemoryWatch(watchers, target, "rename")
-      return Promise.resolve()
-    },
-    remove: (path, removeOptions) => {
-      const target = normalizeMemoryPath(path)
-      const node = nodes.get(target)
-      if (node === undefined) {
-        return Promise.reject(nodeError("ENOENT", target))
-      }
-      if (node.kind === "directory") {
-        const children = childPaths(nodes, target)
-        if (children.length > 0 && removeOptions?.recursive !== true) {
-          return Promise.reject(nodeError("ENOTEMPTY", target))
-        }
-        for (const child of children) {
-          nodes.delete(child)
-        }
-      }
-      nodes.delete(target)
-      emitMemoryWatch(watchers, target, "rename")
-      return Promise.resolve()
-    },
-    watch: (path, listener) =>
+  const fileSystem = FileSystem.layerNoop({
+    readFile: (path) =>
       Effect.try({
         try: () => {
-          const directory = resolveExistingPath(nodes, path)
-          const node = nodes.get(directory)
-          if (node?.kind !== "directory") {
-            throw nodeError("ENOTDIR", directory)
+          const canonicalPath = resolveExistingPath(nodes, memoryPathLikeToString(path))
+          const node = nodes.get(canonicalPath)
+          if (node?.kind !== "file") {
+            throw nodeError("EISDIR", canonicalPath)
           }
-
-          const registration: MemoryWatchRegistration = {
-            directory,
-            listener,
-            closed: false
-          }
-          watchers.push(registration)
-
-          return {
-            close: () => {
-              registration.closed = true
-            }
-          } satisfies FilesystemWatcher
+          return copyBytes(node.bytes)
         },
-        catch: (error) =>
-          makeHostProtocolInvalidArgumentError(
-            "path",
-            formatMemoryFilesystemError(error),
-            "Filesystem.watch"
-          )
-      })
-  }
+        catch: (error) => memoryPlatformError("readFile", error)
+      }),
+    realPath: (path) =>
+      Effect.try({
+        try: () => toPlatformMemoryPath(resolveExistingPath(nodes, memoryPathLikeToString(path))),
+        catch: (error) => memoryPlatformError("realPath", error)
+      }),
+    rename: (from, to) =>
+      Effect.try({
+        try: () => {
+          const fromPath = resolveExistingPath(nodes, memoryPathLikeToString(from))
+          const toPath = normalizeMemoryPath(memoryPathLikeToString(to))
+          const node = nodes.get(fromPath)
+          if (node === undefined) {
+            throw nodeError("ENOENT", fromPath)
+          }
+          const parentPath = posix.dirname(toPath)
+          const parent = nodes.get(parentPath)
+          if (parent?.kind !== "directory") {
+            throw nodeError("ENOENT", parentPath)
+          }
+          const destination = nodes.get(toPath)
+          if (destination?.kind === "directory") {
+            throw nodeError("EISDIR", toPath)
+          }
+          const descendants = childPaths(nodes, toPath)
+          if (descendants.length > 0) {
+            throw nodeError("ENOTEMPTY", toPath)
+          }
+          if (node.kind === "directory" && isDescendant(toPath, fromPath)) {
+            throw nodeError("EINVAL", toPath)
+          }
 
-  return adapter
+          nodes.delete(fromPath)
+          nodes.set(toPath, cloneNode(node))
+          if (node.kind === "directory") {
+            for (const childPath of childPaths(nodes, fromPath)) {
+              const child = nodes.get(childPath)
+              if (child !== undefined) {
+                nodes.delete(childPath)
+                nodes.set(`${toPath}${childPath.slice(fromPath.length)}`, cloneNode(child))
+              }
+            }
+          }
+          emitMemoryWatch(watchers, fromPath, "remove")
+          emitMemoryWatch(watchers, toPath, "create")
+        },
+        catch: (error) => memoryPlatformError("rename", error)
+      }),
+    writeFile: (path, bytes) =>
+      Effect.try({
+        try: () => {
+          writeMemoryFile(
+            nodes,
+            watchers,
+            memoryPathLikeToString(path),
+            normalizeWriteBytes(bytes),
+            now()
+          )
+        },
+        catch: (error) => memoryPlatformError("writeFile", error)
+      }),
+    open: (path) =>
+      Effect.try({
+        try: () => {
+          const target = normalizeMemoryPath(memoryPathLikeToString(path))
+          const parentPath = posix.dirname(target)
+          const parent = nodes.get(parentPath)
+          if (parent?.kind !== "directory") {
+            throw nodeError("ENOENT", parentPath)
+          }
+          if (nodes.get(target)?.kind === "directory") {
+            throw nodeError("EISDIR", target)
+          }
+          return memoryFile(target, (bytes) =>
+            writeMemoryFile(nodes, watchers, target, bytes, now())
+          )
+        },
+        catch: (error) => memoryPlatformError("open", error)
+      }),
+    stat: (path) =>
+      Effect.try({
+        try: () => {
+          const canonicalPath = resolveExistingPath(nodes, memoryPathLikeToString(path))
+          const node = nodes.get(canonicalPath)
+          if (node === undefined) {
+            throw nodeError("ENOENT", canonicalPath)
+          }
+          return memoryStats(node)
+        },
+        catch: (error) => memoryPlatformError("stat", error)
+      }),
+    readLink: (path) =>
+      Effect.try({
+        try: () => {
+          const canonicalPath = lookupPath(nodes, memoryPathLikeToString(path), "nofollow")
+          const node = nodes.get(canonicalPath)
+          if (node === undefined) {
+            throw nodeError("ENOENT", canonicalPath)
+          }
+          if (node.kind !== "symlink") {
+            throw nodeError("EINVAL", canonicalPath)
+          }
+          return node.target
+        },
+        catch: (error) => memoryPlatformError("readLink", error)
+      }),
+    makeDirectory: (path, mkdirOptions) =>
+      Effect.try({
+        try: () => {
+          const target = normalizeMemoryPath(path)
+          const parent = nodes.get(posix.dirname(target))
+          if (parent?.kind !== "directory" && mkdirOptions?.recursive !== true) {
+            throw nodeError("ENOENT", posix.dirname(target))
+          }
+
+          if (mkdirOptions?.recursive === true) {
+            return createDirectoryRecursive(nodes, watchers, target, now())
+          }
+          if (nodes.has(target)) {
+            throw nodeError("EEXIST", target)
+          }
+          nodes.set(target, { kind: "directory", modifiedAtMs: now() })
+          emitMemoryWatch(watchers, target, "create")
+        },
+        catch: (error) => memoryPlatformError("makeDirectory", error)
+      }),
+    remove: (path, removeOptions) =>
+      Effect.try({
+        try: () => {
+          const target = normalizeMemoryPath(path)
+          const node = nodes.get(target)
+          if (node === undefined) {
+            if (removeOptions?.force === true) {
+              return
+            }
+            throw nodeError("ENOENT", target)
+          }
+          if (node.kind === "directory") {
+            const children = childPaths(nodes, target)
+            if (children.length > 0 && removeOptions?.recursive !== true) {
+              throw nodeError("ENOTEMPTY", target)
+            }
+            for (const child of children) {
+              nodes.delete(child)
+            }
+          }
+          nodes.delete(target)
+          emitMemoryWatch(watchers, target, "remove")
+        },
+        catch: (error) => memoryPlatformError("remove", error)
+      }),
+    watch: (path) =>
+      Stream.callback<FileSystem.WatchEvent, PlatformError.PlatformError>((queue) =>
+        Effect.acquireRelease(
+          Effect.try({
+            try: () => {
+              const directory = resolveExistingPath(nodes, path)
+              const node = nodes.get(directory)
+              if (node?.kind !== "directory") {
+                throw nodeError("ENOTDIR", directory)
+              }
+
+              const registration: MemoryWatchRegistration = {
+                directory,
+                listener: (event) => {
+                  Queue.offerUnsafe(queue, event)
+                },
+                closed: false
+              }
+              watchers.push(registration)
+
+              return registration
+            },
+            catch: (error) => memoryPlatformError("watch", error)
+          }),
+          (registration) =>
+            Effect.sync(() => {
+              registration.closed = true
+            })
+        )
+      )
+  })
+
+  return {
+    fileSystem,
+    options: options.permissions === undefined ? {} : { permissions: options.permissions }
+  }
 }
 
 const writeMemoryFile = (
@@ -1492,22 +1597,21 @@ const writeMemoryFile = (
   path: string,
   bytes: Uint8Array,
   modifiedAtMs: number
-): Promise<void> => {
+): void => {
   const target = normalizeMemoryPath(path)
   const parentPath = posix.dirname(target)
   const parent = nodes.get(parentPath)
   if (parent?.kind !== "directory") {
-    return Promise.reject(nodeError("ENOENT", parentPath))
+    throw nodeError("ENOENT", parentPath)
   }
   const existing = nodes.get(target)
   if (existing?.kind === "directory") {
-    return Promise.reject(nodeError("EISDIR", target))
+    throw nodeError("EISDIR", target)
   }
 
   const existed = nodes.has(target)
   nodes.set(target, { kind: "file", bytes: copyBytes(bytes), modifiedAtMs })
-  emitMemoryWatch(watchers, target, existed ? "change" : "rename")
-  return Promise.resolve()
+  emitMemoryWatch(watchers, target, existed ? "update" : "create")
 }
 
 const ensureDirectory = (
@@ -1527,7 +1631,7 @@ const createDirectoryRecursive = (
   watchers: readonly MemoryWatchRegistration[],
   path: string,
   modifiedAtMs: number
-): Promise<void> => {
+): void => {
   const normalized = normalizeMemoryPath(path)
   const segments = normalized.split("/").filter((segment) => segment.length > 0)
   let current = ROOT_PATH
@@ -1539,14 +1643,12 @@ const createDirectoryRecursive = (
       continue
     }
     if (node !== undefined) {
-      return Promise.reject(nodeError("ENOTDIR", current))
+      throw nodeError("ENOTDIR", current)
     }
 
     nodes.set(current, { kind: "directory", modifiedAtMs })
-    emitMemoryWatch(watchers, current, "rename")
+    emitMemoryWatch(watchers, current, "create")
   }
-
-  return Promise.resolve()
 }
 
 type LookupMode = "follow" | "nofollow"
@@ -1638,30 +1740,70 @@ const isDescendant = (candidate: string, parent: string): boolean =>
 const emitMemoryWatch = (
   watchers: readonly MemoryWatchRegistration[],
   path: string,
-  type: RawFilesystemEvent["type"]
+  type: "create" | "remove" | "update"
 ): void => {
   const directory = posix.dirname(path)
-  const filename = path.slice(directory.length + (directory.endsWith("/") ? 0 : 1))
   for (const watcher of watchers) {
     if (!watcher.closed && watcher.directory === directory) {
-      watcher.listener({ type, filename })
+      watcher.listener(memoryWatchEvent(type, path))
     }
   }
 }
 
-const memoryStats = (
-  node: MemoryNode,
+const memoryWatchEvent = (
+  type: "create" | "remove" | "update",
   path: string
-): Awaited<ReturnType<FilesystemAdapter["stat"]>> =>
-  ({
-    size: node.kind === "file" ? node.bytes.byteLength : 0,
-    mtimeMs: node.modifiedAtMs,
-    nlink: 1,
-    isFile: () => node.kind === "file",
-    isDirectory: () => node.kind === "directory",
-    isSymbolicLink: () => node.kind === "symlink",
-    path
-  }) as unknown as Awaited<ReturnType<FilesystemAdapter["stat"]>>
+): FileSystem.WatchEvent => {
+  switch (type) {
+    case "create":
+      return { _tag: "Create", path }
+    case "remove":
+      return { _tag: "Remove", path }
+    case "update":
+      return { _tag: "Update", path }
+  }
+}
+
+const memoryFile = (path: string, writeAllBytes: (bytes: Uint8Array) => void): FileSystem.File => ({
+  [FileSystem.FileTypeId]: FileSystem.FileTypeId,
+  fd: FileSystem.FileDescriptor(1),
+  stat: Effect.fail(memoryPlatformError("stat", nodeError("ENOENT", path))),
+  seek: () => Effect.void,
+  sync: Effect.void,
+  read: () => Effect.succeed(FileSystem.Size(0)),
+  readAlloc: () => Effect.succeed(Option.none()),
+  truncate: () => Effect.void,
+  write: (buffer) =>
+    Effect.try({
+      try: () => {
+        writeAllBytes(buffer)
+        return FileSystem.Size(buffer.byteLength)
+      },
+      catch: (error) => memoryPlatformError("write", error)
+    }),
+  writeAll: (buffer) =>
+    Effect.try({
+      try: () => writeAllBytes(buffer),
+      catch: (error) => memoryPlatformError("writeAll", error)
+    })
+})
+
+const memoryStats = (node: MemoryNode): FileSystem.File.Info => ({
+  type: node.kind === "file" ? "File" : node.kind === "directory" ? "Directory" : "SymbolicLink",
+  mtime: Option.some(new Date(node.modifiedAtMs)),
+  atime: Option.none(),
+  birthtime: Option.none(),
+  dev: 1,
+  ino: Option.some(1),
+  mode: node.kind === "directory" ? 0o755 : 0o644,
+  nlink: Option.some(1),
+  uid: Option.none(),
+  gid: Option.none(),
+  rdev: Option.none(),
+  size: FileSystem.Size(node.kind === "file" ? node.bytes.byteLength : 0),
+  blksize: Option.none(),
+  blocks: Option.none()
+})
 
 const cloneNode = (node: MemoryNode): MemoryNode => {
   switch (node.kind) {
@@ -1691,6 +1833,45 @@ const nodeError = (code: string, path: string): NodeJS.ErrnoException =>
     code,
     path
   })
+
+const memoryPlatformError = (method: string, error: unknown): PlatformError.PlatformError => {
+  const node = isNodeError(error) ? error : nodeError("EINVAL", formatMemoryFilesystemError(error))
+  return PlatformError.systemError({
+    _tag: memoryPlatformErrorTag(node.code),
+    module: "FileSystem",
+    method,
+    pathOrDescriptor: typeof node.path === "string" ? node.path : undefined,
+    description: node.message,
+    cause: node
+  })
+}
+
+const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
+  typeof error === "object" && error !== null && "code" in error
+
+const memoryPlatformErrorTag = (code: string | undefined): PlatformError.SystemErrorTag => {
+  switch (code) {
+    case undefined:
+      return "Unknown"
+    case "EEXIST":
+      return "AlreadyExists"
+    case "ENOENT":
+      return "NotFound"
+    case "EACCES":
+    case "EPERM":
+      return "PermissionDenied"
+    case "EBUSY":
+      return "Busy"
+    case "EINVAL":
+    case "EISDIR":
+    case "ELOOP":
+    case "ENOTDIR":
+    case "ENOTEMPTY":
+      return "BadResource"
+    default:
+      return "Unknown"
+  }
+}
 
 const formatMemoryFilesystemError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -1823,6 +2004,14 @@ const DEFAULT_HEADLESS_SCOPE = "headless"
 const DEFAULT_WINDOW_CREATE_PAYLOAD = undefined
 const DEFAULT_ALLOWED_KINDS = ["app"] as const satisfies readonly ResourceKind[]
 
+const makeTestResourceOwner = (scopeId: string): ResourceOwnerApi =>
+  Object.freeze({
+    kind: "test",
+    scopeId,
+    actor: new PermissionActor({ kind: "resource", id: scopeId }),
+    attributes: Object.freeze({ scopeId })
+  })
+
 const secretNotFound = (key: string, operation: string): HostProtocolNotFoundError =>
   new HostProtocolNotFoundError({
     tag: "NotFound",
@@ -1850,4 +2039,6 @@ const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot => {
   )
 }
 
+// oxlint-disable-next-line import/no-cycle -- package barrel intentionally includes the native harness.
 export * from "./native.js"
+export * from "./capability-laws.js"
