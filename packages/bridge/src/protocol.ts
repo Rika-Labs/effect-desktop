@@ -1150,6 +1150,16 @@ const RpcPermissionDeniedError = Schema.Struct({
   message: Schema.String
 })
 
+const hostProtocolErrorToRpcClientError = (
+  error: HostProtocolError
+): RpcClientError.RpcClientError =>
+  new RpcClientError.RpcClientError({
+    reason: new RpcClientError.RpcClientDefect({
+      message: error.message,
+      cause: error
+    })
+  })
+
 export const makeDesktopClientProtocol = (
   transport: DesktopTransportSend & DesktopTransportRun,
   options: DesktopProtocolOptions = {}
@@ -1211,7 +1221,7 @@ export const makeDesktopClientProtocol = (
               requestClients.set(transportRequestId, { clientId: _clientId, requestId })
               clientRequestIds.set(clientRequestId(_clientId, requestId), transportRequestId)
               yield* transport.send(envelope)
-            }) as unknown as Effect.Effect<void, RpcClientError.RpcClientError>
+            }).pipe(Effect.mapError(hostProtocolErrorToRpcClientError))
           }
           if (request._tag === "Interrupt") {
             return Effect.gen(function* () {
@@ -1234,7 +1244,7 @@ export const makeDesktopClientProtocol = (
                   traceId
                 })
               )
-            }) as unknown as Effect.Effect<void, RpcClientError.RpcClientError>
+            }).pipe(Effect.mapError(hostProtocolErrorToRpcClientError))
           }
           return Effect.void
         },
