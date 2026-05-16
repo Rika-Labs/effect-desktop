@@ -3,12 +3,9 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -156,17 +153,7 @@ export const makeUpdaterServiceLayer = (client: UpdaterClientApi): Layer.Layer<U
 export const makeUpdaterBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<UpdaterClient> =>
-  Layer.effect(
-    UpdaterClient,
-    RpcClient.make(UpdaterRpcGroup).pipe(
-      Effect.map((client) =>
-        updaterClientFromRpcClient(client, () =>
-          subscribeUpdaterEvent(exchange, "Updater.PreparingRestart")
-        )
-      )
-    )
-  ).pipe(Layer.provide(makeUpdaterBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<UpdaterClient> => UpdaterSurface.bridgeClientLayer(exchange, options)
 
 export type UpdaterRpc = RpcGroup.Rpcs<typeof UpdaterRpcGroup>
 
@@ -217,6 +204,10 @@ export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
           "event exchange does not support subscriptions"
         )
       )
+    ),
+  bridgeClient: (client, exchange) =>
+    updaterClientFromRpcClient(client, () =>
+      subscribeUpdaterEvent(exchange, "Updater.PreparingRestart")
     )
 })
 
@@ -262,16 +253,6 @@ const updaterClientFromRpcClient = (
     onPreparingRestart
   } satisfies UpdaterClientApi)
 }
-
-const makeUpdaterBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeUpdaterEvent = (
   exchange: BridgeClientExchange,

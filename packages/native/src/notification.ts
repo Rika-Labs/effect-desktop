@@ -3,12 +3,9 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -163,13 +160,7 @@ export const makeNotificationServiceLayer = (
 export const makeNotificationBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<NotificationClient> =>
-  Layer.effect(
-    NotificationClient,
-    RpcClient.make(NotificationRpcGroup).pipe(
-      Effect.map((client) => notificationClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeNotificationBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<NotificationClient> => NotificationSurface.bridgeClientLayer(exchange, options)
 
 export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
@@ -210,7 +201,8 @@ export const NotificationSurface = NativeSurface.make("Notification", Notificati
   service: NotificationClient,
   capabilities: NotificationCapabilityMethods,
   handlers: NotificationHandlersLive,
-  client: (client) => notificationClientFromRpcClient(client, undefined)
+  client: (client) => notificationClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => notificationClientFromRpcClient(client, exchange)
 })
 
 export const makeHostNotificationRpcRuntime = (
@@ -272,16 +264,6 @@ const notificationClientFromRpcClient = (
 
   return Object.freeze(notificationClient)
 }
-
-const makeNotificationBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeNotificationEvent = <A>(
   exchange: BridgeClientExchange | undefined,

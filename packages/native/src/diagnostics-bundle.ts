@@ -5,10 +5,8 @@ import {
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidStateError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
   redactForJsonWithEvidence,
   type HostProtocolError,
   type RpcCapabilityMetadata,
@@ -24,7 +22,6 @@ import {
   permissionAuditEvent
 } from "@effect-desktop/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
-import { RpcClient } from "effect/unstable/rpc"
 
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
@@ -183,12 +180,7 @@ export const makeDiagnosticsBundleBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
 ): Layer.Layer<DiagnosticsBundleClient> =>
-  Layer.effect(
-    DiagnosticsBundleClient,
-    RpcClient.make(DiagnosticsBundleRpcGroup).pipe(
-      Effect.map((client) => diagnosticsBundleClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeDiagnosticsBundleBridgeProtocolLayer(exchange, options)))
+  DiagnosticsBundleSurface.bridgeClientLayer(exchange, options)
 
 export type DiagnosticsBundleRpc = RpcGroup.Rpcs<typeof DiagnosticsBundleRpcGroup>
 
@@ -221,7 +213,8 @@ export const DiagnosticsBundleSurface = NativeSurface.make(Surface, DiagnosticsB
   service: DiagnosticsBundleClient,
   capabilities: DiagnosticsBundleCapabilityMethods,
   handlers: DiagnosticsBundleHandlersLive,
-  client: (client) => diagnosticsBundleClientFromRpcClient(client, undefined)
+  client: (client) => diagnosticsBundleClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => diagnosticsBundleClientFromRpcClient(client, exchange)
 })
 
 export const makeHostDiagnosticsBundleRpcRuntime = (
@@ -502,16 +495,6 @@ const diagnosticsBundleClientFromRpcClient = (
         )
       )
   } satisfies DiagnosticsBundleClientApi)
-
-const makeDiagnosticsBundleBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeDiagnosticsBundleEvent = (
   exchange: BridgeClientExchange | undefined

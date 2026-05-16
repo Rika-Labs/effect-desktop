@@ -17,6 +17,7 @@ import {
 import {
   type AnyDesktopNativeRegistration,
   DesktopRpc,
+  type DesktopRpcClient,
   type DesktopNativeSurfaceSelection,
   type DesktopRpcSurface,
   type DesktopRpcSurfaceDirectOptions,
@@ -26,7 +27,7 @@ import {
   P,
   type PermissionRegistry
 } from "@effect-desktop/core"
-import { Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Option, Schema } from "effect"
 import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -73,6 +74,13 @@ export interface NativeRpcOptions<
 
 export interface NativeRpcSurfaceSelectionOptions<Method extends string = never> {
   readonly capabilities?: readonly Method[]
+}
+
+export interface NativeRpcSurfaceBridgeClientOptions<Rpcs extends Rpc.Any, Service> {
+  readonly bridgeClient?: (
+    client: DesktopRpcClient<Rpcs>,
+    exchange: BridgeClientExchange
+  ) => Service
 }
 
 export interface NativeRpcSurface<
@@ -171,7 +179,8 @@ function make<
     ServerE,
     ServerR
   > &
-    NativeRpcSurfaceSelectionOptions<Method>
+    NativeRpcSurfaceSelectionOptions<Method> &
+    NativeRpcSurfaceBridgeClientOptions<RpcGroup.Rpcs<Group>, Service>
 ): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
 function make<
   const Tag extends string,
@@ -188,8 +197,20 @@ function make<
     | (DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> &
         NativeRpcSurfaceSelectionOptions<Method>)
     | (DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR> &
-        NativeRpcSurfaceSelectionOptions<Method>)
+        NativeRpcSurfaceSelectionOptions<Method> &
+        NativeRpcSurfaceBridgeClientOptions<RpcGroup.Rpcs<Group>, Service>)
 ): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method> {
+  type Rpcs = RpcGroup.Rpcs<Group>
+  const service = options.service as Context.Key<ServiceId, DesktopRpcClient<Rpcs> | Service>
+  const toBridgeService = (
+    client: DesktopRpcClient<Rpcs>,
+    exchange: BridgeClientExchange
+  ): DesktopRpcClient<Rpcs> | Service =>
+    "bridgeClient" in options && options.bridgeClient !== undefined
+      ? options.bridgeClient(client, exchange)
+      : "client" in options
+        ? options.client(client)
+        : client
   const desktopSurface =
     "client" in options
       ? DesktopRpc.surface(tag, group, options)
@@ -198,7 +219,10 @@ function make<
   const surfaceWithoutSelection = Object.freeze({
     ...desktopSurface,
     bridgeClientLayer: (exchange: BridgeClientExchange, bridgeOptions: BridgeClientOptions = {}) =>
-      Layer.provide(desktopSurface.clientLayer, makeBridgeProtocolLayer(exchange, bridgeOptions)),
+      Layer.effect(
+        service,
+        RpcClient.make(group).pipe(Effect.map((client) => toBridgeService(client, exchange)))
+      ).pipe(Layer.provide(makeBridgeProtocolLayer(exchange, bridgeOptions))),
     hostRuntime: (
       handlers: NativeRpcHandlers<Group>,
       runtimeOptions: BridgeHandlerRuntimeOptions = {}

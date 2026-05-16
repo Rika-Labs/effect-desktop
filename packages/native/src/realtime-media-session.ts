@@ -5,15 +5,12 @@ import {
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
 import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect"
-import { RpcClient } from "effect/unstable/rpc"
 
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
@@ -202,12 +199,7 @@ export const makeRealtimeMediaSessionBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
 ): Layer.Layer<RealtimeMediaSessionClient> =>
-  Layer.effect(
-    RealtimeMediaSessionClient,
-    RpcClient.make(RealtimeMediaSessionRpcGroup).pipe(
-      Effect.map((client) => realtimeMediaSessionClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeRealtimeMediaSessionBridgeProtocolLayer(exchange, options)))
+  RealtimeMediaSessionSurface.bridgeClientLayer(exchange, options)
 
 export type RealtimeMediaSessionRpc = RpcGroup.Rpcs<typeof RealtimeMediaSessionRpcGroup>
 
@@ -248,7 +240,8 @@ export const RealtimeMediaSessionSurface = NativeSurface.make(
     service: RealtimeMediaSessionClient,
     capabilities: RealtimeMediaSessionCapabilityMethods,
     handlers: RealtimeMediaSessionHandlersLive,
-    client: (client) => realtimeMediaSessionClientFromRpcClient(client, undefined)
+    client: (client) => realtimeMediaSessionClientFromRpcClient(client, undefined),
+    bridgeClient: (client, exchange) => realtimeMediaSessionClientFromRpcClient(client, exchange)
   }
 )
 
@@ -473,16 +466,6 @@ const realtimeMediaSessionClientFromRpcClient = (
         )
       )
   } satisfies RealtimeMediaSessionClientApi)
-
-const makeRealtimeMediaSessionBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeRealtimeMediaSessionEvent = (
   exchange: BridgeClientExchange | undefined

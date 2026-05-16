@@ -3,12 +3,9 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -218,13 +215,7 @@ export const makeWebViewServiceLayer = (client: WebViewClientApi): Layer.Layer<W
 export const makeWebViewBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<WebViewClient> =>
-  Layer.effect(
-    WebViewClient,
-    RpcClient.make(WebViewRpcGroup).pipe(
-      Effect.map((client) => webViewClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeWebViewBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<WebViewClient> => WebViewSurface.bridgeClientLayer(exchange, options)
 
 export type WebViewRpc = RpcGroup.Rpcs<typeof WebViewRpcGroup>
 
@@ -291,7 +282,8 @@ export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   service: WebViewClient,
   capabilities: WebViewCapabilityMethods,
   handlers: WebViewHandlersLive,
-  client: (client) => webViewClientFromRpcClient(client, undefined)
+  client: (client) => webViewClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => webViewClientFromRpcClient(client, exchange)
 })
 
 export const makeHostWebViewRpcRuntime = (
@@ -407,16 +399,6 @@ const webViewClientFromRpcClient = (
 
   return Object.freeze(webViewClient)
 }
-
-const makeWebViewBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeWebViewEvent = (
   exchange: BridgeClientExchange | undefined,

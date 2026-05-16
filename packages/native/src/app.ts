@@ -3,12 +3,9 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -168,13 +165,7 @@ export const makeAppServiceLayer = (client: AppClientApi): Layer.Layer<App> =>
 export const makeAppBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<AppClient> =>
-  Layer.effect(
-    AppClient,
-    RpcClient.make(AppRpcGroup).pipe(
-      Effect.map((client) => appClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeAppBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<AppClient> => AppSurface.bridgeClientLayer(exchange, options)
 
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 
@@ -227,7 +218,8 @@ export const AppSurface = NativeSurface.make("App", AppRpcGroup, {
   service: AppClient,
   capabilities: AppCapabilityMethods,
   handlers: AppHandlersLive,
-  client: (client) => appClientFromRpcClient(client, undefined)
+  client: (client) => appClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => appClientFromRpcClient(client, exchange)
 })
 
 export const makeHostAppRpcRuntime = (
@@ -296,16 +288,6 @@ const appClientFromRpcClient = (
 
   return Object.freeze(appClient)
 }
-
-const makeAppBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeAppEvent = <A>(
   exchange: BridgeClientExchange | undefined,

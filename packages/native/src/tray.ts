@@ -3,12 +3,9 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -153,13 +150,7 @@ export const makeTrayServiceLayer = (client: TrayClientApi): Layer.Layer<Tray> =
 export const makeTrayBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<TrayClient> =>
-  Layer.effect(
-    TrayClient,
-    RpcClient.make(TrayRpcGroup).pipe(
-      Effect.map((client) => trayClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeTrayBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<TrayClient> => TraySurface.bridgeClientLayer(exchange, options)
 
 export type TrayRpc = RpcGroup.Rpcs<typeof TrayRpcGroup>
 
@@ -203,7 +194,8 @@ export const TraySurface = NativeSurface.make("Tray", TrayRpcGroup, {
   service: TrayClient,
   capabilities: TrayCapabilityMethods,
   handlers: TrayHandlersLive,
-  client: (client) => trayClientFromRpcClient(client, undefined)
+  client: (client) => trayClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => trayClientFromRpcClient(client, exchange)
 })
 
 export const makeHostTrayRpcRuntime = (
@@ -244,16 +236,6 @@ const trayClientFromRpcClient = (
 
   return Object.freeze(trayClient)
 }
-
-const makeTrayBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeTrayEvent = (
   exchange: BridgeClientExchange | undefined,

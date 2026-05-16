@@ -17,12 +17,9 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -170,13 +167,7 @@ export const makeMenuServiceLayer = (client: MenuClientApi): Layer.Layer<Menu> =
 export const makeMenuBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<MenuClient> =>
-  Layer.effect(
-    MenuClient,
-    RpcClient.make(MenuRpcGroup).pipe(
-      Effect.map((client) => menuClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeMenuBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<MenuClient> => MenuSurface.bridgeClientLayer(exchange, options)
 
 export type MenuRpc = RpcGroup.Rpcs<typeof MenuRpcGroup>
 
@@ -212,7 +203,8 @@ export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
   service: MenuClient,
   capabilities: MenuCapabilityMethods,
   handlers: MenuHandlersLive,
-  client: (client) => menuClientFromRpcClient(client, undefined)
+  client: (client) => menuClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => menuClientFromRpcClient(client, exchange)
 })
 
 export const makeHostMenuRpcRuntime = (
@@ -342,16 +334,6 @@ const menuClientFromRpcClient = (
 
   return Object.freeze(menuClient)
 }
-
-const makeMenuBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeMenuEvent = (
   exchange: BridgeClientExchange | undefined,
