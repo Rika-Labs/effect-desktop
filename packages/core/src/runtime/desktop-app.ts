@@ -614,7 +614,7 @@ export const provider = <RIn = never>(
 
 export const native = <RIn = never, E = never>(
   ...layers: readonly DesktopNativeLayer<RIn, E>[]
-): DesktopNativeLayer<RIn, E> => mergeLayerArray(layers)
+): DesktopNativeLayer<RIn, E> => mergeLayerArray(layers.map((layer) => Layer.fresh(layer)))
 
 const DefaultProviders = Object.freeze({
   runtime: Provider.Runtime.bun,

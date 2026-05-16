@@ -23,6 +23,7 @@ import {
   CommandRegistryHandlerFailureError,
   CommandRegistry,
   Desktop,
+  DesktopSpineConfigError,
   DesktopRpcRegistry,
   DesktopRpcRegistryLive,
   type DesktopRpcRegistration,
@@ -417,6 +418,62 @@ test("Desktop.native registers selected native surfaces into app manifests", () 
   expect(tags).toContain("Clipboard.readText")
   expect(tags).toContain("Dialog.openFile")
   expect(tags).not.toContain("Window.create")
+})
+
+test("Desktop.native availability does not require matching permissions during graph build", async () => {
+  const graph = await Effect.runPromise(
+    Desktop.runtimeGraph({
+      id: "native-no-permissions",
+      windows: Desktop.window("main", { title: "Native No Permissions" }),
+      native: Desktop.native(Native.clipboard)
+    })
+  )
+
+  expect(graph.nodes.some((node) => node.id === "native:Clipboard")).toBe(true)
+  expect(graph.nodes.some((node) => node.id === "native:Window")).toBe(false)
+})
+
+test("Desktop.native rejects duplicate native surfaces as typed config errors", async () => {
+  const exit = await Effect.runPromiseExit(
+    Desktop.runtimeGraph({
+      id: "native-duplicate",
+      windows: Desktop.window("main", { title: "Native Duplicate" }),
+      native: Desktop.native(Native.clipboard, Native.clipboard)
+    })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(DesktopSpineConfigError)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "invalid-config",
+      contract: "Clipboard"
+    })
+  }
+})
+
+test("Desktop.native rejects duplicate RPC methods across native and app RPC layers", async () => {
+  const exit = await Effect.runPromiseExit(
+    Desktop.runtimeGraph({
+      id: "native-rpc-duplicate",
+      windows: Desktop.window("main", { title: "Native RPC Duplicate" }),
+      native: Desktop.native(Native.clipboard),
+      rpcs: ClipboardSurface.serverLayer
+    })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(DesktopSpineConfigError)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "duplicate-rpc",
+      method: "Clipboard.readText"
+    })
+  }
 })
 
 test("Desktop.native Native.all registers every built-in native surface", () => {

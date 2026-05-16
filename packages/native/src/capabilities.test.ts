@@ -11,7 +11,7 @@ import {
   UnsupportedCapability,
   makeNativeCapabilitiesLayer
 } from "./capabilities.js"
-import { surface } from "./native.js"
+import { clipboard, surface } from "./native.js"
 
 test("NativeCapabilities exposes support metadata from native surfaces", async () => {
   const result = await Effect.runPromise(
@@ -27,6 +27,30 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
 
   expect(result.create).toEqual({ status: "supported" })
   expect(result.hasWindowShow).toBe(false)
+})
+
+test("NativeCapabilities derives support metadata from selected native layers only", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const capabilities = yield* NativeCapabilities
+      const readText = yield* capabilities.support("Clipboard.readText")
+      const missingWindow = yield* Effect.exit(capabilities.support("Window.create"))
+      return {
+        readText,
+        missingWindow,
+        tags: capabilities.manifest.map((fact) => fact.tag)
+      }
+    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(clipboard)))
+  )
+
+  expect(result.readText).toEqual({ status: "supported" })
+  expect(result.tags).toContain("Clipboard.readText")
+  expect(result.tags).not.toContain("Window.create")
+  expect(Exit.isFailure(result.missingWindow)).toBe(true)
+  if (Exit.isFailure(result.missingWindow)) {
+    const failure = result.missingWindow.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(NativeCapabilityLookupError)
+  }
 })
 
 test("NativeCapabilities require fails unsupported methods from explicit metadata", async () => {
