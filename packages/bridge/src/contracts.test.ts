@@ -1,14 +1,19 @@
 import { expect, test } from "bun:test"
 import { Effect, Option, Schema, Stream } from "effect"
 
+import * as bridge from "./index.js"
 import {
-  BridgeRpc,
+  BridgeRuntime,
   Client,
   HostProtocolRequestEnvelope,
-  InvalidBridgeRpcSpec,
+  InvalidBridgeMetadataError,
   Rpc,
+  RpcCapability,
+  RpcEndpoint,
   RpcGroup,
   RpcSchema,
+  RpcSupport,
+  bridgeContractFromRpcGroup,
   makeHostProtocolInvalidOutputError,
   rpcCapability,
   rpcEndpointKind,
@@ -16,56 +21,66 @@ import {
   type HostProtocolError
 } from "./index.js"
 
-test("BridgeRpc.group creates the frozen RpcGroup contract", () => {
-  const ProjectRpcs = BridgeRpc.group(
-    "Test.Project",
-    {
-      open: {
-        input: Schema.Struct({ path: Schema.String }),
-        output: Schema.Struct({ id: Schema.String }),
-        error: Schema.Never,
-        permission: "project:open",
-        timeoutMs: 30_000,
-        cachedResultMs: 60_000,
-        idempotent: true,
-        cancellable: true,
-        backpressure: { strategy: "buffer", size: 128, overflow: "dropOldest" }
-      }
-    },
-    {}
+test("bridge package no longer exports legacy bridge authoring DSL", () => {
+  expect(`Bridge${"Rpc"}` in bridge).toBe(false)
+  expect(`makeBridge${"Rpc"}Group` in bridge).toBe(false)
+  expect("Handlers" in bridge).toBe(false)
+  expect("Streams" in bridge).toBe(false)
+  expect("makeBridgeHandlerLayer" in bridge).toBe(false)
+})
+
+test("bridgeContractFromRpcGroup lowers a frozen Effect RpcGroup contract", () => {
+  const Open = Rpc.make("Test.Project.open", {
+    payload: Schema.Struct({ path: Schema.String }),
+    success: Schema.Struct({ id: Schema.String }),
+    error: Schema.Never
+  }).pipe(
+    RpcEndpoint.query,
+    RpcCapability({ kind: "project:open" }),
+    BridgeRuntime({
+      timeoutMs: 30_000,
+      cachedResultMs: 60_000,
+      cancellable: true,
+      backpressure: { strategy: "buffer", size: 128, overflow: "dropOldest" }
+    })
   )
+  const ProjectRpcs = bridgeContractFromRpcGroup("Test.Project", RpcGroup.make(Open))
 
   expect(ProjectRpcs.tag).toBe("Test.Project")
   expect(Object.isFrozen(ProjectRpcs)).toBe(true)
   expect(Object.isFrozen(ProjectRpcs.spec)).toBe(true)
   expect(Array.from(ProjectRpcs.requests.keys())).toEqual(["Test.Project.open"])
+  expect(ProjectRpcs.spec["open"]?.permission).toBe("project:open")
+  expect(ProjectRpcs.spec["open"]?.timeoutMs).toBe(30_000)
+  expect(ProjectRpcs.spec["open"]?.cachedResultMs).toBe(60_000)
+  expect(ProjectRpcs.spec["open"]?.cancellable).toBe(true)
+  expect(ProjectRpcs.spec["open"]?.backpressure).toEqual({
+    strategy: "buffer",
+    size: 128,
+    overflow: "dropOldest"
+  })
 })
 
-test("BridgeRpc.group accepts schema classes and frozen event specs", () => {
+test("bridgeContractFromRpcGroup accepts schema classes and derives event specs", () => {
   class Project extends Schema.Class<Project>("Project")({
     id: Schema.String
   }) {}
   const EventPayload = Schema.Struct({ id: Schema.String })
-  const ProjectRpcs = BridgeRpc.group(
-    "Test.Events",
-    {
-      call: {
-        input: Project,
-        output: Project,
-        error: Schema.Never
-      }
-    },
-    {
-      changed: {
-        payload: EventPayload,
-        backpressure: { strategy: "drop", size: 16 }
-      }
-    }
-  )
+  const Call = Rpc.make("Test.Events.call", {
+    payload: Project,
+    success: Project,
+    error: Schema.Never
+  })
+  const Changed = Rpc.make("Test.Events.events.changed", {
+    success: EventPayload,
+    error: Schema.Never,
+    stream: true
+  }).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 16 } }))
+  const ProjectRpcs = bridgeContractFromRpcGroup("Test.Events", RpcGroup.make(Call, Changed))
 
-  expect(ProjectRpcs.spec.call.input).toBe(Project)
-  expect(ProjectRpcs.spec.call.output).toBe(Project)
-  expect(Object.isFrozen(ProjectRpcs.events.changed)).toBe(true)
+  expect(ProjectRpcs.spec["call"]?.input).toBe(Project)
+  expect(ProjectRpcs.spec["call"]?.output).toBe(Project)
+  expect(Object.isFrozen(ProjectRpcs.events["changed"])).toBe(true)
 
   const client = Client(
     { events: ProjectRpcs },
@@ -80,293 +95,129 @@ test("BridgeRpc.group accepts schema classes and frozen event specs", () => {
   expect(stream).toBeDefined()
 })
 
-test("BridgeRpc.group validates specs before producing a group", () => {
-  expect(() =>
-    BridgeRpc.group(
-      "Test.Invalid",
-      {
-        call: {
-          input: Schema.String,
-          output: Schema.String
-        }
-      } as never,
-      {}
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group(
-      "Test.InvalidTimeout",
-      {
-        call: {
-          ...validMethodSpec(),
-          timeoutMs: -1
-        }
-      },
-      {}
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group(
-      "Test.ZeroCache",
-      {
-        call: {
-          ...validMethodSpec(),
-          cachedResultMs: 0,
-          idempotent: true
-        }
-      },
-      {}
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-  for (const [index, output] of [
-    BridgeRpc.Resource("", "running"),
-    BridgeRpc.Resource("process", ""),
-    BridgeRpc.Resource(" ", "running"),
-    BridgeRpc.Resource("process", " "),
-    BridgeRpc.Resource("bad\nkind", "running"),
-    BridgeRpc.Resource("process", "bad\nstate")
-  ].entries()) {
-    expect(() =>
-      BridgeRpc.group(
-        `Test.InvalidResource.${index}`,
-        {
-          call: {
-            ...validMethodSpec(),
-            output
-          }
-        },
-        {}
-      )
-    ).toThrow(InvalidBridgeRpcSpec)
-  }
-  expect(() =>
-    BridgeRpc.group(
-      "Test.InvalidStreamBackpressure",
-      {
-        call: {
-          input: Schema.String,
-          output: BridgeRpc.Stream(Schema.String, Schema.Never, {
-            strategy: "buffer",
-            size: 1.5,
-            overflow: "dropOldest"
-          }),
-          error: Schema.Never
-        }
-      },
-      {}
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group(
-      "Test.ZeroStreamBackpressure",
-      {
-        call: {
-          input: Schema.String,
-          output: BridgeRpc.Stream(Schema.String, Schema.Never, {
-            strategy: "buffer",
-            size: 0,
-            overflow: "error"
-          }),
-          error: Schema.Never
-        }
-      },
-      {}
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group(
-      "Test.InvalidSupport",
-      {
-        call: {
-          ...validMethodSpec(),
-          support: {
-            status: "unsupported",
-            reason: ""
-          }
-        }
-      },
-      {}
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group(
-      "Test.ReservedEventsMethod",
-      {
-        events: validMethodSpec()
-      },
-      {}
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-})
-
-test("BridgeRpc.group rejects empty contract tags", () => {
-  expect(() => BridgeRpc.group("", { call: validMethodSpec() }, {})).toThrow(InvalidBridgeRpcSpec)
-  expect(() => BridgeRpc.group(" ", { call: validMethodSpec() }, {})).toThrow(InvalidBridgeRpcSpec)
-  expect(() => BridgeRpc.group("Bad\nTag", { call: validMethodSpec() }, {})).toThrow(
-    InvalidBridgeRpcSpec
-  )
-})
-
-test("BridgeRpc.group rejects empty method names", () => {
-  expect(() => BridgeRpc.group("Test.EmptyMethod", { "": validMethodSpec() }, {})).toThrow(
-    InvalidBridgeRpcSpec
-  )
-  expect(() =>
-    BridgeRpc.group("Test.EmptyMethodWhitespace", { " ": validMethodSpec() }, {})
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group("Test.BadMethodControl", { "bad\nmethod": validMethodSpec() }, {})
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group("Test.BadMethodDot", { "bad.method": validMethodSpec() }, {})
-  ).toThrow(InvalidBridgeRpcSpec)
-})
-
-test("BridgeRpc.group rejects empty event names", () => {
-  expect(() =>
-    BridgeRpc.group(
-      "Test.EmptyEvent",
-      { call: validMethodSpec() },
-      { "": { payload: Schema.String } }
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group(
-      "Test.EmptyEventWhitespace",
-      { call: validMethodSpec() },
-      { " ": { payload: Schema.String } }
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group(
-      "Test.BadEventControl",
-      { call: validMethodSpec() },
-      { "bad\nevent": { payload: Schema.String } }
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-  expect(() =>
-    BridgeRpc.group(
-      "Test.BadEventDot",
-      { call: validMethodSpec() },
-      { "bad.event": { payload: Schema.String } }
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-})
-
-test("BridgeRpc.group rejects empty permissions", () => {
-  for (const [index, permission] of ["", " "].entries()) {
-    expect(() =>
-      BridgeRpc.group(
-        `Test.EmptyPermission.${index}`,
-        {
-          call: {
-            ...validMethodSpec(),
-            permission
-          }
-        },
-        {}
-      )
-    ).toThrow(InvalidBridgeRpcSpec)
-  }
-})
-
-test("BridgeRpc.group rejects resource outputs without a handle schema", () => {
-  expect(() =>
-    BridgeRpc.group(
-      "Test.IncompleteResource",
-      {
-        call: {
-          ...validMethodSpec(),
-          output: {
-            _tag: "BridgeRpcResourceSpec",
-            kind: "project",
-            state: "open"
-          }
-        }
-      } as never,
-      {}
-    )
-  ).toThrow(InvalidBridgeRpcSpec)
-
-  expect(() =>
-    BridgeRpc.group(
-      "Test.ValidResource",
-      {
-        call: {
-          ...validMethodSpec(),
-          output: BridgeRpc.Resource("project", "open")
-        }
-      },
-      {}
-    )
-  ).not.toThrow()
-})
-
-test("BridgeRpc.layer binds handlers to a RpcGroup descriptor", async () => {
-  const ProjectRpcs = BridgeRpc.group("Test.Layered", { call: validMethodSpec() }, {})
-  const layer = BridgeRpc.layer(ProjectRpcs)({
-    call: (input) => Effect.succeed(input.toUpperCase())
+test("bridge metadata validation rejects invalid RpcGroup lowering inputs", () => {
+  const Valid = Rpc.make("Test.Valid.call", {
+    payload: Schema.String,
+    success: Schema.String,
+    error: Schema.Never
   })
 
-  expect(layer.group).toBe(ProjectRpcs)
-  expect(await Effect.runPromise(layer.handlers.call("request"))).toBe("REQUEST")
-  expect(Object.isFrozen(layer)).toBe(true)
-  expect(Object.isFrozen(layer.handlers)).toBe(true)
-})
-
-test("BridgeRpc.layer rejects missing handlers", () => {
-  const ProjectRpcs = BridgeRpc.group("Test.MissingHandler", { call: validMethodSpec() }, {})
-
-  expect(() => BridgeRpc.layer(ProjectRpcs)({} as never)).toThrow(InvalidBridgeRpcSpec)
-  expect(() => BridgeRpc.layer(ProjectRpcs)({ call: "not callable" } as never)).toThrow(
-    InvalidBridgeRpcSpec
+  expect(() => bridgeContractFromRpcGroup("", RpcGroup.make(Valid))).toThrow(
+    InvalidBridgeMetadataError
   )
+  expect(() => bridgeContractFromRpcGroup(" ", RpcGroup.make(Valid))).toThrow(
+    InvalidBridgeMetadataError
+  )
+  expect(() => bridgeContractFromRpcGroup("Bad\nTag", RpcGroup.make(Valid))).toThrow(
+    InvalidBridgeMetadataError
+  )
+  expect(() =>
+    bridgeContractFromRpcGroup(
+      "Test.Valid",
+      RpcGroup.make(Rpc.make("Other.call", { success: Schema.String }))
+    )
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup(
+      "Test.Valid",
+      RpcGroup.make(Rpc.make("Test.Valid.events.bad.event", { success: Schema.String }))
+    )
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup(
+      "Test.Valid",
+      RpcGroup.make(
+        Rpc.make("Test.Valid.events.changed", {
+          success: Schema.String,
+          error: Schema.Never,
+          stream: true
+        }).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 1.5 } }))
+      )
+    )
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup(
+      "Test.Valid",
+      RpcGroup.make(
+        Rpc.make("Test.Valid.events.changed", {
+          success: Schema.String,
+          error: Schema.Never,
+          stream: true
+        }).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 0 } }))
+      )
+    )
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup(
+      "Test.Valid",
+      RpcGroup.make(
+        Rpc.make("Test.Valid.events.changed", {
+          success: Schema.String,
+          error: Schema.Never,
+          stream: true
+        }).pipe(BridgeRuntime({ backpressure: { strategy: "drop", size: 1, overflow: "error" } }))
+      )
+    )
+  ).toThrow(InvalidBridgeMetadataError)
 })
 
-test("BridgeRpc.layer accepts prototype handlers", async () => {
-  const ProjectRpcs = BridgeRpc.group("Test.PrototypeHandler", { call: validMethodSpec() }, {})
-  class Handlers {
-    call(input: string): Effect.Effect<string, never, never> {
-      return Effect.succeed(input.toUpperCase())
-    }
-  }
-  const layer = BridgeRpc.layer(ProjectRpcs)(new Handlers())
+test("bridge metadata validation rejects invalid annotations", () => {
+  const EmptyCapability = Rpc.make("Test.FromGroup.open", {
+    success: Schema.String
+  }).pipe(RpcCapability({ kind: "" }))
+  const EmptySupportReason = Rpc.make("Test.FromGroup.unsupported", {
+    success: Schema.String
+  }).pipe(RpcSupport.unsupported(""))
+  const InvalidStreamBackpressure = Rpc.make("Test.FromGroup.watch", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  }).pipe(BridgeRuntime({ backpressure: { strategy: "buffer", size: 1.5 } }))
+  const ZeroStreamBackpressure = Rpc.make("Test.FromGroup.watch", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  }).pipe(BridgeRuntime({ backpressure: { strategy: "buffer", size: 0, overflow: "error" } }))
 
-  expect(await Effect.runPromise(layer.handlers.call("request"))).toBe("REQUEST")
+  expect(() =>
+    bridgeContractFromRpcGroup("Test.FromGroup", RpcGroup.make(EmptyCapability))
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup("Test.FromGroup", RpcGroup.make(EmptySupportReason))
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup("Test.FromGroup", RpcGroup.make(InvalidStreamBackpressure))
+  ).toThrow(InvalidBridgeMetadataError)
+  expect(() =>
+    bridgeContractFromRpcGroup("Test.FromGroup", RpcGroup.make(ZeroStreamBackpressure))
+  ).toThrow(InvalidBridgeMetadataError)
 })
 
-test("BridgeRpc.group carries endpoint, capability, support, stream, and event metadata", () => {
-  const NotesRpcs = BridgeRpc.group(
+test("canonical RpcGroup carries endpoint, capability, support, stream, and event metadata", () => {
+  const List = Rpc.make("Test.Metadata.list", {
+    success: Schema.Array(Schema.String)
+  }).pipe(RpcEndpoint.query, BridgeRuntime({ cachedResultMs: 1_000 }))
+  const Open = Rpc.make("Test.Metadata.open", {
+    payload: Schema.Struct({ id: Schema.String }),
+    success: Schema.Struct({ ok: Schema.Boolean }),
+    error: Schema.Never
+  }).pipe(
+    RpcCapability({ kind: "notes:open" }),
+    RpcSupport.unsupported("host adapter does not implement open yet")
+  )
+  const Watch = Rpc.make("Test.Metadata.watch", {
+    success: Schema.String,
+    error: Schema.Never,
+    stream: true
+  })
+  const Changed = Rpc.make("Test.Metadata.events.changed", {
+    success: Schema.Struct({ id: Schema.String }),
+    error: Schema.Never,
+    stream: true
+  })
+  const NotesRpcs = bridgeContractFromRpcGroup(
     "Test.Metadata",
-    {
-      list: {
-        input: Schema.Void,
-        output: Schema.Array(Schema.String),
-        error: Schema.Never,
-        cachedResultMs: 1_000,
-        idempotent: true
-      },
-      open: {
-        input: Schema.Struct({ id: Schema.String }),
-        output: Schema.Struct({ ok: Schema.Boolean }),
-        error: Schema.Never,
-        permission: "notes:open",
-        support: {
-          status: "unsupported",
-          reason: "host adapter does not implement open yet"
-        }
-      },
-      watch: {
-        input: Schema.Void,
-        output: BridgeRpc.Stream(Schema.String, Schema.Never),
-        error: Schema.Never
-      }
-    },
-    {
-      changed: {
-        payload: Schema.Struct({ id: Schema.String })
-      }
-    }
+    RpcGroup.make(List, Open, Watch, Changed)
   )
 
   expect(Array.from(NotesRpcs.requests.keys()).sort()).toEqual([
@@ -387,7 +238,7 @@ test("BridgeRpc.group carries endpoint, capability, support, stream, and event m
     status: "unsupported",
     reason: "host adapter does not implement open yet"
   })
-  expect(Object.isFrozen(NotesRpcs.spec.open.support)).toBe(true)
+  expect(Object.isFrozen(NotesRpcs.spec["open"]?.support)).toBe(true)
   expect(RpcSchema.isStreamSchema(successSchema(request(NotesRpcs, "Test.Metadata.watch")))).toBe(
     true
   )
@@ -396,17 +247,31 @@ test("BridgeRpc.group carries endpoint, capability, support, stream, and event m
   ).toBe(true)
 })
 
-const validMethodSpec = () => ({
-  input: Schema.String,
-  output: Schema.String,
-  error: Schema.Never
+test("bridgeContractFromRpcGroup requires pure Rpc schemas", () => {
+  type DecodeService = { readonly _tag: "DecodeService" }
+  const ServicefulPayload = Schema.String as Schema.Codec<string, string, DecodeService, never>
+  const ServicefulRpc = Rpc.make("Test.FromGroup.serviceful", {
+    payload: ServicefulPayload,
+    success: Schema.String
+  })
+
+  const compileOnly = () => {
+    // @ts-expect-error bridge runtimes cannot provide schema services while decoding host payloads
+    bridgeContractFromRpcGroup("Test.FromGroup", RpcGroup.make(ServicefulRpc))
+  }
+
+  expect(compileOnly).toBeFunction()
+  expect(ServicefulRpc._tag).toBe("Test.FromGroup.serviceful")
 })
 
 interface RpcWithSuccessSchema extends Rpc.Any {
   readonly successSchema: Schema.Top
 }
 
-const request = (group: RpcGroup.RpcGroup<Rpc.Any>, tag: string): Rpc.Any => {
+const request = (
+  group: { readonly requests: ReadonlyMap<string, Rpc.AnyWithProps> },
+  tag: string
+): Rpc.AnyWithProps => {
   const rpc = group.requests.get(tag)
 
   expect(rpc, tag).toBeDefined()

@@ -1,6 +1,20 @@
 import { randomUUID } from "node:crypto"
 
-import { Cause, Context, Data, Deferred, Effect, Match, Option, Ref, Schema } from "effect"
+import {
+  Cause,
+  Clock,
+  Context,
+  Data,
+  Deferred,
+  Effect,
+  Exit,
+  FiberMap,
+  Match,
+  Option,
+  Ref,
+  Schema,
+  Scope
+} from "effect"
 
 import { approvalAuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 
@@ -94,9 +108,8 @@ export interface ApprovalBrokerOptions {
 }
 
 export interface ApprovalBrokerApi {
-  readonly ask: (
-    request: ApprovalRequest
-  ) => Effect.Effect<ApprovalOutcome, ApprovalBrokerError, never>
+  readonly ask: (request: unknown) => Effect.Effect<ApprovalOutcome, ApprovalBrokerError, never>
+  readonly shutdown: Effect.Effect<void, never, never>
 }
 
 interface BrokerState {
@@ -137,48 +150,64 @@ export const makeApprovalBroker = (
       options.maxQueueDepthPerActor ?? DEFAULT_MAX_QUEUE_DEPTH_PER_ACTOR
     )
     const state = yield* Ref.make<BrokerState>(EMPTY_STATE)
-    const now = options.now ?? Date.now
+    const scope = yield* Scope.make()
+    const activePrompts = yield* Scope.provide(scope)(FiberMap.make<string, void, never>())
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     const traceId = options.traceId ?? randomUUID
 
     return Object.freeze({
       ask: (request) =>
         Effect.gen(function* () {
           const decoded = yield* decodeRequest(request)
-          const requestWithTrace = yield* withTraceId(decoded, traceId)
-          yield* auditApproval(options.audit, "approval requested", requestWithTrace, Option.none())
-
-          if (options.devApproveAll === true) {
-            const outcome = approvalOutcome(requestWithTrace, "approved-once", now(), "dev-bypass")
+          return yield* Effect.gen(function* () {
+            const requestWithTrace = yield* withTraceId(decoded, traceId)
             yield* auditApproval(
               options.audit,
-              "approval granted",
+              "approval requested",
               requestWithTrace,
-              Option.some(outcome)
+              Option.none()
             )
-            return outcome
-          }
 
-          const waiter = yield* Deferred.make<ApprovalOutcome, ApprovalBrokerError>()
-          const result = yield* Ref.modify(state, (current) =>
-            enqueue(current, requestWithTrace, waiter, maxQueueDepthPerActor, now())
-          )
-
-          return yield* Match.value(result).pipe(
-            Match.tag("Await", () => Deferred.await(waiter)),
-            Match.tag("Immediate", (r) => Effect.succeed(r.outcome)),
-            Match.tag("Overflow", (r) => Effect.fail(r.error)),
-            Match.tag("Start", (r) =>
-              startPromptLoop(state, options.prompt, options.audit, r.entry).pipe(
-                Effect.flatMap(() => Deferred.await(waiter))
+            if (options.devApproveAll === true) {
+              const outcome = approvalOutcome(
+                requestWithTrace,
+                "approved-once",
+                now(),
+                "dev-bypass"
               )
-            ),
-            Match.exhaustive
+              yield* auditApproval(
+                options.audit,
+                "approval granted",
+                requestWithTrace,
+                Option.some(outcome)
+              )
+              return outcome
+            }
+
+            const waiter = yield* Deferred.make<ApprovalOutcome, ApprovalBrokerError>()
+            const result = yield* Ref.modify(state, (current) =>
+              enqueue(current, requestWithTrace, waiter, maxQueueDepthPerActor, now())
+            )
+
+            return yield* Match.value(result).pipe(
+              Match.tag("Await", () => Deferred.await(waiter)),
+              Match.tag("Immediate", (r) => Effect.succeed(r.outcome)),
+              Match.tag("Overflow", (r) => Effect.fail(r.error)),
+              Match.tag("Start", (r) =>
+                startPromptLoop(activePrompts, state, options.prompt, options.audit, r.entry).pipe(
+                  Effect.flatMap(() => Deferred.await(waiter))
+                )
+              ),
+              Match.exhaustive
+            )
+          }).pipe(
+            Effect.withSpan("ApprovalBroker.ask", {
+              attributes: { operation: decoded.operation, actor: decoded.actor }
+            })
           )
-        }).pipe(
-          Effect.withSpan("ApprovalBroker.ask", {
-            attributes: { operation: request.operation, actor: request.actor }
-          })
-        )
+        }),
+      shutdown: Scope.close(scope, Exit.void)
     } satisfies ApprovalBrokerApi)
   }).pipe(Effect.withSpan("ApprovalBroker.make"))
 
@@ -272,14 +301,19 @@ const enqueue = (
 }
 
 const startPromptLoop = (
+  activePrompts: FiberMap.FiberMap<string, void, never>,
   state: Ref.Ref<BrokerState>,
   prompt: ApprovalPromptPort,
   audit: AuditEventsApi | undefined,
   entry: PromptEntry
 ): Effect.Effect<void, never, never> =>
-  Effect.sync(() => {
-    Effect.runFork(runPromptLoop(state, prompt, audit, entry))
-  })
+  FiberMap.run(
+    activePrompts,
+    activePromptKey(entry),
+    runPromptLoop(state, prompt, audit, entry).pipe(
+      Effect.onInterrupt(() => interruptPromptLoop(state, entry))
+    )
+  ).pipe(Effect.asVoid)
 
 const runPromptLoop = (
   state: Ref.Ref<BrokerState>,
@@ -364,6 +398,40 @@ const completeFailure = (
   Effect.forEach(entry.waiters, (waiter) => Deferred.fail(waiter.deferred, error)).pipe(
     Effect.asVoid
   )
+
+const interruptPromptLoop = (
+  state: Ref.Ref<BrokerState>,
+  entry: PromptEntry
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const interrupted = yield* Ref.modify(state, (current) => {
+      const actor = actorQueue(current, entry.request.actor)
+      const active = Option.getOrUndefined(actor.active)
+      const entries =
+        active === undefined || active.key !== entry.key ? [entry] : [active, ...actor.queued]
+      return [
+        entries,
+        setActorQueue(current, entry.request.actor, {
+          active: Option.none(),
+          queued: [],
+          deniedScopes: actor.deniedScopes
+        })
+      ] as const
+    })
+    yield* Effect.forEach(
+      interrupted,
+      (current) =>
+        completeFailure(
+          current,
+          new ApprovalBrokerPromptFailedError({
+            operation: "ApprovalBroker.shutdown",
+            request: current.request,
+            cause: "broker shutdown"
+          })
+        ),
+      { discard: true }
+    )
+  })
 
 const auditApproval = (
   audit: AuditEventsApi | undefined,
@@ -480,6 +548,8 @@ const promptWaiter = (
 const approvalKey = (request: ApprovalRequest): string =>
   `${request.operation}\u0000${request.actor}\u0000${request.resource ?? ""}`
 
+const activePromptKey = (entry: PromptEntry): string => `${entry.request.actor}\u0000${entry.key}`
+
 const approvalOutcome = (
   request: ApprovalRequest,
   outcome: ApprovalOutcomeKind,
@@ -489,7 +559,7 @@ const approvalOutcome = (
   new ApprovalOutcome({
     requestId: request.id,
     outcome,
-    traceId: request.traceId ?? randomUUID(),
+    traceId: request.traceId ?? request.id,
     decidedAt,
     source
   })

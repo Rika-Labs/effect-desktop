@@ -1,45 +1,45 @@
 {
   "schemaVersion": 1,
-  "source": "docs/SPEC.md §25.3",
+  "source": "engineering/SPEC.md §25.3",
   "pages": [
-    { "id": "installation", "title": "Installation", "path": "docs/user/installation.md" },
-    { "id": "quickstart", "title": "Quickstart", "path": "docs/user/quickstart.md" },
-    { "id": "concepts", "title": "Concepts", "path": "docs/user/concepts.md" },
+    { "id": "installation", "title": "Installation", "path": "docs/installation.md" },
+    { "id": "quickstart", "title": "Quickstart", "path": "docs/quickstart.md" },
+    { "id": "concepts", "title": "Concepts", "path": "docs/concepts.md" },
     {
       "id": "architecture-overview",
       "title": "Architecture Overview",
-      "path": "docs/user/architecture-overview.md"
+      "path": "docs/architecture-overview.md"
     },
-    { "id": "app-config", "title": "App Config", "path": "docs/user/app-config.md" },
-    { "id": "windows", "title": "Windows", "path": "docs/user/windows.md" },
-    { "id": "typed-apis", "title": "Typed APIs", "path": "docs/user/typed-apis.md" },
-    { "id": "bridge", "title": "Bridge", "path": "docs/user/bridge.md" },
+    { "id": "app-config", "title": "App Config", "path": "docs/app-config.md" },
+    { "id": "windows", "title": "Windows", "path": "docs/windows.md" },
+    { "id": "typed-apis", "title": "Typed APIs", "path": "docs/typed-apis.md" },
+    { "id": "bridge", "title": "Bridge", "path": "docs/bridge.md" },
     {
       "id": "native-services",
       "title": "Native Services",
-      "path": "docs/user/native-services.md"
+      "path": "docs/native-services.md"
     },
-    { "id": "resources", "title": "Resources", "path": "docs/user/resources.md" },
-    { "id": "processes", "title": "Processes", "path": "docs/user/processes.md" },
-    { "id": "ptys", "title": "PTYs", "path": "docs/user/ptys.md" },
-    { "id": "filesystem", "title": "Filesystem", "path": "docs/user/filesystem.md" },
-    { "id": "storage", "title": "Storage", "path": "docs/user/storage.md" },
-    { "id": "permissions", "title": "Permissions", "path": "docs/user/permissions.md" },
-    { "id": "commands", "title": "Commands", "path": "docs/user/commands.md" },
-    { "id": "devtools", "title": "Devtools", "path": "docs/user/devtools.md" },
-    { "id": "testing", "title": "Testing", "path": "docs/user/testing.md" },
-    { "id": "packaging", "title": "Packaging", "path": "docs/user/packaging.md" },
-    { "id": "signing", "title": "Signing", "path": "docs/user/signing.md" },
-    { "id": "updating", "title": "Updating", "path": "docs/user/updating.md" },
+    { "id": "resources", "title": "Resources", "path": "docs/resources.md" },
+    { "id": "processes", "title": "Processes", "path": "docs/processes.md" },
+    { "id": "ptys", "title": "PTYs", "path": "docs/ptys.md" },
+    { "id": "filesystem", "title": "Filesystem", "path": "docs/filesystem.md" },
+    { "id": "storage", "title": "Storage", "path": "docs/storage.md" },
+    { "id": "permissions", "title": "Permissions", "path": "docs/permissions.md" },
+    { "id": "commands", "title": "Commands", "path": "docs/commands.md" },
+    { "id": "devtools", "title": "Devtools", "path": "docs/devtools.md" },
+    { "id": "testing", "title": "Testing", "path": "docs/testing.md" },
+    { "id": "packaging", "title": "Packaging", "path": "docs/packaging.md" },
+    { "id": "signing", "title": "Signing", "path": "docs/signing.md" },
+    { "id": "updating", "title": "Updating", "path": "docs/updating.md" },
     {
       "id": "troubleshooting",
       "title": "Troubleshooting",
-      "path": "docs/user/troubleshooting.md"
+      "path": "docs/troubleshooting.md"
     },
     {
       "id": "contribution-guide",
       "title": "Contribution Guide",
-      "path": "docs/user/contribution-guide.md"
+      "path": "docs/contribution-guide.md"
     }
   ]
 }

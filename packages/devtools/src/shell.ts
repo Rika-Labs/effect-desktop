@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto"
 import { mkdir, rm, chmod, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
+import { makeInspectorSafetyPolicy } from "@effect-desktop/core"
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -14,6 +15,7 @@ export class DevtoolsStartInput extends Schema.Class<DevtoolsStartInput>("Devtoo
   stateDir: NonEmptyString,
   devtoolsFlag: Schema.optionalKey(Schema.Boolean),
   securityDevtoolsInProd: Schema.optionalKey(Schema.Boolean),
+  inspectorCapture: Schema.optionalKey(Schema.Literals(["disabled", "safe"])),
   openShell: Schema.optionalKey(Schema.Boolean)
 }) {}
 
@@ -46,12 +48,20 @@ export class DevtoolsShellOpenError extends Data.TaggedError("ShellOpenError")<{
   readonly cause: unknown
 }> {}
 
+export class DevtoolsUnsafeProductionCaptureError extends Data.TaggedError(
+  "UnsafeProductionCapture"
+)<{
+  readonly operation: string
+  readonly message: string
+}> {}
+
 export type DevtoolsError =
   | DevtoolsInvalidInputError
   | DevtoolsTokenError
   | DevtoolsBindError
   | DevtoolsCleanupError
   | DevtoolsShellOpenError
+  | DevtoolsUnsafeProductionCaptureError
 
 export interface DevtoolsHandle {
   readonly status: "disabled" | "enabled"
@@ -110,9 +120,11 @@ export const makeDevtoolsShell = (
       start: (rawInput) =>
         Effect.gen(function* () {
           const input = yield* decodeStartInput(rawInput)
+          yield* rejectUnsafeProductionCapture(input)
           if (!shouldStartDevtools(input)) {
             return disabledHandle
           }
+          yield* assertDevtoolsCapturePolicy(input)
 
           const token = mintToken()
           const tokenPath = join(input.stateDir, tokenName)
@@ -134,7 +146,10 @@ export const makeDevtoolsShell = (
 
 export const shouldStartDevtools = (input: typeof DevtoolsStartInput.Type): boolean =>
   input.profile === "dev" ||
-  (input.profile === "prod" && input.devtoolsFlag === true && input.securityDevtoolsInProd === true)
+  (input.profile === "prod" &&
+    input.devtoolsFlag === true &&
+    input.securityDevtoolsInProd === true &&
+    input.inspectorCapture === "safe")
 
 export const BunLoopbackDevtoolsTransport: DevtoolsLoopbackTransport = Object.freeze({
   listen: (input: { readonly host: string; readonly token: string }) =>
@@ -222,6 +237,41 @@ const decodeStartInput = (
   )
 
 const mintToken = (): string => randomBytes(TokenBytes).toString("hex")
+
+const rejectUnsafeProductionCapture = (
+  input: DevtoolsStartInput
+): Effect.Effect<void, DevtoolsUnsafeProductionCaptureError, never> =>
+  input.profile === "prod" &&
+  input.devtoolsFlag === true &&
+  input.securityDevtoolsInProd === true &&
+  input.inspectorCapture !== "safe"
+    ? Effect.fail(
+        new DevtoolsUnsafeProductionCaptureError({
+          operation: "Devtools.start",
+          message: "production devtools capture requires inspectorCapture: safe"
+        })
+      )
+    : Effect.void
+
+const assertDevtoolsCapturePolicy = (
+  input: DevtoolsStartInput
+): Effect.Effect<void, DevtoolsUnsafeProductionCaptureError, never> =>
+  input.profile === "prod"
+    ? makeInspectorSafetyPolicy(
+        input.inspectorCapture === undefined
+          ? { mode: "production" }
+          : { mode: "production", productionCapture: input.inspectorCapture }
+      ).pipe(
+        Effect.flatMap((policy) => policy.assertProductionCapture()),
+        Effect.mapError(
+          () =>
+            new DevtoolsUnsafeProductionCaptureError({
+              operation: "Devtools.start",
+              message: "production devtools capture requires a validated safe inspector policy"
+            })
+        )
+      )
+    : Effect.void
 
 const writeToken = (path: string, token: string): Effect.Effect<void, DevtoolsTokenError, never> =>
   Effect.tryPromise({

@@ -27,7 +27,7 @@ applications rely on the host-installed renderer transport.
 ## Non-goals
 
 - This package does not define desktop APIs. Use `Rpc.make`, `RpcGroup.make`, and
-  `Desktop.Rpcs.layer(...)` in app code.
+  `Desktop.rpc(group, handlers)` in app code (compose multiple via `Desktop.rpcs`).
 - This package does not open startup windows. Startup windows belong to
   `Desktop.make({ windows })` and the host runtime.
 - This package does not expose raw bridge client maps as the normal public API.
@@ -71,9 +71,9 @@ bun test packages/vue/src/index.test.ts
 bun run typecheck
 ```
 
-Tests can pass an in-memory renderer transport to `createApp` or
-`provideDesktop`. Unmounting the Vue app or disposing the Vue scope closes the
-renderer RPC runtime and interrupts active streams.
+Tests can pass `RpcTest`-backed RPC layers to `createApp` or `provideDesktop`.
+Unmounting the Vue app or disposing the Vue scope disposes the managed renderer
+RPC client layer and interrupts active streams.
 
 ## Platform notes
 
@@ -83,7 +83,8 @@ their Vue runtime version.
 
 ## Internal architecture
 
-The adapter builds a renderer RPC runtime from the desktop manifest, a transport,
-and `RpcClient.make(group)`. Vue `provide` stores only the derived runtime client
-map. `useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
+The adapter builds a `ManagedRuntime` from a scoped renderer RPC client layer.
+That layer uses a host transport with `RpcClient.make(group)` or test RPC layers
+with `RpcTest`. Vue `provide` stores only the derived client map.
+`useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
 Vue-native composables, and attaches support metadata to each endpoint.

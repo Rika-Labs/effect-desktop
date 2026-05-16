@@ -1,26 +1,216 @@
-use crate::scheme;
-use anyhow::{Context, Result};
+use crate::{runtime, scheme};
+use anyhow::Context;
+use host_protocol::HostProtocolError;
 use std::borrow::Cow;
+use std::path::Path;
 use tao::window::Window;
 use tracing::info;
 use wry::{WebView, WebViewBuilder};
 
 const WEBVIEW_OPENED_EVENT: &str = "host.webview.opened";
 const DEV_URL_ENV: &str = "EFFECT_DESKTOP_DEV_URL";
+const WEBVIEW_CREATE_OPERATION: &str = host_protocol::WINDOW_CREATE_METHOD;
 
-pub(crate) fn attach_app_webview(window: &Window) -> Result<WebView> {
+pub(crate) type HostWebView = WebView;
+type WebViewResult<T> = std::result::Result<T, Box<HostProtocolError>>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WebEngineKind {
+    System,
+    Chrome,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewCapabilities {
+    engine: WebEngineKind,
+    available: bool,
+}
+
+trait WebEngineProvider {
+    fn attach_app_webview(
+        &self,
+        window: &Window,
+        request: WebViewRequest,
+    ) -> WebViewResult<HostWebView>;
+
+    fn capabilities(&self) -> WebViewCapabilities;
+}
+
+struct WebViewRequest {
+    url: Cow<'static, str>,
+    chrome_runtime_path: Option<String>,
+}
+
+struct SystemWebEngineProvider;
+
+impl WebEngineProvider for SystemWebEngineProvider {
+    fn attach_app_webview(
+        &self,
+        window: &Window,
+        request: WebViewRequest,
+    ) -> WebViewResult<HostWebView> {
+        let builder =
+            scheme::register_app_scheme(WebViewBuilder::new()).with_url(request.url.to_string());
+        build_webview(builder, window).map_err(|error| {
+            Box::new(HostProtocolError::internal(
+                format!("failed to attach system WebView provider: {error}"),
+                WEBVIEW_CREATE_OPERATION,
+            ))
+        })
+    }
+
+    fn capabilities(&self) -> WebViewCapabilities {
+        WebViewCapabilities {
+            engine: WebEngineKind::System,
+            available: true,
+        }
+    }
+}
+
+struct ChromeWebEngineProvider;
+
+impl WebEngineProvider for ChromeWebEngineProvider {
+    fn attach_app_webview(
+        &self,
+        _window: &Window,
+        request: WebViewRequest,
+    ) -> WebViewResult<HostWebView> {
+        Err(chrome_provider_missing_error(
+            request.chrome_runtime_path.as_deref(),
+        ))
+    }
+
+    fn capabilities(&self) -> WebViewCapabilities {
+        WebViewCapabilities {
+            engine: WebEngineKind::Chrome,
+            available: false,
+        }
+    }
+}
+
+fn chrome_provider_missing_error(runtime_path: Option<&str>) -> Box<HostProtocolError> {
+    let suffix = runtime_path
+        .map(|path| format!(" at {path}"))
+        .unwrap_or_default();
+    Box::new(HostProtocolError::unsupported(
+        format!(
+            "web.engine chrome was selected, but the bundled Chromium/CEF WebView provider is not installed{suffix}"
+        ),
+        WEBVIEW_CREATE_OPERATION,
+    ))
+}
+
+pub(crate) fn attach_app_webview(window: &Window) -> WebViewResult<HostWebView> {
+    let selection = selected_web_engine()?;
     let url = renderer_url(std::env::var(DEV_URL_ENV).ok());
-    let builder = scheme::register_app_scheme(WebViewBuilder::new()).with_url(url.to_string());
-    let webview = build_webview(builder, window)?;
+    let url_for_log = url.to_string();
+    let request = WebViewRequest {
+        url,
+        chrome_runtime_path: selection.chrome_runtime_path,
+    };
+    let provider = provider_for(selection.kind);
+    let capabilities = provider.capabilities();
+    let webview = provider.attach_app_webview(window, request)?;
 
     info!(
         event = WEBVIEW_OPENED_EVENT,
+        engine = ?capabilities.engine,
+        available = capabilities.available,
         source = scheme::APP_PROTOCOL_SOURCE_KIND,
-        url = url.as_ref(),
+        url = url_for_log,
         "host webview opened"
     );
 
     Ok(webview)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WebEngineSelection {
+    kind: WebEngineKind,
+    chrome_runtime_path: Option<String>,
+}
+
+fn selected_web_engine() -> WebViewResult<WebEngineSelection> {
+    let current_exe = std::env::current_exe().map_err(|error| {
+        Box::new(HostProtocolError::internal(
+            format!("failed to read current executable while resolving web engine: {error}"),
+            WEBVIEW_CREATE_OPERATION,
+        ))
+    })?;
+    let Some(manifest_path) = runtime::manifest_path_for_exe(&current_exe) else {
+        return Ok(WebEngineSelection {
+            kind: WebEngineKind::System,
+            chrome_runtime_path: None,
+        });
+    };
+    if !manifest_path.is_file() {
+        return Ok(WebEngineSelection {
+            kind: WebEngineKind::System,
+            chrome_runtime_path: None,
+        });
+    }
+    web_engine_from_manifest_path(&manifest_path)
+}
+
+fn web_engine_from_manifest_path(path: &Path) -> WebViewResult<WebEngineSelection> {
+    let source = std::fs::read_to_string(path).map_err(|error| {
+        Box::new(HostProtocolError::internal(
+            format!("failed to read app-manifest.json while resolving web engine: {error}"),
+            WEBVIEW_CREATE_OPERATION,
+        ))
+    })?;
+    web_engine_from_manifest_str(&source)
+}
+
+fn web_engine_from_manifest_str(source: &str) -> WebViewResult<WebEngineSelection> {
+    let value: serde_json::Value = serde_json::from_str(source).map_err(|error| {
+        Box::new(HostProtocolError::internal(
+            format!("failed to parse app-manifest.json while resolving web engine: {error}"),
+            WEBVIEW_CREATE_OPERATION,
+        ))
+    })?;
+    let Some(host_manifest) = value.get("hostManifest") else {
+        return Ok(WebEngineSelection {
+            kind: WebEngineKind::System,
+            chrome_runtime_path: None,
+        });
+    };
+    let Some(web_engine) = host_manifest.get("webEngine") else {
+        return Ok(WebEngineSelection {
+            kind: WebEngineKind::System,
+            chrome_runtime_path: None,
+        });
+    };
+    match web_engine.as_str() {
+        Some("system") => Ok(WebEngineSelection {
+            kind: WebEngineKind::System,
+            chrome_runtime_path: None,
+        }),
+        Some("chrome") | Some("chromium") => Ok(WebEngineSelection {
+            kind: WebEngineKind::Chrome,
+            chrome_runtime_path: host_manifest
+                .get("webEnginePath")
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned),
+        }),
+        Some(other) => Err(Box::new(HostProtocolError::invalid_argument(
+            "hostManifest.webEngine",
+            format!("must be system or chrome, got {other}"),
+            WEBVIEW_CREATE_OPERATION,
+        ))),
+        None => Err(Box::new(HostProtocolError::invalid_argument(
+            "hostManifest.webEngine",
+            "must be a string",
+            WEBVIEW_CREATE_OPERATION,
+        ))),
+    }
+}
+
+fn provider_for(engine: WebEngineKind) -> &'static dyn WebEngineProvider {
+    match engine {
+        WebEngineKind::System => &SystemWebEngineProvider,
+        WebEngineKind::Chrome => &ChromeWebEngineProvider,
+    }
 }
 
 fn renderer_url(dev_url: Option<String>) -> Cow<'static, str> {
@@ -31,14 +221,14 @@ fn renderer_url(dev_url: Option<String>) -> Cow<'static, str> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> Result<WebView> {
+fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result<WebView> {
     builder
         .build(window)
         .context("failed to build host webview")
 }
 
 #[cfg(target_os = "linux")]
-fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> Result<WebView> {
+fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result<WebView> {
     use tao::platform::unix::WindowExtUnix;
     use wry::WebViewBuilderExtUnix;
 
@@ -53,7 +243,9 @@ fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> Result<WebView
 
 #[cfg(test)]
 mod tests {
-    use super::renderer_url;
+    use super::{
+        chrome_provider_missing_error, renderer_url, web_engine_from_manifest_str, WebEngineKind,
+    };
     use crate::scheme::{APP_PROTOCOL_SOURCE_KIND, APP_URL};
 
     #[test]
@@ -70,5 +262,62 @@ mod tests {
         );
         assert_eq!(renderer_url(Some("".to_string())).as_ref(), APP_URL);
         assert_eq!(renderer_url(None).as_ref(), APP_URL);
+    }
+
+    #[test]
+    fn web_engine_defaults_to_system_when_manifest_field_is_absent() {
+        assert_eq!(
+            web_engine_from_manifest_str(r#"{"hostManifest":{}}"#)
+                .expect("web engine should parse")
+                .kind,
+            WebEngineKind::System
+        );
+        assert_eq!(
+            web_engine_from_manifest_str(r#"{}"#)
+                .expect("web engine should parse")
+                .kind,
+            WebEngineKind::System
+        );
+    }
+
+    #[test]
+    fn web_engine_reads_system_and_chrome_manifest_values() {
+        assert_eq!(
+            web_engine_from_manifest_str(r#"{"hostManifest":{"webEngine":"system"}}"#)
+                .expect("system engine should parse")
+                .kind,
+            WebEngineKind::System
+        );
+        let chrome = web_engine_from_manifest_str(
+            r#"{"hostManifest":{"webEngine":"chrome","webEnginePath":"native/chrome"}}"#,
+        )
+        .expect("chrome engine should parse");
+        assert_eq!(chrome.kind, WebEngineKind::Chrome);
+        assert_eq!(chrome.chrome_runtime_path.as_deref(), Some("native/chrome"));
+
+        assert_eq!(
+            web_engine_from_manifest_str(r#"{"hostManifest":{"webEngine":"chromium"}}"#)
+                .expect("legacy chromium engine should parse")
+                .kind,
+            WebEngineKind::Chrome
+        );
+    }
+
+    #[test]
+    fn web_engine_rejects_invalid_manifest_values() {
+        let error = web_engine_from_manifest_str(r#"{"hostManifest":{"webEngine":"servo"}}"#)
+            .expect_err("invalid engine should fail");
+
+        assert_eq!(error.tag(), "InvalidArgument");
+        assert!(format!("{error:?}").contains("hostManifest.webEngine"));
+    }
+
+    #[test]
+    fn chrome_provider_reports_typed_unsupported_when_missing() {
+        let error = chrome_provider_missing_error(Some("native/chrome"));
+
+        assert_eq!(error.tag(), "Unsupported");
+        assert!(format!("{error:?}").contains("bundled Chromium/CEF WebView provider"));
+        assert!(format!("{error:?}").contains("native/chrome"));
     }
 }

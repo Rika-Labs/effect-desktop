@@ -1,11 +1,30 @@
 import { createHash } from "node:crypto"
-import { lstat, mkdir, readdir, readFile, readlink, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
-export type NotarizeTarget = "macos-arm64" | "macos-x64"
+import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
+
+import {
+  ReleaseFileSystem,
+  runReleaseFileSystem,
+  type ReleaseFileInfo
+} from "./release-file-system.js"
+import { runReleaseTool } from "./release-tool-runner.js"
+import {
+  decodeDesktopTarget,
+  detectDesktopHostTarget,
+  isMacosDesktopTargetId,
+  resolveMacosDesktopHostTarget
+} from "./targets.js"
+import type {
+  DesktopTarget,
+  MacosDesktopTargetId,
+  UnsupportedDesktopHostTargetError
+} from "./targets.js"
+
+export type NotarizeTarget = MacosDesktopTargetId
 export type NotarizeArtifactKind = "app" | "dmg"
 export type NotarizeStepName =
   | "stapler-validate"
@@ -84,6 +103,7 @@ export interface DesktopNotarizeOptions {
   readonly commandRunner: NotarizeCommandRunner
   readonly now: () => number
   readonly hostTarget: NotarizeTarget | undefined
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export interface NotarizeStepReport {
@@ -168,7 +188,7 @@ export const runDesktopNotarize = (
       target
     })
     const artifacts = yield* readPackagedArtifacts(plan)
-    const credentials = yield* resolveCredentials(plan.config)
+    const credentials = yield* resolveCredentials(plan.config, options.env ?? {})
     const steps: NotarizeStepReport[] = []
     const reports: NotarizeArtifactReport[] = []
 
@@ -194,38 +214,25 @@ export const runDesktopNotarize = (
   })
 
 export const detectNotarizeHostTarget = (): NotarizeTarget | undefined => {
-  if (process.platform !== "darwin") {
-    return undefined
-  }
-  if (process.arch === "arm64" || process.arch === "x64") {
-    return `macos-${process.arch}` as NotarizeTarget
-  }
-  return undefined
+  const target = detectDesktopHostTarget()
+  return isMacosDesktopTargetId(target) ? target : undefined
 }
 
 export const runNotarizeCommand: NotarizeCommandRunner = (invocation) =>
-  Effect.tryPromise({
-    try: async () => {
-      const spawned = Bun.spawn([invocation.command, ...invocation.args], {
-        cwd: invocation.cwd,
-        stdout: "pipe",
-        stderr: "pipe"
-      })
-      const [stdout, stderr, exitCode] = await Promise.all([
-        readStreamText(spawned.stdout),
-        readStreamText(spawned.stderr),
-        spawned.exited
-      ])
-      return { stdout, stderr, exitCode }
-    },
-    catch: (cause) =>
-      new NotarizeCommandFailedError({
-        step: invocation.step,
-        command: [invocation.command, ...invocation.args],
-        cwd: invocation.cwd,
-        exitCode: undefined,
-        message: formatUnknownError(cause)
-      })
+  Effect.gen(function* () {
+    const result = yield* runReleaseTool({ ...invocation, stdout: "pipe", stderr: "pipe" }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new NotarizeCommandFailedError({
+            step: invocation.step,
+            command: [invocation.command, ...invocation.args],
+            cwd: invocation.cwd,
+            exitCode: undefined,
+            message: formatUnknownError(cause)
+          })
+      )
+    )
+    return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode }
   })
 
 const notarizeArtifact = (
@@ -359,7 +366,21 @@ const runToolStep = (
 > =>
   Effect.gen(function* () {
     const start = options.now()
-    const output = yield* options.commandRunner({ step: name, command, args, cwd })
+    const output = yield* options.commandRunner({ step: name, command, args, cwd }).pipe(
+      Effect.mapError((error) =>
+        error instanceof NotarizeCommandFailedError
+          ? new NotarizeCommandFailedError({
+              step: error.step,
+              command: [command, ...reportArgs],
+              cwd: error.cwd,
+              exitCode: error.exitCode,
+              message: error.message,
+              ...(error.stdout === undefined ? {} : { stdout: error.stdout }),
+              ...(error.stderr === undefined ? {} : { stderr: error.stderr })
+            })
+          : error
+      )
+    )
     const step = {
       name,
       command: [command, ...reportArgs],
@@ -394,19 +415,23 @@ const parseSubmission = (
   stdout: string,
   stderr: string
 ): Effect.Effect<NotarySubmission, NotarizeCommandFailedError, never> =>
-  Effect.try({
-    try: () => (stdout.length === 0 ? undefined : (JSON.parse(stdout) as unknown)),
-    catch: (cause) =>
-      new NotarizeCommandFailedError({
-        step: "notarytool-submit",
-        command: ["xcrun", "notarytool", "submit"],
-        cwd: "",
-        exitCode: undefined,
-        message: `failed to parse notarytool JSON output: ${formatUnknownError(cause)}`,
-        stdout,
-        stderr
-      })
-  }).pipe(
+  (stdout.length === 0
+    ? Effect.succeed(undefined)
+    : Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(stdout).pipe(
+        Effect.mapError(
+          (cause) =>
+            new NotarizeCommandFailedError({
+              step: "notarytool-submit",
+              command: ["xcrun", "notarytool", "submit"],
+              cwd: "",
+              exitCode: undefined,
+              message: `failed to parse notarytool JSON output: ${formatUnknownError(cause)}`,
+              stdout,
+              stderr
+            })
+        )
+      )
+  ).pipe(
     Effect.flatMap((value) =>
       isRecord(value) && typeof value["status"] === "string"
         ? Effect.succeed({
@@ -453,13 +478,14 @@ const normalizeNotarizePlan = (
   })
 
 const resolveCredentials = (
-  config: AppConfig
+  config: AppConfig,
+  env: Readonly<Record<string, string | undefined>>
 ): Effect.Effect<NotaryCredentials, NotarizeConfigError, never> =>
   Effect.gen(function* () {
     const macos = config.signing?.macos
     const profile =
       (yield* readOptionalString(macos?.notarytoolProfile, "signing.macos.notarytoolProfile")) ??
-      process.env["APPLE_NOTARYTOOL_PROFILE"]
+      env["APPLE_NOTARYTOOL_PROFILE"]
     if (profile !== undefined && profile.length > 0) {
       return {
         args: ["--keychain-profile", profile],
@@ -467,24 +493,37 @@ const resolveCredentials = (
       }
     }
     const appleId =
-      (yield* readOptionalString(macos?.appleId, "signing.macos.appleId")) ??
-      process.env["APPLE_ID"]
+      (yield* readOptionalString(macos?.appleId, "signing.macos.appleId")) ?? env["APPLE_ID"]
     const teamId =
-      (yield* readOptionalString(macos?.teamId, "signing.macos.teamId")) ??
-      process.env["APPLE_TEAM_ID"]
+      (yield* readOptionalString(macos?.teamId, "signing.macos.teamId")) ?? env["APPLE_TEAM_ID"]
     const passwordEnv =
       (yield* readOptionalString(macos?.passwordEnv, "signing.macos.passwordEnv")) ??
       "APPLE_APP_SPECIFIC_PASSWORD"
-    const password = process.env[passwordEnv]
+    const password = env[passwordEnv]
     if (
       appleId !== undefined &&
       teamId !== undefined &&
       password !== undefined &&
       password.length > 0
     ) {
+      const passwordSecret = makeSecretString(password, { label: "AppleNotaryPassword" })
       return {
-        args: ["--apple-id", appleId, "--team-id", teamId, "--password", password],
-        reportArgs: ["--apple-id", appleId, "--team-id", teamId, "--password", "<redacted>"]
+        args: [
+          "--apple-id",
+          appleId,
+          "--team-id",
+          teamId,
+          "--password",
+          unsafeSecretString(passwordSecret)
+        ],
+        reportArgs: [
+          "--apple-id",
+          appleId,
+          "--team-id",
+          teamId,
+          "--password",
+          "<redacted:AppleNotaryPassword>"
+        ]
       }
     }
     return yield* Effect.fail(
@@ -502,15 +541,14 @@ const readPackagedArtifacts = (
 ): Effect.Effect<readonly PackagedArtifact[], NotarizeFileError | NotarizeConfigError, never> =>
   Effect.gen(function* () {
     yield* statPath(plan.outputPath).pipe(
-      Effect.catch(() =>
-        Effect.fail(
+      Effect.mapError(
+        () =>
           new NotarizeFileError({
             operation: "discover",
             path: plan.outputPath,
             message: "no macOS packaged artifacts found; run bun desktop package first",
             cause: undefined
           })
-        )
       )
     )
     const entries = yield* readDirectory(plan.outputPath)
@@ -693,15 +731,28 @@ const readTarget = (
   value: unknown,
   field: string
 ): Effect.Effect<NotarizeTarget, NotarizeConfigError, never> =>
-  isNotarizeTarget(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new NotarizeConfigError({
-          field,
-          message: `${field} must be a supported notarize target`,
-          remediation: "Regenerate macOS artifacts with `bun desktop package`."
-        })
-      )
+  decodeDesktopTarget(value).pipe(
+    Effect.flatMap((target) =>
+      isMacosDesktopTargetId(target.id)
+        ? Effect.succeed(target.id)
+        : Effect.fail(
+            new NotarizeConfigError({
+              field,
+              message: `${field} must be a supported notarize target`,
+              remediation: "Regenerate macOS artifacts with `bun desktop package`."
+            })
+          )
+    ),
+    Effect.mapError((error) =>
+      error instanceof NotarizeConfigError
+        ? error
+        : new NotarizeConfigError({
+            field,
+            message: `${field} must be a supported notarize target`,
+            remediation: "Regenerate macOS artifacts with `bun desktop package`."
+          })
+    )
+  )
 
 const readNonNegativeInteger = (
   value: unknown,
@@ -804,64 +855,81 @@ const loadConfig = (path: string): Effect.Effect<unknown, NotarizeConfigError, n
 
 const resolveNotarizeTarget = (
   requested: string | undefined,
-  hostTarget: NotarizeTarget
+  hostTarget: DesktopTarget
 ): Effect.Effect<NotarizeTarget, NotarizeUnsupportedTargetError, never> => {
-  const target = requested ?? hostTarget
-  if (target !== "macos-arm64" && target !== "macos-x64") {
-    return Effect.fail(
-      new NotarizeUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `unsupported notarize target ${target}`,
-        remediation: "Notarization is macOS-only. Run on a macOS host."
-      })
-    )
-  }
-  if (target !== hostTarget) {
-    return Effect.fail(
-      new NotarizeUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `target ${target} does not match host ${hostTarget}`,
-        remediation:
-          "Cross-platform notarization is out of scope. Notarize on the matching macOS host."
-      })
-    )
-  }
-  return Effect.succeed(target)
-}
-
-const isNotarizeTarget = (value: unknown): value is NotarizeTarget =>
-  value === "macos-arm64" || value === "macos-x64"
-
-const resolveHostTarget = (
-  override: NotarizeTarget | undefined
-): Effect.Effect<NotarizeTarget, NotarizeUnsupportedHostError, never> => {
-  const hostTarget = override ?? detectNotarizeHostTarget()
-  if (hostTarget !== undefined) {
-    return Effect.succeed(hostTarget)
-  }
-  return Effect.fail(
-    new NotarizeUnsupportedHostError({
-      platform: process.platform,
-      arch: process.arch,
-      message: `unsupported notarize host ${process.platform}-${process.arch}`,
-      remediation: "Run notarization on macOS x64 or arm64."
+  const target = requested ?? hostTarget.id
+  return decodeDesktopTarget(target).pipe(
+    Effect.mapError(
+      () =>
+        new NotarizeUnsupportedTargetError({
+          target: String(target),
+          hostTarget: hostTarget.id as NotarizeTarget,
+          message: `unsupported notarize target ${String(target)}`,
+          remediation: "Notarization is macOS-only. Run on a macOS host."
+        })
+    ),
+    Effect.flatMap((decoded) => {
+      if (!isMacosDesktopTargetId(decoded.id)) {
+        return Effect.fail(
+          new NotarizeUnsupportedTargetError({
+            target: decoded.id,
+            hostTarget: hostTarget.id as NotarizeTarget,
+            message: `unsupported notarize target ${decoded.id}`,
+            remediation: "Notarization is macOS-only. Run on a macOS host."
+          })
+        )
+      }
+      if (decoded.id !== hostTarget.id) {
+        return Effect.fail(
+          new NotarizeUnsupportedTargetError({
+            target: decoded.id,
+            hostTarget: hostTarget.id as NotarizeTarget,
+            message: `target ${decoded.id} does not match host ${hostTarget.id}`,
+            remediation:
+              "Cross-platform notarization is out of scope. Notarize on the matching macOS host."
+          })
+        )
+      }
+      return Effect.succeed(decoded.id)
     })
   )
 }
 
+const resolveHostTarget = (
+  override: NotarizeTarget | undefined
+): Effect.Effect<DesktopTarget, NotarizeUnsupportedHostError, never> =>
+  resolveMacosDesktopHostTarget(override).pipe(
+    Effect.mapError(
+      (error: UnsupportedDesktopHostTargetError) =>
+        new NotarizeUnsupportedHostError({
+          platform: error.platform,
+          arch: error.arch,
+          message: `unsupported notarize host ${error.platform}-${error.arch}`,
+          remediation: "Run notarization on macOS x64 or arm64."
+        })
+    )
+  )
+
 const readJson = <A>(path: string): Effect.Effect<A, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: async () => JSON.parse(await readFile(path, "utf8")) as A,
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "read-json",
-        path,
-        message: `failed to read JSON ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const content = yield* fs.readFileString(path)
+      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+        Effect.map((value) => value as A)
+      )
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "read-json",
+          path,
+          message: `failed to read JSON ${path}`,
+          cause
+        })
+    )
+  )
 
 const writeJson = (path: string, value: unknown): Effect.Effect<void, NotarizeFileError, never> =>
   writeFileEffect(path, `${JSON.stringify(value, null, 2)}\n`)
@@ -872,67 +940,96 @@ const writeFileEffect = (
 ): Effect.Effect<void, NotarizeFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(dirname(path))
-    yield* Effect.tryPromise({
-      try: () => writeFile(path, content),
-      catch: (cause) =>
-        new NotarizeFileError({
-          operation: "write",
-          path,
-          message: `failed to write ${path}`,
-          cause
-        })
-    })
+    yield* runReleaseFileSystem(
+      Effect.gen(function* () {
+        const fs = yield* ReleaseFileSystem
+        yield* fs.writeFileString(path, content)
+      })
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new NotarizeFileError({
+            operation: "write",
+            path,
+            message: `failed to write ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const makeDirectory = (path: string): Effect.Effect<void, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => mkdir(path, { recursive: true }),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "mkdir",
-        path,
-        message: `failed to create ${path}`,
-        cause
-      })
-  }).pipe(Effect.asVoid)
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.makeDirectory(path)
+    })
+  ).pipe(
+    Effect.asVoid,
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "mkdir",
+          path,
+          message: `failed to create ${path}`,
+          cause
+        })
+    )
+  )
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => readdir(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "readdir",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readDirectory(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "readdir",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const readBytes = (path: string): Effect.Effect<Buffer, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+const readBytes = (path: string): Effect.Effect<Uint8Array, NotarizeFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readFile(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const statPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof stat>>, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => stat(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "stat",
-        path,
-        message: `failed to stat ${path}`,
-        cause
-      })
-  })
+const statPath = (path: string): Effect.Effect<ReleaseFileInfo, NotarizeFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.stat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "stat",
+          path,
+          message: `failed to stat ${path}`,
+          cause
+        })
+    )
+  )
 
 const digestPath = (
   path: string
@@ -1032,31 +1129,41 @@ const walkDigestEntries = (
     return files
   })
 
-const lstatPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof lstat>>, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => lstat(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "lstat",
-        path,
-        message: `failed to lstat ${path}`,
-        cause
-      })
-  })
+const lstatPath = (path: string): Effect.Effect<ReleaseFileInfo, NotarizeFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.lstat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "lstat",
+          path,
+          message: `failed to lstat ${path}`,
+          cause
+        })
+    )
+  )
 
 const readlinkPath = (path: string): Effect.Effect<string, NotarizeFileError, never> =>
-  Effect.tryPromise({
-    try: () => readlink(path),
-    catch: (cause) =>
-      new NotarizeFileError({
-        operation: "readlink",
-        path,
-        message: `failed to read symlink ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readLink(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NotarizeFileError({
+          operation: "readlink",
+          path,
+          message: `failed to read symlink ${path}`,
+          cause
+        })
+    )
+  )
 
 const resolvePath = (cwd: string, path: string): string =>
   isAbsolute(path) ? path : resolve(cwd, path)
@@ -1066,16 +1173,3 @@ const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
-
-const readStreamText = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  while (true) {
-    const read = await reader.read()
-    if (read.done) {
-      break
-    }
-    chunks.push(read.value)
-  }
-  return await new Blob(chunks).text()
-}

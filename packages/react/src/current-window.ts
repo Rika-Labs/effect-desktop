@@ -1,19 +1,10 @@
 import { makeHostProtocolInvalidStateError, type HostProtocolError } from "@effect-desktop/bridge"
-import type { WindowError, WindowHandle } from "@effect-desktop/native"
+import type { WindowError } from "@effect-desktop/native"
+import type { WindowHandle } from "@effect-desktop/native/contracts"
 import { Effect, Option } from "effect"
 
 import { useMutation, type MutationResult } from "./mutation.js"
 import { useDesktopContext, type DesktopRuntimeContext } from "./provider.js"
-
-export interface CurrentWindowSetTitleInput {
-  readonly title: string
-}
-
-export type CurrentWindowSetTitleMutation = MutationResult<
-  CurrentWindowSetTitleInput,
-  void,
-  WindowError
->
 
 export type CurrentWindowCloseMutation = MutationResult<void, void, WindowError>
 
@@ -22,15 +13,6 @@ export const useCurrentWindow = (): Option.Option<WindowHandle> =>
 
 export const useCurrentWindowId = (): Option.Option<string> =>
   Option.map(useCurrentWindow(), (window) => window.id)
-
-export const useSetCurrentWindowTitleMutation = (): CurrentWindowSetTitleMutation => {
-  const context = useDesktopContext()
-  return useMutation((input) =>
-    currentWindowEffect(context, "window.setTitle", (ctx, window) =>
-      ctx.client.window.setTitle(window, input.title)
-    )
-  )
-}
 
 export const useCloseCurrentWindowMutation = (): CurrentWindowCloseMutation => {
   const context = useDesktopContext()
@@ -45,9 +27,6 @@ export const currentWindow = Object.freeze({
   }),
   id: Object.freeze({
     useQuery: useCurrentWindowId
-  }),
-  setTitle: Object.freeze({
-    useMutation: useSetCurrentWindowTitleMutation
   }),
   close: Object.freeze({
     useMutation: useCloseCurrentWindowMutation

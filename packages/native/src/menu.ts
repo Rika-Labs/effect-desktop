@@ -1,30 +1,38 @@
 import {
+  P,
+  type DesktopRpcClient,
   CommandRegistry,
+  makeResourceId,
   PermissionActor,
   PermissionContext,
-  ResourceRegistry,
   type CommandRegistryError,
+  type PermissionRegistry,
   type ResourceHandle,
-  type ResourceId
+  type ResourceId,
+  type ResourceRegistry
 } from "@effect-desktop/core"
 import {
-  BridgeRpc,
-  Client,
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeRpcGroup,
-  type BridgeRpcSpec,
-  type BridgeRpcHandlers,
-  type BridgeRpcLayer,
-  BridgeResourceHandleShape,
-  HostProtocolError as HostProtocolErrorSchema,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
+  makeDesktopClientProtocol,
+  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidOutputError,
+  makeUnaryDesktopTransportFromBridgeClientExchange,
+  RpcClient,
+  type RpcCapabilityMetadata,
+  RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { Context, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
+import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/menu.js"
+import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
 import {
   type MenuCapabilityName,
@@ -48,23 +56,33 @@ export type MenuCommandBindingError = MenuError | CommandRegistryError
 
 export type MenuCapabilityOptions = Schema.Schema.Type<typeof MenuCapabilityInput>
 
-export const MenuRpcSpec = Object.freeze({
-  setApplicationMenu: menuMethodSpec(
-    MenuSetApplicationMenuInput,
-    "native.invoke:Menu.setApplicationMenu"
-  ),
-  setWindowMenu: menuMethodSpec(MenuSetWindowMenuInput, "native.invoke:Menu.setWindowMenu"),
-  clear: menuMethodSpec(MenuClearInput, "native.invoke:Menu.clear"),
-  bindCommand: menuMethodSpec(MenuBindCommandInput, "native.invoke:Menu.bindCommand"),
-  capability: {
-    input: MenuCapabilityInput,
-    output: MenuCapabilityResult,
-    error: HostProtocolErrorSchema,
-    permission: "none"
-  }
-}) satisfies BridgeRpcSpec
-
-export type MenuRpcSpec = typeof MenuRpcSpec
+export const MenuSetApplicationMenu = menuRpc(
+  "setApplicationMenu",
+  MenuSetApplicationMenuInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Menu", methods: ["setApplicationMenu"] })
+)
+export const MenuSetWindowMenu = menuRpc(
+  "setWindowMenu",
+  MenuSetWindowMenuInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Menu", methods: ["setWindowMenu"] })
+)
+export const MenuClear = menuRpc(
+  "clear",
+  MenuClearInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Menu", methods: ["clear"] })
+)
+export const MenuBindCommand = menuRpc(
+  "bindCommand",
+  MenuBindCommandInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Menu", methods: ["bindCommand"] })
+)
+export const MenuCapability = menuRpc("capability", MenuCapabilityInput, MenuCapabilityResult, {
+  kind: "none"
+})
 
 export const MenuRpcEvents = Object.freeze({
   Activated: { payload: MenuActivatedEvent }
@@ -72,15 +90,30 @@ export const MenuRpcEvents = Object.freeze({
 
 export type MenuRpcEvents = typeof MenuRpcEvents
 
-export const MenuRpcs: BridgeRpcGroup<"Menu", MenuRpcSpec, MenuRpcEvents> = BridgeRpc.group(
-  "Menu",
-  MenuRpcSpec,
-  MenuRpcEvents
+const MenuRpcGroup = RpcGroup.make(
+  MenuSetApplicationMenu,
+  MenuSetWindowMenu,
+  MenuClear,
+  MenuBindCommand,
+  MenuCapability
 )
 
-export const MenuMethodNames = Object.freeze(
-  Object.keys(MenuRpcSpec) as ReadonlyArray<keyof MenuRpcSpec>
-)
+export const MenuRpcs: RpcGroup.RpcGroup<MenuRpc> = MenuRpcGroup
+
+export const MenuMethodNames = Object.freeze([
+  "setApplicationMenu",
+  "setWindowMenu",
+  "clear",
+  "bindCommand",
+  "capability"
+] as const)
+
+const MenuCapabilityMethods = Object.freeze([
+  "setApplicationMenu",
+  "setWindowMenu",
+  "clear",
+  "bindCommand"
+] as const satisfies readonly (typeof MenuMethodNames)[number][])
 
 export interface MenuClientApi {
   readonly setApplicationMenu: (
@@ -135,12 +168,55 @@ export const makeMenuServiceLayer = (client: MenuClientApi): Layer.Layer<Menu> =
 export const makeMenuBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<MenuClient> => Layer.succeed(MenuClient)(makeMenuBridgeClient(exchange, options))
+): Layer.Layer<MenuClient> =>
+  Layer.effect(
+    MenuClient,
+    RpcClient.make(MenuRpcGroup).pipe(
+      Effect.map((client) => menuClientFromRpcClient(client, exchange))
+    )
+  ).pipe(Layer.provide(makeMenuBridgeProtocolLayer(exchange, options)))
 
-export const makeHostMenuBridgeRpcLayer = <Handlers extends BridgeRpcHandlers<MenuRpcSpec>>(
-  handlers: Handlers
-): BridgeRpcLayer<"Menu", MenuRpcSpec, Handlers, MenuRpcEvents> =>
-  BridgeRpc.layer(MenuRpcs)(handlers)
+export type MenuRpc = RpcGroup.Rpcs<typeof MenuRpcGroup>
+
+export type MenuRpcHandlers = RpcGroup.HandlersFrom<MenuRpc>
+
+export const MenuHandlersLive = MenuRpcGroup.toLayer({
+  "Menu.setApplicationMenu": (input) =>
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.setApplicationMenu(input.template)
+    }),
+  "Menu.setWindowMenu": (input) =>
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.setWindowMenu(input.window, input.template)
+    }),
+  "Menu.clear": (input) =>
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.clear(input)
+    }),
+  "Menu.bindCommand": () => Effect.fail(unsupportedError("Menu.bindCommand")),
+  "Menu.capability": (input) =>
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      const options = input.platform === undefined ? undefined : { platform: input.platform }
+      const supported = yield* menu.capability(input.name, options)
+      return new MenuCapabilityResult({ supported })
+    })
+})
+
+export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
+  service: MenuClient,
+  capabilities: MenuCapabilityMethods,
+  handlers: MenuHandlersLive,
+  client: (client) => menuClientFromRpcClient(client, undefined)
+})
+
+export const makeHostMenuRpcRuntime = (
+  handlers: MenuRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> => MenuSurface.hostRuntime(handlers, runtimeOptions)
 
 export const menuCapability = (
   name: MenuCapabilityName,
@@ -175,49 +251,20 @@ const bindMenuCommand = (
   MenuCommandBindingError,
   CommandRegistry | ResourceRegistry
 > => {
-  let completed = false
-  let listener: Fiber.Fiber<void, MenuError> | undefined
-
   return Effect.gen(function* () {
     const commands = yield* CommandRegistry
-    const resources = yield* ResourceRegistry
     const resourceId = menuCommandResourceId(itemId, commandId)
-    const existing = yield* resources.get(resourceId)
-    if (Option.isSome(existing)) {
-      return existing.value.handle as ResourceHandle<"menu-command", "registered">
-    }
-
-    yield* client.bindCommand(itemId, commandId)
-
-    const fiber = yield* client.onActivated().pipe(
-      Stream.filter((event) => event.itemId === itemId && event.commandId === commandId),
-      Stream.runForEach((event) =>
-        invokeMenuCommand(commands, commandId, event.itemId, event.windowId)
-      ),
-      Effect.forkDetach
-    )
-    listener = fiber
-
-    const handle = yield* resources
-      .register({
-        kind: "menu-command",
-        id: resourceId,
-        ownerScope: "app",
-        state: "registered",
-        dispose: Fiber.interrupt(fiber).pipe(Effect.asVoid)
-      })
-      .pipe(Effect.orDie)
-    completed = true
-    return handle
-  }).pipe(
-    Effect.ensuring(
-      Effect.suspend(() =>
-        completed || listener === undefined
-          ? Effect.void
-          : Fiber.interrupt(listener).pipe(Effect.asVoid)
-      )
-    )
-  )
+    return yield* bindScopedCommand({
+      kind: "menu-command",
+      id: resourceId,
+      ownerScope: "app",
+      register: client.bindCommand(itemId, commandId),
+      events: client
+        .onActivated()
+        .pipe(Stream.filter((event) => event.itemId === itemId && event.commandId === commandId)),
+      invoke: (event) => invokeMenuCommand(commands, commandId, event.itemId, event.windowId)
+    })
+  })
 }
 
 const invokeMenuCommand = (
@@ -242,127 +289,117 @@ const invokeMenuCommand = (
     )
     .pipe(
       Effect.asVoid,
-      Effect.catch((error: CommandRegistryError) =>
+      Effect.tapError((error: CommandRegistryError) =>
         Effect.logWarning("Menu command invocation failed", {
           commandId,
           error: commandBindingWarningError(error),
           itemId,
           windowId
         })
-      )
+      ),
+      Effect.ignore
     )
 }
 
-const makeMenuBridgeClient = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
+const menuClientFromRpcClient = (
+  client: DesktopRpcClient<MenuRpc>,
+  exchange: BridgeClientExchange | undefined
 ): MenuClientApi => {
-  const client = Client({ Menu: MenuRpcs }, exchange, options).Menu
-
   const menuClient: MenuClientApi = {
     setApplicationMenu: (template) =>
       decodeMenuSetApplicationMenuInput({ template }).pipe(
         Effect.flatMap(validateApplicationMenuRoots),
-        Effect.flatMap(client.setApplicationMenu)
+        Effect.flatMap((decoded) =>
+          runMenuRpc(client["Menu.setApplicationMenu"](decoded), "Menu.setApplicationMenu")
+        )
       ),
     setWindowMenu: (window, template) =>
       decodeMenuSetWindowMenuInput({ window: toWindowHandle(window), template }).pipe(
-        Effect.flatMap(client.setWindowMenu)
+        Effect.flatMap((decoded) =>
+          runMenuRpc(client["Menu.setWindowMenu"](decoded), "Menu.setWindowMenu")
+        )
       ),
     clear: (input = {}) =>
       decodeMenuClearInput(
-        input.window === undefined ? {} : { window: toWindowHandle(input.window as WindowHandle) }
-      ).pipe(Effect.flatMap(client.clear)),
+        input.window === undefined ? {} : { window: toWindowHandle(input.window) }
+      ).pipe(Effect.flatMap((decoded) => runMenuRpc(client["Menu.clear"](decoded), "Menu.clear"))),
     bindCommand: (itemId, commandId) =>
-      decodeMenuBindCommandInput({ itemId, commandId }).pipe(Effect.flatMap(client.bindCommand)),
-    capability: (input) => decodeMenuCapabilityInput(input).pipe(Effect.flatMap(client.capability)),
-    onActivated: () => client.events.Activated
+      decodeMenuBindCommandInput({ itemId, commandId }).pipe(
+        Effect.flatMap((decoded) =>
+          runMenuRpc(client["Menu.bindCommand"](decoded), "Menu.bindCommand")
+        )
+      ),
+    capability: (input) =>
+      decodeMenuCapabilityInput(input).pipe(
+        Effect.flatMap((decoded) =>
+          runMenuRpc(client["Menu.capability"](decoded), "Menu.capability")
+        )
+      ),
+    onActivated: () => subscribeMenuEvent(exchange, "Menu.Activated")
   }
 
   return Object.freeze(menuClient)
 }
 
-export const makeUnsupportedMenuClient = (): MenuClientApi => {
-  const unsupportedEffect = <A>(method: string): Effect.Effect<A, MenuError, never> =>
-    Effect.fail(unsupportedError(method))
-  const unsupportedStream = <A>(method: string): Stream.Stream<A, MenuError, never> =>
-    Stream.fail(unsupportedError(method))
+const makeMenuBridgeProtocolLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
+      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
+    )
+  )
 
-  const client: MenuClientApi = {
-    setApplicationMenu: () => unsupportedEffect<void>("Menu.setApplicationMenu"),
-    setWindowMenu: () => unsupportedEffect<void>("Menu.setWindowMenu"),
-    clear: () => unsupportedEffect<void>("Menu.clear"),
-    bindCommand: () => unsupportedEffect<void>("Menu.bindCommand"),
-    capability: () => Effect.succeed(new MenuCapabilityResult({ supported: false })),
-    onActivated: () => unsupportedStream<MenuActivatedEvent>("Menu.Activated")
-  }
-
-  return Object.freeze(client)
-}
+const subscribeMenuEvent = (
+  exchange: BridgeClientExchange | undefined,
+  method: "Menu.Activated"
+): Stream.Stream<MenuActivatedEvent, MenuError, never> =>
+  subscribeNativeEvent(exchange, method, MenuActivatedEvent)
 
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
-    reason: "host Menu platform adapter is not implemented yet",
+    reason: "Menu command binding is available through the Menu service",
     message: `unsupported Menu method: ${method}`,
     operation: method,
     recoverable: false
   })
 
 const menuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
-  `menu-command:${itemId}:${commandId}` as ResourceId
+  makeResourceId(`menu-command:${itemId}:${commandId}`)
 
 const toWindowHandle = (handle: WindowHandle): MenuWindowHandle =>
-  new BridgeResourceHandleShape({
+  Object.freeze({
     kind: handle.kind,
     id: handle.id,
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as MenuWindowHandle
+  })
 
 const decodeMenuSetApplicationMenuInput = (
   input: unknown
 ): Effect.Effect<MenuSetApplicationMenuInput, MenuError, never> =>
-  decodeInput(MenuSetApplicationMenuInput, input, "Menu.setApplicationMenu") as Effect.Effect<
-    MenuSetApplicationMenuInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuSetApplicationMenuInput, input, "Menu.setApplicationMenu")
 
 const decodeMenuSetWindowMenuInput = (
   input: unknown
 ): Effect.Effect<MenuSetWindowMenuInput, MenuError, never> =>
-  decodeInput(MenuSetWindowMenuInput, input, "Menu.setWindowMenu") as Effect.Effect<
-    MenuSetWindowMenuInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuSetWindowMenuInput, input, "Menu.setWindowMenu")
 
 const decodeMenuClearInput = (input: unknown): Effect.Effect<MenuClearInput, MenuError, never> =>
-  decodeInput(MenuClearInput, input, "Menu.clear") as Effect.Effect<
-    MenuClearInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuClearInput, input, "Menu.clear")
 
 const decodeMenuBindCommandInput = (
   input: unknown
 ): Effect.Effect<MenuBindCommandInput, MenuError, never> =>
-  decodeInput(MenuBindCommandInput, input, "Menu.bindCommand") as Effect.Effect<
-    MenuBindCommandInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuBindCommandInput, input, "Menu.bindCommand")
 
 const decodeMenuCapabilityInput = (
   input: unknown
 ): Effect.Effect<MenuCapabilityInput, MenuError, never> =>
-  decodeInput(MenuCapabilityInput, input, "Menu.capability") as Effect.Effect<
-    MenuCapabilityInput,
-    MenuError,
-    never
-  >
+  decodeInput(MenuCapabilityInput, input, "Menu.capability")
 
 const validateApplicationMenuRoots = (
   input: MenuSetApplicationMenuInput
@@ -380,28 +417,51 @@ const validateApplicationMenuRoots = (
   return Effect.succeed(input)
 }
 
-const decodeInput = (
-  schema: Schema.Schema<unknown>,
+const decodeInput = <A>(
+  schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<unknown, MenuError, never> =>
-  Effect.mapError(
-    Schema.decodeUnknownEffect(schema)(input, StrictParseOptions) as Effect.Effect<
-      unknown,
-      unknown,
-      never
-    >,
-    (error) => makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+): Effect.Effect<A, MenuError, never> =>
+  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
   )
 
-function menuMethodSpec<Input extends Schema.Schema<unknown>>(input: Input, permission: string) {
-  return {
-    input,
-    output: Schema.Void,
-    error: HostProtocolErrorSchema,
-    permission
-  } as const
+function menuRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+  return NativeSurface.rpc("Menu", method, {
+    payload,
+    success,
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
+
+const runMenuRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, MenuError, never> =>
+  effect.pipe(
+    Effect.mapError(mapMenuRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
+
+const mapMenuRpcClientError = (error: unknown): MenuError =>
+  isMenuError(error) ? error : makeHostProtocolInternalError("Menu RPC client failed", "Menu")
+
+const isMenuError = (error: unknown): error is MenuError =>
+  typeof error === "object" &&
+  error !== null &&
+  "tag" in error &&
+  "operation" in error &&
+  "recoverable" in error
 
 const currentMenuPlatform = (): MenuPlatform => {
   if (process.platform === "darwin") {

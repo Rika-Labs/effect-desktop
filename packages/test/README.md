@@ -1,7 +1,7 @@
 # @effect-desktop/test
 
 > **Status:** Phase 3.5 headless harness is available. Phase 15 adds a memory
-> Secrets safe-storage adapter. See `docs/SPEC.md`.
+> Secrets safe-storage adapter. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -9,6 +9,11 @@ Test harness and mock layers: mock host, mock bridge, memory filesystem, mock
 permissions, mock process, mock PTY, headless runtime, and memory secrets.
 
 ## Public API
+
+The root `@effect-desktop/test` export remains the aggregate compatibility
+surface. New tests should prefer explicit fixture-family subpaths:
+`@effect-desktop/test/core`, `@effect-desktop/test/bridge`,
+`@effect-desktop/test/native`, and `@effect-desktop/test/renderer`.
 
 `MockHostLive(options)` provides `MockHost`, an in-process host-protocol
 substitute that accepts real host-protocol request envelopes, preserves trace
@@ -38,6 +43,17 @@ resource cleanup in the production core service path.
 detection as a typed failure by default; pass `leakDetection: false` to disable
 that final check.
 
+`ScreenTest(options)`, `ClipboardTest()`, and `DialogTest(options)` are the
+current Layer-first contract proof for native services. The same service program
+runs through the capability `Live` layer with a direct client, the `Live` layer
+with an RPC client layer, and the deterministic test layer.
+
+`TestWindow.layer()` provides the supported Window service surface for tests.
+`makeTestWindowClient()` records `Window.create` and `Window.close` calls and
+tracks open handles. Unsupported descriptor-only Window methods are intentionally
+absent from the test client so tests cannot depend on methods the generated
+runtime client cannot call.
+
 `runHeadless(body, options)` runs host-protocol clients against `MockHost` and
 fails with a typed `ResourceLeakError` if non-app resources remain open.
 
@@ -53,14 +69,14 @@ mutable internal state.
 
 ## Non-goals
 
-See `docs/SPEC.md` for the package's normative non-goals.
+See `engineering/SPEC.md` for the package's normative non-goals.
 
 ## Usage
 
 ```ts
 import { Effect } from "effect"
 
-import { SecretValue, makeSecrets } from "@effect-desktop/core"
+import { makeSecretBytesFromUtf8, makeSecrets } from "@effect-desktop/core"
 import { makeMemorySecretsSafeStorage } from "@effect-desktop/test"
 
 const program = Effect.gen(function* () {
@@ -69,7 +85,7 @@ const program = Effect.gen(function* () {
     permissions: { read: ["auth"], write: ["auth"] }
   })
 
-  yield* secrets.set("auth", "token", SecretValue.fromUtf8("refresh-token"))
+  yield* secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
   return yield* secrets.get("auth", "token")
 })
 ```

@@ -1,15 +1,37 @@
 import { createHash } from "node:crypto"
-import { lstat, mkdir, readdir, readFile, readlink, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect } from "effect"
+import { Data, Effect, Schema } from "effect"
 
-export type SignOs = "linux" | "macos" | "windows"
-export type SignArch = "arm64" | "x64"
-export type SignTarget = `${SignOs}-${SignArch}`
-export type SignPlatform = "linux" | "macos" | "windows"
-export type SignArtifactKind = "app" | "dmg" | "zip" | "msi" | "appimage" | "deb" | "rpm"
+import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
+import { decodeDesktopConfig } from "@effect-desktop/config"
+
+import {
+  ReleaseFileSystem,
+  runReleaseFileSystem,
+  type ReleaseFileInfo
+} from "./release-file-system.js"
+import { runReleaseTool } from "./release-tool-runner.js"
+import {
+  decodeDesktopTarget,
+  desktopPlatformDirectory,
+  detectDesktopHostTarget,
+  isDesktopArtifactKind,
+  resolveDesktopHostTarget,
+  resolveDesktopTarget
+} from "./targets.js"
+import type {
+  DesktopArtifactKind,
+  DesktopOs,
+  DesktopTarget,
+  DesktopTargetId,
+  UnsupportedDesktopHostTargetError
+} from "./targets.js"
+
+export type SignTarget = DesktopTargetId
+export type SignPlatform = DesktopOs
+export type SignArtifactKind = DesktopArtifactKind
 export type SignStepName =
   | "macos-entitlements"
   | "macos-codesign"
@@ -81,6 +103,7 @@ export interface DesktopSignOptions {
   readonly commandRunner: SignCommandRunner
   readonly now: () => number
   readonly hostTarget: SignTarget | undefined
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
 export interface SignStepReport {
@@ -210,46 +233,37 @@ export const runDesktopSign = (
   })
 
 export const detectSignHostTarget = (): SignTarget | undefined => {
-  const os = process.platform === "darwin" ? "macos" : process.platform
-  const arch = process.arch === "x64" ? "x64" : process.arch === "arm64" ? "arm64" : undefined
-  if ((os === "linux" || os === "macos" || os === "win32") && arch !== undefined) {
-    return `${os === "win32" ? "windows" : os}-${arch}` as SignTarget
-  }
-  return undefined
+  return detectDesktopHostTarget()
 }
 
 export const runSignCommand: SignCommandRunner = (invocation) =>
-  Effect.tryPromise({
-    try: async () => {
-      const spawned = Bun.spawn([invocation.command, ...invocation.args], {
-        cwd: invocation.cwd,
-        stdout: "ignore",
-        stderr: "pipe"
-      })
-      const stderr = await readStreamText(spawned.stderr)
-      const exitCode = await spawned.exited
-      if (exitCode !== 0) {
-        const failure = {
-          step: invocation.step,
-          command: [invocation.command, ...invocation.args],
-          cwd: invocation.cwd,
-          exitCode,
-          message: `${invocation.step} command exited with ${exitCode}`
-        }
-        throw new SignCommandFailedError(stderr.length === 0 ? failure : { ...failure, stderr })
-      }
-    },
-    catch: (cause) =>
-      cause instanceof SignCommandFailedError
-        ? cause
-        : new SignCommandFailedError({
-            step: invocation.step,
-            command: [invocation.command, ...invocation.args],
-            cwd: invocation.cwd,
-            exitCode: undefined,
-            message: formatUnknownError(cause)
-          })
+  Effect.gen(function* () {
+    const result = yield* runReleaseTool({ ...invocation, stdout: "ignore", stderr: "pipe" }).pipe(
+      Effect.mapError((cause) => signCommandError(invocation, undefined, cause))
+    )
+    if (result.exitCode !== 0) {
+      return yield* Effect.fail(signCommandError(invocation, result.exitCode, result.stderr))
+    }
   })
+
+const signCommandError = (
+  invocation: SignCommandInvocation,
+  exitCode: number | undefined,
+  cause: unknown
+): SignCommandFailedError => {
+  const stderr = typeof cause === "string" ? cause : undefined
+  return new SignCommandFailedError({
+    step: invocation.step,
+    command: [invocation.command, ...invocation.args],
+    cwd: invocation.cwd,
+    exitCode,
+    message:
+      exitCode === undefined
+        ? formatUnknownError(cause)
+        : `${invocation.step} command exited with ${exitCode}`,
+    ...(stderr === undefined || stderr.length === 0 ? {} : { stderr })
+  })
+}
 
 const signArtifact = (
   options: DesktopSignOptions,
@@ -382,7 +396,7 @@ const signWindowsArtifact = (
   Effect.gen(function* () {
     const windows = plan.config.signing?.windows
     const timestampUrl = yield* readWindowsTimestampUrl(windows?.timestampUrl)
-    const credential = yield* windowsCredentialArgs(windows)
+    const credential = yield* windowsCredentialArgs(windows, options.env ?? {})
     const steps: SignStepReport[] = []
     const unblockStep = yield* runToolStep(
       options,
@@ -530,7 +544,20 @@ const runToolStep = (
 ): Effect.Effect<SignStepReport, SignCommandFailedError | SignFileError, never> =>
   Effect.gen(function* () {
     const start = options.now()
-    yield* options.commandRunner({ step: name, command, args, cwd })
+    yield* options.commandRunner({ step: name, command, args, cwd }).pipe(
+      Effect.mapError((error) =>
+        error instanceof SignCommandFailedError
+          ? new SignCommandFailedError({
+              step: error.step,
+              command: [command, ...reportArgs],
+              cwd: error.cwd,
+              exitCode: error.exitCode,
+              message: error.message,
+              ...(error.stderr === undefined ? {} : { stderr: error.stderr })
+            })
+          : error
+      )
+    )
     yield* statPath(outputPath)
     return {
       name,
@@ -559,7 +586,7 @@ const normalizeSignPlan = (
       "app.version",
       "Set app.version in desktop.config.ts."
     )
-    const platform = platformFromTarget(options.target)
+    const platform = desktopPlatformDirectory(options.target)
     const safeAppName = safeArtifactName(appName)
     if (safeAppName === "." || safeAppName === "..") {
       return yield* Effect.fail(
@@ -588,15 +615,14 @@ const readPackagedArtifacts = (
 ): Effect.Effect<readonly PackagedArtifact[], SignFileError | SignConfigError, never> =>
   Effect.gen(function* () {
     yield* statPath(plan.outputPath).pipe(
-      Effect.catch(() =>
-        Effect.fail(
+      Effect.mapError(
+        () =>
           new SignFileError({
             operation: "discover",
             path: plan.outputPath,
             message: `no ${plan.platform} packaged artifacts found; run bun desktop package first`,
             cause: undefined
           })
-        )
       )
     )
     const entries = yield* readDirectory(plan.outputPath)
@@ -742,7 +768,8 @@ const windowsCredentialArgs = (
     ? Signing extends { readonly windows?: infer Windows }
       ? Windows | undefined
       : never
-    : never
+    : never,
+  env: Readonly<Record<string, string | undefined>>
 ): Effect.Effect<
   { readonly args: readonly string[]; readonly reportArgs: readonly string[] },
   SignConfigError,
@@ -760,7 +787,7 @@ const windowsCredentialArgs = (
       "signing.windows.pfx.passwordEnv"
     )
     if (pfxPath !== undefined && passwordEnv !== undefined) {
-      const password = process.env[passwordEnv]
+      const password = env[passwordEnv]
       if (password === undefined || password.length === 0) {
         return yield* Effect.fail(
           new SignConfigError({
@@ -771,9 +798,10 @@ const windowsCredentialArgs = (
           })
         )
       }
+      const passwordSecret = makeSecretString(password, { label: "WindowsPfxPassword" })
       return {
-        args: ["/f", pfxPath, "/p", password],
-        reportArgs: ["/f", pfxPath, "/p", "<redacted>"]
+        args: ["/f", pfxPath, "/p", unsafeSecretString(passwordSecret)],
+        reportArgs: ["/f", pfxPath, "/p", "<redacted:WindowsPfxPassword>"]
       }
     }
     return yield* Effect.fail(
@@ -932,15 +960,17 @@ ${entries}
 }
 
 const readConfigObject = (rawConfig: unknown): Effect.Effect<AppConfig, SignConfigError, never> =>
-  isRecord(rawConfig)
-    ? Effect.succeed(rawConfig as AppConfig)
-    : Effect.fail(
+  decodeDesktopConfig(rawConfig, "desktop sign config").pipe(
+    Effect.map((config) => config as AppConfig),
+    Effect.mapError(
+      (error) =>
         new SignConfigError({
           field: "default",
-          message: "desktop config must export an object",
-          remediation: "Export a default object from desktop.config.ts."
+          message: error.message,
+          remediation: "Fix desktop.config.ts before signing."
         })
-      )
+    )
+  )
 
 const readRequiredString = (
   value: unknown,
@@ -1101,7 +1131,7 @@ const readArtifactKind = (
   value: unknown,
   path: string
 ): Effect.Effect<SignArtifactKind, SignConfigError, never> => {
-  if (isSignArtifactKind(value)) {
+  if (isDesktopArtifactKind(value)) {
     return Effect.succeed(value)
   }
   return Effect.fail(
@@ -1117,15 +1147,17 @@ const readTarget = (
   value: unknown,
   field: string
 ): Effect.Effect<SignTarget, SignConfigError, never> =>
-  isSignTarget(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
+  decodeDesktopTarget(value).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      () =>
         new SignConfigError({
           field,
           message: `${field} must be a supported sign target`,
           remediation: "Regenerate package artifacts with `bun desktop package`."
         })
-      )
+    )
+  )
 
 const readNonNegativeInteger = (
   value: unknown,
@@ -1141,10 +1173,7 @@ const readNonNegativeInteger = (
         })
       )
 
-const readSha256 = (
-  value: unknown,
-  field: string
-): Effect.Effect<string, SignConfigError, never> =>
+const readSha256 = (value: unknown, field: string): Effect.Effect<string, SignConfigError, never> =>
   typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
     ? Effect.succeed(value)
     : Effect.fail(
@@ -1180,61 +1209,62 @@ const loadConfig = (path: string): Effect.Effect<unknown, SignConfigError, never
 
 const resolveSignTarget = (
   requested: string | undefined,
-  hostTarget: SignTarget
-): Effect.Effect<SignTarget, SignUnsupportedTargetError, never> => {
-  const target = requested ?? hostTarget
-  if (!isSignTarget(target)) {
-    return Effect.fail(
-      new SignUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `unsupported sign target ${target}`,
-        remediation:
-          "Run `bun desktop doctor` on a supported host and choose the matching --platform."
-      })
+  hostTarget: DesktopTarget
+): Effect.Effect<SignTarget, SignUnsupportedTargetError, never> =>
+  resolveDesktopTarget(requested, hostTarget).pipe(
+    Effect.map((target) => target.id),
+    Effect.mapError(
+      (error) =>
+        new SignUnsupportedTargetError({
+          target: error.target,
+          hostTarget: error.hostTarget,
+          message:
+            error.reason === "unsupported"
+              ? `unsupported sign target ${error.target}`
+              : `target ${error.target} does not match host ${error.hostTarget}`,
+          remediation:
+            error.reason === "unsupported"
+              ? "Run `bun desktop doctor` on a supported host and choose the matching --platform."
+              : "Cross-platform signing is out of scope. Sign on the matching host."
+        })
     )
-  }
-  if (target !== hostTarget) {
-    return Effect.fail(
-      new SignUnsupportedTargetError({
-        target,
-        hostTarget,
-        message: `target ${target} does not match host ${hostTarget}`,
-        remediation: "Cross-platform signing is out of scope. Sign on the matching host."
-      })
-    )
-  }
-  return Effect.succeed(target)
-}
+  )
 
 const resolveHostTarget = (
   override: SignTarget | undefined
-): Effect.Effect<SignTarget, SignUnsupportedHostError, never> => {
-  const hostTarget = override ?? detectSignHostTarget()
-  if (hostTarget !== undefined) {
-    return Effect.succeed(hostTarget)
-  }
-  return Effect.fail(
-    new SignUnsupportedHostError({
-      platform: process.platform,
-      arch: process.arch,
-      message: `unsupported host ${process.platform}-${process.arch}`,
-      remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
-    })
+): Effect.Effect<DesktopTarget, SignUnsupportedHostError, never> =>
+  resolveDesktopHostTarget(override).pipe(
+    Effect.mapError(
+      (error: UnsupportedDesktopHostTargetError) =>
+        new SignUnsupportedHostError({
+          platform: error.platform,
+          arch: error.arch,
+          message: `unsupported host ${error.platform}-${error.arch}`,
+          remediation: "Run `bun desktop doctor` on linux, macOS, or Windows with x64 or arm64."
+        })
+    )
   )
-}
 
 const readJson = <A>(path: string): Effect.Effect<A, SignFileError, never> =>
-  Effect.tryPromise({
-    try: async () => JSON.parse(await readFile(path, "utf8")) as A,
-    catch: (cause) =>
-      new SignFileError({
-        operation: "read-json",
-        path,
-        message: `failed to read JSON ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      const content = yield* fs.readFileString(path)
+      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
+        Effect.map((value) => value as A)
+      )
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "read-json",
+          path,
+          message: `failed to read JSON ${path}`,
+          cause
+        })
+    )
+  )
 
 const writeJson = (path: string, value: unknown): Effect.Effect<void, SignFileError, never> =>
   writeFileEffect(path, `${JSON.stringify(value, null, 2)}\n`)
@@ -1245,67 +1275,96 @@ const writeFileEffect = (
 ): Effect.Effect<void, SignFileError, never> =>
   Effect.gen(function* () {
     yield* makeDirectory(dirname(path))
-    yield* Effect.tryPromise({
-      try: () => writeFile(path, content),
-      catch: (cause) =>
-        new SignFileError({
-          operation: "write",
-          path,
-          message: `failed to write ${path}`,
-          cause
-        })
-    })
+    yield* runReleaseFileSystem(
+      Effect.gen(function* () {
+        const fs = yield* ReleaseFileSystem
+        yield* fs.writeFileString(path, content)
+      })
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SignFileError({
+            operation: "write",
+            path,
+            message: `failed to write ${path}`,
+            cause
+          })
+      )
+    )
   })
 
 const makeDirectory = (path: string): Effect.Effect<void, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => mkdir(path, { recursive: true }),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "mkdir",
-        path,
-        message: `failed to create ${path}`,
-        cause
-      })
-  }).pipe(Effect.asVoid)
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      yield* fs.makeDirectory(path)
+    })
+  ).pipe(
+    Effect.asVoid,
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "mkdir",
+          path,
+          message: `failed to create ${path}`,
+          cause
+        })
+    )
+  )
 
 const readDirectory = (path: string): Effect.Effect<readonly string[], SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => readdir(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "readdir",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readDirectory(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "readdir",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const readBytes = (path: string): Effect.Effect<Buffer, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => readFile(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "read",
-        path,
-        message: `failed to read ${path}`,
-        cause
-      })
-  })
+const readBytes = (path: string): Effect.Effect<Uint8Array, SignFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readFile(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "read",
+          path,
+          message: `failed to read ${path}`,
+          cause
+        })
+    )
+  )
 
-const statPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof stat>>, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => stat(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "stat",
-        path,
-        message: `failed to stat ${path}`,
-        cause
-      })
-  })
+const statPath = (path: string): Effect.Effect<ReleaseFileInfo, SignFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.stat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "stat",
+          path,
+          message: `failed to stat ${path}`,
+          cause
+        })
+    )
+  )
 
 const listFiles = (path: string): Effect.Effect<readonly string[], SignFileError, never> =>
   Effect.gen(function* () {
@@ -1417,64 +1476,47 @@ const walkDigestEntries = (
     return files
   })
 
-const lstatPath = (
-  path: string
-): Effect.Effect<Awaited<ReturnType<typeof lstat>>, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => lstat(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "lstat",
-        path,
-        message: `failed to lstat ${path}`,
-        cause
-      })
-  })
+const lstatPath = (path: string): Effect.Effect<ReleaseFileInfo, SignFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.lstat(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "lstat",
+          path,
+          message: `failed to lstat ${path}`,
+          cause
+        })
+    )
+  )
 
 const readlinkPath = (path: string): Effect.Effect<string, SignFileError, never> =>
-  Effect.tryPromise({
-    try: () => readlink(path),
-    catch: (cause) =>
-      new SignFileError({
-        operation: "readlink",
-        path,
-        message: `failed to read symlink ${path}`,
-        cause
-      })
-  })
-
-const isSignTarget = (value: unknown): value is SignTarget =>
-  value === "linux-x64" ||
-  value === "linux-arm64" ||
-  value === "macos-x64" ||
-  value === "macos-arm64" ||
-  value === "windows-x64" ||
-  value === "windows-arm64"
-
-const isSignArtifactKind = (value: unknown): value is SignArtifactKind =>
-  value === "app" ||
-  value === "dmg" ||
-  value === "zip" ||
-  value === "msi" ||
-  value === "appimage" ||
-  value === "deb" ||
-  value === "rpm"
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.readLink(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SignFileError({
+          operation: "readlink",
+          path,
+          message: `failed to read symlink ${path}`,
+          cause
+        })
+    )
+  )
 
 const isSignableArtifact = (artifact: PackagedArtifact): boolean =>
   artifact.kind === "app" ||
   artifact.kind === "dmg" ||
   artifact.kind === "msi" ||
   artifact.kind === "appimage"
-
-const platformFromTarget = (target: SignTarget): SignPlatform => {
-  if (target.startsWith("macos-")) {
-    return "macos"
-  }
-  if (target.startsWith("windows-")) {
-    return "windows"
-  }
-  return "linux"
-}
 
 const artifactPlatform = (kind: SignArtifactKind): SignPlatform =>
   kind === "app" || kind === "dmg" || kind === "zip"
@@ -1501,16 +1543,3 @@ const escapeXml = (value: string): string =>
 
 const formatUnknownError = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause)
-
-const readStreamText = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  while (true) {
-    const read = await reader.read()
-    if (read.done) {
-      break
-    }
-    chunks.push(read.value)
-  }
-  return await new Blob(chunks).text()
-}

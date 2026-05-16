@@ -6,7 +6,7 @@ import {
 } from "@effect-desktop/bridge"
 import { Cause, Effect, Exit, Layer } from "effect"
 
-import { Protocol, ProtocolLive, makeProtocolBridgeClientLayer } from "./index.js"
+import { Protocol, ProtocolLive, ProtocolSurface } from "./index.js"
 
 const expectExitFailure = <E>(
   exit: Exit.Exit<unknown, E>,
@@ -18,7 +18,7 @@ const expectExitFailure = <E>(
     const fail = exit.cause.reasons.find(Cause.isFailReason)
     expect(fail).toBeDefined()
     if (fail !== undefined) {
-      expect(predicate(fail.error as E)).toBe(true)
+      expect(predicate(fail.error)).toBe(true)
       return
     }
   }
@@ -41,44 +41,42 @@ const protocolExchange = (
 
 test("Protocol bridge client validates asset roots as absolute local paths", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = await Effect.runPromise(
+  await Effect.runPromise(
     Effect.gen(function* () {
-      return yield* Protocol
+      const client = yield* Protocol
+
+      yield* client.serveAsset({ scheme: "assets", root: "/app/assets" })
+      const emptyRootExit = yield* Effect.exit(client.serveAsset({ scheme: "assets", root: "" }))
+      const relativeRootExit = yield* Effect.exit(
+        client.serveAsset({ scheme: "assets", root: "relative/assets" })
+      )
+      const traversalRootExit = yield* Effect.exit(
+        client.serveAsset({ scheme: "assets", root: "../outside" })
+      )
+      const fileUrlRootExit = yield* Effect.exit(
+        client.serveAsset({ scheme: "assets", root: "file:///tmp/assets" })
+      )
+      const controlRootExit = yield* Effect.exit(
+        client.serveAsset({ scheme: "assets", root: "/app/assets/\u0000bad" })
+      )
+
+      expectExitFailure(emptyRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+      expectExitFailure(relativeRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+      expectExitFailure(traversalRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+      expectExitFailure(fileUrlRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+      expectExitFailure(controlRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+      expect(requests.map((request) => [request.method, request.payload])).toEqual([
+        ["Protocol.serveAsset", { scheme: "assets", root: "/app/assets" }]
+      ])
     }).pipe(
       Effect.provide(
         Layer.provide(
           ProtocolLive,
-          makeProtocolBridgeClientLayer(
+          ProtocolSurface.bridgeClientLayer(
             protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
       )
     )
   )
-
-  await Effect.runPromise(client.serveAsset({ scheme: "assets", root: "/app/assets" }))
-  const emptyRootExit = await Effect.runPromiseExit(
-    client.serveAsset({ scheme: "assets", root: "" })
-  )
-  const relativeRootExit = await Effect.runPromiseExit(
-    client.serveAsset({ scheme: "assets", root: "relative/assets" })
-  )
-  const traversalRootExit = await Effect.runPromiseExit(
-    client.serveAsset({ scheme: "assets", root: "../outside" })
-  )
-  const fileUrlRootExit = await Effect.runPromiseExit(
-    client.serveAsset({ scheme: "assets", root: "file:///tmp/assets" })
-  )
-  const controlRootExit = await Effect.runPromiseExit(
-    client.serveAsset({ scheme: "assets", root: "/app/assets/\u0000bad" })
-  )
-
-  expectExitFailure(emptyRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-  expectExitFailure(relativeRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-  expectExitFailure(traversalRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-  expectExitFailure(fileUrlRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-  expectExitFailure(controlRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-  expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["Protocol.serveAsset", { scheme: "assets", root: "/app/assets" }]
-  ])
 })

@@ -11,7 +11,7 @@ transport, and React owns component state and cleanup.
 ## Public API
 
 - `ReactDesktop.from(manifest)` creates an adapter for one desktop app manifest.
-- `DesktopRoot` installs the renderer RPC runtime for a React tree.
+- `DesktopRoot` installs the scoped renderer RPC client layer for a React tree.
 - `createRoot(children, props?)` creates the same provider element without exposing
   the context.
 - `useDesktop(group)` derives endpoints from the imported `RpcGroup`.
@@ -19,8 +19,12 @@ transport, and React owns component state and cleanup.
 - Mutation endpoints expose `useMutation()`.
 - Stream endpoints expose `useStream(input?, options?)`.
 - Every endpoint exposes `support` and `isSupported` metadata.
+- `windows.create.useMutation()` and `windows.close.useMutation()` are the supported built-in Window helpers.
+- `currentWindow.close.useMutation()` closes the current renderer window when a current handle is present.
 - `useDesktopStream`, `useResource`, `usePermission`, `useWindow`, and the low-level
   `DesktopProvider` remain explicit lower-level hooks for renderer clients that need them.
+
+Unsupported Window title mutation helpers are not exported. Use descriptor support metadata from the imported `RpcGroup` before presenting native window actions.
 
 `DesktopRoot` accepts an optional `transport` for tests and custom renderers. Normal
 desktop applications do not pass client maps by hand; the host installs the renderer
@@ -29,7 +33,7 @@ transport and the adapter derives clients from the manifest.
 ## Non-goals
 
 - This package does not define desktop APIs. Use `Rpc.make`, `RpcGroup.make`, and
-  `Desktop.Rpcs.layer(...)` in app code.
+  `Desktop.rpc(group, handlers)` in app code (compose multiple via `Desktop.rpcs`).
 - This package does not open startup windows. Startup windows belong to
   `Desktop.make({ windows })` and the host runtime.
 - This package does not expose raw bridge client maps as the normal public API.
@@ -85,7 +89,7 @@ bun test packages/react/src/index.test.ts
 bun run typecheck
 ```
 
-Tests can pass an in-memory renderer transport to `DesktopRoot` or `createRoot`.
+Tests can pass `RpcTest`-backed RPC layers to `DesktopRoot` or `createRoot`.
 Production code should use the host-installed transport.
 
 ## Platform notes
@@ -95,8 +99,9 @@ Effect RPC handlers and permission checks.
 
 ## Internal architecture
 
-The adapter builds a renderer RPC runtime from the desktop manifest, a transport,
-and `RpcClient.make(group)`. React context stores only the derived runtime client
-map. `useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
+The adapter builds a `ManagedRuntime` from a scoped renderer RPC client layer.
+That layer uses a host transport with `RpcClient.make(group)` or test RPC layers
+with `RpcTest`. React context stores only the derived client map.
+`useDesktop(group)` checks the imported `RpcGroup`, maps descriptors into
 React-native hooks, and attaches support metadata to each endpoint. Provider
-unmount closes the runtime scope so stream clients are interrupted.
+unmount disposes the managed runtime so stream clients are interrupted.

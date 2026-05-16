@@ -1,8 +1,21 @@
 import { dirname, join } from "node:path"
-import { mkdir, open, readFile, rename, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 
-import { Context, Data, Effect, Layer, Option, PubSub, Schema, Semaphore, Stream } from "effect"
+import {
+  Clock,
+  Context,
+  Data,
+  Effect,
+  Layer,
+  Option,
+  PubSub,
+  Schema,
+  Semaphore,
+  Stream
+} from "effect"
+import { KeyValueStore } from "effect/unstable/persistence"
+
+import { WindowContext } from "./window-context.js"
 
 export class WindowStateRecord extends Schema.Class<WindowStateRecord>("WindowStateRecord")({
   x: Schema.Number.check(Schema.isFinite()),
@@ -40,6 +53,8 @@ export class WindowStateEvent extends Schema.Class<WindowStateEvent>("WindowStat
   corruptPath: Schema.optionalKey(Schema.String),
   reason: Schema.optionalKey(Schema.String)
 }) {}
+
+const WindowStateStoreText = Schema.fromJsonString(Schema.toCodecJson(WindowStateStore))
 
 export class WindowStateReadFailed extends Data.TaggedError("WindowStateReadFailed")<{
   readonly path: string
@@ -93,14 +108,16 @@ const decodeWindowId = (
   )
 
 export interface WindowStateApi {
+  readonly restore: () => Effect.Effect<Option.Option<WindowStateRecord>, WindowStateError, never>
+  readonly persist: (state: WindowStateRecord) => Effect.Effect<void, WindowStateError, never>
+  readonly clear: () => Effect.Effect<void, WindowStateError, never>
+  readonly observe: () => Stream.Stream<WindowStateEvent, never, never>
+}
+
+interface WindowStateRepositoryApi {
   readonly restore: (
     windowId: string
   ) => Effect.Effect<Option.Option<WindowStateRecord>, WindowStateError, never>
-  readonly restoreAll: () => Effect.Effect<
-    Readonly<Record<string, WindowStateRecord>>,
-    WindowStateError,
-    never
-  >
   readonly persist: (
     windowId: string,
     state: WindowStateRecord
@@ -118,20 +135,53 @@ export interface WindowStateOptions {
 }
 
 export const makeWindowState = (
+  windowId: string,
   options: WindowStateOptions = {}
-): Effect.Effect<WindowStateApi, WindowStateInvalidArgumentError, never> =>
+): Effect.Effect<WindowStateApi, WindowStateInvalidArgumentError, KeyValueStore.KeyValueStore> =>
+  Effect.gen(function* () {
+    const repository = yield* makeWindowStateRepository(options)
+    const resolvedWindowId = yield* decodeWindowId(windowId, "WindowState.make")
+    return Object.freeze({
+      restore: () => repository.restore(resolvedWindowId),
+      persist: (state: WindowStateRecord) => repository.persist(resolvedWindowId, state),
+      clear: () => repository.clear(resolvedWindowId),
+      observe: () => repository.observe()
+    })
+  })
+
+const makeWindowStateRepository = (
+  options: WindowStateOptions = {}
+): Effect.Effect<
+  WindowStateRepositoryApi,
+  WindowStateInvalidArgumentError,
+  KeyValueStore.KeyValueStore
+> =>
   Effect.gen(function* () {
     const path =
       options.path ??
       buildDefaultWindowStatePath(
         yield* validateBundleId(options.bundleId ?? "effect-desktop", "WindowState.make")
       )
-    const now = options.now ?? Date.now
+    const kv = yield* KeyValueStore.KeyValueStore
+    const storeKey = path
+    const now =
+      options.now === undefined
+        ? Clock.currentTimeMillis
+        : Effect.sync(options.now).pipe(
+            Effect.catchDefect((error) =>
+              Effect.fail(
+                new WindowStateReadFailed({
+                  path,
+                  reason: `window-state clock failed: ${formatUnknownError(error)}`
+                })
+              )
+            )
+          )
     const validateBounds = (state: WindowStateRecord) =>
       snapToVisibleDisplay(options.validateBounds?.(state) ?? state, options.displays)
     const events = yield* PubSub.sliding<WindowStateEvent>({ capacity: 128, replay: 0 })
     const mutationGate = yield* Semaphore.make(1)
-    const read = readStore(path, now)
+    const read = readStore(kv, storeKey, path, now)
     const publishReadEvent = (result: WindowStateReadResult): Effect.Effect<void, never, never> =>
       result.event === undefined
         ? Effect.void
@@ -146,17 +196,6 @@ export const makeWindowState = (
           const store = result.store
           const record = store.windows[windowId]
           return record === undefined ? Option.none() : Option.some(validateBounds(record))
-        }),
-      restoreAll: () =>
-        Effect.gen(function* () {
-          const result = yield* read
-          yield* publishReadEvent(result)
-          return Object.fromEntries(
-            Object.entries(result.store.windows).map(([windowId, record]) => [
-              windowId,
-              validateBounds(record)
-            ])
-          )
         }),
       persist: (windowId: string, state: WindowStateRecord) =>
         Semaphore.withPermit(
@@ -173,7 +212,7 @@ export const makeWindowState = (
               }
             })
 
-            yield* writeStore(path, next)
+            yield* writeStore(kv, storeKey, path, next)
             yield* PubSub.publish(
               events,
               new WindowStateEvent({ kind: "persisted", path, windowId })
@@ -198,7 +237,7 @@ export const makeWindowState = (
                     )
                   })
 
-            yield* writeStore(path, next)
+            yield* writeStore(kv, storeKey, path, next)
             yield* PubSub.publish(
               events,
               new WindowStateEvent({
@@ -213,27 +252,44 @@ export const makeWindowState = (
     })
   })
 
-export class WindowState extends Context.Service<WindowState, WindowStateApi>()("WindowState") {}
-
-export const WindowStateLive = Layer.effect(WindowState)(makeWindowState().pipe(Effect.orDie))
-
-const readStore = (
-  path: string,
-  now: () => number
-): Effect.Effect<WindowStateReadResult, WindowStateError, never> =>
-  Effect.gen(function* () {
-    const content = yield* Effect.tryPromise({
-      try: () => readFile(path, "utf8"),
-      catch: (error) => error
-    }).pipe(
-      Effect.catch((error) => {
-        if (isNodeError(error) && error.code === "ENOENT") {
-          return Effect.succeed(undefined)
-        }
-
-        return Effect.fail(new WindowStateReadFailed({ path, reason: formatUnknownError(error) }))
+export class WindowState extends Context.Service<WindowState, WindowStateApi>()("WindowState") {
+  static window(
+    options: WindowStateOptions = {}
+  ): Layer.Layer<
+    WindowState,
+    WindowStateInvalidArgumentError,
+    WindowContext | KeyValueStore.KeyValueStore
+  > {
+    return Layer.effect(
+      WindowState,
+      Effect.gen(function* () {
+        const context = yield* WindowContext
+        return yield* makeWindowState(context.registrationId, options)
       })
     )
+  }
+}
+
+export const WindowStateLive: Layer.Layer<
+  WindowState,
+  WindowStateInvalidArgumentError,
+  WindowContext | KeyValueStore.KeyValueStore
+> = WindowState.window()
+
+const readStore = (
+  kv: KeyValueStore.KeyValueStore,
+  storeKey: string,
+  path: string,
+  now: Effect.Effect<number, WindowStateReadFailed, never>
+): Effect.Effect<WindowStateReadResult, WindowStateError, never> =>
+  Effect.gen(function* () {
+    const content = yield* kv
+      .get(storeKey)
+      .pipe(
+        Effect.mapError(
+          (error) => new WindowStateReadFailed({ path, reason: formatUnknownError(error) })
+        )
+      )
 
     if (content === undefined) {
       return { store: new WindowStateStore({ windows: {} }) }
@@ -242,7 +298,7 @@ const readStore = (
     return yield* decodeStore(content, path).pipe(
       Effect.map((store) => ({ store })),
       Effect.catchTag("WindowStateReadFailed", (error) =>
-        renameCorruptFile(path, now, error.reason)
+        clearCorruptState(kv, storeKey, path, now, error.reason)
       )
     )
   })
@@ -256,83 +312,53 @@ const decodeStore = (
   content: string,
   path: string
 ): Effect.Effect<WindowStateStore, WindowStateReadFailed, never> =>
-  Effect.gen(function* () {
-    const parsed = yield* Effect.try({
-      try: () => JSON.parse(content) as unknown,
-      catch: (error) => new WindowStateReadFailed({ path, reason: formatUnknownError(error) })
-    })
-
-    return yield* Schema.decodeUnknownEffect(WindowStateStore)(parsed).pipe(
-      Effect.mapError(
-        (error) => new WindowStateReadFailed({ path, reason: formatUnknownError(error) })
-      )
+  Schema.decodeUnknownEffect(WindowStateStoreText)(content).pipe(
+    Effect.mapError(
+      (error) => new WindowStateReadFailed({ path, reason: formatUnknownError(error) })
     )
-  })
+  )
 
 const writeStore = (
+  kv: KeyValueStore.KeyValueStore,
+  storeKey: string,
   path: string,
   store: WindowStateStore
 ): Effect.Effect<void, WindowStateWriteFailed, never> =>
   Effect.gen(function* () {
-    yield* Effect.tryPromise({
-      try: () => mkdir(dirname(path), { recursive: true }),
-      catch: (error) => new WindowStateWriteFailed({ path, reason: formatUnknownError(error) })
-    })
-    const tempPath = `${path}.tmp-${globalThis.crypto.randomUUID()}`
-    const encoded = JSON.stringify(store, null, 2)
-    yield* Effect.tryPromise({
-      try: () => writeFile(tempPath, `${encoded}\n`, "utf8"),
-      catch: (error) => new WindowStateWriteFailed({ path, reason: formatUnknownError(error) })
-    })
-    yield* syncPath(tempPath, path)
-    yield* Effect.tryPromise({
-      try: () => rename(tempPath, path),
-      catch: (error) => new WindowStateWriteFailed({ path, reason: formatUnknownError(error) })
-    })
-    yield* syncPath(dirname(path), path)
+    const encoded = yield* Schema.encodeUnknownEffect(WindowStateStoreText)(store).pipe(
+      Effect.mapError(
+        (error) => new WindowStateWriteFailed({ path, reason: formatUnknownError(error) })
+      )
+    )
+    yield* kv
+      .set(storeKey, encoded)
+      .pipe(
+        Effect.mapError(
+          (error) => new WindowStateWriteFailed({ path, reason: formatUnknownError(error) })
+        )
+      )
   })
 
-const syncPath = (
-  targetPath: string,
-  failurePath: string
-): Effect.Effect<void, WindowStateWriteFailed, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const handle = await open(targetPath, "r")
-      try {
-        await handle.sync().catch((error) => {
-          if (process.platform === "win32" && isNodeError(error) && error.code === "EPERM") {
-            return
-          }
-
-          throw error
-        })
-      } finally {
-        await handle.close()
-      }
-    },
-    catch: (error) =>
-      new WindowStateWriteFailed({ path: failurePath, reason: formatUnknownError(error) })
-  })
-
-const renameCorruptFile = (
+const clearCorruptState = (
+  kv: KeyValueStore.KeyValueStore,
+  storeKey: string,
   path: string,
-  now: () => number,
+  now: Effect.Effect<number, WindowStateReadFailed, never>,
   reason: string
 ): Effect.Effect<WindowStateReadResult, WindowStateCorruptRenamed | WindowStateReadFailed, never> =>
   Effect.gen(function* () {
     const timestamp = yield* readRecoveryTimestamp(path, now)
     const corruptPath = corruptWindowStatePath(path, timestamp)
-
-    yield* Effect.tryPromise({
-      try: () => rename(path, corruptPath),
-      catch: (error) =>
-        new WindowStateCorruptRenamed({
-          path,
-          corruptPath,
-          reason: `${reason}; corrupt-file rename failed: ${formatUnknownError(error)}`
-        })
-    })
+    yield* kv.remove(storeKey).pipe(
+      Effect.mapError(
+        (error) =>
+          new WindowStateCorruptRenamed({
+            path,
+            corruptPath,
+            reason: `${reason}; corrupt-state removal failed: ${formatUnknownError(error)}`
+          })
+      )
+    )
 
     return {
       store: new WindowStateStore({ windows: {} }),
@@ -347,9 +373,9 @@ const renameCorruptFile = (
 
 const readRecoveryTimestamp = (
   path: string,
-  now: () => number
+  now: Effect.Effect<number, WindowStateReadFailed, never>
 ): Effect.Effect<number, WindowStateReadFailed, never> =>
-  Effect.sync(now).pipe(
+  now.pipe(
     Effect.flatMap((timestamp) =>
       Number.isSafeInteger(timestamp) && timestamp >= 0
         ? Effect.succeed(timestamp)
@@ -417,7 +443,15 @@ const buildDefaultWindowStatePath = (bundleId: string): string => {
       return join(homeDirectory(), "Library", "Application Support", bundleId, "window-state.json")
     case "win32":
       return join(process.env["APPDATA"] ?? tmpdir(), bundleId, "window-state.json")
-    default:
+    case "aix":
+    case "android":
+    case "cygwin":
+    case "freebsd":
+    case "haiku":
+    case "linux":
+    case "netbsd":
+    case "openbsd":
+    case "sunos":
       return join(
         process.env["XDG_STATE_HOME"] ?? join(homeDirectory(), ".local", "state"),
         bundleId,
@@ -462,9 +496,6 @@ const corruptWindowStatePath = (path: string, timestamp: number): string =>
   join(dirname(path), `window-state.corrupt.${timestamp}.json`)
 
 const homeDirectory = (): string => process.env["HOME"] ?? tmpdir()
-
-const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
-  typeof error === "object" && error !== null && "code" in error
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

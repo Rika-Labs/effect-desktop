@@ -1,13 +1,46 @@
 export {
-  makeDesktopRendererRpcRuntime,
+  appendBounded,
+  interruptFrameworkFiber,
+  makeFrameworkScopedOperation,
+  runFrameworkEffect,
+  isDesktopStreamOptions,
+  makeFrameworkRuntime,
+  observeFrameworkFiber,
+  normalizeDesktopStreamCapacity,
+  runRendererStream,
+  type FrameworkScopedOperation,
+  type FrameworkRuntime,
+  type DesktopStreamOptions
+} from "./renderer-stream.js"
+export {
+  RendererRpcClients,
+  RendererRpcTransport,
+  getGlobalDesktopRendererRpcTransport,
+  makeDesktopRendererRpcClientLayer,
+  makeDesktopRendererRpcLayer,
+  makeDesktopRendererRpcTestLayer,
+  makeDesktopRendererRpcTransportLayer,
   setGlobalDesktopRendererRpcTransport,
   type DesktopRendererRpcClient,
+  type DesktopRendererRpcClientLayerOptions,
   type DesktopRendererRpcClientMap,
   type DesktopRendererRpcClientMethod,
-  type DesktopRendererRpcRuntime,
-  type DesktopRendererRpcRuntimeOptions,
+  type DesktopRendererRpcLayerOptions,
   type DesktopRendererRpcTransport
 } from "./renderer-rpc-client.js"
+export {
+  bindRendererEndpoints,
+  type DesktopEndpointSupport,
+  type RendererEndpointBinders
+} from "./renderer-endpoint-binder.js"
+export {
+  RendererInspectorCollector,
+  RendererInspectorCollectorLive,
+  RendererInspectorEvent,
+  disabledRendererInspectorCollector,
+  makeRendererInspectorCollector,
+  type RendererInspectorCollectorApi
+} from "./inspector-events.js"
 export {
   describeRpcs,
   type DesktopRpcDescriptorSource,
@@ -24,5 +57,5 @@ export {
   makeMissingDesktopRpcsError,
   type DesktopFramework
 } from "./desktop-errors.js"
-export type { DesktopAppManifest } from "./desktop-app.js"
-export type { RpcGroupWithRequests } from "./rpc-group-metadata.js"
+export type { DesktopAppManifest, DesktopRpcsLayer } from "./desktop-app.js"
+export type { DesktopRpcRegistration, DesktopRpcRegistrationGroup } from "./desktop-rpc-registry.js"

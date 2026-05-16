@@ -1,40 +1,398 @@
-export * from "./app.js"
-export * from "./app-events.js"
-export * from "./app-http-server.js"
-export * from "./clipboard.js"
-export * from "./contracts/clipboard.js"
-export * from "./context-menu.js"
-export * from "./contracts/context-menu.js"
-export * from "./crash-reporter.js"
-export * from "./crash-report-workflow.js"
-export * from "./contracts/crash-reporter.js"
-export * from "./dialog.js"
-export * from "./contracts/dialog.js"
-export * from "./dock.js"
-export * from "./contracts/dock.js"
-export * from "./global-shortcut.js"
-export * from "./contracts/global-shortcut.js"
-export * from "./menu.js"
-export * from "./notification.js"
-export * from "./contracts/notification.js"
-export * from "./path.js"
-export * from "./contracts/path.js"
-export * from "./protocol.js"
-export * from "./contracts/protocol.js"
-export * from "./power-monitor.js"
-export * from "./contracts/power-monitor.js"
-export * from "./safe-storage.js"
-export * from "./contracts/safe-storage.js"
-export * from "./screen.js"
-export * from "./contracts/screen.js"
-export * from "./shell.js"
-export * from "./contracts/shell.js"
-export * from "./system-appearance.js"
-export * from "./contracts/system-appearance.js"
-export * from "./tray.js"
-export * from "./contracts/tray.js"
-export * from "./updater.js"
-export * from "./contracts/updater.js"
-export * from "./updater-workflow.js"
-export * from "./webview.js"
-export * from "./window.js"
+export {
+  App,
+  AppClient,
+  AppHandlersLive,
+  AppLive,
+  AppMethodNames,
+  AppRpcEvents,
+  AppRpcs,
+  AppSurface,
+  makeAppClientLayer,
+  makeAppServiceLayer,
+  type AppClientApi,
+  type AppError,
+  type AppRpc,
+  type AppRpcHandlers,
+  type AppServiceApi
+} from "./app.js"
+export {
+  NativeCapabilities,
+  NativeCapabilitiesLive,
+  NativeCapabilityLookupError,
+  NativeCapabilityManifestError,
+  NativeCapabilityRegistryError,
+  makeNativeCapabilities,
+  makeNativeCapabilitiesLayer,
+  makeNativeCapabilityManifest,
+  UnsupportedCapability,
+  type NativeCapabilitiesApi,
+  type NativeCapabilityFact,
+  type NativeCapabilitySurface,
+  type NativeCapabilitySupport
+} from "./capabilities.js"
+export {
+  Native,
+  all,
+  available,
+  capabilities,
+  type NativeApi,
+  type NativeCapabilitySelection,
+  type NativeSurfaceSelection
+} from "./native.js"
+export {
+  Clipboard,
+  ClipboardClient,
+  ClipboardHandlersLive,
+  ClipboardLive,
+  ClipboardMethodNames,
+  ClipboardRpcEvents,
+  ClipboardRpcs,
+  ClipboardSurface,
+  makeClipboardClientLayer,
+  makeClipboardServiceLayer,
+  type ClipboardClientApi,
+  type ClipboardError,
+  type ClipboardRpc,
+  type ClipboardRpcHandlers,
+  type ClipboardServiceApi
+} from "./clipboard.js"
+export {
+  ContextMenu,
+  ContextMenuClient,
+  ContextMenuHandlersLive,
+  ContextMenuLive,
+  ContextMenuMethodNames,
+  ContextMenuRpcEvents,
+  ContextMenuRpcs,
+  ContextMenuSurface,
+  makeContextMenuClientLayer,
+  makeContextMenuServiceLayer,
+  type ContextMenuClientApi,
+  type ContextMenuCommandBindingError,
+  type ContextMenuError,
+  type ContextMenuRpc,
+  type ContextMenuRpcHandlers,
+  type ContextMenuServiceApi
+} from "./context-menu.js"
+export {
+  CrashReporter,
+  CrashReporterClient,
+  CrashReporterHandlersLive,
+  CrashReporterLive,
+  CrashReporterMethodNames,
+  CrashReporterRpcEvents,
+  CrashReporterRpcs,
+  CrashReporterSurface,
+  makeCrashReporterClientLayer,
+  makeCrashReporterMemoryClient,
+  makeCrashReporterServiceLayer,
+  type CrashReporterBreadcrumb,
+  type CrashReporterClientApi,
+  type CrashReporterError,
+  type CrashReporterRpc,
+  type CrashReporterRpcHandlers,
+  type CrashReporterServiceApi,
+  type CrashReporterStartOptions
+} from "./crash-reporter.js"
+export {
+  DesktopHttpApi,
+  DesktopHttpApiHttpServer,
+  DesktopHttpApiRoutes,
+  DesktopHttpPermission,
+  DesktopHttpPermissionLive,
+  DesktopHttpWindowCreateCapability,
+  DesktopWindowApiGroup,
+  DesktopWindowApiHandlers
+} from "./desktop-http-api.js"
+export {
+  Dialog,
+  DialogClient,
+  DialogHandlersLive,
+  DialogLive,
+  DialogMethodNames,
+  DialogRpcEvents,
+  DialogRpcs,
+  DialogSurface,
+  makeDialogClientLayer,
+  makeDialogServiceLayer,
+  type DialogClientApi,
+  type DialogError,
+  type DialogRpc,
+  type DialogRpcHandlers,
+  type DialogServiceApi
+} from "./dialog.js"
+export {
+  Dock,
+  DockClient,
+  DockHandlersLive,
+  DockLive,
+  DockMethodNames,
+  DockRpcEvents,
+  DockRpcs,
+  DockSurface,
+  makeDockClientLayer,
+  makeDockServiceLayer,
+  makeLinuxDockClient,
+  type DockClientApi,
+  type DockError,
+  type DockRpc,
+  type DockRpcHandlers,
+  type DockServiceApi
+} from "./dock.js"
+export {
+  GlobalShortcut,
+  GlobalShortcutClient,
+  GlobalShortcutHandlersLive,
+  GlobalShortcutLive,
+  GlobalShortcutMethodNames,
+  GlobalShortcutRpcEvents,
+  GlobalShortcutRpcs,
+  GlobalShortcutSurface,
+  makeGlobalShortcutAlreadyRegisteredError,
+  makeGlobalShortcutClientLayer,
+  makeGlobalShortcutServiceLayer,
+  makeLinuxGlobalShortcutClient,
+  type GlobalShortcutClientApi,
+  type GlobalShortcutCommandBindingError,
+  type GlobalShortcutError,
+  type GlobalShortcutRpc,
+  type GlobalShortcutRpcHandlers,
+  type GlobalShortcutServiceApi,
+  type GlobalShortcutWindowHandle
+} from "./global-shortcut.js"
+export {
+  Menu,
+  MenuClient,
+  MenuHandlersLive,
+  MenuLive,
+  MenuMethodNames,
+  MenuRpcEvents,
+  MenuRpcs,
+  MenuSurface,
+  makeMenuClientLayer,
+  makeMenuServiceLayer,
+  menuCapability,
+  type MenuCapabilityOptions,
+  type MenuClientApi,
+  type MenuCommandBindingError,
+  type MenuError,
+  type MenuRpc,
+  type MenuRpcHandlers,
+  type MenuServiceApi
+} from "./menu.js"
+export {
+  Notification,
+  NotificationClient,
+  NotificationHandlersLive,
+  NotificationLive,
+  NotificationMethodNames,
+  NotificationRpcEvents,
+  NotificationRpcs,
+  NotificationSurface,
+  makeNotificationClientLayer,
+  makeNotificationServiceLayer,
+  type NotificationClientApi,
+  type NotificationError,
+  type NotificationRpc,
+  type NotificationRpcHandlers,
+  type NotificationServiceApi
+} from "./notification.js"
+export {
+  Path,
+  PathClient,
+  PathHandlersLive,
+  PathLive,
+  PathMethodNames,
+  PathRpcEvents,
+  PathRpcs,
+  PathSurface,
+  makePathClientLayer,
+  makePathServiceLayer,
+  type PathClientApi,
+  type PathError,
+  type PathRpc,
+  type PathRpcHandlers,
+  type PathServiceApi
+} from "./path.js"
+export {
+  Protocol,
+  ProtocolClient,
+  ProtocolHandlersLive,
+  ProtocolLive,
+  ProtocolMethodNames,
+  ProtocolRpcEvents,
+  ProtocolRpcs,
+  ProtocolSurface,
+  makeProtocolClientLayer,
+  makeProtocolServiceLayer,
+  type ProtocolClientApi,
+  type ProtocolError,
+  type ProtocolRpc,
+  type ProtocolRpcHandlers,
+  type ProtocolServiceApi
+} from "./protocol.js"
+export {
+  PowerMonitor,
+  PowerMonitorClient,
+  PowerMonitorHandlersLive,
+  PowerMonitorLive,
+  PowerMonitorMethodNames,
+  PowerMonitorRpcEvents,
+  PowerMonitorRpcs,
+  PowerMonitorSurface,
+  makePowerMonitorClientLayer,
+  makePowerMonitorServiceLayer,
+  type PowerMonitorClientApi,
+  type PowerMonitorError,
+  type PowerMonitorRpc,
+  type PowerMonitorRpcHandlers,
+  type PowerMonitorServiceApi
+} from "./power-monitor.js"
+export {
+  SafeStorage,
+  SafeStorageClient,
+  SafeStorageHandlersLive,
+  SafeStorageLive,
+  SafeStorageMethodNames,
+  SafeStorageRpcEvents,
+  SafeStorageRpcs,
+  SafeStorageSurface,
+  makeLinuxSafeStorageClient,
+  makeSecretBytes,
+  makeSecretBytesFromUtf8,
+  makeSafeStorageClientLayer,
+  makeSafeStorageServiceLayer,
+  unsafeSecretBytes,
+  wipeSecretBytes,
+  type SafeStorageClientApi,
+  type SafeStorageError,
+  type SafeStorageRpc,
+  type SafeStorageRpcHandlers,
+  type SafeStorageServiceApi,
+  type SecretBytes
+} from "./safe-storage.js"
+export {
+  Screen,
+  ScreenClient,
+  ScreenHandlersLive,
+  ScreenLive,
+  ScreenMethodNames,
+  ScreenRpcs,
+  ScreenSurface,
+  makeScreenClientLayer,
+  makeScreenServiceLayer,
+  type ScreenBridgeClientOptions,
+  type ScreenClientApi,
+  type ScreenError,
+  type ScreenRpc,
+  type ScreenRpcHandlers,
+  type ScreenServiceApi
+} from "./screen.js"
+export {
+  Shell,
+  ShellClient,
+  ShellHandlersLive,
+  ShellLive,
+  ShellMethodNames,
+  ShellRpcEvents,
+  ShellRpcs,
+  ShellSurface,
+  makeShellClientLayer,
+  makeShellServiceLayer,
+  type ShellClientApi,
+  type ShellError,
+  type ShellRpc,
+  type ShellRpcHandlers,
+  type ShellServiceApi
+} from "./shell.js"
+export {
+  SystemAppearance,
+  SystemAppearanceClient,
+  SystemAppearanceHandlersLive,
+  SystemAppearanceLive,
+  SystemAppearanceMethodNames,
+  SystemAppearanceRpcEvents,
+  SystemAppearanceRpcs,
+  SystemAppearanceSurface,
+  makeSystemAppearanceClientLayer,
+  makeSystemAppearanceServiceLayer,
+  type SystemAppearanceClientApi,
+  type SystemAppearanceError,
+  type SystemAppearanceRpc,
+  type SystemAppearanceRpcHandlers,
+  type SystemAppearanceServiceApi
+} from "./system-appearance.js"
+export {
+  Tray,
+  TrayClient,
+  TrayHandlersLive,
+  TrayLive,
+  TrayMethodNames,
+  TrayRpcEvents,
+  TrayRpcs,
+  TraySurface,
+  makeTrayClientLayer,
+  makeTrayServiceLayer,
+  type TrayClientApi,
+  type TrayError,
+  type TrayRpc,
+  type TrayRpcHandlers,
+  type TrayServiceApi
+} from "./tray.js"
+export {
+  Updater,
+  UpdaterClient,
+  UpdaterHandlersLive,
+  UpdaterLive,
+  UpdaterMethodNames,
+  UpdaterRpcEvents,
+  UpdaterRpcs,
+  UpdaterSurface,
+  makeUpdaterClientLayer,
+  makeUpdaterServiceLayer,
+  type UpdaterCheckOptions,
+  type UpdaterClientApi,
+  type UpdaterDownloadOptions,
+  type UpdaterError,
+  type UpdaterInstallOptions,
+  type UpdaterRpc,
+  type UpdaterRpcHandlers,
+  type UpdaterServiceApi
+} from "./updater.js"
+export {
+  WebView,
+  WebViewClient,
+  WebViewHandlersLive,
+  WebViewLive,
+  WebViewMethodNames,
+  WebViewRpcEvents,
+  WebViewRpcs,
+  WebViewSurface,
+  makeWebViewClientLayer,
+  makeWebViewServiceLayer,
+  webViewCapability,
+  type WebViewClientApi,
+  type WebViewRpc,
+  type WebViewRpcHandlers,
+  type WebViewServiceApi
+} from "./webview.js"
+export {
+  Window,
+  WindowClient,
+  WindowHandlersLive,
+  WindowLive,
+  WindowMethodNames,
+  WindowRpcs,
+  WindowSupportedRpcs,
+  WindowSurface,
+  makeWindowClientLayer,
+  makeWindowServiceLayer,
+  type HostWindowRpcOptions,
+  type WindowBridgeClientOptions,
+  type WindowClientApi,
+  type WindowError,
+  type WindowPosition,
+  type WindowRpcHandlers,
+  type WindowServiceApi,
+  type WindowSize
+} from "./window.js"

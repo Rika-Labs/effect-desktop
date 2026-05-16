@@ -1,14 +1,14 @@
-import { BridgeRpc, type BridgeResourceHandle } from "@effect-desktop/bridge"
+import { ResourceHandleSchema, type ResourceHandle } from "@effect-desktop/core"
 import { Schema } from "effect"
 
 import { PrintableNonEmptyString } from "./strings.js"
 
-const WindowResource = BridgeRpc.Resource("window", "open")
+const WindowResource = ResourceHandleSchema("window", "open")
 const OwnerWindowId = Schema.NonEmptyString
-export const NotificationResource = BridgeRpc.Resource("notification", "open")
+export const NotificationResource = ResourceHandleSchema("notification", "open")
 export const PermissionState = Schema.Literals(["granted", "denied", "default"])
 
-export type NotificationHandle = BridgeResourceHandle<"notification", "open">
+export type NotificationHandle = ResourceHandle<"notification", "open">
 export type PermissionState = Schema.Schema.Type<typeof PermissionState>
 
 export class NotificationAction extends Schema.Class<NotificationAction>("NotificationAction")({
@@ -22,7 +22,7 @@ export class NotificationShowInput extends Schema.Class<NotificationShowInput>(
   title: PrintableNonEmptyString,
   body: PrintableNonEmptyString,
   actions: Schema.optionalKey(Schema.Array(NotificationAction)),
-  ownerWindow: Schema.optionalKey(WindowResource.schema)
+  ownerWindow: Schema.optionalKey(WindowResource)
 }) {}
 
 export type NotificationShowOptions = Schema.Schema.Type<typeof NotificationShowInput>
@@ -30,7 +30,7 @@ export type NotificationShowOptions = Schema.Schema.Type<typeof NotificationShow
 export class NotificationCloseInput extends Schema.Class<NotificationCloseInput>(
   "NotificationCloseInput"
 )({
-  notification: NotificationResource.schema
+  notification: NotificationResource
 }) {}
 
 export class NotificationSupportedResult extends Schema.Class<NotificationSupportedResult>(
@@ -48,14 +48,14 @@ export class NotificationPermissionResult extends Schema.Class<NotificationPermi
 export class NotificationClickEvent extends Schema.Class<NotificationClickEvent>(
   "NotificationClickEvent"
 )({
-  notification: NotificationResource.schema,
+  notification: NotificationResource,
   ownerWindowId: Schema.optionalKey(OwnerWindowId)
 }) {}
 
 export class NotificationActionEvent extends Schema.Class<NotificationActionEvent>(
   "NotificationActionEvent"
 )({
-  notification: NotificationResource.schema,
+  notification: NotificationResource,
   actionId: PrintableNonEmptyString,
   ownerWindowId: Schema.optionalKey(OwnerWindowId)
 }) {}

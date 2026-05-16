@@ -1,5 +1,11 @@
-import { redact, Telemetry, type TelemetryHistogramSnapshot } from "@effect-desktop/core"
-import { Context, Effect, Layer, Option, Stream } from "effect"
+import {
+  InspectorSafetyPolicy,
+  type InspectorSafetyPolicyApi,
+  type InspectorSafetySummary,
+  Telemetry,
+  type TelemetryHistogramSnapshot
+} from "@effect-desktop/core"
+import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval } from "./panel-options.js"
 
@@ -31,6 +37,7 @@ export interface PerformanceOverlaySnapshot {
   readonly startup: readonly PerformanceOverlayRow[]
   readonly bridgeP99: readonly BridgeP99OverlayRow[]
   readonly renderFrame: PerformanceOverlayRow
+  readonly safety: InspectorSafetySummary
 }
 
 export interface PerformanceOverlayApi {
@@ -41,6 +48,7 @@ export interface PerformanceOverlayApi {
 export interface PerformanceOverlayOptions {
   readonly mode?: PerformanceBudgetMode
   readonly frameInterval?: `${number} millis`
+  readonly inspectorSafety?: InspectorSafetyPolicyApi
 }
 
 export class PerformanceOverlay extends Context.Service<
@@ -50,14 +58,15 @@ export class PerformanceOverlay extends Context.Service<
 
 export const PerformanceOverlayLive = (
   options: PerformanceOverlayOptions = {}
-): Layer.Layer<PerformanceOverlay, never, Telemetry> =>
+): Layer.Layer<PerformanceOverlay, never, Telemetry | InspectorSafetyPolicy> =>
   Layer.effect(PerformanceOverlay)(makePerformanceOverlay(options))
 
 export const makePerformanceOverlay = (
   options: PerformanceOverlayOptions = {}
-): Effect.Effect<PerformanceOverlayApi, never, Telemetry> =>
+): Effect.Effect<PerformanceOverlayApi, never, Telemetry | InspectorSafetyPolicy> =>
   Effect.gen(function* () {
     const telemetry = yield* Telemetry
+    const inspectorSafety = options.inspectorSafety ?? (yield* InspectorSafetyPolicy)
     const mode = options.mode ?? "development"
     const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
@@ -65,33 +74,43 @@ export const makePerformanceOverlay = (
       Effect.gen(function* () {
         const metrics = yield* telemetry.listMetrics()
         const histograms = metrics.filter(isHistogram)
-        return redact({
-          startup: startupBudgets(mode).map((budget) =>
-            toBudgetRow(
-              budget.id,
-              budget.label,
-              findHistogram(histograms, budget.metricName),
-              budget.budgetMs
+        const decision = yield* inspectorSafety.sanitize({
+          source: "devtools.performance",
+          payload: {
+            startup: startupBudgets(mode).map((budget) =>
+              toBudgetRow(
+                budget.id,
+                budget.label,
+                findHistogram(histograms, budget.metricName),
+                budget.budgetMs
+              )
+            ),
+            bridgeP99: bridgeP99Rows(histograms, BRIDGE_P99_BUDGET_MS),
+            renderFrame: toBudgetRow(
+              "renderer.frame",
+              "Renderer frame",
+              findHistogram(histograms, "renderer.frame"),
+              RENDER_FRAME_BUDGET_MS
             )
-          ),
-          bridgeP99: bridgeP99Rows(histograms, BRIDGE_P99_BUDGET_MS),
-          renderFrame: toBudgetRow(
-            "renderer.frame",
-            "Renderer frame",
-            findHistogram(histograms, "renderer.frame"),
-            RENDER_FRAME_BUDGET_MS
-          )
-        } satisfies PerformanceOverlaySnapshot)
+          } satisfies Omit<PerformanceOverlaySnapshot, "safety">
+        })
+        if (Option.isNone(decision.value)) {
+          return {
+            startup: [],
+            bridgeP99: [],
+            renderFrame: emptyPerformanceOverlayRow("renderer.frame", "Renderer frame"),
+            safety: decision.summary
+          } satisfies PerformanceOverlaySnapshot
+        }
+        return {
+          ...decision.value.value,
+          safety: decision.summary
+        } satisfies PerformanceOverlaySnapshot
       })
 
     return Object.freeze({
       list,
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep(frameInterval).pipe(Effect.andThen(list())))
-          )
-        )
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced(frameInterval))
     } satisfies PerformanceOverlayApi)
   })
 
@@ -100,6 +119,16 @@ const startupBudgets = (mode: PerformanceBudgetMode): readonly PerformanceBudget
 
 const BRIDGE_P99_BUDGET_MS = 50
 const RENDER_FRAME_BUDGET_MS = 16.7
+
+const emptyPerformanceOverlayRow = (id: string, label: string): PerformanceOverlayRow => ({
+  id,
+  label,
+  valueMs: Option.none(),
+  budgetMs: 0,
+  ratio: Option.none(),
+  status: "missing",
+  samples: []
+})
 
 const DEVELOPMENT_STARTUP_BUDGETS: readonly PerformanceBudget[] = [
   {

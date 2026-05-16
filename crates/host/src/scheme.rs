@@ -17,60 +17,70 @@ const APP_SCHEME: &str = "app";
 const APP_HOST: &str = "localhost";
 const NOT_FOUND_BODY: &str = "app asset not found";
 const REWRITE_FAILED_BODY_PREFIX: &str = "app html rewrite failed; trace=";
+const POLICY_FAILED_BODY_PREFIX: &str = "app csp policy failed; trace=";
 const TEXT_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
 const TRACE_ID_HEADER: HeaderName = HeaderName::from_static("x-effect-trace-id");
 
 type Rewriter =
     fn(&[u8], &csp::CspNonce) -> Result<html_csp::RewriteOutcome, html_csp::RewriteError>;
+type PolicyResolver = fn() -> Result<csp::CspPolicy, csp::CspPolicyError>;
 
 pub(crate) fn register_app_scheme<'a>(builder: WebViewBuilder<'a>) -> WebViewBuilder<'a> {
     builder.with_custom_protocol(APP_SCHEME.into(), |_webview_id, request| {
-        let csp_template = csp::configured_template();
-        app_scheme_response_with(
-            &request,
-            html_csp::rewrite_with_nonce,
-            csp_template.as_deref(),
-        )
+        app_scheme_response_with(&request, html_csp::rewrite_with_nonce)
     })
 }
 
 #[cfg(test)]
 fn app_scheme_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
-    app_scheme_response_with(request, html_csp::rewrite_with_nonce, None)
+    app_scheme_response_with(request, html_csp::rewrite_with_nonce)
 }
 
 fn app_scheme_response_with(
     request: &Request<Vec<u8>>,
     rewriter: Rewriter,
-    csp_template: Option<&str>,
+) -> Response<Cow<'static, [u8]>> {
+    app_scheme_response_with_policy(request, rewriter, csp::CspPolicy::current)
+}
+
+fn app_scheme_response_with_policy(
+    request: &Request<Vec<u8>>,
+    rewriter: Rewriter,
+    policy_resolver: PolicyResolver,
 ) -> Response<Cow<'static, [u8]>> {
     let nonce = csp::CspNonce::mint();
     let trace_id = request_trace_id(request);
+    let policy = match policy_resolver() {
+        Ok(policy) => policy,
+        Err(error) => {
+            return app_policy_error_response(&trace_id, &error);
+        }
+    };
     let path = request.uri().path().to_owned();
     let method = request.method();
 
     if request.uri().host() != Some(APP_HOST) {
-        return app_not_found_response(&nonce, &trace_id, csp_template);
+        return app_not_found_response(&policy, &nonce, &trace_id);
     }
     if request
         .uri()
         .authority()
         .is_none_or(|authority| authority.as_str() != APP_HOST)
     {
-        return app_not_found_response(&nonce, &trace_id, csp_template);
+        return app_not_found_response(&policy, &nonce, &trace_id);
     }
     if method != Method::GET && method != Method::HEAD {
-        return app_method_not_allowed_response(&nonce, &trace_id, csp_template);
+        return app_method_not_allowed_response(&policy, &nonce, &trace_id);
     }
 
-    let Some(asset) = assets::resolve(&path) else {
-        return app_not_found_response(&nonce, &trace_id, csp_template);
+    let Some(asset) = resolve_asset(&path) else {
+        return app_not_found_response(&policy, &nonce, &trace_id);
     };
 
     let body = if method == Method::HEAD {
         Cow::Borrowed::<[u8]>(b"")
     } else {
-        Cow::Borrowed(asset.bytes)
+        Cow::Owned(asset.bytes.clone())
     };
 
     if !asset.content_type.starts_with("text/html") {
@@ -78,13 +88,13 @@ fn app_scheme_response_with(
             StatusCode::OK,
             asset.content_type,
             body,
+            &policy,
             &nonce,
             &trace_id,
-            csp_template,
         );
     }
 
-    match rewriter(asset.bytes, &nonce) {
+    match rewriter(&asset.bytes, &nonce) {
         Ok(outcome) => {
             if outcome.script_count == 0 && outcome.style_count == 0 && outcome.link_count == 0 {
                 warn!(
@@ -111,9 +121,9 @@ fn app_scheme_response_with(
                 } else {
                     Cow::Owned(outcome.bytes)
                 },
+                &policy,
                 &nonce,
                 &trace_id,
-                csp_template,
             )
         }
         Err(rewrite_error) => {
@@ -124,45 +134,69 @@ fn app_scheme_response_with(
                 error = %rewrite_error,
                 "html rewrite failed"
             );
-            app_rewrite_error_response(&trace_id, &nonce, csp_template)
+            app_rewrite_error_response(&policy, &trace_id, &nonce)
         }
     }
 }
 
+#[cfg(not(test))]
+fn resolve_asset(path: &str) -> Option<assets::Asset> {
+    assets::resolve(path)
+}
+
+#[cfg(test)]
+fn resolve_asset(path: &str) -> Option<assets::Asset> {
+    match path {
+        "" | "/" | "/index.html" => Some(assets::Asset {
+            bytes: b"<!doctype html><html><head><link rel=\"stylesheet\" href=\"/style.css\"><style>body{}</style></head><body><script src=\"/app.js\"></script></body></html>".to_vec(),
+            content_type: "text/html; charset=utf-8"
+        }),
+        "/style.css" => Some(assets::Asset {
+            bytes: b"body{}".to_vec(),
+            content_type: "text/css; charset=utf-8"
+        }),
+        "/app.js" => Some(assets::Asset {
+            bytes: b"console.log('ok')".to_vec(),
+            content_type: "text/javascript; charset=utf-8"
+        }),
+        _ => None
+    }
+}
+
 fn app_not_found_response(
+    policy: &csp::CspPolicy,
     nonce: &csp::CspNonce,
     trace_id: &HeaderValue,
-    csp_template: Option<&str>,
 ) -> Response<Cow<'static, [u8]>> {
     app_response(
         StatusCode::NOT_FOUND,
         TEXT_CONTENT_TYPE,
         Cow::Borrowed(NOT_FOUND_BODY.as_bytes()),
+        policy,
         nonce,
         trace_id,
-        csp_template,
     )
 }
 
 fn app_method_not_allowed_response(
+    policy: &csp::CspPolicy,
     nonce: &csp::CspNonce,
     trace_id: &HeaderValue,
-    csp_template: Option<&str>,
 ) -> Response<Cow<'static, [u8]>> {
     app_response(
         StatusCode::METHOD_NOT_ALLOWED,
         TEXT_CONTENT_TYPE,
         Cow::Borrowed(b"app protocol supports only GET and HEAD requests"),
+        policy,
         nonce,
         trace_id,
-        csp_template,
     )
 }
 
 fn app_rewrite_error_response(
+    policy: &csp::CspPolicy,
     trace_id: &HeaderValue,
     nonce: &csp::CspNonce,
-    csp_template: Option<&str>,
 ) -> Response<Cow<'static, [u8]>> {
     let trace_str = trace_id.to_str().unwrap_or("unknown");
     let body = format!("{REWRITE_FAILED_BODY_PREFIX}{trace_str}").into_bytes();
@@ -170,33 +204,56 @@ fn app_rewrite_error_response(
         StatusCode::INTERNAL_SERVER_ERROR,
         TEXT_CONTENT_TYPE,
         Cow::Owned(body),
+        policy,
         nonce,
         trace_id,
-        csp_template,
     )
+}
+
+fn app_policy_error_response(
+    trace_id: &HeaderValue,
+    error: &csp::CspPolicyError,
+) -> Response<Cow<'static, [u8]>> {
+    error!(
+        target: "host.csp",
+        trace_id = ?trace_id,
+        error = %error,
+        "csp policy resolution failed"
+    );
+    let trace_str = trace_id.to_str().unwrap_or("unknown");
+    let body = format!("{POLICY_FAILED_BODY_PREFIX}{trace_str}").into_bytes();
+    let mut response = Response::new(Cow::Owned(body));
+    *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static(TEXT_CONTENT_TYPE));
+    response
+        .headers_mut()
+        .insert(TRACE_ID_HEADER, trace_id.clone());
+    response
 }
 
 fn app_response(
     status: StatusCode,
     content_type: &'static str,
     body: Cow<'static, [u8]>,
+    policy: &csp::CspPolicy,
     nonce: &csp::CspNonce,
     trace_id: &HeaderValue,
-    csp_template: Option<&str>,
 ) -> Response<Cow<'static, [u8]>> {
-    let policy = csp_template.map_or_else(
-        || csp::CspPolicy::default_for_nonce(nonce),
-        |template| csp::CspPolicy::from_template(template, nonce),
-    );
+    let rendered_policy = policy.render(nonce);
     let mut response = Response::new(body);
     *response.status_mut() = status;
     response
         .headers_mut()
         .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
-    response.headers_mut().insert(
-        CONTENT_SECURITY_POLICY,
-        HeaderValue::from_str(policy.as_str()).expect("generated CSP should be a valid header"),
-    );
+    if !rendered_policy.is_empty() {
+        response.headers_mut().insert(
+            CONTENT_SECURITY_POLICY,
+            HeaderValue::from_str(&rendered_policy)
+                .expect("generated CSP should be a valid header"),
+        );
+    }
     response
         .headers_mut()
         .insert(TRACE_ID_HEADER, trace_id.clone());
@@ -217,11 +274,12 @@ fn request_trace_id(request: &Request<Vec<u8>>) -> HeaderValue {
 #[cfg(test)]
 mod tests {
     use super::{
-        app_scheme_response, app_scheme_response_with, APP_PROTOCOL_SOURCE_KIND, APP_URL,
-        REWRITE_FAILED_BODY_PREFIX, TEXT_CONTENT_TYPE, TRACE_ID_HEADER,
+        app_scheme_response, app_scheme_response_with, app_scheme_response_with_policy,
+        APP_PROTOCOL_SOURCE_KIND, APP_URL, POLICY_FAILED_BODY_PREFIX, REWRITE_FAILED_BODY_PREFIX,
+        TEXT_CONTENT_TYPE, TRACE_ID_HEADER,
     };
-    use crate::csp::{CspNonce, CspPolicy};
-    use crate::html_csp::{RewriteError, RewriteOutcome};
+    use crate::csp::{CspNonce, CspPolicy, CspPolicyError};
+    use crate::html_csp::{rewrite_with_nonce, RewriteError, RewriteOutcome};
     use lol_html::errors::RewritingError;
     use std::collections::BTreeSet;
     use wry::http::{
@@ -236,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn app_scheme_response_returns_embedded_index_html() {
+    fn app_scheme_response_returns_renderer_index_html() {
         let request = Request::builder()
             .uri(APP_URL)
             .header(TRACE_ID_HEADER, "trace-app-request")
@@ -259,7 +317,7 @@ mod tests {
             response.headers().get(CONTENT_SECURITY_POLICY),
             Some(
                 &HeaderValue::from_str(
-                    CspPolicy::default_for_nonce(&CspNonce::fixed(&header_nonce)).as_str()
+                    &CspPolicy::default().render(&CspNonce::fixed(&header_nonce))
                 )
                 .expect("expected CSP should be a valid header")
             )
@@ -313,33 +371,6 @@ mod tests {
         assert_ne!(
             csp_nonce_from_header(&first),
             csp_nonce_from_header(&second)
-        );
-    }
-
-    #[test]
-    fn app_scheme_response_uses_configured_csp_template_when_supplied() {
-        let request = Request::builder()
-            .uri(APP_URL)
-            .body(Vec::new())
-            .expect("test request should build");
-        let response = app_scheme_response_with(
-            &request,
-            crate::html_csp::rewrite_with_nonce,
-            Some("default-src 'self'; connect-src 'self'; script-src 'nonce-{N}'"),
-        );
-
-        let header_nonce = csp_nonce_from_header(&response);
-        assert_eq!(
-            response.headers().get(CONTENT_SECURITY_POLICY),
-            Some(
-                &HeaderValue::from_str(
-                    format!(
-                        "default-src 'self'; connect-src 'self'; script-src 'nonce-{header_nonce}'"
-                    )
-                    .as_str(),
-                )
-                .expect("configured CSP should be a valid header")
-            )
         );
     }
 
@@ -449,7 +480,7 @@ mod tests {
             .body(Vec::new())
             .expect("test request should build");
 
-        let response = app_scheme_response_with(&request, faulty_rewriter, None);
+        let response = app_scheme_response_with(&request, faulty_rewriter);
 
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(
@@ -470,16 +501,84 @@ mod tests {
         );
     }
 
+    #[test]
+    fn app_scheme_response_uses_resolved_manifest_policy() {
+        let request = Request::builder()
+            .uri(APP_URL)
+            .body(Vec::new())
+            .expect("test request should build");
+        let response =
+            app_scheme_response_with_policy(&request, rewrite_with_nonce, configured_policy);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let header = response
+            .headers()
+            .get(CONTENT_SECURITY_POLICY)
+            .expect("configured CSP should be present")
+            .to_str()
+            .expect("CSP should be ASCII");
+        assert!(header.contains("connect-src 'self' https:"));
+        assert!(!header.contains("connect-src 'self' app:"));
+    }
+
+    #[test]
+    fn disabled_policy_omits_csp_header() {
+        let request = Request::builder()
+            .uri(APP_URL)
+            .body(Vec::new())
+            .expect("test request should build");
+        let response =
+            app_scheme_response_with_policy(&request, rewrite_with_nonce, disabled_policy);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get(CONTENT_SECURITY_POLICY), None);
+    }
+
+    #[test]
+    fn policy_resolution_failure_returns_500_without_default_fallback() {
+        let request = Request::builder()
+            .uri(APP_URL)
+            .header(TRACE_ID_HEADER, "trace-policy-fails")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = app_scheme_response_with_policy(&request, rewrite_with_nonce, bad_policy);
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.headers().get(CONTENT_SECURITY_POLICY), None);
+        assert_eq!(
+            response.headers().get(TRACE_ID_HEADER),
+            Some(&HeaderValue::from_static("trace-policy-fails"))
+        );
+        let body = std::str::from_utf8(response.body()).expect("error body should be utf-8");
+        assert!(body.starts_with(POLICY_FAILED_BODY_PREFIX));
+        assert!(body.contains("trace-policy-fails"));
+    }
+
     fn faulty_rewriter(_: &[u8], _: &CspNonce) -> Result<RewriteOutcome, RewriteError> {
         Err(RewriteError::Parse(RewritingError::ContentHandlerError(
             Box::<dyn std::error::Error + Send + Sync>::from("synthetic-rewrite-failure"),
         )))
     }
 
+    fn configured_policy() -> Result<CspPolicy, CspPolicyError> {
+        Ok(CspPolicy::from_test_directives(&[
+            ("default-src", &["'self'"]),
+            ("script-src", &["'self'", "'nonce-{N}'"]),
+            ("style-src", &["'self'", "'nonce-{N}'"]),
+            ("connect-src", &["'self'", "https:"]),
+        ]))
+    }
+
+    fn disabled_policy() -> Result<CspPolicy, CspPolicyError> {
+        Ok(CspPolicy::from_test_directives(&[]))
+    }
+
+    fn bad_policy() -> Result<CspPolicy, CspPolicyError> {
+        CspPolicy::from_manifest_str(r#"{"rendererManifest":{}}"#)
+    }
+
     fn expected_csp(nonce: &str) -> String {
-        CspPolicy::default_for_nonce(&CspNonce::fixed(nonce))
-            .as_str()
-            .to_owned()
+        CspPolicy::default().render(&CspNonce::fixed(nonce))
     }
 
     fn collect_nonce_attribute_values(body: &str) -> BTreeSet<String> {

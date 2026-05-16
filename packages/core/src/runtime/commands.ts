@@ -1,14 +1,36 @@
-import { Context, Data, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
+import {
+  Clock,
+  Context,
+  Data,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  PubSub,
+  Ref,
+  Schema,
+  Scope,
+  Stream
+} from "effect"
+import { Rpc, RpcGroup, RpcTest } from "effect/unstable/rpc"
+
+import { rpcCapability } from "@effect-desktop/bridge"
 
 import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   PermissionRegistry,
+  NormalizedCapability as NormalizedCapabilitySchema,
   type NormalizedCapability,
   type PermissionContext,
-  type PermissionRegistryError,
   type PermissionRegistryApi
 } from "./permission-registry.js"
 import {
+  makePermissionInterceptorLayer,
+  PermissionDenied,
+  PermissionInterceptor
+} from "./permission-interceptor.js"
+import {
+  makeResourceId,
   ResourceRegistry,
   type ResourceHandle,
   type ResourceId,
@@ -20,19 +42,10 @@ const NonEmptyString = Schema.NonEmptyString
 // eslint-disable-next-line no-control-regex -- Intentionally matches control chars to reject them.
 const CommandIdString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00-\x1f\x7f]+$/))
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-const StrictParseOptions = { onExcessProperty: "error" } as const
-
 export class CommandRegistryInvalidInputError extends Data.TaggedError("InvalidInput")<{
   readonly operation: string
   readonly commandId: Option.Option<string>
   readonly field: string
-  readonly message: string
-  readonly cause: Option.Option<unknown>
-}> {}
-
-export class CommandRegistryInvalidOutputError extends Data.TaggedError("InvalidOutput")<{
-  readonly operation: string
-  readonly commandId: string
   readonly message: string
   readonly cause: Option.Option<unknown>
 }> {}
@@ -77,22 +90,18 @@ export class CommandRegistryCommittedAuditFailedError extends Data.TaggedError(
 
 export type CommandRegistryError =
   | CommandRegistryInvalidInputError
-  | CommandRegistryInvalidOutputError
   | CommandRegistryCommandNotFoundError
   | CommandRegistryCommandAlreadyRegisteredError
   | CommandRegistryRegistrationLostError
   | CommandRegistryHandlerFailureError
   | CommandRegistryAuditFailedError
   | CommandRegistryCommittedAuditFailedError
-  | PermissionRegistryError
+  | PermissionDenied
 
-export interface CommandRegistration<I, O> {
-  readonly id: string
-  readonly inputSchema: Schema.Schema<I>
-  readonly outputSchema: Schema.Schema<O>
-  readonly capability: NormalizedCapability
+export interface CommandGroupRegistration<Rpcs extends Rpc.Any, E, R> {
+  readonly group: RpcGroup.RpcGroup<Rpcs>
+  readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
   readonly ownerScope: ScopeId
-  readonly handler: (input: I) => Effect.Effect<O, unknown, never>
 }
 
 export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecord>(
@@ -117,9 +126,9 @@ export class CommandSnapshot extends Schema.Class<CommandSnapshot>("CommandSnaps
 }) {}
 
 export interface CommandRegistryApi {
-  readonly register: <I, O>(
-    registration: CommandRegistration<I, O>
-  ) => Effect.Effect<ResourceHandle<"command", "registered">, CommandRegistryError, never>
+  readonly registerGroup: <Rpcs extends Rpc.Any, E, R>(
+    registration: CommandGroupRegistration<Rpcs, E, R>
+  ) => Effect.Effect<ResourceHandle<"command-group", "registered">, CommandRegistryError | E, R>
   readonly unregister: (id: string) => Effect.Effect<void, CommandRegistryError, never>
   readonly invoke: (
     id: string,
@@ -137,15 +146,16 @@ export interface CommandRegistryOptions {
 
 interface StoredCommand {
   readonly id: string
-  readonly inputSchema: Schema.Schema<unknown>
-  readonly outputSchema: Schema.Schema<unknown>
   readonly capability: NormalizedCapability
   readonly ownerScope: ScopeId
   readonly resourceId: ResourceId
   readonly resourceGeneration: number
   readonly registrationToken: symbol
   readonly committed: boolean
-  readonly handler: (input: unknown) => Effect.Effect<unknown, unknown, never>
+  readonly invoke: (
+    input: unknown,
+    context: PermissionContext
+  ) => Effect.Effect<unknown, unknown, never>
   readonly invocationCount: number
   readonly lastInvocation?: CommandInvocationRecord
   readonly lastError?: CommandInvocationRecord
@@ -159,7 +169,8 @@ export const makeCommandRegistry = (
   Effect.gen(function* () {
     const commands = yield* Ref.make<ReadonlyMap<string, StoredCommand>>(new Map())
     const invocations = yield* PubSub.sliding<CommandInvocationRecord>({ capacity: 1024 })
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
 
     const remove = (
       id: string,
@@ -188,10 +199,16 @@ export const makeCommandRegistry = (
       })
 
     return Object.freeze({
-      register: (registration) =>
-        registerCommand(commands, resources, remove, options.audit, now, registration).pipe(
-          Effect.withSpan("CommandRegistry.register")
-        ),
+      registerGroup: (registration) =>
+        registerCommandGroup(
+          commands,
+          resources,
+          permissions,
+          remove,
+          options.audit,
+          now,
+          registration
+        ).pipe(Effect.withSpan("CommandRegistry.registerGroup")),
       unregister: (id) =>
         Effect.gen(function* () {
           const decodedId = yield* decodeCommandId(id, "CommandRegistry.unregister")
@@ -210,7 +227,7 @@ export const makeCommandRegistry = (
           yield* auditCommand(options.audit, "command-unregistered", decodedId, "unregistered", now)
         }).pipe(Effect.withSpan("CommandRegistry.unregister")),
       invoke: (id, input, context) =>
-        invokeCommand(commands, invocations, permissions, options.audit, now, id, input, context),
+        invokeCommand(commands, invocations, options.audit, now, id, input, context),
       list: () =>
         Ref.get(commands).pipe(
           Effect.map((current) =>
@@ -247,10 +264,34 @@ export class CommandRegistry extends Context.Service<CommandRegistry, CommandReg
   }
 ) {}
 
+export const DesktopCommands = Object.freeze({
+  layer: <Rpcs extends Rpc.Any, E, R>(
+    group: RpcGroup.RpcGroup<Rpcs>,
+    handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>,
+    options: { readonly ownerScope?: ScopeId } = {}
+  ): Layer.Layer<never, CommandRegistryError | E, CommandRegistry | ResourceRegistry | R> =>
+    Layer.effectDiscard(
+      Effect.acquireRelease(
+        Effect.gen(function* () {
+          const registry = yield* CommandRegistry
+          return yield* registry.registerGroup({
+            group,
+            handlers,
+            ownerScope: options.ownerScope ?? "app"
+          })
+        }),
+        (handle) =>
+          Effect.gen(function* () {
+            const resources = yield* ResourceRegistry
+            yield* resources.dispose(handle.id)
+          })
+      )
+    )
+})
+
 const invokeCommand = (
   commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
   invocations: PubSub.PubSub<CommandInvocationRecord>,
-  permissions: PermissionRegistryApi,
   audit: AuditEventsApi | undefined,
   now: () => number,
   id: string,
@@ -274,13 +315,15 @@ const invokeCommand = (
     )
     invocationStart = { decodedId, startedAt }
     const command = yield* getCommand(commands, decodedId, "CommandRegistry.invoke")
-    const decodedInput = yield* decodeCommandInput(command, input)
-    const grant = yield* permissions.check(command.capability, context, {
-      source: `command:${decodedId}`
-    })
-    const output = yield* permissions.use(grant, invokeCommandHandler(command, decodedInput))
-    const decodedOutput = yield* decodeCommandOutput(command, output)
-    yield* auditCommand(audit, "command-invoked", decodedId, "success", now, grant.traceId).pipe(
+    const output = yield* invokeCommandRpc(command, input, context)
+    yield* auditCommand(
+      audit,
+      "command-invoked",
+      decodedId,
+      "success",
+      now,
+      commandTraceId(context, decodedId)
+    ).pipe(
       Effect.mapError((error) => {
         if (error instanceof CommandRegistryInvalidInputError) {
           return error
@@ -293,7 +336,7 @@ const invokeCommand = (
         })
       })
     )
-    return { decodedId, output: decodedOutput, startedAt }
+    return { decodedId, output, startedAt }
   }).pipe(
     Effect.tap(({ decodedId, startedAt }) =>
       recordCommandInvocation(commands, invocations, now, startedAt, decodedId, context, "success")
@@ -382,7 +425,7 @@ const fallbackTraceId = (commandId: string): string =>
   commandId.length === 0 ? "command:unknown" : `command:${commandId}`
 
 const errorTag = (error: CommandRegistryError): string =>
-  "_tag" in error && typeof error._tag === "string" ? error._tag : "PermissionRegistryError"
+  "_tag" in error && typeof error._tag === "string" ? error._tag : "UnknownError"
 
 const readCommandTimestamp = (
   now: () => number,
@@ -417,9 +460,10 @@ const readCommandTimestamp = (
     )
   )
 
-const registerCommand = <I, O>(
+const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
   commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
   resources: ResourceRegistryApi,
+  permissions: PermissionRegistryApi,
   remove: (
     id: string,
     resourceId?: ResourceId,
@@ -428,52 +472,62 @@ const registerCommand = <I, O>(
   ) => Effect.Effect<StoredCommand | undefined, never, never>,
   audit: AuditEventsApi | undefined,
   now: () => number,
-  registration: CommandRegistration<I, O>
-): Effect.Effect<ResourceHandle<"command", "registered">, CommandRegistryError, never> => {
-  let reservedId: string | undefined
+  registration: CommandGroupRegistration<Rpcs, E, R>
+): Effect.Effect<ResourceHandle<"command-group", "registered">, CommandRegistryError | E, R> => {
+  let reservedIds: readonly string[] = []
   let reservedToken: symbol | undefined
-  let handle: ResourceHandle<"command", "registered"> | undefined
+  let handle: ResourceHandle<"command-group", "registered"> | undefined
+  let commandScope: Scope.Scope | undefined
   let completed = false
 
   const rollback = Effect.suspend(() => {
-    if (completed || reservedId === undefined) {
+    if (completed || reservedIds.length === 0) {
       return Effect.void
     }
 
-    return handle === undefined
-      ? remove(reservedId, undefined, undefined, reservedToken).pipe(Effect.asVoid)
-      : resources.dispose(handle.id)
+    const closeCommandScope =
+      commandScope === undefined ? Effect.void : Scope.close(commandScope, Exit.void)
+    return (
+      handle === undefined
+        ? Effect.forEach(reservedIds, (id) =>
+            remove(id, undefined, undefined, reservedToken).pipe(Effect.asVoid)
+          ).pipe(Effect.asVoid)
+        : resources.dispose(handle.id)
+    ).pipe(Effect.andThen(closeCommandScope))
   })
 
   return Effect.gen(function* () {
-    const decodedId = yield* decodeCommandId(registration.id, "CommandRegistry.register")
-    reservedId = decodedId
-    const resourceId = commandResourceId(decodedId)
+    const registrationToken = Symbol("command-group")
+    reservedToken = registrationToken
+    const scope = yield* Scope.make()
+    commandScope = scope
+    const client = yield* RpcTest.makeClient(
+      registration.group.middleware(PermissionInterceptor)
+    ).pipe(
+      Effect.provide(registration.handlers),
+      Effect.provide(makePermissionInterceptorLayer()),
+      Effect.provideService(PermissionRegistry, permissions),
+      Scope.provide(scope)
+    )
+    const prepared = yield* prepareCommandGroup(registration, client, registrationToken)
+    reservedIds = prepared.map((command) => command.id)
+    const resourceId = commandGroupResourceId(reservedIds)
     let registeredResourceId = resourceId
     let registeredResourceGeneration = 0
-    const registrationToken = Symbol(decodedId)
-    reservedToken = registrationToken
-    const stored: StoredCommand = {
-      id: decodedId,
-      inputSchema: registration.inputSchema as Schema.Schema<unknown>,
-      outputSchema: registration.outputSchema as Schema.Schema<unknown>,
-      capability: registration.capability,
-      ownerScope: registration.ownerScope,
-      resourceId,
-      resourceGeneration: registeredResourceGeneration,
-      registrationToken,
-      committed: false,
-      handler: registration.handler as (input: unknown) => Effect.Effect<unknown, unknown, never>,
-      invocationCount: 0
-    }
 
     const reserved = yield* Ref.modify(commands, (current) => {
-      if (current.has(decodedId)) {
+      if (prepared.some((command) => current.has(command.id))) {
         return [false, current] as const
       }
 
       const next = new Map(current)
-      next.set(decodedId, stored)
+      for (const command of prepared) {
+        next.set(command.id, {
+          ...command,
+          resourceId,
+          resourceGeneration: registeredResourceGeneration
+        })
+      }
       return [true, next] as const
     })
 
@@ -481,25 +535,22 @@ const registerCommand = <I, O>(
       completed = true
       return yield* Effect.fail(
         new CommandRegistryCommandAlreadyRegisteredError({
-          operation: "CommandRegistry.register",
-          commandId: decodedId
+          operation: "CommandRegistry.registerGroup",
+          commandId: reservedIds.find((id) => id.length > 0) ?? "unknown"
         })
       )
     }
 
     const registeredHandle = yield* resources
       .register({
-        kind: "command",
+        kind: "command-group",
         id: resourceId,
         ownerScope: registration.ownerScope,
         state: "registered",
         dispose: Effect.suspend(() =>
-          remove(
-            decodedId,
-            registeredResourceId,
-            registeredResourceGeneration,
-            registrationToken
-          ).pipe(Effect.asVoid)
+          Effect.forEach(reservedIds, (id) =>
+            remove(id, registeredResourceId, registeredResourceGeneration, registrationToken)
+          ).pipe(Effect.asVoid, Effect.andThen(Scope.close(scope, Exit.void)))
         )
       })
       .pipe(Effect.orDie)
@@ -507,40 +558,41 @@ const registerCommand = <I, O>(
     registeredResourceId = registeredHandle.id
     registeredResourceGeneration = registeredHandle.generation
     const committed = yield* Ref.modify(commands, (current) => {
-      const command = current.get(decodedId)
-      if (
-        command === undefined ||
-        command.registrationToken !== registrationToken ||
-        (command.committed &&
-          command.resourceId === registeredHandle.id &&
-          command.resourceGeneration === registeredHandle.generation)
-      ) {
-        return [command !== undefined && command.registrationToken === registrationToken, current]
-      }
-
       const next = new Map(current)
-      next.set(decodedId, {
-        ...command,
-        committed: true,
-        resourceId: registeredHandle.id,
-        resourceGeneration: registeredHandle.generation
-      })
+      for (const id of reservedIds) {
+        const command = current.get(id)
+        if (command === undefined || command.registrationToken !== registrationToken) {
+          return [false, current] as const
+        }
+        next.set(id, {
+          ...command,
+          committed: true,
+          resourceId: registeredHandle.id,
+          resourceGeneration: registeredHandle.generation
+        })
+      }
       return [true, next] as const
     })
     if (!committed) {
       return yield* Effect.fail(
         new CommandRegistryRegistrationLostError({
-          operation: "CommandRegistry.register",
-          commandId: decodedId,
+          operation: "CommandRegistry.registerGroup",
+          commandId: reservedIds[0] ?? "unknown",
           resourceId: registeredHandle.id
         })
       )
     }
 
-    yield* auditCommand(audit, "command-registered", decodedId, "registered", now)
+    yield* Effect.forEach(reservedIds, (id) =>
+      auditCommand(audit, "command-registered", id, "registered", now)
+    )
     completed = true
     return registeredHandle
-  }).pipe(Effect.ensuring(rollback))
+  }).pipe(Effect.ensuring(rollback)) as Effect.Effect<
+    ResourceHandle<"command-group", "registered">,
+    CommandRegistryError | E,
+    R
+  >
 }
 
 const getCommand = (
@@ -560,54 +612,110 @@ const getCommand = (
     return command
   })
 
-const decodeCommandInput = (
-  command: StoredCommand,
-  input: unknown
-): Effect.Effect<unknown, CommandRegistryInvalidInputError, never> =>
-  Schema.decodeUnknownEffect(command.inputSchema)(input, StrictParseOptions).pipe(
+type DynamicRpcClient = Readonly<
+  Record<
+    string,
+    (
+      input: unknown,
+      options?: { readonly headers?: Readonly<Record<string, string>> }
+    ) => Effect.Effect<unknown, unknown, never>
+  >
+>
+
+const prepareCommandGroup = <Rpcs extends Rpc.Any, E, R>(
+  registration: CommandGroupRegistration<Rpcs, E, R>,
+  client: unknown,
+  registrationToken: symbol
+): Effect.Effect<readonly StoredCommand[], CommandRegistryInvalidInputError, never> =>
+  Effect.gen(function* () {
+    // RpcTest generates one method per RPC tag; dynamic command dispatch is the string boundary.
+    const dynamicClient = client as DynamicRpcClient
+    const commands: StoredCommand[] = []
+    for (const rpc of registration.group.requests.values()) {
+      const id = yield* decodeCommandId(rpc._tag, "CommandRegistry.registerGroup")
+      const capability = yield* decodeCommandCapability(rpc)
+      const invoke = dynamicClient[rpc._tag]
+      if (invoke === undefined) {
+        return yield* Effect.fail(
+          new CommandRegistryInvalidInputError({
+            operation: "CommandRegistry.registerGroup",
+            commandId: Option.some(id),
+            field: "handler",
+            message: "command RPC client is missing a generated endpoint",
+            cause: Option.some(rpc._tag)
+          })
+        )
+      }
+
+      commands.push({
+        id,
+        capability,
+        ownerScope: registration.ownerScope,
+        resourceId: commandResourceId(id),
+        resourceGeneration: 0,
+        registrationToken,
+        committed: false,
+        invoke: (input, context) => invoke(input, { headers: commandHeaders(context) }),
+        invocationCount: 0
+      })
+    }
+    return commands
+  })
+
+const decodeCommandCapability = (
+  rpc: Rpc.Any
+): Effect.Effect<NormalizedCapability, CommandRegistryInvalidInputError, never> => {
+  const capability = rpcCapability(rpc)
+  if (Option.isNone(capability) || capability.value.kind === "none") {
+    return Effect.fail(
+      new CommandRegistryInvalidInputError({
+        operation: "CommandRegistry.registerGroup",
+        commandId: Option.some(rpc._tag),
+        field: "capability",
+        message: "command RPC must declare a concrete capability",
+        cause: Option.none()
+      })
+    )
+  }
+
+  return Schema.decodeUnknownEffect(NormalizedCapabilitySchema)(capability.value).pipe(
     Effect.mapError(
       (cause) =>
         new CommandRegistryInvalidInputError({
-          operation: "CommandRegistry.invoke",
-          commandId: Option.some(command.id),
-          field: "input",
-          message: "command input failed schema validation",
+          operation: "CommandRegistry.registerGroup",
+          commandId: Option.some(rpc._tag),
+          field: "capability",
+          message: "command RPC capability failed schema validation",
           cause: Option.some(cause)
         })
-    )
-  ) as Effect.Effect<unknown, CommandRegistryInvalidInputError, never>
-
-const decodeCommandOutput = (
-  command: StoredCommand,
-  output: unknown
-): Effect.Effect<unknown, CommandRegistryInvalidOutputError, never> =>
-  Schema.decodeUnknownEffect(command.outputSchema)(output, StrictParseOptions).pipe(
-    Effect.mapError(
-      (cause) =>
-        new CommandRegistryInvalidOutputError({
-          operation: "CommandRegistry.invoke",
-          commandId: command.id,
-          message: "command output failed schema validation",
-          cause: Option.some(cause)
-        })
-    )
-  ) as Effect.Effect<unknown, CommandRegistryInvalidOutputError, never>
-
-const invokeCommandHandler = (
-  command: StoredCommand,
-  input: unknown
-): Effect.Effect<unknown, CommandRegistryHandlerFailureError, never> =>
-  Effect.try({
-    try: () => command.handler(input),
-    catch: (cause) => handlerFailure(command.id, cause)
-  }).pipe(
-    Effect.flatMap((effect) =>
-      effect.pipe(
-        Effect.mapError((cause) => handlerFailure(command.id, cause)),
-        Effect.catchDefect((cause) => Effect.fail(handlerFailure(command.id, cause)))
-      )
     )
   )
+}
+
+const commandHeaders = (context: PermissionContext): Readonly<Record<string, string>> => ({
+  "x-effect-desktop-actor-kind": context.actor.kind,
+  "x-effect-desktop-actor-id": context.actor.id,
+  ...(context.traceId === undefined || context.traceId.length === 0
+    ? {}
+    : { "x-effect-desktop-trace-id": context.traceId })
+})
+
+const invokeCommandRpc = (
+  command: StoredCommand,
+  input: unknown,
+  context: PermissionContext
+): Effect.Effect<unknown, CommandRegistryHandlerFailureError | PermissionDenied, never> =>
+  command.invoke(input, context).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof PermissionDenied ? cause : handlerFailure(command.id, cause)
+    ),
+    Effect.catchDefect((cause) => Effect.fail(handlerFailure(command.id, cause)))
+  )
+
+const commandTraceId = (context: PermissionContext, commandId: string): string =>
+  context.traceId === undefined || context.traceId.length === 0
+    ? fallbackTraceId(commandId)
+    : context.traceId
 
 const handlerFailure = (commandId: string, cause: unknown): CommandRegistryHandlerFailureError =>
   new CommandRegistryHandlerFailureError({
@@ -633,7 +741,10 @@ const decodeCommandId = (
     )
   )
 
-const commandResourceId = (id: string): ResourceId => `command:${id}` as ResourceId
+const commandResourceId = (id: string): ResourceId => makeResourceId(`command:${id}`)
+
+const commandGroupResourceId = (ids: readonly string[]): ResourceId =>
+  makeResourceId(`command-group:${ids.join(",")}`)
 
 const auditCommand = (
   audit: AuditEventsApi | undefined,
@@ -642,11 +753,7 @@ const auditCommand = (
   outcome: string,
   now: () => number,
   traceId: string = `command:${commandId}`
-): Effect.Effect<
-  void,
-  CommandRegistryAuditFailedError | CommandRegistryInvalidInputError,
-  never
-> =>
+): Effect.Effect<void, CommandRegistryAuditFailedError | CommandRegistryInvalidInputError, never> =>
   audit === undefined
     ? Effect.void
     : Effect.gen(function* () {

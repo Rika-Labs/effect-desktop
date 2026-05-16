@@ -1,8 +1,23 @@
-import { Context, Effect, Layer, Scope } from "effect"
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
-
-const APP_CSP_TEMPLATE =
-  "default-src 'self'; script-src 'self' 'nonce-{N}'; style-src 'self' 'nonce-{N}'; style-src-attr 'unsafe-inline'; connect-src 'self' app:; img-src 'self' app: data: https:; font-src 'self' app: data:; media-src 'self' app:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'"
+import {
+  DEFAULT_CSP_POLICY,
+  mintCspNonce,
+  renderCspPolicy,
+  type CspNonce,
+  type CspPolicy
+} from "@effect-desktop/config"
+import { cspInspectorEvent, type CspInspectorEvent } from "@effect-desktop/core"
+import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Scope, Stream } from "effect"
+import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import {
+  HttpApi,
+  HttpApiBuilder,
+  HttpApiEndpoint,
+  HttpApiError,
+  HttpApiGroup,
+  HttpApiScalar,
+  HttpApiSchema,
+  OpenApi
+} from "effect/unstable/httpapi"
 
 const MIME_MAP: ReadonlyMap<string, string> = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -33,23 +48,41 @@ const mimeTypeForPath = (path: string): string => {
 
 export { mimeTypeForPath }
 
-const mintNonce = (): string => {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
-}
+class HtmlNonceRewriteError extends Data.TaggedError("HtmlNonceRewriteError")<{
+  readonly cause: unknown
+}> {}
 
-const renderCsp = (nonce: string): string => APP_CSP_TEMPLATE.replaceAll("{N}", nonce)
+const rewriteHtmlWithNonce = (
+  html: string,
+  nonce: CspNonce
+): Effect.Effect<string, HtmlNonceRewriteError, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      const nonceValue = nonce.value
+      const response = new HTMLRewriter()
+        .on("script", {
+          element: (element) => {
+            element.setAttribute("nonce", nonceValue)
+          }
+        })
+        .on("style", {
+          element: (element) => {
+            element.setAttribute("nonce", nonceValue)
+          }
+        })
+        .on("link[rel]", {
+          element: (element) => {
+            const rel = element.getAttribute("rel")
+            if (rel?.split(/\s+/u).some((token) => token.toLowerCase() === "stylesheet") === true) {
+              element.setAttribute("nonce", nonceValue)
+            }
+          }
+        })
+        .transform(new Response(html, { headers: { "content-type": "text/html" } }))
 
-const NONCE_TAG_PATTERN = /<(script|link|style)\b([^>]*)>/gi
-
-const injectNonceIntoHtml = (html: string, nonce: string): string =>
-  html.replace(NONCE_TAG_PATTERN, (match, tagName: string, attrs: string) => {
-    const lowerAttrs = attrs.toLowerCase()
-    if (lowerAttrs.includes("nonce=")) {
-      return match
-    }
-    return `<${tagName}${attrs} nonce="${nonce}">`
+      return response.text()
+    },
+    catch: (cause) => new HtmlNonceRewriteError({ cause })
   })
 
 const ALLOWED_HOSTS: ReadonlySet<string> = new Set(["", "localhost", "127.0.0.1"])
@@ -69,6 +102,11 @@ const computeEtag = (bytes: Uint8Array): string => {
   return `"${hash.toString(16)}"`
 }
 
+const cspHeaders = (policy: CspPolicy, nonce: CspNonce): Record<string, string> => {
+  const csp = renderCspPolicy(policy, nonce)
+  return csp === "" ? {} : { "content-security-policy": csp }
+}
+
 export interface ResolvedAsset {
   readonly bytes: Uint8Array
   readonly contentType: string
@@ -82,6 +120,34 @@ export class AppAssetResolver extends Context.Service<AppAssetResolver, AppAsset
   "@effect-desktop/native/AppAssetResolver"
 ) {}
 
+export interface AppCspPolicyApi {
+  readonly policy: CspPolicy
+}
+
+export class AppCspPolicy extends Context.Service<AppCspPolicy, AppCspPolicyApi>()(
+  "@effect-desktop/native/AppCspPolicy"
+) {}
+
+export interface AppCspInspectorApi {
+  readonly emit: (event: CspInspectorEvent) => Effect.Effect<void, never, never>
+  readonly observe: () => Stream.Stream<CspInspectorEvent, never, never>
+}
+
+export class AppCspInspector extends Context.Service<AppCspInspector, AppCspInspectorApi>()(
+  "@effect-desktop/native/AppCspInspector",
+  {
+    make: Effect.succeed({
+      emit: () => Effect.void,
+      observe: () => Stream.empty
+    } satisfies AppCspInspectorApi)
+  }
+) {}
+
+const noopCspInspector: AppCspInspectorApi = {
+  emit: () => Effect.void,
+  observe: () => Stream.empty
+}
+
 export interface AppHttpServerApi {
   readonly handle: (
     request: HttpServerRequest.HttpServerRequest
@@ -92,100 +158,220 @@ export class AppHttpServer extends Context.Service<AppHttpServer, AppHttpServerA
   "@effect-desktop/native/AppHttpServer"
 ) {}
 
+const AppAssetHeaders = Schema.Struct({
+  "if-none-match": Schema.optional(Schema.String)
+})
+
+const AppAssetBytes = Schema.Uint8Array.pipe(
+  HttpApiSchema.asUint8Array({ contentType: "application/octet-stream" })
+)
+
+export class AppAssetApiGroup extends HttpApiGroup.make("appAssets", { topLevel: true }).add(
+  HttpApiEndpoint.get("asset", "/*", {
+    headers: AppAssetHeaders,
+    success: [AppAssetBytes, HttpApiSchema.Empty(304)],
+    error: [HttpApiError.BadRequest, HttpApiError.NotFound]
+  }).annotateMerge(
+    OpenApi.annotations({
+      title: "App asset",
+      description: "Serves local desktop application assets with CSP and cache policy."
+    })
+  )
+) {}
+
+export class DesktopLocalApi extends HttpApi.make("DesktopLocalApi")
+  .add(AppAssetApiGroup)
+  .annotateMerge(
+    OpenApi.annotations({
+      title: "Effect Desktop Local API",
+      description: "Loopback-only local HTTP surfaces exposed by the desktop runtime."
+    })
+  ) {}
+
+export const DesktopLocalHandlers = HttpApiBuilder.group(
+  DesktopLocalApi,
+  "appAssets",
+  Effect.fn(function* (handlers) {
+    const server = yield* AppHttpServer
+    return handlers.handleRaw("asset", ({ request }) => Effect.scoped(server.handle(request)))
+  })
+)
+
 const buildAssetResponse = (
   asset: ResolvedAsset,
   ifNoneMatch: string | undefined,
-  csp: string
-): HttpServerResponse.HttpServerResponse => {
-  if (!asset.contentType.startsWith("text/html")) {
-    const etag = computeEtag(asset.bytes)
-    if (ifNoneMatch !== undefined && ifNoneMatch === etag) {
-      return HttpServerResponse.empty({
-        status: 304,
-        headers: { etag, "content-security-policy": csp }
+  policy: CspPolicy,
+  inspector: AppCspInspectorApi
+): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> =>
+  Effect.gen(function* () {
+    const nonce = yield* mintCspNonce
+    const timestamp = yield* Clock.currentTimeMillis
+    const headers = cspHeaders(policy, nonce)
+    yield* inspector.emit(
+      cspInspectorEvent({
+        kind: "csp",
+        decision:
+          headers["content-security-policy"] === undefined ? "policy-applied" : "nonce-issued",
+        source: "AppHttpServer",
+        traceId: `csp:${nonce.value}`,
+        outcome: headers["content-security-policy"] === undefined ? "disabled" : "applied",
+        timestamp,
+        directives: policy.directives
+      })
+    )
+
+    if (!asset.contentType.startsWith("text/html")) {
+      const etag = computeEtag(asset.bytes)
+      if (ifNoneMatch !== undefined && ifNoneMatch === etag) {
+        return HttpServerResponse.empty({
+          status: 304,
+          headers: { etag, ...headers }
+        })
+      }
+      return HttpServerResponse.uint8Array(asset.bytes, {
+        contentType: asset.contentType,
+        headers: { etag, ...headers }
       })
     }
-    return HttpServerResponse.uint8Array(asset.bytes, {
-      contentType: asset.contentType,
-      headers: { etag, "content-security-policy": csp }
-    })
-  }
 
-  const htmlText = new TextDecoder().decode(asset.bytes)
-  const nonce = mintNonce()
-  const htmlCsp = renderCsp(nonce)
-  const rewritten = injectNonceIntoHtml(htmlText, nonce)
-  const rewrittenBytes = new TextEncoder().encode(rewritten)
-  // ETag derived from source bytes — nonce changes per request, but the
-  // underlying HTML does not, so conditional caching stays meaningful.
-  const sourceEtag = `"${computeEtag(asset.bytes).slice(1, -1)}-html"`
-
-  if (ifNoneMatch !== undefined && ifNoneMatch === sourceEtag) {
-    return HttpServerResponse.empty({
-      status: 304,
-      headers: { etag: sourceEtag, "content-security-policy": htmlCsp }
-    })
-  }
-
-  return HttpServerResponse.uint8Array(rewrittenBytes, {
-    contentType: asset.contentType,
-    headers: { etag: sourceEtag, "content-security-policy": htmlCsp }
+    const htmlText = new TextDecoder().decode(asset.bytes)
+    const sourceEtag = `"${computeEtag(asset.bytes).slice(1, -1)}-html"`
+    return yield* rewriteHtmlWithNonce(htmlText, nonce).pipe(
+      Effect.match({
+        onFailure: () =>
+          HttpServerResponse.text("app html rewrite failed", {
+            status: 500,
+            headers
+          }),
+        onSuccess: (html) => {
+          const rewrittenBytes = new TextEncoder().encode(html)
+          return HttpServerResponse.uint8Array(rewrittenBytes, {
+            contentType: asset.contentType,
+            headers: {
+              etag: sourceEtag,
+              "cache-control": "no-store",
+              ...headers
+            }
+          })
+        }
+      })
+    )
   })
-}
 
 const normalizePath = (rawPath: string): string =>
   rawPath === "/" || rawPath === "" ? "/index.html" : rawPath
 
-export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolver> = Layer.effect(
-  AppHttpServer
-)(
-  Effect.gen(function* () {
-    const resolver = yield* AppAssetResolver
+export const AppCspPolicyDefault: Layer.Layer<AppCspPolicy, never, never> = Layer.succeed(
+  AppCspPolicy
+)({ policy: DEFAULT_CSP_POLICY })
 
-    return Object.freeze({
-      handle: (request) =>
-        Effect.gen(function* () {
-          const reject = (status: 400 | 404) =>
-            HttpServerResponse.text(status === 400 ? "bad request" : "app asset not found", {
-              status,
-              headers: { "content-security-policy": renderCsp(mintNonce()) }
-            })
-
-          if (hasTraversal(request.url)) {
-            return reject(400)
-          }
-
-          const url = new URL(request.url, "app://localhost")
-          if (!ALLOWED_SCHEMES.has(url.protocol) || !ALLOWED_HOSTS.has(url.hostname)) {
-            return reject(404)
-          }
-
-          const normalizedPath = normalizePath(url.pathname)
-          const asset = yield* resolver.resolve(normalizedPath)
-
-          if (asset === null) {
-            return reject(404)
-          }
-
-          const nonce = mintNonce()
-          const defaultCsp = renderCsp(nonce)
-          const ifNoneMatch = request.headers["if-none-match"]
-
-          return buildAssetResponse(asset, ifNoneMatch, defaultCsp)
-        })
-    } satisfies AppHttpServerApi)
-  })
-)
-
-export const makeAppHttpServerLayer = (
-  resolver: AppAssetResolverApi
-): Layer.Layer<AppHttpServer, never, never> =>
-  Layer.provide(AppHttpServerLive, Layer.succeed(AppAssetResolver)(resolver))
-
-export const AppAssetRoutes: Layer.Layer<never, never, HttpRouter.HttpRouter | AppHttpServer> =
-  HttpRouter.use((router) =>
+export const AppHttpServerLive: Layer.Layer<AppHttpServer, never, AppAssetResolver | AppCspPolicy> =
+  Layer.effect(AppHttpServer)(
     Effect.gen(function* () {
-      const server = yield* AppHttpServer
-      yield* router.add("GET", "/*", (req) => Effect.scoped(server.handle(req)))
+      const resolver = yield* AppAssetResolver
+      const cspPolicy = yield* AppCspPolicy
+      const cspInspector = Option.getOrElse(
+        yield* Effect.serviceOption(AppCspInspector),
+        () => noopCspInspector
+      )
+
+      return Object.freeze({
+        handle: (request) =>
+          Effect.gen(function* () {
+            const reject = (status: 400 | 404) =>
+              Effect.gen(function* () {
+                const nonce = yield* mintCspNonce
+                return HttpServerResponse.text(
+                  status === 400 ? "bad request" : "app asset not found",
+                  {
+                    status,
+                    headers: { "content-security-policy": renderCspPolicy(cspPolicy.policy, nonce) }
+                  }
+                )
+              })
+
+            if (hasTraversal(request.url)) {
+              const timestamp = yield* Clock.currentTimeMillis
+              yield* cspInspector.emit(
+                cspInspectorEvent({
+                  kind: "csp",
+                  decision: "blocked",
+                  source: "AppHttpServer",
+                  traceId: `csp:${timestamp}`,
+                  outcome: "blocked",
+                  timestamp,
+                  resource: request.url,
+                  reason: "path-traversal"
+                })
+              )
+              return yield* reject(400)
+            }
+
+            const url = new URL(request.url, "app://localhost")
+            if (!ALLOWED_SCHEMES.has(url.protocol) || !ALLOWED_HOSTS.has(url.hostname)) {
+              const timestamp = yield* Clock.currentTimeMillis
+              yield* cspInspector.emit(
+                cspInspectorEvent({
+                  kind: "csp",
+                  decision: "blocked",
+                  source: "AppHttpServer",
+                  traceId: `csp:${timestamp}`,
+                  outcome: "blocked",
+                  timestamp,
+                  resource: request.url,
+                  reason: "origin-not-allowed"
+                })
+              )
+              return yield* reject(404)
+            }
+
+            const normalizedPath = normalizePath(url.pathname)
+            const asset = yield* resolver.resolve(normalizedPath)
+
+            if (asset === null) {
+              return yield* reject(404)
+            }
+
+            const ifNoneMatch = request.headers["if-none-match"]
+
+            return yield* buildAssetResponse(asset, ifNoneMatch, cspPolicy.policy, cspInspector)
+          })
+      } satisfies AppHttpServerApi)
     })
   )
+
+export const makeAppHttpServerLayer = (
+  resolver: AppAssetResolverApi,
+  policy: CspPolicy = DEFAULT_CSP_POLICY
+): Layer.Layer<AppHttpServer, never, never> =>
+  Layer.provide(
+    AppHttpServerLive,
+    Layer.mergeAll(
+      Layer.succeed(AppAssetResolver)(resolver),
+      Layer.succeed(AppCspPolicy)({ policy })
+    )
+  )
+
+export const makeAppCspInspector = (): Effect.Effect<AppCspInspectorApi, never, never> =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.sliding<CspInspectorEvent>({ capacity: 1024, replay: 0 })
+    return {
+      emit: (event) => PubSub.publish(events, event).pipe(Effect.asVoid),
+      observe: () => Stream.fromPubSub(events)
+    }
+  })
+
+export const AppCspInspectorLive: Layer.Layer<AppCspInspector, never, never> = Layer.effect(
+  AppCspInspector,
+  makeAppCspInspector()
+)
+
+export const DesktopLocalApiRoutes = HttpApiBuilder.layer(DesktopLocalApi, {
+  openapiPath: "/openapi.json"
+}).pipe(Layer.provide(DesktopLocalHandlers))
+
+export const DesktopLocalApiDocs = HttpApiScalar.layer(DesktopLocalApi, {
+  path: "/docs"
+})
+
+export const AppAssetRoutes = Layer.mergeAll(DesktopLocalApiRoutes, DesktopLocalApiDocs)

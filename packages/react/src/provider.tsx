@@ -1,17 +1,14 @@
 import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
-import type { WindowCreateOptions, WindowError, WindowHandle } from "@effect-desktop/native"
-import { Effect, Layer, ManagedRuntime, Option } from "effect"
+import type { WindowError } from "@effect-desktop/native"
+import type { WindowCreateOptions, WindowHandle } from "@effect-desktop/native/contracts"
+import { BrowserContext, type IndexedDb } from "@effect-desktop/platform-browser"
+import { RegistryContext as DesktopAtomRegistryContext } from "@effect/atom-react"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
 import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"
 
-import { BrowserContext, type IndexedDb } from "./platform-browser.js"
-
 export interface DesktopWindowClient {
   readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
-  readonly setTitle: (
-    window: WindowHandle,
-    title: string
-  ) => Effect.Effect<void, WindowError, never>
   readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
 }
 
@@ -34,12 +31,17 @@ export type CleanupErrorHandler = (error: unknown, context: string) => void
 export const disposeRuntime = (
   runtime: Pick<
     ManagedRuntime.ManagedRuntime<Reactivity.Reactivity | IndexedDb.IndexedDb, never>,
-    "dispose"
+    "disposeEffect"
   >,
   onCleanupError?: CleanupErrorHandler
 ): void => {
-  void Promise.resolve(runtime.dispose()).then(undefined, (cause) => {
-    if (cause !== undefined) {
+  void Effect.runCallback(runtime.disposeEffect, {
+    onExit: (exit) => {
+      if (!Exit.isFailure(exit)) {
+        return
+      }
+
+      const cause = Cause.squash(exit.cause)
       if (onCleanupError === undefined) {
         const reportable = cause instanceof Error ? cause : new Error("runtime cleanup failed")
         reportError(reportable)
@@ -81,7 +83,6 @@ export const createUnavailableDesktopClient = (message = "missing host bridge"):
   return Object.freeze({
     window: Object.freeze({
       create: (_input?: WindowCreateOptions) => unavailable<WindowHandle>("window.create"),
-      setTitle: (_window: WindowHandle, _title: string) => unavailable<void>("window.setTitle"),
       close: (_window: WindowHandle) => unavailable<void>("window.close")
     })
   } satisfies DesktopClient)
@@ -105,7 +106,11 @@ export const DesktopProvider = ({
   }, [ctx, onCleanupError])
 
   const value = Option.some(ctx)
-  return createElement(DesktopContext.Provider, { value }, children)
+  return createElement(
+    DesktopContext.Provider,
+    { value },
+    createElement(DesktopAtomRegistryContext.Provider, { value: ctx.registry }, children)
+  )
 }
 
 export const useDesktopContext = (): Option.Option<DesktopRuntimeContext> =>

@@ -1,0 +1,18 @@
+{
+  "typescript.native-preview.tsdk": "node_modules/@typescript/native-preview",
+  "typescript.experimental.useTsgo": true,
+  "js/ts.experimental.useTsgo": true,
+  "editor.formatOnSave": true,
+  "[javascript]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "oxc.oxc-vscode"
+  }
+}
