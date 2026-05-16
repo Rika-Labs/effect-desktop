@@ -4,11 +4,8 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolEventEnvelope,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -105,13 +102,7 @@ export const makePowerMonitorServiceLayer = (
 export const makePowerMonitorBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<PowerMonitorClient> =>
-  Layer.effect(
-    PowerMonitorClient,
-    RpcClient.make(PowerMonitorRpcGroup).pipe(
-      Effect.map((client) => powerMonitorClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makePowerMonitorBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<PowerMonitorClient> => PowerMonitorSurface.bridgeClientLayer(exchange, options)
 
 export type PowerMonitorRpc = RpcGroup.Rpcs<typeof PowerMonitorRpcGroup>
 
@@ -129,6 +120,7 @@ export const PowerMonitorHandlersLive = PowerMonitorRpcGroup.toLayer({
 export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonitorRpcGroup, {
   service: PowerMonitorClient,
   handlers: PowerMonitorHandlersLive,
+  bridgeClient: (client, exchange) => powerMonitorClientFromRpcClient(client, exchange),
   client: (client) => powerMonitorClientFromRpcClient(client, undefined)
 })
 
@@ -162,16 +154,6 @@ const powerMonitorClientFromRpcClient = (
       )
   } satisfies PowerMonitorClientApi)
 }
-
-const makePowerMonitorBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribePowerMonitorEvent = <A>(
   exchange: BridgeClientExchange | undefined,

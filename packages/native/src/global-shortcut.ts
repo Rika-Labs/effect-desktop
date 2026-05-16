@@ -18,12 +18,9 @@ import {
   type HostProtocolEventEnvelope,
   HostProtocolAlreadyExistsError,
   HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -266,13 +263,7 @@ export const makeGlobalShortcutServiceLayer = (
 export const makeGlobalShortcutBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<GlobalShortcutClient> =>
-  Layer.effect(
-    GlobalShortcutClient,
-    RpcClient.make(GlobalShortcutRpcGroup).pipe(
-      Effect.map((client) => globalShortcutClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeGlobalShortcutBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<GlobalShortcutClient> => GlobalShortcutSurface.bridgeClientLayer(exchange, options)
 
 export type GlobalShortcutRpc = RpcGroup.Rpcs<typeof GlobalShortcutRpcGroup>
 
@@ -311,6 +302,7 @@ export const GlobalShortcutSurface = NativeSurface.make("GlobalShortcut", Global
   service: GlobalShortcutClient,
   capabilities: GlobalShortcutCapabilityMethods,
   handlers: GlobalShortcutHandlersLive,
+  bridgeClient: (client, exchange) => globalShortcutClientFromRpcClient(client, exchange),
   client: (client) => globalShortcutClientFromRpcClient(client, undefined)
 })
 
@@ -368,16 +360,6 @@ const globalShortcutClientFromRpcClient = (
     onPressed: () => subscribeGlobalShortcutEvent(exchange, "GlobalShortcut.Pressed")
   } satisfies GlobalShortcutClientApi)
 }
-
-const makeGlobalShortcutBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeGlobalShortcutEvent = (
   exchange: BridgeClientExchange | undefined,
