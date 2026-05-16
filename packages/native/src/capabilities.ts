@@ -12,11 +12,22 @@ export const NativeCapabilityStatusSchema = Schema.Literals(["supported", "parti
 
 export type NativeCapabilityStatus = Schema.Schema.Type<typeof NativeCapabilityStatusSchema>
 
-export const NativeCapabilityPlatformSupportSchema = Schema.Struct({
-  platform: NativeCapabilityPlatformSchema,
-  status: NativeCapabilityStatusSchema,
-  reason: Schema.optionalKey(Schema.NonEmptyString)
-})
+export const NativeCapabilityPlatformSupportSchema = Schema.Union([
+  Schema.Struct({
+    platform: NativeCapabilityPlatformSchema,
+    status: Schema.Literal("supported")
+  }),
+  Schema.Struct({
+    platform: NativeCapabilityPlatformSchema,
+    status: Schema.Literal("partial"),
+    reason: Schema.NonEmptyString
+  }),
+  Schema.Struct({
+    platform: NativeCapabilityPlatformSchema,
+    status: Schema.Literal("unsupported"),
+    reason: Schema.NonEmptyString
+  })
+])
 
 export type NativeCapabilityPlatformSupport = Schema.Schema.Type<
   typeof NativeCapabilityPlatformSupportSchema
@@ -71,6 +82,7 @@ export class UnsupportedCapability extends Schema.TaggedErrorClass<UnsupportedCa
   "UnsupportedCapability",
   {
     tag: Schema.NonEmptyString,
+    platform: Schema.optionalKey(NativeCapabilityPlatformSchema),
     reason: Schema.NonEmptyString,
     message: Schema.NonEmptyString
   }
@@ -83,6 +95,10 @@ export interface NativeCapabilitiesApi {
   ) => Effect.Effect<NativeCapabilitySupport, NativeCapabilityLookupError, never>
   readonly require: (
     tag: string
+  ) => Effect.Effect<void, NativeCapabilityLookupError | UnsupportedCapability, never>
+  readonly requirePlatform: (
+    tag: string,
+    platform: NativeCapabilityPlatform
   ) => Effect.Effect<void, NativeCapabilityLookupError | UnsupportedCapability, never>
 }
 
@@ -190,6 +206,19 @@ function capabilitiesFromManifest(
             ? Effect.fail(unsupportedCapability(tag, metadata))
             : Effect.void
         )
+      ),
+    requirePlatform: (tag: string, platform: NativeCapabilityPlatform) =>
+      support(tag).pipe(
+        Effect.flatMap((metadata) => {
+          if (metadata.status === "unsupported") {
+            return Effect.fail(unsupportedCapability(tag, metadata))
+          }
+          const platformSupport = metadata.platforms?.find((entry) => entry.platform === platform)
+          if (platformSupport?.status !== "unsupported") {
+            return Effect.void
+          }
+          return Effect.fail(unsupportedCapability(tag, platformSupport, platform))
+        })
       )
   })
 }
@@ -224,12 +253,12 @@ const supportReasonError = (support: NativeCapabilitySupport): string | undefine
   }
   for (const platform of support.platforms ?? []) {
     if (platform.status === "supported") {
-      if (platform.reason !== undefined) {
+      if ("reason" in platform && platform.reason !== undefined) {
         return "supported platform entries must not include a reason"
       }
       continue
     }
-    if (platform.reason === undefined || platform.reason.trim().length === 0) {
+    if (platform.reason.trim().length === 0) {
       return "partial and unsupported platform entries must include a reason"
     }
   }
@@ -248,13 +277,24 @@ const freezeSupport = (support: NativeCapabilitySupport): NativeCapabilitySuppor
 
 const unsupportedCapability = (
   tag: string,
-  support: Extract<NativeCapabilitySupport, { readonly status: "unsupported" }>
+  support: Extract<
+    NativeCapabilitySupport | NativeCapabilityPlatformSupport,
+    { readonly status: "unsupported" }
+  >,
+  platform?: NativeCapabilityPlatform
 ): UnsupportedCapability =>
-  new UnsupportedCapability({
-    tag,
-    reason: support.reason,
-    message: `unsupported native capability: ${tag}`
-  })
+  platform === undefined
+    ? new UnsupportedCapability({
+        tag,
+        reason: support.reason,
+        message: `unsupported native capability: ${tag}`
+      })
+    : new UnsupportedCapability({
+        tag,
+        platform,
+        reason: support.reason,
+        message: `unsupported native capability on ${platform}: ${tag}`
+      })
 
 function snapshotNativeCapabilitySurfacesSync(
   nativeLayer: DesktopNativeLayer

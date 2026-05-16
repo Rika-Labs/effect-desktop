@@ -108,6 +108,7 @@ test("NativeCapabilities exposes partial support with platform-specific reasons"
       const capabilities = yield* NativeCapabilities
       const support = yield* capabilities.support("Example.partial")
       yield* capabilities.require("Example.partial")
+      yield* capabilities.requirePlatform("Example.partial", "macos")
       return support
     }).pipe(Effect.provide(makeNativeCapabilitiesLayer(testNativeLayer(partial))))
   )
@@ -122,6 +123,36 @@ test("NativeCapabilities exposes partial support with platform-specific reasons"
   })
   expect(Object.isFrozen(result)).toBe(true)
   expect(Object.isFrozen(result.platforms)).toBe(true)
+})
+
+test("NativeCapabilities fails platform-specific unsupported entries as typed errors", async () => {
+  const partial = testSurface("Example.partial", {
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+    ]
+  })
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const capabilities = yield* NativeCapabilities
+      return yield* capabilities.requirePlatform("Example.partial", "linux")
+    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(testNativeLayer(partial))))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(UnsupportedCapability)
+    expect(failure?.error).toMatchObject({
+      _tag: "UnsupportedCapability",
+      tag: "Example.partial",
+      platform: "linux",
+      reason: "host adapter missing"
+    })
+  }
 })
 
 test("NativeCapabilities require succeeds for supported methods", async () => {

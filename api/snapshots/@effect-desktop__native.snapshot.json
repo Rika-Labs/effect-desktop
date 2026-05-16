@@ -886,7 +886,7 @@
     {
       "name": "NativeCapabilitiesApi",
       "kind": "interface",
-      "signature": "export interface NativeCapabilitiesApi { readonly manifest: readonly NativeCapabilityFact[] readonly support: ( tag: string ) => Effect.Effect<NativeCapabilitySupport, NativeCapabilityLookupError, never> readonly require: ( tag: string ) => Effect.Effect<void, NativeCapabilityLookupError | UnsupportedCapability, never> }"
+      "signature": "export interface NativeCapabilitiesApi { readonly manifest: readonly NativeCapabilityFact[] readonly support: ( tag: string ) => Effect.Effect<NativeCapabilitySupport, NativeCapabilityLookupError, never> readonly require: ( tag: string ) => Effect.Effect<void, NativeCapabilityLookupError | UnsupportedCapability, never> readonly requirePlatform: ( tag: string, platform: NativeCapabilityPlatform ) => Effect.Effect<void, NativeCapabilityLookupError | UnsupportedCapability, never> }"
     },
     {
       "name": "NativeCapabilitiesLive",
@@ -926,7 +926,7 @@
     {
       "name": "NativeCapabilityPlatformSupportSchema",
       "kind": "value",
-      "signature": "const NativeCapabilityPlatformSupportSchema: Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>; readonly reason: Schema.optionalKey<Schema.NonEmptyString>; }>"
+      "signature": "const NativeCapabilityPlatformSupportSchema: Schema.Union<readonly [Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"supported\">; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; }>]>"
     },
     {
       "name": "NativeCapabilityStatus",
@@ -946,7 +946,7 @@
     {
       "name": "NativeCapabilitySupportSchema",
       "kind": "value",
-      "signature": "const NativeCapabilitySupportSchema: Schema.Union<readonly [Schema.Struct<{ readonly status: Schema.Literal<\"supported\">; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>; readonly reason: Schema.optionalKey<Schema.NonEmptyString>; }>>>; }>, Schema.Struct<{ readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>; readonly reason: Schema.optionalKey<Schema.NonEmptyString>; }>>>; }>, Schema.Struct<{ readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>; readonly reason: Schema.optionalKey<Schema.NonEmptyString>; }>>>; }>]>"
+      "signature": "const NativeCapabilitySupportSchema: Schema.Union<readonly [Schema.Struct<{ readonly status: Schema.Literal<\"supported\">; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Union<readonly [Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"supported\">; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; }>]>>>; }>, Schema.Struct<{ readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Union<readonly [Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"supported\">; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; }>]>>>; }>, Schema.Struct<{ readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Union<readonly [Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"supported\">; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; }>]>>>; }>]>"
     },
     {
       "name": "NativeCapabilitySurface",
@@ -1566,7 +1566,7 @@
     {
       "name": "UnsupportedCapability",
       "kind": "class",
-      "signature": "export class UnsupportedCapability extends Schema.TaggedErrorClass<UnsupportedCapability>()( \"UnsupportedCapability\", { tag: Schema.NonEmptyString, reason: Schema.NonEmptyString, message: Schema.NonEmptyString } ) {}"
+      "signature": "export class UnsupportedCapability extends Schema.TaggedErrorClass<UnsupportedCapability>()( \"UnsupportedCapability\", { tag: Schema.NonEmptyString, platform: Schema.optionalKey(NativeCapabilityPlatformSchema), reason: Schema.NonEmptyString, message: Schema.NonEmptyString } ) {}"
     },
     {
       "name": "Updater",
