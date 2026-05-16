@@ -1,0 +1,56 @@
+{
+  "directives": [
+    {
+      "name": "default-src",
+      "values": ["'self'"]
+    },
+    {
+      "name": "script-src",
+      "values": ["'self'", "'nonce-{N}'"]
+    },
+    {
+      "name": "style-src",
+      "values": ["'self'", "'nonce-{N}'"]
+    },
+    {
+      "name": "style-src-attr",
+      "values": ["'unsafe-inline'"]
+    },
+    {
+      "name": "connect-src",
+      "values": ["'self'", "app:"]
+    },
+    {
+      "name": "img-src",
+      "values": ["'self'", "app:", "data:", "https:"]
+    },
+    {
+      "name": "font-src",
+      "values": ["'self'", "app:", "data:"]
+    },
+    {
+      "name": "media-src",
+      "values": ["'self'", "app:"]
+    },
+    {
+      "name": "object-src",
+      "values": ["'none'"]
+    },
+    {
+      "name": "frame-ancestors",
+      "values": ["'none'"]
+    },
+    {
+      "name": "base-uri",
+      "values": ["'self'"]
+    },
+    {
+      "name": "form-action",
+      "values": ["'self'"]
+    },
+    {
+      "name": "worker-src",
+      "values": ["'self'"]
+    }
+  ]
+}

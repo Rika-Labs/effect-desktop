@@ -1,8 +1,15 @@
+import { isDesktopStreamOptions } from "@effect-desktop/core/renderer"
+import type { FrameworkRuntime } from "@effect-desktop/core/renderer"
 import { Effect, Stream } from "effect"
 import type { AsyncResult } from "effect/unstable/reactivity"
 import { useMemo } from "react"
 
-import { useDesktopStream, useEffectResult, type StreamState } from "./hooks/stream.js"
+import {
+  useDesktopStream,
+  useEffectResult,
+  type DesktopStreamOptions,
+  type StreamState
+} from "./hooks/stream.js"
 import { useMutation, type MutationResult } from "./mutation.js"
 
 export type QueryResult<A, E> = AsyncResult.AsyncResult<A, E>
@@ -14,10 +21,10 @@ export type QueryHook<I, A, E> = [I] extends [void]
     : (input: I) => QueryResult<A, E>
 
 export type StreamHook<I, A, E> = [I] extends [void]
-  ? () => StreamState<A, E>
+  ? (options?: DesktopStreamOptions<A>) => StreamState<A, E>
   : undefined extends I
-    ? (input?: I) => StreamState<A, E>
-    : (input: I) => StreamState<A, E>
+    ? (input?: I, options?: DesktopStreamOptions<A>) => StreamState<A, E>
+    : (input: I, options?: DesktopStreamOptions<A>) => StreamState<A, E>
 
 export interface QueryEndpoint<I, A, E> {
   readonly useQuery: QueryHook<I, A, E>
@@ -36,29 +43,43 @@ export type ReactEndpoint =
   | MutationEndpoint<unknown, unknown, unknown>
   | StreamEndpoint<unknown, unknown, unknown>
 
-export const query = <I, A, E>(
-  makeEffect: (input: I) => Effect.Effect<A, E, never>
-): QueryEndpoint<I, A, E> =>
+export const query = <R, ER, I, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  makeEffect: (input: I) => Effect.Effect<A, E, R>
+): QueryEndpoint<I, A, E | ER> =>
   Object.freeze({
     useQuery: ((input?: I) => {
       const effect = useMemo(() => makeEffect(input as I), [input, makeEffect])
-      return useEffectResult(effect)
+      return useEffectResult(effect, undefined, runtime)
     }) as QueryHook<I, A, E>
   })
 
-export const mutation = <I, A, E>(
-  makeEffect: (input: I) => Effect.Effect<A, E, never>
-): MutationEndpoint<I, A, E> =>
+export const mutation = <R, ER, I, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  makeEffect: (input: I) => Effect.Effect<A, E, R>
+): MutationEndpoint<I, A, E | ER> =>
   Object.freeze({
-    useMutation: () => useMutation(makeEffect)
+    useMutation: () => useMutation<I, A, E, R, ER>(makeEffect, runtime)
   })
 
-export const stream = <I, A, E>(
-  makeStream: (input: I) => Stream.Stream<A, E, never>
-): StreamEndpoint<I, A, E> =>
+export const stream = <R, ER, I, A, E>(
+  runtime: FrameworkRuntime<R, ER>,
+  makeStream: (input: I) => Stream.Stream<A, E, R>,
+  options: { readonly hasInput?: boolean | undefined } = {}
+): StreamEndpoint<I, A, E | ER> =>
   Object.freeze({
-    useStream: ((input?: I) => {
+    useStream: ((
+      inputOrOptions?: I | DesktopStreamOptions<A>,
+      streamOptions?: DesktopStreamOptions<A>
+    ) => {
+      const hasInput = options.hasInput ?? true
+      const input = hasInput ? inputOrOptions : undefined
+      const resolvedOptions = hasInput
+        ? streamOptions
+        : isDesktopStreamOptions(inputOrOptions)
+          ? inputOrOptions
+          : streamOptions
       const effectStream = useMemo(() => makeStream(input as I), [input, makeStream])
-      return useDesktopStream(effectStream)
+      return useDesktopStream(effectStream, resolvedOptions, runtime)
     }) as StreamHook<I, A, E>
   })

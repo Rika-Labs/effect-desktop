@@ -5,13 +5,13 @@
   "symbols": [
     {
       "name": "AccessibilityAuditMode",
-      "kind": "interface",
-      "signature": "export interface AccessibilityAuditMode { readonly id: string readonly direction: \"ltr\" | \"rtl\" readonly colorScheme: \"light\" | \"dark\" readonly axe: string readonly pa11y: string }"
+      "kind": "class",
+      "signature": "export class AccessibilityAuditMode extends Schema.Class<AccessibilityAuditMode>( \"AccessibilityAuditMode\" )({ id: Schema.String, direction: Schema.Literals([\"ltr\", \"rtl\"]), colorScheme: Schema.Literals([\"light\", \"dark\"]), axe: Schema.String, pa11y: Schema.String }) {}"
     },
     {
       "name": "AccessibilityContrastPair",
-      "kind": "interface",
-      "signature": "export interface AccessibilityContrastPair { readonly id: string readonly foreground: string readonly background: string readonly minimumRatio: number }"
+      "kind": "class",
+      "signature": "export class AccessibilityContrastPair extends Schema.Class<AccessibilityContrastPair>( \"AccessibilityContrastPair\" )({ id: Schema.String, foreground: Schema.String, background: Schema.String, minimumRatio: Schema.Number }) {}"
     },
     {
       "name": "AccessibilityGateError",
@@ -45,18 +45,18 @@
     },
     {
       "name": "AccessibilityManifest",
-      "kind": "interface",
-      "signature": "export interface AccessibilityManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly templates: readonly AccessibilityTemplate[] }"
+      "kind": "class",
+      "signature": "export class AccessibilityManifest extends Schema.Class<AccessibilityManifest>( \"AccessibilityManifest\" )({ schemaVersion: Schema.Literal(1), source: Schema.String, release: Schema.String, templates: Schema.Array(AccessibilityTemplate) }) {}"
     },
     {
       "name": "AccessibilityRequiredToken",
-      "kind": "interface",
-      "signature": "export interface AccessibilityRequiredToken { readonly file: string readonly token: string }"
+      "kind": "class",
+      "signature": "export class AccessibilityRequiredToken extends Schema.Class<AccessibilityRequiredToken>( \"AccessibilityRequiredToken\" )({ file: Schema.String, token: Schema.String }) {}"
     },
     {
       "name": "AccessibilityTemplate",
-      "kind": "interface",
-      "signature": "export interface AccessibilityTemplate { readonly id: string readonly root: string readonly sourceFiles: readonly string[] readonly i18nFiles: readonly string[] readonly auditDir: string readonly auditModes: readonly AccessibilityAuditMode[] readonly contrastPairs: readonly AccessibilityContrastPair[] readonly requiredTokens: readonly AccessibilityRequiredToken[] }"
+      "kind": "class",
+      "signature": "export class AccessibilityTemplate extends Schema.Class<AccessibilityTemplate>( \"AccessibilityTemplate\" )({ id: Schema.String, root: Schema.String, sourceFiles: Schema.Array(Schema.String), i18nFiles: Schema.Array(Schema.String), auditDir: Schema.String, auditModes: Schema.Array(AccessibilityAuditMode), contrastPairs: Schema.Array(AccessibilityContrastPair), requiredTokens: Schema.Array(AccessibilityRequiredToken) }) {}"
     },
     {
       "name": "AccessibilityTemplateReport",
@@ -64,9 +64,14 @@
       "signature": "export interface AccessibilityTemplateReport { readonly id: string readonly auditModes: number readonly contrastPairs: number readonly scannedFiles: number }"
     },
     {
-      "name": "BuildArch",
-      "kind": "type",
-      "signature": "export type BuildArch = \"arm64\" | \"x64\""
+      "name": "appImageArch",
+      "kind": "value",
+      "signature": "const appImageArch: (target: DesktopTargetId) => string"
+    },
+    {
+      "name": "artifactKindsForTarget",
+      "kind": "value",
+      "signature": "const artifactKindsForTarget: (target: DesktopTargetId) => readonly DesktopArtifactKind[]"
     },
     {
       "name": "BuildCommandFailedError",
@@ -84,11 +89,6 @@
       "signature": "export class BuildFileError extends Data.TaggedError(\"BuildFileError\")<{ readonly operation: string readonly path: string readonly message: string readonly cause: unknown }> {}"
     },
     {
-      "name": "BuildOs",
-      "kind": "type",
-      "signature": "export type BuildOs = \"linux\" | \"macos\" | \"windows\""
-    },
-    {
       "name": "BuildPipelineError",
       "kind": "type",
       "signature": "export type BuildPipelineError = | BuildConfigError | BuildUnsupportedHostError | BuildUnsupportedTargetError | BuildCommandFailedError | BuildFileError"
@@ -96,17 +96,17 @@
     {
       "name": "BuildStepName",
       "kind": "type",
-      "signature": "export type BuildStepName = \"renderer\" | \"runtime\" | \"native-host\" | \"bridge\" | \"manifest\""
+      "signature": "export type BuildStepName = | \"renderer\" | \"runtime\" | \"native-host\" | \"webview-runtime\" | \"bridge\" | \"manifest\""
     },
     {
       "name": "BuildStepReport",
       "kind": "interface",
-      "signature": "export interface BuildStepReport { readonly name: BuildStepName readonly command?: readonly string[] readonly cwd?: string readonly elapsedMs: number readonly outputPath: string }"
+      "signature": "export interface BuildStepReport { readonly name: BuildStepName readonly command?: readonly string[] readonly cwd?: string readonly elapsedMs: number readonly outputPath: string readonly provider?: string readonly cacheKey: string readonly status: \"rebuilt\" | \"reused\" readonly reason: string }"
     },
     {
       "name": "BuildTarget",
       "kind": "type",
-      "signature": "export type BuildTarget = `${BuildOs}-${BuildArch}`"
+      "signature": "export type BuildTarget = DesktopTargetId"
     },
     {
       "name": "BuildUnsupportedHostError",
@@ -126,7 +126,7 @@
     {
       "name": "CliRunOptions",
       "kind": "interface",
-      "signature": "export interface CliRunOptions { readonly argv: readonly string[] readonly cwd: string readonly writeStdout: (text: string) => void readonly writeStderr: (text: string) => void readonly commandRunner?: CommandRunner readonly packageCommandRunner?: PackageCommandRunner readonly doctorCommandRunner?: DoctorCommandRunner readonly signCommandRunner?: SignCommandRunner readonly notarizeCommandRunner?: NotarizeCommandRunner readonly now?: () => number readonly hostTarget?: BuildTarget readonly platform?: NodeJS.Platform readonly arch?: string readonly bunVersion?: string }"
+      "signature": "export interface CliRunOptions { readonly argv: readonly string[] readonly cwd: string readonly writeStdout: (text: string) => void readonly writeStderr: (text: string) => void readonly commandRunner?: CommandRunner readonly packageCommandRunner?: PackageCommandRunner readonly doctorCommandRunner?: DoctorCommandRunner readonly signCommandRunner?: SignCommandRunner readonly notarizeCommandRunner?: NotarizeCommandRunner readonly now?: () => number readonly hostTarget?: BuildTarget readonly platform?: NodeJS.Platform readonly arch?: string readonly bunVersion?: string readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "CliUsageError",
@@ -136,7 +136,7 @@
     {
       "name": "CommandInvocation",
       "kind": "interface",
-      "signature": "export interface CommandInvocation { readonly step: BuildStepName readonly command: string readonly args: readonly string[] readonly cwd: string }"
+      "signature": "export interface CommandInvocation { readonly step: BuildStepName readonly command: string readonly args: readonly string[] readonly cwd: string readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "CommandRunner",
@@ -144,29 +144,69 @@
       "signature": "export type CommandRunner = ( invocation: CommandInvocation ) => Effect.Effect<void, BuildCommandFailedError, never>"
     },
     {
+      "name": "debArch",
+      "kind": "value",
+      "signature": "const debArch: (target: DesktopTargetId) => string"
+    },
+    {
+      "name": "decodeDesktopTarget",
+      "kind": "value",
+      "signature": "const decodeDesktopTarget: (value: unknown) => Effect.Effect<DesktopTarget, Schema.SchemaError, never>"
+    },
+    {
+      "name": "DesktopArch",
+      "kind": "type",
+      "signature": "const DesktopArch: Schema.Literals<readonly [\"arm64\", \"x64\"]>"
+    },
+    {
+      "name": "DesktopArtifact",
+      "kind": "class",
+      "signature": "export class DesktopArtifact extends Schema.Class<DesktopArtifact>(\"DesktopArtifact\")({ kind: DesktopArtifactKind, target: DesktopTarget }) {}"
+    },
+    {
+      "name": "desktopArtifactExtension",
+      "kind": "value",
+      "signature": "const desktopArtifactExtension: (kind: DesktopArtifactKind) => string"
+    },
+    {
+      "name": "DesktopArtifactKind",
+      "kind": "type",
+      "signature": "const DesktopArtifactKind: Schema.Literals<readonly [\"app\", \"appimage\", \"deb\", \"dmg\", \"msi\", \"rpm\", \"zip\"]>"
+    },
+    {
+      "name": "desktopArtifactsForTarget",
+      "kind": "value",
+      "signature": "const desktopArtifactsForTarget: (target: DesktopTargetId) => readonly DesktopArtifact[]"
+    },
+    {
       "name": "DesktopBuildOptions",
       "kind": "interface",
-      "signature": "export interface DesktopBuildOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly profile: string readonly commandRunner: CommandRunner readonly now: () => number readonly hostTarget: BuildTarget | undefined }"
+      "signature": "export interface DesktopBuildOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly profile: string readonly commandRunner: CommandRunner readonly now: () => number readonly hostTarget: BuildTarget | undefined readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "DesktopBuildReport",
       "kind": "interface",
-      "signature": "export interface DesktopBuildReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: BuildTarget readonly layoutPath: string readonly appManifestPath: string readonly bridgeManifestPath: string readonly steps: readonly BuildStepReport[] }"
+      "signature": "export interface DesktopBuildReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: BuildTarget readonly providers: { readonly runtime: RuntimeEngine readonly runtimePackaging: \"source\" readonly webEngine: WebEngine } readonly providerBudgets: readonly DesktopProviderBudget[] readonly providerMeasurements: readonly ProviderMeasurementReport[] readonly layoutPath: string readonly appManifestPath: string readonly bridgeManifestPath: string readonly steps: readonly BuildStepReport[] }"
     },
     {
       "name": "DesktopDoctorReport",
       "kind": "interface",
-      "signature": "export interface DesktopDoctorReport { readonly passed: boolean readonly ci: boolean readonly platform: string readonly arch: string readonly probes: readonly DoctorProbeResult[] }"
+      "signature": "export interface DesktopDoctorReport { readonly passed: boolean readonly ci: boolean readonly platform: string readonly arch: string readonly probes: readonly DoctorDiagnostic[] readonly layerGraph: LayerGraphSnapshot | undefined }"
     },
     {
       "name": "DesktopNotarizeOptions",
       "kind": "interface",
-      "signature": "export interface DesktopNotarizeOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: NotarizeCommandRunner readonly now: () => number readonly hostTarget: NotarizeTarget | undefined }"
+      "signature": "export interface DesktopNotarizeOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: NotarizeCommandRunner readonly now: () => number readonly hostTarget: NotarizeTarget | undefined readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "DesktopNotarizeReport",
       "kind": "interface",
       "signature": "export interface DesktopNotarizeReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: NotarizeTarget readonly outputPath: string readonly artifacts: readonly NotarizeArtifactReport[] readonly steps: readonly NotarizeStepReport[] }"
+    },
+    {
+      "name": "DesktopOs",
+      "kind": "type",
+      "signature": "const DesktopOs: Schema.Literals<readonly [\"linux\", \"macos\", \"windows\"]>"
     },
     {
       "name": "DesktopPackageOptions",
@@ -176,17 +216,27 @@
     {
       "name": "DesktopPackageReport",
       "kind": "interface",
-      "signature": "export interface DesktopPackageReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: PackageTarget readonly layoutPath: string readonly outputPath: string readonly artifacts: readonly PackageArtifactReport[] readonly steps: readonly PackageStepReport[] }"
+      "signature": "export interface DesktopPackageReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: PackageTarget readonly layoutPath: string readonly outputPath: string readonly providers: PackageProviderReport | undefined readonly artifacts: readonly PackageArtifactReport[] readonly steps: readonly PackageStepReport[] }"
+    },
+    {
+      "name": "desktopPlatformDirectory",
+      "kind": "value",
+      "signature": "const desktopPlatformDirectory: (target: DesktopTargetId) => DesktopOs"
     },
     {
       "name": "DesktopPublishOptions",
       "kind": "interface",
-      "signature": "export interface DesktopPublishOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly now: () => number }"
+      "signature": "export interface DesktopPublishOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly now: () => number readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "DesktopPublishReport",
       "kind": "interface",
       "signature": "export interface DesktopPublishReport { readonly appId: string readonly version: string readonly channel: PublishChannel readonly keyVersion: number readonly manifestPath: string readonly canonicalBytes: string readonly artifacts: readonly UpdateArtifactManifest[] }"
+    },
+    {
+      "name": "DesktopReleaseReport",
+      "kind": "class",
+      "signature": "export class DesktopReleaseReport extends Schema.Class<DesktopReleaseReport>( \"DesktopReleaseReport\" )({ appId: Schema.String, appVersion: Schema.String, target: Schema.String, manifestPath: Schema.String, phases: Schema.Array(ReleasePhaseReport) }) {}"
     },
     {
       "name": "DesktopReproReport",
@@ -196,12 +246,37 @@
     {
       "name": "DesktopSignOptions",
       "kind": "interface",
-      "signature": "export interface DesktopSignOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: SignCommandRunner readonly now: () => number readonly hostTarget: SignTarget | undefined }"
+      "signature": "export interface DesktopSignOptions { readonly cwd: string readonly configPath: string readonly platform: string | undefined readonly commandRunner: SignCommandRunner readonly now: () => number readonly hostTarget: SignTarget | undefined readonly env?: Readonly<Record<string, string | undefined>> }"
     },
     {
       "name": "DesktopSignReport",
       "kind": "interface",
       "signature": "export interface DesktopSignReport { readonly appId: string readonly appName: string readonly appVersion: string readonly target: SignTarget readonly outputPath: string readonly artifacts: readonly SignArtifactReport[] readonly steps: readonly SignStepReport[] }"
+    },
+    {
+      "name": "DesktopTarget",
+      "kind": "class",
+      "signature": "export class DesktopTarget extends Schema.Class<DesktopTarget>(\"DesktopTarget\")({ arch: DesktopArch, os: DesktopOs }) { get id(): DesktopTargetId { return desktopTargetId(this) } }"
+    },
+    {
+      "name": "desktopTargetId",
+      "kind": "value",
+      "signature": "const desktopTargetId: (target: { readonly os: DesktopOs; readonly arch: DesktopArch; }) => DesktopTargetId"
+    },
+    {
+      "name": "DesktopTargetId",
+      "kind": "type",
+      "signature": "const DesktopTargetId: Schema.Literals<readonly [\"linux-arm64\", \"linux-x64\", \"macos-arm64\", \"macos-x64\", \"windows-arm64\", \"windows-x64\"]>"
+    },
+    {
+      "name": "DesktopTargetIds",
+      "kind": "value",
+      "signature": "const DesktopTargetIds: readonly (\"linux-arm64\" | \"linux-x64\" | \"macos-arm64\" | \"macos-x64\" | \"windows-arm64\" | \"windows-x64\")[]"
+    },
+    {
+      "name": "detectDesktopHostTarget",
+      "kind": "value",
+      "signature": "const detectDesktopHostTarget: (platform?: NodeJS.Platform, arch?: string) => DesktopTargetId | undefined"
     },
     {
       "name": "detectHostTarget",
@@ -294,6 +369,26 @@
       "signature": "export type DoctorCommandRunner = ( invocation: DoctorCommandInvocation ) => Effect.Effect<DoctorCommandOutput, DoctorMissing, never>"
     },
     {
+      "name": "DoctorDiagnostic",
+      "kind": "class",
+      "signature": "export class DoctorDiagnostic extends Schema.Class<DoctorDiagnostic>(\"DoctorDiagnostic\")({ name: Schema.Literals([ \"bun-version\", \"rust-toolchain\", \"platform-sdk\", \"webview-runtime\", \"signing-credentials\", \"build-tools\", \"package-manager-state\", \"native-host-cache\", \"config\" ]), status: Schema.Literals([\"ok\", \"missing\", \"warning\"]), component: Schema.NonEmptyString, message: Schema.NonEmptyString, remediation: Schema.optionalKey(Schema.NonEmptyString), installCommand: Schema.optionalKey(Schema.NonEmptyString), docsUrl: Schema.optionalKey(Schema.NonEmptyString), evidence: Schema.Array(DoctorEvidence) }) {}"
+    },
+    {
+      "name": "DoctorEnvironment",
+      "kind": "class",
+      "signature": "export class DoctorEnvironment extends Context.Service<DoctorEnvironment, DoctorEnvironmentApi>()( \"effect-desktop/cli/DoctorEnvironment\" ) {}"
+    },
+    {
+      "name": "DoctorEnvironmentApi",
+      "kind": "interface",
+      "signature": "export interface DoctorEnvironmentApi { readonly get: (name: string) => Effect.Effect<Option.Option<string>, never, never> }"
+    },
+    {
+      "name": "DoctorEvidence",
+      "kind": "class",
+      "signature": "export class DoctorEvidence extends Schema.Class<DoctorEvidence>(\"DoctorEvidence\")({ key: Schema.NonEmptyString, value: Schema.String }) {}"
+    },
+    {
       "name": "DoctorMissing",
       "kind": "class",
       "signature": "export class DoctorMissing extends Data.TaggedError(\"DoctorMissing\")<{ readonly probe: DoctorProbeName readonly component: string readonly platform: string readonly message: string readonly remediation: string readonly installHint: string readonly docsUrl: string }> {}"
@@ -305,13 +400,53 @@
     },
     {
       "name": "DoctorProbeResult",
-      "kind": "interface",
-      "signature": "export interface DoctorProbeResult { readonly name: DoctorProbeName readonly status: DoctorProbeStatus readonly component: string readonly message: string readonly remediation: string | undefined readonly installHint: string | undefined readonly docsUrl: string | undefined }"
+      "kind": "type",
+      "signature": "export type DoctorProbeResult = DoctorDiagnostic"
     },
     {
       "name": "DoctorProbeStatus",
       "kind": "type",
       "signature": "export type DoctorProbeStatus = \"ok\" | \"missing\" | \"warning\""
+    },
+    {
+      "name": "formatDoctorReport",
+      "kind": "value",
+      "signature": "const formatDoctorReport: (report: DesktopDoctorReport) => string"
+    },
+    {
+      "name": "hostBinaryName",
+      "kind": "value",
+      "signature": "const hostBinaryName: (target: DesktopTargetId) => string"
+    },
+    {
+      "name": "hostBuildOutputPath",
+      "kind": "value",
+      "signature": "const hostBuildOutputPath: (repoRoot: string, target: DesktopTargetId) => string"
+    },
+    {
+      "name": "isDesktopArtifactKind",
+      "kind": "value",
+      "signature": "const isDesktopArtifactKind: <I>(input: I) => input is I & (\"app\" | \"appimage\" | \"deb\" | \"dmg\" | \"msi\" | \"rpm\" | \"zip\")"
+    },
+    {
+      "name": "isDesktopTargetId",
+      "kind": "value",
+      "signature": "const isDesktopTargetId: <I>(input: I) => input is I & (\"linux-arm64\" | \"linux-x64\" | \"macos-arm64\" | \"macos-x64\" | \"windows-arm64\" | \"windows-x64\")"
+    },
+    {
+      "name": "isMacosDesktopTargetId",
+      "kind": "value",
+      "signature": "const isMacosDesktopTargetId: <I>(input: I) => input is I & (\"macos-arm64\" | \"macos-x64\")"
+    },
+    {
+      "name": "MacosDesktopTargetId",
+      "kind": "type",
+      "signature": "const MacosDesktopTargetId: Schema.Literals<readonly [\"macos-arm64\", \"macos-x64\"]>"
+    },
+    {
+      "name": "makeReleaseToolRunner",
+      "kind": "value",
+      "signature": "const makeReleaseToolRunner: () => Effect.Effect<ReleaseToolRunnerApi, never, ChildProcessSpawner.ChildProcessSpawner>"
     },
     {
       "name": "NotarizeArtifactKind",
@@ -356,17 +491,17 @@
     {
       "name": "NotarizeTarget",
       "kind": "type",
-      "signature": "export type NotarizeTarget = \"macos-arm64\" | \"macos-x64\""
+      "signature": "export type NotarizeTarget = MacosDesktopTargetId"
     },
     {
       "name": "PackageArtifactKind",
       "kind": "type",
-      "signature": "export type PackageArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
+      "signature": "export type PackageArtifactKind = DesktopArtifactKind"
     },
     {
       "name": "PackageArtifactReport",
       "kind": "interface",
-      "signature": "export interface PackageArtifactReport { readonly kind: PackageArtifactKind readonly target: PackageTarget readonly artifactPath: string readonly artifactJsonPath: string readonly checksumsPath: string readonly appId: string readonly appName: string readonly appVersion: string readonly sizeBytes: number readonly sha256: string readonly linuxIntegration?: { readonly desktopFile: string readonly appStreamId: string readonly flatpakAppId: string readonly snapName: string } }"
+      "signature": "export interface PackageArtifactReport { readonly kind: PackageArtifactKind readonly target: PackageTarget readonly artifactPath: string readonly artifactJsonPath: string readonly checksumsPath: string readonly appId: string readonly appName: string readonly appVersion: string readonly sizeBytes: number readonly sha256: string readonly providerBudgetChecks: readonly PackageProviderBudgetCheckReport[] readonly linuxIntegration?: { readonly desktopFile: string readonly appStreamId: string readonly flatpakAppId: string readonly snapName: string } }"
     },
     {
       "name": "PackageCommandInvocation",
@@ -396,7 +531,22 @@
     {
       "name": "PackageTarget",
       "kind": "type",
-      "signature": "export type PackageTarget = `${PackageOs}-${PackageArch}`"
+      "signature": "export type PackageTarget = DesktopTargetId"
+    },
+    {
+      "name": "parseDesktopTargetId",
+      "kind": "value",
+      "signature": "const parseDesktopTargetId: (id: DesktopTargetId) => DesktopTarget"
+    },
+    {
+      "name": "ProviderBudgetCheckReport",
+      "kind": "interface",
+      "signature": "export interface ProviderBudgetCheckReport { readonly metric: \"runtime-payload-bytes\" | \"runtime-boot-ms\" readonly budget: number readonly actual: number | null readonly status: \"pass\" | \"fail\" | \"unmeasured\" }"
+    },
+    {
+      "name": "ProviderMeasurementReport",
+      "kind": "interface",
+      "signature": "export interface ProviderMeasurementReport { readonly provider: DesktopProviderBudget readonly runtimePackaging: \"source\" readonly webEngine: WebEngine readonly target: BuildTarget readonly runtimePayloadBytes: number readonly runtimeBuildMs: number readonly startup: { readonly runtimeBootMs: number | null readonly firstWindowVisibleMs: number | null readonly bridgeReadyMs: number | null } readonly checks: readonly ProviderBudgetCheckReport[] }"
     },
     {
       "name": "PublicApiChange",
@@ -446,7 +596,7 @@
     {
       "name": "PublishArtifactKind",
       "kind": "type",
-      "signature": "export type PublishArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
+      "signature": "export type PublishArtifactKind = DesktopArtifactKind"
     },
     {
       "name": "PublishChannel",
@@ -461,17 +611,27 @@
     {
       "name": "PublishTarget",
       "kind": "type",
-      "signature": "export type PublishTarget = | \"macos-arm64\" | \"macos-x64\" | \"windows-x64\" | \"linux-x64\" | \"windows-arm64\" | \"linux-arm64\""
+      "signature": "export type PublishTarget = DesktopTargetId"
     },
     {
       "name": "ReleaseChecklist",
-      "kind": "interface",
-      "signature": "export interface ReleaseChecklist { readonly schemaVersion: 1 readonly source: string readonly gates: readonly ReleaseChecklistGate[] }"
+      "kind": "class",
+      "signature": "export class ReleaseChecklist extends Schema.Class<ReleaseChecklist>(\"ReleaseChecklist\")({ schemaVersion: Schema.Literal(1), source: Schema.NonEmptyString, subjects: Schema.Array(ReleaseSubject), gates: Schema.Array(ReleaseChecklistGate) }) {}"
     },
     {
       "name": "ReleaseChecklistGate",
-      "kind": "interface",
-      "signature": "export interface ReleaseChecklistGate { readonly id: string readonly title: string readonly kind: ReleaseGateEvidenceKind readonly evidence: readonly string[] }"
+      "kind": "class",
+      "signature": "export class ReleaseChecklistGate extends Schema.Class<ReleaseChecklistGate>( \"ReleaseChecklistGate\" )({ id: Schema.NonEmptyString, title: Schema.NonEmptyString, kind: ReleaseGateEvidenceKind, evidence: Schema.Array(Schema.NonEmptyString) }) {}"
+    },
+    {
+      "name": "ReleaseConfig",
+      "kind": "class",
+      "signature": "export class ReleaseConfig extends Schema.Class<ReleaseConfig>(\"ReleaseConfig\")({ configPath: Schema.String, platform: Schema.optionalKey(Schema.String), artifact: Schema.optionalKey(Schema.String), version: Schema.optionalKey(Schema.String) }) {}"
+    },
+    {
+      "name": "ReleaseError",
+      "kind": "class",
+      "signature": "export class ReleaseError extends Schema.TaggedErrorClass<ReleaseError>()(\"ReleaseError\", { phase: Schema.Literals([\"package\", \"sign\", \"notarize\", \"publish\"]), message: Schema.String, cause: Schema.Unknown }) {}"
     },
     {
       "name": "ReleaseGateCheckReport",
@@ -491,7 +651,7 @@
     {
       "name": "ReleaseGateEvidenceKind",
       "kind": "type",
-      "signature": "export type ReleaseGateEvidenceKind = \"workflow-step\" | \"policy-document\" | \"repository-setting\""
+      "signature": "const ReleaseGateEvidenceKind: Schema.Literals<readonly [\"workflow-step\", \"policy-document\", \"repository-setting\"]>"
     },
     {
       "name": "ReleaseGateFileError",
@@ -514,6 +674,46 @@
       "signature": "export interface ReleaseGateReport { readonly passed: boolean readonly gates: readonly ReleaseGateCheckReport[] }"
     },
     {
+      "name": "ReleasePhase",
+      "kind": "type",
+      "signature": "export type ReleasePhase = \"package\" | \"sign\" | \"notarize\" | \"publish\""
+    },
+    {
+      "name": "ReleaseToolRunner",
+      "kind": "class",
+      "signature": "export class ReleaseToolRunner extends Context.Service<ReleaseToolRunner, ReleaseToolRunnerApi>()( \"@effect-desktop/cli/ReleaseToolRunner\" ) {}"
+    },
+    {
+      "name": "ReleaseToolRunnerApi",
+      "kind": "interface",
+      "signature": "export interface ReleaseToolRunnerApi { readonly run: (invocation: ToolInvocation) => Effect.Effect<ToolResult, ToolError, never> }"
+    },
+    {
+      "name": "ReleaseToolRunnerLive",
+      "kind": "value",
+      "signature": "const ReleaseToolRunnerLive: Layer.Layer<ReleaseToolRunner, never, ChildProcessSpawner.ChildProcessSpawner>"
+    },
+    {
+      "name": "ReleaseWorkflow",
+      "kind": "value",
+      "signature": "const ReleaseWorkflow: Workflow.Workflow<\"DesktopRelease\", typeof ReleaseConfig, typeof DesktopReleaseReport, typeof ReleaseError>"
+    },
+    {
+      "name": "ReleaseWorkflowApi",
+      "kind": "interface",
+      "signature": "export interface ReleaseWorkflowApi { readonly package: ( config: ReleaseConfig ) => Effect.Effect<DesktopPackageReport, PackagePipelineError, never> readonly sign: ( config: ReleaseConfig ) => Effect.Effect<DesktopSignReport, SignPipelineError, never> readonly notarize: ( config: ReleaseConfig ) => Effect.Effect<DesktopNotarizeReport, NotarizePipelineError, never> readonly publish: ( config: ReleaseConfig ) => Effect.Effect<DesktopPublishReport, PublishPipelineError, never> }"
+    },
+    {
+      "name": "ReleaseWorkflowLayer",
+      "kind": "value",
+      "signature": "const ReleaseWorkflowLayer: Layer.Layer<never, never, WorkflowEngine.WorkflowEngine | ReleaseWorkflowServices>"
+    },
+    {
+      "name": "ReleaseWorkflowServices",
+      "kind": "class",
+      "signature": "export class ReleaseWorkflowServices extends Context.Service< ReleaseWorkflowServices, ReleaseWorkflowApi >()(\"@effect-desktop/cli/ReleaseWorkflowServices\") {}"
+    },
+    {
       "name": "ReproCheckError",
       "kind": "type",
       "signature": "export type ReproCheckError = | ReproBuildRunError | ReproPackageRunError | ReproFileError | ReproDiffError"
@@ -522,6 +722,26 @@
       "name": "ReproDifference",
       "kind": "interface",
       "signature": "export interface ReproDifference { readonly relativePath: string readonly kind: | \"missing-in-first\" | \"missing-in-second\" | \"content\" | \"entry-type\" | \"symlink-target\" | \"mode\" | \"target\" readonly firstDifferenceOffset: number | undefined readonly firstSizeBytes: number | undefined readonly secondSizeBytes: number | undefined readonly firstSha256: string | undefined readonly secondSha256: string | undefined readonly firstEntryKind: ReproEntryKind | undefined readonly secondEntryKind: ReproEntryKind | undefined readonly firstSymlinkTarget: string | undefined readonly secondSymlinkTarget: string | undefined readonly firstMode: number | undefined readonly secondMode: number | undefined readonly firstTarget: string | undefined readonly secondTarget: string | undefined }"
+    },
+    {
+      "name": "resolveDesktopHostTarget",
+      "kind": "value",
+      "signature": "const resolveDesktopHostTarget: (override: DesktopTargetId | undefined, platform?: NodeJS.Platform, arch?: string) => Effect.Effect<DesktopTarget, UnsupportedDesktopHostTargetError, never>"
+    },
+    {
+      "name": "resolveDesktopTarget",
+      "kind": "value",
+      "signature": "const resolveDesktopTarget: (requested: string | undefined, hostTarget: DesktopTarget) => Effect.Effect<DesktopTarget, UnsupportedDesktopTargetError, never>"
+    },
+    {
+      "name": "resolveMacosDesktopHostTarget",
+      "kind": "value",
+      "signature": "const resolveMacosDesktopHostTarget: (override: MacosDesktopTargetId | undefined, platform?: NodeJS.Platform, arch?: string) => Effect.Effect<DesktopTarget, UnsupportedDesktopHostTargetError, never>"
+    },
+    {
+      "name": "rpmArch",
+      "kind": "value",
+      "signature": "const rpmArch: (target: DesktopTargetId) => string"
     },
     {
       "name": "runAccessibilityGate",
@@ -584,6 +804,16 @@
       "signature": "const runReleaseGate: (options: ReleaseGateOptions) => Effect.Effect<ReleaseGateReport, ReleaseGateError, never>"
     },
     {
+      "name": "runReleaseTool",
+      "kind": "value",
+      "signature": "const runReleaseTool: (invocation: ToolInvocation) => Effect.Effect<ToolResult, ToolError, never>"
+    },
+    {
+      "name": "runReleaseWorkflow",
+      "kind": "value",
+      "signature": "const runReleaseWorkflow: (config: ReleaseConfig, services: ReleaseWorkflowApi) => Effect.Effect<DesktopReleaseReport, ReleaseError, WorkflowEngine.WorkflowEngine>"
+    },
+    {
       "name": "runSemverGuard",
       "kind": "value",
       "signature": "const runSemverGuard: (options: SemverGuardOptions) => Effect.Effect<SemverGuardReport, SemverGuardError, never>"
@@ -630,23 +860,23 @@
     },
     {
       "name": "SemverPackageVersion",
-      "kind": "interface",
-      "signature": "export interface SemverPackageVersion { readonly name: string readonly version: string readonly path: string }"
+      "kind": "class",
+      "signature": "export class SemverPackageVersion extends Schema.Class<SemverPackageVersion>( \"SemverPackageVersion\" )({ name: Schema.String, version: Schema.String, path: Schema.String }) {}"
     },
     {
       "name": "SemverPolicyManifest",
-      "kind": "interface",
-      "signature": "export interface SemverPolicyManifest { readonly schemaVersion: 1 readonly source: string readonly release: string readonly releaseKind: SemverReleaseKind readonly publicApiSnapshots: string readonly verificationMatrix: string readonly appendixCRows: readonly string[] readonly bridgeEnvelopePolicy: { readonly source: string readonly frozenBetweenMajors: boolean readonly allowedChange: string } readonly deprecationPolicy: { readonly minimumMinorReleases: number readonly requiresJSDocDeprecated: boolean } }"
+      "kind": "class",
+      "signature": "export class SemverPolicyManifest extends Schema.Class<SemverPolicyManifest>( \"SemverPolicyManifest\" )({ schemaVersion: Schema.Literal(1), source: Schema.String, release: Schema.String, releaseKind: SemverReleaseKind, publicApiSnapshots: Schema.String, verificationMatrix: Schema.String, appendixCRows: Schema.Array(Schema.String), bridgeEnvelopePolicy: BridgeEnvelopePolicyManifest, deprecationPolicy: DeprecationPolicyManifest }) {}"
     },
     {
       "name": "SemverReleaseKind",
       "kind": "type",
-      "signature": "export type SemverReleaseKind = \"patch\" | \"minor\" | \"major\""
+      "signature": "const SemverReleaseKind: Schema.Literals<readonly [\"patch\", \"minor\", \"major\"]>"
     },
     {
       "name": "SignArtifactKind",
       "kind": "type",
-      "signature": "export type SignArtifactKind = \"app\" | \"dmg\" | \"zip\" | \"msi\" | \"appimage\" | \"deb\" | \"rpm\""
+      "signature": "export type SignArtifactKind = DesktopArtifactKind"
     },
     {
       "name": "SignArtifactReport",
@@ -681,17 +911,52 @@
     {
       "name": "SignTarget",
       "kind": "type",
-      "signature": "export type SignTarget = `${SignOs}-${SignArch}`"
+      "signature": "export type SignTarget = DesktopTargetId"
+    },
+    {
+      "name": "ToolError",
+      "kind": "class",
+      "signature": "export class ToolError extends Data.TaggedError(\"ToolError\")<{ readonly invocation: ToolInvocation readonly message: string readonly cause: unknown }> {}"
+    },
+    {
+      "name": "ToolInvocation",
+      "kind": "interface",
+      "signature": "export interface ToolInvocation { readonly step: string readonly command: string readonly args: readonly string[] readonly cwd: string readonly env?: Readonly<Record<string, string | undefined>> readonly stdout?: ToolOutputMode readonly stderr?: ToolOutputMode readonly maxStdoutChars?: number readonly maxStderrChars?: number }"
+    },
+    {
+      "name": "ToolOutputMode",
+      "kind": "type",
+      "signature": "export type ToolOutputMode = \"ignore\" | \"pipe\""
+    },
+    {
+      "name": "ToolResult",
+      "kind": "interface",
+      "signature": "export interface ToolResult { readonly command: readonly string[] readonly cwd: string readonly exitCode: number readonly stdout: string readonly stderr: string }"
+    },
+    {
+      "name": "UnsupportedDesktopHostTargetError",
+      "kind": "class",
+      "signature": "export class UnsupportedDesktopHostTargetError extends Data.TaggedError( \"UnsupportedDesktopHostTargetError\" )<{ readonly platform: string readonly arch: string }> {}"
+    },
+    {
+      "name": "UnsupportedDesktopTargetError",
+      "kind": "class",
+      "signature": "export class UnsupportedDesktopTargetError extends Data.TaggedError( \"UnsupportedDesktopTargetError\" )<{ readonly target: string readonly hostTarget: DesktopTargetId readonly reason: \"unsupported\" | \"mismatch\" }> {}"
     },
     {
       "name": "UpdateArtifactManifest",
-      "kind": "interface",
-      "signature": "export interface UpdateArtifactManifest { readonly platform: PublishTarget readonly kind: PublishArtifactKind readonly url: string readonly sizeBytes: number readonly sha256: string readonly signature: string }"
+      "kind": "class",
+      "signature": "export class UpdateArtifactManifest extends Schema.Class<UpdateArtifactManifest>( \"UpdateArtifactManifest\" )({ platform: DecodeDesktopTargetIdSchema, kind: PublishArtifactKindSchema, url: Schema.String, sizeBytes: Schema.Number, sha256: Schema.String, signature: Schema.String }) {}"
     },
     {
       "name": "UpdateManifest",
-      "kind": "interface",
-      "signature": "export interface UpdateManifest { readonly schemaVersion: 1 readonly appId: string readonly version: string readonly channel: PublishChannel readonly keyVersion: number readonly publishedAt: string readonly rollback?: boolean readonly minVersion?: string readonly maxVersion?: string readonly artifacts: readonly UpdateArtifactManifest[] readonly signature: string }"
+      "kind": "class",
+      "signature": "export class UpdateManifest extends Schema.Class<UpdateManifest>(\"UpdateManifest\")({ schemaVersion: Schema.Literal(1), appId: Schema.String, version: Schema.String, channel: PublishChannel, keyVersion: Schema.Number, publishedAt: Schema.String, rollback: Schema.optionalKey(Schema.Boolean), minVersion: Schema.optionalKey(Schema.String), maxVersion: Schema.optionalKey(Schema.String), artifacts: Schema.Array(UpdateArtifactManifest), signature: Schema.String }) {}"
+    },
+    {
+      "name": "wixArch",
+      "kind": "value",
+      "signature": "const wixArch: (target: DesktopTargetId) => string"
     }
   ]
 }

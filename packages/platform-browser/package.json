@@ -1,0 +1,58 @@
+{
+  "name": "@effect-desktop/platform-browser",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Browser renderer Effect layers for Effect Desktop.",
+  "license": "MIT OR Apache-2.0",
+  "author": "Rika Labs, LLC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rika-Labs/effect-desktop.git",
+    "directory": "packages/platform-browser"
+  },
+  "homepage": "https://github.com/Rika-Labs/effect-desktop#readme",
+  "bugs": {
+    "url": "https://github.com/Rika-Labs/effect-desktop/issues"
+  },
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./sql-pglite": {
+      "types": "./src/sql-pglite.ts",
+      "default": "./src/sql-pglite.ts"
+    },
+    "./sqlite-wasm": {
+      "types": "./src/sqlite-wasm.ts",
+      "default": "./src/sqlite-wasm.ts"
+    },
+    "./storage/idb": {
+      "types": "./src/storage/idb.ts",
+      "default": "./src/storage/idb.ts"
+    },
+    "./storage/kv": {
+      "types": "./src/storage/kv.ts",
+      "default": "./src/storage/kv.ts"
+    }
+  },
+  "scripts": {
+    "check": "tsgo --singleThreaded --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --singleThreaded --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "lint": "oxlint ."
+  },
+  "dependencies": {
+    "@effect/platform-browser": "4.0.0-beta.60",
+    "@effect/sql-sqlite-wasm": "4.0.0-beta.60",
+    "@effect/wa-sqlite": "^0.1.2",
+    "effect": "4.0.0-beta.60"
+  },
+  "optionalDependencies": {
+    "@effect/sql-pglite": "4.0.0-beta.60",
+    "@electric-sql/pglite": "^0.4.4"
+  }
+}

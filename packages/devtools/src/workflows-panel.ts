@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option, Stream, SubscriptionRef } from "effect"
 
-import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
+import { positiveRowLimit } from "./panel-options.js"
 
 export type WorkflowExecutionState = "running" | "completed" | "failed" | "interrupted"
 
@@ -76,7 +76,6 @@ export const WorkflowExecutionRegistryLive: Layer.Layer<WorkflowExecutionRegistr
 
 export interface WorkflowsPanelOptions {
   readonly maxRows?: number
-  readonly frameInterval?: `${number} millis`
 }
 
 export class WorkflowsPanel extends Context.Service<WorkflowsPanel, WorkflowsPanelApi>()(
@@ -94,7 +93,6 @@ export const makeWorkflowsPanel = (
   Effect.gen(function* () {
     const registry = yield* WorkflowExecutionRegistry
     const maxRows = positiveRowLimit(options.maxRows, 256)
-    const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
     const list = (): Effect.Effect<WorkflowsPanelSnapshot, never, never> =>
       Effect.gen(function* () {
@@ -106,11 +104,7 @@ export const makeWorkflowsPanel = (
     return Object.freeze({
       list,
       observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep(frameInterval).pipe(Effect.andThen(list())))
-          )
-        )
+        registry.observe().pipe(Stream.map((executions) => toSnapshot(executions.slice(-maxRows))))
     } satisfies WorkflowsPanelApi)
   })
 

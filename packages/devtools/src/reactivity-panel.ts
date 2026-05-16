@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Stream, SubscriptionRef } from "effect"
+import { Clock, Context, Effect, Layer, Stream, SubscriptionRef } from "effect"
 
 import { positiveRowLimit } from "./panel-options.js"
 
@@ -36,25 +36,29 @@ export const makeReactivityTracker = (
 ): Effect.Effect<ReactivityTrackerApi, never, never> =>
   Effect.gen(function* () {
     const maxRows = positiveRowLimit(options.maxRows, 512)
-    const now = options.now ?? Date.now
     const ref = yield* SubscriptionRef.make<readonly ReactivityInvalidationRecord[]>([])
 
     const trackInvalidation = (
       keys: ReadonlyArray<unknown> | Readonly<Record<string, ReadonlyArray<unknown>>>
-    ): Effect.Effect<void, never, never> => {
-      const normalized = normalizeKeys(keys)
-      if (normalized.length === 0) {
-        return Effect.void
-      }
-      return SubscriptionRef.update(ref, (rows: readonly ReactivityInvalidationRecord[]) => {
-        const record: ReactivityInvalidationRecord = {
-          keys: normalized,
-          timestampMs: now(),
-          count: 1
+    ): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const timestampMs = yield* currentTimeMillis(options.now)
+        const normalized = normalizeKeys(keys)
+        if (normalized.length === 0) {
+          return yield* Effect.void
         }
-        return [...rows, record].slice(-maxRows)
+        return yield* SubscriptionRef.update(
+          ref,
+          (rows: readonly ReactivityInvalidationRecord[]) => {
+            const record: ReactivityInvalidationRecord = {
+              keys: normalized,
+              timestampMs,
+              count: 1
+            }
+            return [...rows, record].slice(-maxRows)
+          }
+        )
       })
-    }
 
     return Object.freeze({
       trackInvalidation,
@@ -62,6 +66,9 @@ export const makeReactivityTracker = (
       observe: () => SubscriptionRef.changes(ref)
     } satisfies ReactivityTrackerApi)
   })
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
 
 export const ReactivityTrackerLive: Layer.Layer<ReactivityTracker> =
   Layer.effect(ReactivityTracker)(makeReactivityTracker())

@@ -3,16 +3,17 @@ import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "ef
 
 import {
   generateUuidV7,
+  makeResourceId,
   makeResourceRegistry,
   ResourceInvalidArgumentError,
   ResourceRegistry,
   ResourceRegistryLive,
   ResourceHandleShape,
-  StaleHandle,
-  type ResourceId
+  ResourceHandleSchema,
+  StaleHandle
 } from "./resources.js"
 
-const id = (value: string): ResourceId => value as ResourceId
+const id = makeResourceId
 
 test("register returns handles and list enumerates live resources", async () => {
   const result = await Effect.runPromise(
@@ -109,6 +110,45 @@ test("get returns the matching live resource", async () => {
   }
 })
 
+test("public registry reads return serializable handles without dispose", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-0000000000ab")
+      })
+      const managed = yield* registry.register({
+        kind: "window",
+        ownerScope: "scope-window",
+        state: "open"
+      })
+      const listed = yield* registry.list()
+      const got = yield* registry.get(managed.id)
+      const fresh = yield* registry.assertFresh(managed)
+      const observed = yield* registry.observe().pipe(Stream.take(1), Stream.runCollect)
+
+      return {
+        managed,
+        listed: listed.entries[0]?.handle,
+        got: Option.isSome(got) ? got.value.handle : undefined,
+        fresh: fresh.handle,
+        observed: Array.from(observed)[0]?.entries[0]?.handle
+      }
+    })
+  )
+
+  expect("dispose" in result.managed).toBe(true)
+  for (const handle of [result.listed, result.got, result.fresh, result.observed]) {
+    expect(handle).toMatchObject({
+      kind: "window",
+      id: id("018e2f36-5800-7000-8000-0000000000ab"),
+      generation: 0,
+      ownerScope: "scope-window",
+      state: "open"
+    })
+    expect("dispose" in handle!).toBe(false)
+  }
+})
+
 test("dispose runs cleanup once and removes the resource", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -135,6 +175,30 @@ test("dispose runs cleanup once and removes the resource", async () => {
 
   expect(result.cleanupCount).toBe(1)
   expect(result.snapshot.entries).toEqual([])
+})
+
+test("dispose removes the resource when cleanup defects", async () => {
+  const snapshot = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-0000000000b1")
+      })
+      const handle = yield* registry.register({
+        kind: "stream",
+        ownerScope: "scope-stream",
+        state: "open",
+        dispose: Effect.sync(() => {
+          throw new Error("stream disposer failed")
+        })
+      })
+
+      yield* registry.dispose(handle.id)
+
+      return yield* registry.list()
+    })
+  )
+
+  expect(snapshot.entries).toEqual([])
 })
 
 test("dispose keeps resources in the registry while cleanup is in progress", async () => {
@@ -167,11 +231,19 @@ test("dispose keeps resources in the registry while cleanup is in progress", asy
           }
         })
       )
+      const shareStale = yield* registry.share(handle, "target-scope").pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => {
+            throw new Error("expected disposing handle share to be stale")
+          }
+        })
+      )
       yield* Deferred.succeed(resume, undefined)
       yield* Fiber.join(disposal)
       const final = yield* registry.list()
 
-      return { snapshot, stale, final }
+      return { snapshot, stale, shareStale, final }
     })
   )
 
@@ -184,6 +256,90 @@ test("dispose keeps resources in the registry while cleanup is in progress", asy
     kind: "stream",
     id: "018e2f36-5800-7000-8000-000000000008"
   })
+  expect(result.shareStale).toBeInstanceOf(StaleHandle)
+  expect(result.final.entries).toEqual([])
+})
+
+test("duplicate dispose waits for in-flight cleanup to remove the entry", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void, never>()
+      const resume = yield* Deferred.make<void, never>()
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-0000000000ad")
+      })
+      const handle = yield* registry.register({
+        kind: "stream",
+        ownerScope: "scope-stream",
+        state: "open",
+        dispose: Effect.gen(function* () {
+          yield* Deferred.succeed(started, undefined)
+          yield* Deferred.await(resume)
+        })
+      })
+
+      const first = yield* registry.dispose(handle.id).pipe(Effect.forkChild())
+      yield* Deferred.await(started)
+      const secondDone = yield* Deferred.make<void, never>()
+      const second = yield* registry
+        .dispose(handle.id)
+        .pipe(Effect.andThen(Deferred.succeed(secondDone, undefined)), Effect.forkChild())
+      const secondBeforeRemoval = yield* Deferred.await(secondDone).pipe(
+        Effect.timeoutOption("5 millis")
+      )
+
+      yield* Deferred.succeed(resume, undefined)
+      yield* Fiber.join(first)
+      yield* Fiber.join(second)
+      const final = yield* registry.list()
+
+      return { final, secondBeforeRemoval }
+    })
+  )
+
+  expect(Option.isNone(result.secondBeforeRemoval)).toBe(true)
+  expect(result.final.entries).toEqual([])
+})
+
+test("interrupted dispose still clears the disposing entry", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void, never>()
+      const resume = yield* Deferred.make<void, never>()
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-0000000000af")
+      })
+      const handle = yield* registry.register({
+        kind: "stream",
+        ownerScope: "scope-stream",
+        state: "open",
+        dispose: Effect.gen(function* () {
+          yield* Deferred.succeed(started, undefined)
+          yield* Deferred.await(resume)
+        })
+      })
+
+      const first = yield* registry.dispose(handle.id).pipe(Effect.forkChild())
+      yield* Deferred.await(started)
+      const interrupted = yield* Fiber.interrupt(first).pipe(Effect.forkChild())
+      const secondDone = yield* Deferred.make<void, never>()
+      const second = yield* registry
+        .dispose(handle.id)
+        .pipe(Effect.andThen(Deferred.succeed(secondDone, undefined)), Effect.forkChild())
+      const secondBeforeResume = yield* Deferred.await(secondDone).pipe(
+        Effect.timeoutOption("5 millis")
+      )
+
+      yield* Deferred.succeed(resume, undefined)
+      yield* Fiber.join(interrupted)
+      yield* Fiber.join(second)
+      const final = yield* registry.list()
+
+      return { final, secondBeforeResume }
+    })
+  )
+
+  expect(Option.isNone(result.secondBeforeResume)).toBe(true)
   expect(result.final.entries).toEqual([])
 })
 
@@ -267,6 +423,45 @@ test("assertFresh accepts reusable id only at the current generation", async () 
     expectedGeneration: 0,
     actualGeneration: 1
   })
+})
+
+test("assertFresh and share reject handles with mismatched state", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-0000000000ac")
+      })
+      const handle = yield* registry.register({
+        kind: "process",
+        ownerScope: "scope-process",
+        state: "running"
+      })
+      const forged = {
+        kind: handle.kind,
+        id: handle.id,
+        generation: handle.generation,
+        ownerScope: handle.ownerScope,
+        state: "stopped"
+      } as const
+      const freshExit = yield* Effect.exit(registry.assertFresh(forged))
+      const shareExit = yield* Effect.exit(registry.share(forged, "target-scope"))
+      const snapshot = yield* registry.list()
+
+      return { freshExit, shareExit, snapshot }
+    })
+  )
+
+  expectFailure(result.freshExit, StaleHandle)
+  expectFailure(result.shareExit, StaleHandle)
+  expect(result.snapshot.entries.map((entry) => entry.handle)).toEqual([
+    {
+      kind: "process",
+      id: id("018e2f36-5800-7000-8000-0000000000ac"),
+      generation: 0,
+      ownerScope: "scope-process",
+      state: "running"
+    }
+  ])
 })
 
 test("non-reusable explicit id reuse cannot refresh a disposed handle", async () => {
@@ -654,6 +849,41 @@ test("observe emits subsequent registry changes", async () => {
   expect(Array.from(snapshots).map((snapshot) => snapshot.entries.length)).toEqual([0, 1])
 })
 
+test("observeLifecycle streams resource, scope, and stale-handle events", async () => {
+  const events = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry({
+        nextId: () => id("018e2f36-5800-7000-8000-0000000000af")
+      })
+      const fiber = yield* registry
+        .observeLifecycle()
+        .pipe(Stream.take(7), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* registry.declareScope("scope-parent")
+      yield* registry.declareScope("scope-child", "scope-parent")
+      const handle = yield* registry.register({
+        kind: "window",
+        ownerScope: "scope-child",
+        state: "open"
+      })
+      yield* registry.closeScope("scope-parent")
+      yield* Effect.exit(registry.assertFresh(handle))
+
+      return yield* Fiber.join(fiber)
+    })
+  )
+
+  expect(Array.from(events).map((event) => event._tag)).toEqual([
+    "ScopeDeclared",
+    "ScopeDeclared",
+    "ResourceRegistered",
+    "ScopeClosing",
+    "ResourceDisposed",
+    "ScopeClosed",
+    "ResourceStale"
+  ])
+})
+
 test("live layer provides the resource registry service", async () => {
   const snapshot = await Effect.runPromise(
     Effect.gen(function* () {
@@ -664,6 +894,34 @@ test("live layer provides the resource registry service", async () => {
   )
 
   expect(snapshot.entries).toEqual([])
+})
+
+test("live layer finalization closes leaked registered resources", async () => {
+  let cleanupCount = 0
+
+  const snapshot = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* Effect.service(ResourceRegistry)
+        yield* registry.register({
+          kind: "runtime",
+          id: id("018e2f36-5800-7000-8000-0000000000ae"),
+          ownerScope: "scope-runtime",
+          state: "ready",
+          dispose: Effect.sync(() => {
+            cleanupCount += 1
+          })
+        })
+
+        return yield* registry.list()
+      }).pipe(Effect.provide(ResourceRegistryLive))
+    )
+  )
+
+  expect(snapshot.entries.map((entry) => entry.handle.id)).toEqual([
+    id("018e2f36-5800-7000-8000-0000000000ae")
+  ])
+  expect(cleanupCount).toBe(1)
 })
 
 test("resource handle schema matches the serializable handle shape", () => {
@@ -684,6 +942,66 @@ test("resource handle schema matches the serializable handle shape", () => {
     ownerScope: "scope-process",
     state: "running"
   })
+})
+
+test("resource handle schema narrows kind and state", () => {
+  const decodeHandle = Schema.decodeUnknownSync(ResourceHandleSchema("process", "running"))
+
+  expect(
+    decodeHandle({
+      kind: "process",
+      id: "018e2f36-5800-7000-8000-000000000011",
+      generation: 0,
+      ownerScope: "scope-process",
+      state: "running"
+    })
+  ).toMatchObject({
+    kind: "process",
+    id: "018e2f36-5800-7000-8000-000000000011",
+    generation: 0,
+    ownerScope: "scope-process",
+    state: "running"
+  })
+
+  expect(() =>
+    decodeHandle({
+      kind: "worker",
+      id: "018e2f36-5800-7000-8000-000000000011",
+      generation: 0,
+      ownerScope: "scope-process",
+      state: "running"
+    })
+  ).toThrow()
+
+  expect(() =>
+    decodeHandle({
+      kind: "process",
+      id: "",
+      generation: 0,
+      ownerScope: "scope-process",
+      state: "running"
+    })
+  ).toThrow()
+
+  expect(() =>
+    decodeHandle({
+      kind: "process",
+      id: "018e2f36-5800-7000-8000-000000000011",
+      generation: -1,
+      ownerScope: "scope-process",
+      state: "running"
+    })
+  ).toThrow()
+
+  expect(() =>
+    decodeHandle({
+      kind: "process",
+      id: "018e2f36-5800-7000-8000-000000000011",
+      generation: 0,
+      ownerScope: "scope-process",
+      state: "open"
+    })
+  ).toThrow()
 })
 
 test("uuidv7 embeds sortable millisecond time and version bits", () => {

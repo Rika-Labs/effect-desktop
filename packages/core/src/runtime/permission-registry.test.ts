@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Clock, Deferred, Effect, Exit, Fiber, Stream } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
@@ -53,6 +53,22 @@ test("PermissionRegistry allows filesystem writes inside declared roots and deni
   expectDenied(denied, (error) => {
     expect(error.reason).toBe("default-deny")
   })
+})
+
+test("PermissionRegistry uses the Effect Clock when no explicit clock is supplied", async () => {
+  const timestamp = 1_715_000_000_000
+  const registry = await Effect.runPromise(
+    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" }).pipe(
+      Effect.provideService(Clock.Clock, fixedClock(timestamp))
+    )
+  )
+
+  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
+  const granted = await Effect.runPromise(
+    registry.check(filesystemWrite(["/tmp/app/config.json"]), context("window-main"))
+  )
+
+  expect(granted.grantedAt).toBe(timestamp)
 })
 
 test("PermissionRegistry allows sqlite opens inside declared database roots and denies outside", async () => {
@@ -269,7 +285,7 @@ test("PermissionRegistry validates inputs before audit side effects", async () =
   const registry = await Effect.runPromise(makePermissionRegistry({ audit: memoryAudit(rows) }))
   const invalidContext = { actor: { kind: "window", id: "" } }
   const exit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app"]), invalidContext as never)
+    registry.check(filesystemWrite(["/tmp/app"]), invalidContext)
   )
 
   expectInvalid(exit)
@@ -354,7 +370,7 @@ test("PermissionRegistry rejects control bytes in actor ids, resources, and sour
 
   const actorExit = await Effect.runPromiseExit(
     registry.check(filesystemWrite(["/tmp/app"]), {
-      actor: { kind: "window", id: `app${String.fromCharCode(10)}forged` } as never
+      actor: { kind: "window", id: `app${String.fromCharCode(10)}forged` }
     })
   )
   expectInvalid(actorExit)
@@ -559,6 +575,8 @@ test("PermissionRegistry expires grants as typed revocation values and audits th
     "permission-granted",
     "permission-expired"
   ])
+  expect(JSON.stringify(rows)).not.toContain("grant-1")
+  expect(JSON.stringify(rows)).toContain("<redacted:PermissionGrantToken>")
 })
 
 test("PermissionRegistry consumes one-time grants after the first use", async () => {
@@ -668,7 +686,8 @@ const memoryAudit = (rows: unknown[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
     Effect.sync(() => {
       rows.push(event)
-    })
+    }),
+  observe: () => Stream.empty
 })
 
 const failingAudit = (): AuditEventsApi => ({
@@ -678,7 +697,8 @@ const failingAudit = (): AuditEventsApi => ({
         method: "EventJournal.write",
         cause: new Error("journal full")
       })
-    )
+    ),
+  observe: () => Stream.empty
 })
 
 const failingPermissionDecisionAudit = (rows: AuditEvent[]): AuditEventsApi => ({
@@ -692,7 +712,8 @@ const failingPermissionDecisionAudit = (rows: AuditEvent[]): AuditEventsApi => (
         )
       : Effect.sync(() => {
           rows.push(event)
-        })
+        }),
+  observe: () => Stream.empty
 })
 
 const expectDenied = (
@@ -741,3 +762,11 @@ const expectRevoked = (
     }
   }
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})

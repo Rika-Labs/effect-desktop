@@ -41,7 +41,7 @@ export const HealthSingletonLayer = Singleton.make(
   "HealthMonitor",
   Effect.gen(function* () {
     yield* Effect.log("[HealthMonitor] singleton started")
-    yield* Effect.never
+    return yield* Effect.never
   })
 )
 

@@ -6,8 +6,15 @@ export const DialogLevel = Schema.Literals(["info", "warning", "error"])
 export type DialogLevel = Schema.Schema.Type<typeof DialogLevel>
 
 const DialogFileFilterName = PrintableNonEmptyString
+const NulByte = String.fromCharCode(0)
+const UnitSeparatorByte = String.fromCharCode(31)
+const DeleteByte = String.fromCharCode(127)
+const DialogFileFilterExtensionPattern = new RegExp(
+  `^(?!\\*)[^${NulByte}-${UnitSeparatorByte}${DeleteByte}]+$`,
+  "u"
+)
 const DialogFileFilterExtension = Schema.NonEmptyString.check(
-  Schema.isPattern(/^(?!\*)[^\u0000-\u001f\u007f]+$/)
+  Schema.isPattern(DialogFileFilterExtensionPattern)
 )
 
 export class DialogFileFilter extends Schema.Class<DialogFileFilter>("DialogFileFilter")({

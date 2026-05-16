@@ -21,7 +21,6 @@ use tao::{
 };
 use tracing::{info, warn};
 use uuid::Uuid;
-use wry::WebView;
 
 const WINDOW_TITLE: &str = "Effect Desktop";
 const WINDOW_WIDTH: f64 = 960.0;
@@ -147,7 +146,7 @@ enum WindowLifecycleEvent {
 
 struct NativeWindowResources {
     _window: Window,
-    _webview: WebView,
+    _webview: webview::HostWebView,
 }
 
 struct WindowRegistry {
@@ -498,12 +497,7 @@ impl WindowRegistry {
             "host window opened"
         );
 
-        let webview = webview::attach_app_webview(&window).map_err(|error| {
-            HostProtocolError::internal(
-                format!("failed to attach host webview: {error}"),
-                host_protocol::WINDOW_CREATE_METHOD,
-            )
-        })?;
+        let webview = webview::attach_app_webview(&window).map_err(|error| *error)?;
         self.windows.insert(
             window_id.clone(),
             NativeWindowResources {

@@ -24,14 +24,15 @@
     }
   },
   "scripts": {
-    "check": "tsc --noEmit -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check": "tsgo --singleThreaded --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --singleThreaded --noEmit -p tsconfig.json",
     "test": "bun test",
     "lint": "oxlint ."
   },
   "dependencies": {
     "@effect-desktop/bridge": "workspace:*",
     "@effect-desktop/core": "workspace:*",
+    "@effect/atom-solid": "4.0.0-beta.60",
     "effect": "4.0.0-beta.60"
   },
   "peerDependencies": {

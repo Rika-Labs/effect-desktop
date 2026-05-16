@@ -4,6 +4,21 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
+      "name": "desktopAtomDefaultRegistry",
+      "kind": "value",
+      "signature": "const defaultRegistry: AtomRegistry.AtomRegistry"
+    },
+    {
+      "name": "desktopAtomRegistryKey",
+      "kind": "value",
+      "signature": "const registryKey: InjectionKey<AtomRegistry.AtomRegistry>"
+    },
+    {
+      "name": "injectDesktopAtomRegistry",
+      "kind": "value",
+      "signature": "const injectRegistry: () => AtomRegistry.AtomRegistry"
+    },
+    {
       "name": "MissingDesktopContextError",
       "kind": "class",
       "signature": "export class MissingDesktopContextError extends Data.TaggedError(\"MissingDesktopContextError\")<{ readonly framework: DesktopFramework readonly message: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
@@ -12,6 +27,26 @@
       "name": "MissingDesktopRpcClientError",
       "kind": "class",
       "signature": "export class MissingDesktopRpcClientError extends Data.TaggedError(\"MissingDesktopRpcClientError\")<{ readonly framework: DesktopFramework readonly message: string readonly tag: string readonly code: string readonly category: DesktopPublicErrorCategory readonly summary: string readonly details: Readonly<Record<string, unknown>> readonly actor: string readonly remediation: string readonly docsUrl: string }> {}"
+    },
+    {
+      "name": "useAtom",
+      "kind": "value",
+      "signature": "const useAtom: <R, W, Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: () => Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => readonly [Readonly<Ref<R>>, write: \"promise\" extends Mode ? ((value: W) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)]"
+    },
+    {
+      "name": "useAtomRef",
+      "kind": "value",
+      "signature": "const useAtomRef: <A>(atomRef: () => AtomRef.ReadonlyRef<A>) => Readonly<Ref<A>>"
+    },
+    {
+      "name": "useAtomSet",
+      "kind": "value",
+      "signature": "const useAtomSet: <R, W, Mode extends \"value\" | \"promise\" | \"promiseExit\" = never>(atom: () => Atom.Writable<R, W>, options?: { readonly mode?: ([R] extends [AsyncResult.AsyncResult<any, any>] ? Mode : \"value\") | undefined; }) => \"promise\" extends Mode ? ((value: W, options?: { readonly signal?: AbortSignal | undefined; } | undefined) => Promise<AsyncResult.AsyncResult.Success<R>>) : \"promiseExit\" extends Mode ? ((value: W, options?: { readonly signal?: AbortSignal | undefined; } | undefined) => Promise<Exit.Exit<AsyncResult.AsyncResult.Success<R>, AsyncResult.AsyncResult.Failure<R>>>) : ((value: W | ((value: R) => W)) => void)"
+    },
+    {
+      "name": "useAtomValue",
+      "kind": "value",
+      "signature": "const useAtomValue: <A>(atom: () => Atom.Atom<A>) => Readonly<Ref<A>>"
     },
     {
       "name": "VueAsyncState",
@@ -34,34 +69,19 @@
       "signature": "export interface VueDesktopAdapter<App extends DesktopAppManifest> { readonly app: App readonly createApp: (rootComponent: Component, options?: VueDesktopOptions) => VueApp readonly provideDesktop: (options?: VueDesktopOptions) => void readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group> }"
     },
     {
-      "name": "VueDesktopClientMap",
-      "kind": "type",
-      "signature": "export type VueDesktopClientMap = DesktopRendererRpcClientMap"
-    },
-    {
       "name": "VueDesktopOptions",
       "kind": "interface",
-      "signature": "export interface VueDesktopOptions { readonly transport?: DesktopRendererRpcTransport | undefined }"
-    },
-    {
-      "name": "VueDesktopRpcClient",
-      "kind": "type",
-      "signature": "export type VueDesktopRpcClient = DesktopRendererRpcClient"
-    },
-    {
-      "name": "VueDesktopRpcClientMethod",
-      "kind": "type",
-      "signature": "export type VueDesktopRpcClientMethod = DesktopRendererRpcClientMethod"
+      "signature": "export interface VueDesktopOptions { readonly transport?: DesktopRendererRpcTransport | undefined readonly rpcs?: DesktopRpcsLayer<never, never> | undefined }"
     },
     {
       "name": "VueDesktopRpcs",
       "kind": "type",
-      "signature": "export type VueDesktopRpcs<Group extends RpcGroup.Any> = { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: VueRpcEndpoint<Current> }"
+      "signature": "export type VueDesktopRpcs<Group extends RpcGroup.Any> = Readonly< Record<string, VueEndpoint & VueDesktopSupport> > & { readonly [Current in RpcGroup.Rpcs<Group> as EndpointName< Current[\"_tag\"] >]: VueRpcEndpoint<Current> }"
     },
     {
       "name": "VueDesktopSupport",
       "kind": "interface",
-      "signature": "export interface VueDesktopSupport { readonly support: RpcSupportMetadata readonly isSupported: boolean }"
+      "signature": "export interface VueDesktopSupport extends DesktopEndpointSupport {}"
     },
     {
       "name": "VueMutation",
@@ -79,9 +99,14 @@
       "signature": "export interface VueQueryEndpoint<I, A, E> { readonly useQuery: VueComposable<I, Readonly<Ref<VueAsyncState<A, E>>>> }"
     },
     {
+      "name": "VueStreamComposable",
+      "kind": "type",
+      "signature": "export type VueStreamComposable<I, A, E> = [I] extends [void] ? (options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>> : undefined extends I ? (input?: I, options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>> : (input: I, options?: DesktopStreamOptions<A>) => Readonly<Ref<VueStreamState<A, E>>>"
+    },
+    {
       "name": "VueStreamEndpoint",
       "kind": "interface",
-      "signature": "export interface VueStreamEndpoint<I, A, E> { readonly useStream: VueComposable<I, Readonly<Ref<VueStreamState<A, E>>>> }"
+      "signature": "export interface VueStreamEndpoint<I, A, E> { readonly useStream: VueStreamComposable<I, A, E> }"
     },
     {
       "name": "VueStreamState",

@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test"
 import {
   HostProtocolBackpressureOverflowError,
+  HostProtocolFileNotFoundError,
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
-  HostProtocolStaleHandleError,
-  HostProtocolUnsupportedError
+  HostProtocolStaleHandleError
 } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Option, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Option, Schedule, Stream } from "effect"
 
+import { PermissionActor } from "./permission-registry.js"
 import {
   makePty,
   PtyExitStatus,
@@ -20,11 +21,18 @@ import {
   type PtyPermissionPolicy,
   type PtySignalInput
 } from "./pty.js"
+import type { ResourceOwnerApi } from "./resource-owner.js"
 import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 const ptyTest = process.platform === "win32" ? test.skip : test
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
 
 ptyTest("PTY open exposes output and exit status", async () => {
   const fixture = await makeFixture(
@@ -34,7 +42,6 @@ ptyTest("PTY open exposes output and exit status", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -54,7 +61,6 @@ ptyTest("PTY open registers a scoped running resource", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -63,7 +69,13 @@ ptyTest("PTY open registers a scoped running resource", async () => {
 
   expect(handle.resource.kind).toBe("pty")
   expect(handle.resource.ownerScope).toBe("scope-main")
-  expect(snapshot.entries.map((entry) => entry.handle)).toContainEqual(handle.resource)
+  expect(snapshot.entries.map((entry) => entry.handle)).toContainEqual({
+    kind: handle.resource.kind,
+    id: handle.resource.id,
+    generation: handle.resource.generation,
+    ownerScope: handle.resource.ownerScope,
+    state: handle.resource.state
+  })
 })
 
 ptyTest("PTY removes the resource when a child exits without awaiting onExit", async () => {
@@ -74,7 +86,6 @@ ptyTest("PTY removes the resource when a child exits without awaiting onExit", a
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -100,7 +111,6 @@ ptyTest("PTY removes the resource and releases budget when child exit fails", as
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -112,35 +122,12 @@ ptyTest("PTY removes the resource and releases budget when child exit fails", as
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
   )
 
   expect(openCalls).toBe(2)
-})
-
-ptyTest("PTY open validates owner scope before adapter activity", async () => {
-  let openCalls = 0
-  const fixture = await makeFixture(
-    makeFakeAdapter(() => {
-      openCalls += 1
-      return makeFakeChild({ output: [], exit: { code: 0 } })
-    })
-  )
-
-  const exit = await Effect.runPromiseExit(
-    fixture.service.open({
-      argv: ["bash"],
-      ownerScope: "",
-      rows: 24,
-      cols: 80
-    })
-  )
-
-  expect(openCalls).toBe(0)
-  expectFailure(exit, HostProtocolInvalidArgumentError)
 })
 
 ptyTest("PTY open validates size before adapter activity", async () => {
@@ -155,7 +142,6 @@ ptyTest("PTY open validates size before adapter activity", async () => {
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 0,
       cols: 80
     })
@@ -168,7 +154,9 @@ ptyTest("PTY open validates size before adapter activity", async () => {
 test("PTY rejects non-finite graceful shutdown windows", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-    const exit = await Effect.runPromiseExit(makePty(registry, { gracefulShutdownMs: value }))
+    const exit = await Effect.runPromiseExit(
+      makePty(registry, TEST_OWNER, { adapter: makeFakeAdapter(), gracefulShutdownMs: value })
+    )
     expectFailure(exit, HostProtocolInvalidArgumentError)
   }
 })
@@ -178,7 +166,7 @@ test("PTY rejects non-positive graceful shutdown windows before adapter activity
   for (const value of [0, -1, -5000]) {
     let openCalls = 0
     const exit = await Effect.runPromiseExit(
-      makePty(registry, {
+      makePty(registry, TEST_OWNER, {
         gracefulShutdownMs: value,
         adapter: {
           open: () => {
@@ -197,7 +185,7 @@ ptyTest("PTY open denies commands by default before adapter activity", async () 
   let openCalls = 0
   const registry = await Effect.runPromise(makeResourceRegistry())
   const service = await Effect.runPromise(
-    makePty(registry, {
+    makePty(registry, TEST_OWNER, {
       adapter: {
         open: () => {
           openCalls += 1
@@ -210,7 +198,6 @@ ptyTest("PTY open denies commands by default before adapter activity", async () 
   const exit = await Effect.runPromiseExit(
     service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -233,7 +220,6 @@ ptyTest("PTY open allows commands declared in pty.spawn policy", async () => {
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -255,7 +241,6 @@ ptyTest("PTY open rejects argv0 shell metacharacters before permission lookup", 
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash;rm"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -278,7 +263,6 @@ ptyTest("PTY open rejects empty environment names before adapter activity", asyn
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80,
       env: { "": "bad" }
@@ -303,7 +287,6 @@ ptyTest("PTY open rejects NUL bytes in environment names", async () => {
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80,
       env: { [`key${nul}`]: "value" }
@@ -328,7 +311,6 @@ ptyTest("PTY open rejects NUL bytes in environment values", async () => {
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80,
       env: { key: `value${nul}` }
@@ -337,22 +319,6 @@ ptyTest("PTY open rejects NUL bytes in environment values", async () => {
 
   expect(openCalls).toBe(0)
   expectFailure(exit, HostProtocolInvalidArgumentError)
-})
-
-ptyTest("PTY default adapter fails loudly as Unsupported", async () => {
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const service = await Effect.runPromise(makePty(registry, { permissions: { spawn: ["bash"] } }))
-
-  const exit = await Effect.runPromiseExit(
-    service.open({
-      argv: ["bash"],
-      ownerScope: "scope-main",
-      rows: 24,
-      cols: 80
-    })
-  )
-
-  expectFailure(exit, HostProtocolUnsupportedError)
 })
 
 ptyTest("PTY open enforces the per-scope concurrent budget", async () => {
@@ -371,13 +337,11 @@ ptyTest("PTY open enforces the per-scope concurrent budget", async () => {
 
   const first = fixture.service.open({
     argv: ["bash"],
-    ownerScope: "scope-main",
     rows: 24,
     cols: 80
   })
   const second = fixture.service.open({
     argv: ["bash"],
-    ownerScope: "scope-main",
     rows: 24,
     cols: 80
   })
@@ -395,6 +359,40 @@ ptyTest("PTY open enforces the per-scope concurrent budget", async () => {
   }
 })
 
+ptyTest("PTY open releases the per-scope budget after adapter failure", async () => {
+  let openCalls = 0
+  const notFound = new Error("missing pty")
+  Object.assign(notFound, { code: "ENOENT" })
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => {
+      openCalls += 1
+      if (openCalls === 1) {
+        throw notFound
+      }
+      return makeFakeChild({ output: [], exit: { code: 0 } })
+    }),
+    { budgets: { maxConcurrent: 1 } }
+  )
+
+  const failed = await Effect.runPromiseExit(
+    fixture.service.open({
+      argv: ["bash"],
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      rows: 24,
+      cols: 80
+    })
+  )
+
+  expectFailure(failed, HostProtocolFileNotFoundError)
+  expect(openCalls).toBe(2)
+})
+
 ptyTest("PTY open validates output budget policy before adapter activity", async () => {
   let openCalls = 0
   const fixture = await makeFixture(
@@ -408,7 +406,6 @@ ptyTest("PTY open validates output budget policy before adapter activity", async
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -426,7 +423,6 @@ ptyTest("PTY output coalesces small chunks up to the byte window", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -446,6 +442,7 @@ ptyTest("PTY output coalesces small chunks up to the byte window", async () => {
 })
 
 ptyTest("PTY output flushes a quiet small chunk when the coalescing window expires", async () => {
+  const now = fixedSequenceClock([100, 106])
   const fixture = await makeFixture(
     makeFakeAdapter(() =>
       makeFakeChild({
@@ -455,12 +452,11 @@ ptyTest("PTY output flushes a quiet small chunk when the coalescing window expir
         naturalExitDelayMs: 60_000
       })
     ),
-    { budgets: { outputBufferBytes: 16, outputCoalesceBytes: 4, outputCoalesceMs: 5 } }
+    { budgets: { outputBufferBytes: 16, outputCoalesceBytes: 4, outputCoalesceMs: 5 }, now }
   )
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -482,7 +478,6 @@ ptyTest("PTY output fails with BackpressureOverflow when a chunk exceeds budget"
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -493,7 +488,7 @@ ptyTest("PTY output fails with BackpressureOverflow when a chunk exceeds budget"
   expectFailure(exit, HostProtocolBackpressureOverflowError)
 })
 
-ptyTest("PTY output dropOldest keeps the queue bounded and records evictions", async () => {
+ptyTest("PTY output dropOldest keeps the stream buffer bounded", async () => {
   const fixture = await makeFixture(
     makeFakeAdapter(() => makeFakeChild({ output: ["aa", "bb", "cc"], exit: { code: 0 } })),
     {
@@ -508,7 +503,6 @@ ptyTest("PTY output dropOldest keeps the queue bounded and records evictions", a
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -519,8 +513,6 @@ ptyTest("PTY output dropOldest keeps the queue bounded and records evictions", a
 
   expect(decodeChunks(Array.from(output))).toBe("bbcc")
   expect(metrics).toMatchObject({
-    droppedBytes: 2,
-    droppedFrames: 1,
     emittedFrames: 3,
     inputFrames: 3,
     queueDepth: 0
@@ -542,14 +534,13 @@ ptyTest("PTY rejects invalid output overflow policies before adapter open", asyn
         outputCoalesceBytes: 2,
         outputCoalesceMs: 1_000,
         outputOverflow: "surprise"
-      } as unknown as PtyBudgetPolicy
+      }
     }
   )
 
   const exit = await Effect.runPromiseExit(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -565,7 +556,6 @@ ptyTest("PTY handle writes, resizes, kills, and preserves exit signal", async ()
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -588,13 +578,12 @@ ptyTest("PTY write rejects non-byte chunks before adapter activity", async () =>
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
   )
 
-  const exit = await Effect.runPromiseExit(handle.write("echo hi\n" as never))
+  const exit = await Effect.runPromiseExit(handle.write("echo hi\n"))
   await Effect.runPromise(fixture.registry.closeScope("scope-main"))
 
   expect(child.writes).toEqual([])
@@ -607,7 +596,6 @@ ptyTest("PTY side effects reject handles after child exit", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -634,7 +622,6 @@ ptyTest("PTY side effects reject handles after scope close", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -664,7 +651,6 @@ ptyTest("PTY kill rejects control bytes in signal names", async () => {
   const handle = await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -684,7 +670,6 @@ ptyTest("PTY scope close kills the child", async () => {
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -713,7 +698,6 @@ ptyTest("PTY scope close waits for child exit before releasing budget", async ()
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -722,7 +706,6 @@ ptyTest("PTY scope close waits for child exit before releasing budget", async ()
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -747,7 +730,6 @@ ptyTest("PTY scope close escalates to SIGKILL when SIGTERM is ignored", async ()
   await Effect.runPromise(
     fixture.service.open({
       argv: ["bash"],
-      ownerScope: "scope-main",
       rows: 24,
       cols: 80
     })
@@ -759,35 +741,92 @@ ptyTest("PTY scope close escalates to SIGKILL when SIGTERM is ignored", async ()
   expect(child.isRunning()).toBe(false)
 })
 
+ptyTest("PTY scope close escalates when terminateTree fails", async () => {
+  const child = makeFakeChild({
+    output: [],
+    exit: { code: 0 },
+    naturalExitDelayMs: 60_000,
+    terminateError: new Error("terminate failed")
+  })
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => child),
+    { gracefulShutdownMs: 1 }
+  )
+
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(child.terminateTreeCalls).toBe(1)
+  expect(child.forceKillTreeCalls).toBe(1)
+  expect(child.killedWith).toBe("SIGKILL")
+  expect(child.isRunning()).toBe(false)
+})
+
+ptyTest("PTY scope close suppresses forceKillTree failures", async () => {
+  const child = makeFakeChild({
+    output: [],
+    exit: { code: 0 },
+    forceKillError: new Error("force kill failed"),
+    ignoredSignals: ["SIGTERM"],
+    naturalExitDelayMs: 60_000
+  })
+  const fixture = await makeFixture(
+    makeFakeAdapter(() => child),
+    { gracefulShutdownMs: 1 }
+  )
+
+  await Effect.runPromise(
+    fixture.service.open({
+      argv: ["bash"],
+      rows: 24,
+      cols: 80
+    })
+  )
+  await Effect.runPromise(fixture.registry.closeScope("scope-main"))
+
+  expect(child.terminateTreeCalls).toBe(1)
+  expect(child.forceKillTreeCalls).toBe(1)
+  expect(child.isRunning()).toBe(true)
+})
+
 const makeFixture = async (
   adapter?: PtyAdapter,
   options: {
     readonly budgets?: PtyBudgetPolicy
     readonly gracefulShutdownMs?: number
+    readonly now?: () => number
     readonly permissions?: PtyPermissionPolicy
   } = {}
 ): Promise<{ readonly registry: ResourceRegistryApi; readonly service: PtyApi }> => {
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const service = await makeService(registry, adapter, options)
+  const service = await makeService(registry, adapter ?? makeFakeAdapter(), options)
   return { registry, service }
 }
 
 const makeService = (
   registry: ResourceRegistryApi,
-  adapter?: PtyAdapter,
+  adapter: PtyAdapter,
   options: {
     readonly budgets?: PtyBudgetPolicy
     readonly gracefulShutdownMs?: number
+    readonly now?: () => number
     readonly permissions?: PtyPermissionPolicy
   } = {}
 ) =>
   Effect.runPromise(
-    makePty(registry, {
-      ...(adapter === undefined ? {} : { adapter }),
+    makePty(registry, TEST_OWNER, {
+      adapter,
       ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
       ...(options.gracefulShutdownMs === undefined
         ? {}
         : { gracefulShutdownMs: options.gracefulShutdownMs }),
+      ...(options.now === undefined ? {} : { now: options.now }),
       permissions: options.permissions ?? ALLOW_TEST_PTY_PERMISSIONS
     })
   )
@@ -796,7 +835,9 @@ const ALLOW_TEST_PTY_PERMISSIONS: PtyPermissionPolicy = {
   spawn: ["bash"]
 }
 
-const makeFakeAdapter = (makeChild: () => PtyChild): PtyAdapter => ({
+const makeFakeAdapter = (
+  makeChild: () => PtyChild = () => makeFakeChild({ output: [], exit: { code: 0 } })
+): PtyAdapter => ({
   open: () => makeChild()
 })
 
@@ -815,6 +856,8 @@ const makeFakeChild = (options: {
   readonly exitError?: unknown
   readonly killExitDelayMs?: number
   readonly naturalExitDelayMs?: number
+  readonly terminateError?: unknown
+  readonly forceKillError?: unknown
   readonly ignoredSignals?: readonly PtySignalInput[]
   readonly ignoreKill?: boolean
   readonly keepOutputOpen?: boolean
@@ -827,12 +870,8 @@ const makeFakeChild = (options: {
   let forceKillTreeCalls = 0
   let running = true
   let settled = false
-  let resolveExit: (status: PtyExitStatus) => void
-  let rejectExit: (error: unknown) => void
-  const exited = new Promise<PtyExitStatus>((resolve, reject) => {
-    resolveExit = resolve
-    rejectExit = reject
-  })
+  const exitState = Effect.runSync(Deferred.make<PtyExitStatus, unknown>())
+  const exited = Effect.runPromise(Deferred.await(exitState))
   const finish = (signal?: string): void => {
     if (settled) {
       return
@@ -840,15 +879,18 @@ const makeFakeChild = (options: {
     settled = true
     clearTimeout(naturalExitTimer)
     running = false
-    resolveExit(
-      new PtyExitStatus({
-        code: options.exit.code,
-        ...(signal === undefined
-          ? options.exit.signal === undefined
-            ? {}
-            : { signal: options.exit.signal }
-          : { signal })
-      })
+    Effect.runSync(
+      Deferred.succeed(
+        exitState,
+        new PtyExitStatus({
+          code: options.exit.code,
+          ...(signal === undefined
+            ? options.exit.signal === undefined
+              ? {}
+              : { signal: options.exit.signal }
+            : { signal })
+        })
+      ).pipe(Effect.asVoid)
     )
   }
   const fail = (error: unknown): void => {
@@ -858,7 +900,7 @@ const makeFakeChild = (options: {
     settled = true
     clearTimeout(naturalExitTimer)
     running = false
-    rejectExit(error)
+    Effect.runSync(Deferred.fail(exitState, error).pipe(Effect.asVoid))
   }
   const naturalExitTimer = setTimeout(() => {
     if (options.exitError === undefined) {
@@ -894,10 +936,16 @@ const makeFakeChild = (options: {
     isRunning: () => running,
     terminateTree: async () => {
       terminateTreeCalls += 1
+      if (options.terminateError !== undefined) {
+        throw options.terminateError
+      }
       await killFakeChild("SIGTERM")
     },
     forceKillTree: async () => {
       forceKillTreeCalls += 1
+      if (options.forceKillError !== undefined) {
+        throw options.forceKillError
+      }
       await killFakeChild("SIGKILL")
     },
     kill: async (signal) => {
@@ -945,16 +993,28 @@ const decodeChunks = (chunks: readonly Uint8Array[]): string => {
   return textDecoder.decode(bytes)
 }
 
-const waitUntil = async (predicate: () => Promise<boolean>): Promise<void> => {
-  const deadline = Date.now() + 1_000
-  while (Date.now() < deadline) {
-    if (await predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
+const waitUntil = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
+  await Effect.runPromise(
+    Effect.tryPromise({
+      try: async () => await predicate(),
+      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+    }).pipe(
+      Effect.flatMap((ready) =>
+        ready ? Effect.void : Effect.fail(new Error("timed out waiting for condition"))
+      ),
+      Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(200)))),
+      Effect.mapError(() => new Error("timed out waiting for condition"))
+    )
+  )
+}
 
-  throw new Error("timed out waiting for condition")
+const fixedSequenceClock = (values: readonly number[]): (() => number) => {
+  let index = 0
+  return () => {
+    const value = values[index] ?? values.at(-1)
+    index += 1
+    return value ?? 0
+  }
 }
 
 const expectFailure = <E>(

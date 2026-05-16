@@ -1,15 +1,13 @@
+import type { ScreenError, SystemAppearanceError, PowerMonitorError } from "@effect-desktop/native"
 import type {
-  ScreenDisplay,
-  ScreenError,
-  SystemAppearanceChangedEvent,
-  SystemAppearanceError,
-  SystemAppearanceMode,
   PowerMonitorResumeEvent,
   PowerMonitorShutdownEvent,
   PowerMonitorSourceChangedEvent,
   PowerMonitorSuspendEvent,
-  PowerMonitorError
-} from "@effect-desktop/native"
+  ScreenDisplay,
+  SystemAppearanceChangedEvent,
+  SystemAppearanceMode
+} from "@effect-desktop/native/contracts"
 import { Effect, Stream } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
 

@@ -1,10 +1,11 @@
 import {
-  decodeHostProtocolEnvelope,
-  encodeHostProtocolEnvelope,
+  decodeHostProtocolFrameJson,
   makeHostProtocolBinaryDecodeError,
   makeHostProtocolFrameTooLargeError,
   makeHostProtocolHostUnavailableError,
-  makeHostProtocolInvalidOutputError
+  makeHostProtocolInvalidOutputError,
+  encodeHostProtocolFrame,
+  parseHostProtocolFrameJson
 } from "@effect-desktop/bridge"
 import type {
   HostHandshakeExchange,
@@ -12,14 +13,15 @@ import type {
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope
 } from "@effect-desktop/bridge"
-import { Effect } from "effect"
+import { Effect, Option, Random, Stream } from "effect"
 
 import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
-import { FrameTooLargeError, FrameTruncatedError, type FramedTransport } from "./transport.js"
-
-const TextEncoderCtor = globalThis.TextEncoder
-const TextDecoderCtor = globalThis.TextDecoder
-const TextDecoderUtf8 = new TextDecoderCtor("utf-8", { fatal: true })
+import {
+  TransportFrameTooLargeError,
+  TransportFrameTruncatedError,
+  type TransportConnection,
+  type TransportError
+} from "./transport.js"
 
 export interface HostProtocolExchangeOptions {
   readonly audit?: AuditEventsApi
@@ -28,11 +30,11 @@ export interface HostProtocolExchangeOptions {
 
 interface ResolvedHostProtocolExchangeOptions {
   readonly audit: AuditEventsApi | undefined
-  readonly nextTraceId: () => string
+  readonly nextTraceId: (() => string) | undefined
 }
 
 export const createHostProtocolExchange = (
-  transport: FramedTransport,
+  transport: TransportConnection,
   options: HostProtocolExchangeOptions = {}
 ): HostHandshakeExchange => ({
   request: (request) =>
@@ -45,28 +47,25 @@ export const createHostProtocolExchange = (
 })
 
 const sendRequest = (
-  transport: FramedTransport,
+  transport: TransportConnection,
   request: HostProtocolRequestEnvelope
 ): Effect.Effect<void, HostProtocolError, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const encoded = encodeHostProtocolEnvelope(request)
-      await transport.send(new TextEncoderCtor().encode(JSON.stringify(encoded)))
-    },
-    catch: (error) => classifyTransportError(error, "FramedTransport.send")
-  })
+  encodeHostProtocolFrame(request, request.method).pipe(
+    Effect.flatMap((frame) => transport.send(frame).pipe(Effect.mapError(classifyTransportError)))
+  )
 
 const receiveResponseFrame = (
-  transport: FramedTransport
+  transport: TransportConnection
 ): Effect.Effect<Uint8Array, HostProtocolError, never> =>
-  Effect.tryPromise({
-    try: () => transport.recv(),
-    catch: (error) => classifyTransportError(error, "FramedTransport.recv")
-  }).pipe(
-    Effect.flatMap((frame) =>
-      frame === null
-        ? Effect.fail(makeHostProtocolHostUnavailableError("FramedTransport.recv"))
-        : Effect.succeed(frame)
+  transport.receive.pipe(
+    Stream.runHead,
+    Effect.mapError(classifyTransportError),
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(makeHostProtocolHostUnavailableError("TransportConnection.receive")),
+        onSome: Effect.succeed
+      })
     )
   )
 
@@ -76,19 +75,9 @@ const decodeResponseFrame = (
   options: ResolvedHostProtocolExchangeOptions
 ): Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> =>
   Effect.gen(function* () {
-    const parsed = yield* Effect.try({
-      try: () => {
-        return JSON.parse(TextDecoderUtf8.decode(frame)) as unknown
-      },
-      catch: (error) => makeHostProtocolBinaryDecodeError(formatUnknownError(error), request.method)
-    })
+    const parsed = yield* parseHostProtocolFrameJson(frame, request.method)
     const repaired = yield* ensureTraceId(parsed, request, options)
-
-    const envelope = yield* Effect.try({
-      try: () => decodeHostProtocolEnvelope(repaired.value),
-      catch: (error) =>
-        makeHostProtocolInvalidOutputError(request.method, formatUnknownError(error))
-    })
+    const envelope = yield* decodeHostProtocolFrameJson(repaired.value, request.method)
 
     if (envelope.kind !== "response") {
       return yield* Effect.fail(
@@ -134,7 +123,7 @@ const ensureTraceId = (
       return { value: parsed, traceIdWasMissing: false }
     }
 
-    const traceId = options.nextTraceId()
+    const traceId = yield* nextTraceId(options)
     if (traceId.length === 0) {
       return yield* Effect.fail(
         makeHostProtocolInvalidOutputError(
@@ -188,18 +177,15 @@ const emitTraceIdMissing = (
 
 const isHostProtocolObject = (
   value: unknown
-): value is { readonly kind: string; readonly traceId?: unknown } =>
-  typeof value === "object" &&
-  value !== null &&
-  "kind" in value &&
-  typeof Reflect.get(value, "kind") === "string"
+): value is { readonly kind: string; readonly timestamp?: unknown; readonly traceId?: unknown } =>
+  typeof value === "object" && value !== null && "kind" in value && typeof value.kind === "string"
 
 const hostProtocolObjectTimestamp = (
-  value: { readonly kind: string },
+  value: { readonly kind: string; readonly timestamp?: unknown },
   operation: string
 ): Effect.Effect<number, HostProtocolError, never> => {
-  const timestamp = Reflect.get(value, "timestamp")
-  return Number.isSafeInteger(timestamp) && timestamp >= 0
+  const timestamp = value.timestamp
+  return typeof timestamp === "number" && Number.isSafeInteger(timestamp) && timestamp >= 0
     ? Effect.succeed(timestamp)
     : Effect.fail(makeHostProtocolInvalidOutputError(operation, "invalid host envelope timestamp"))
 }
@@ -208,19 +194,26 @@ const resolveOptions = (
   options: HostProtocolExchangeOptions
 ): ResolvedHostProtocolExchangeOptions => ({
   audit: options.audit,
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
+  nextTraceId: options.nextTraceId
 })
 
-const classifyTransportError = (error: unknown, operation: string): HostProtocolError => {
-  if (error instanceof FrameTooLargeError) {
-    return makeHostProtocolFrameTooLargeError(error.size, error.max, operation)
+const nextTraceId = (
+  options: ResolvedHostProtocolExchangeOptions
+): Effect.Effect<string, never, never> =>
+  options.nextTraceId === undefined
+    ? Random.nextUUIDv4.pipe(Effect.map((uuid) => `trace-${uuid}`))
+    : Effect.sync(options.nextTraceId)
+
+const classifyTransportError = (error: TransportError): HostProtocolError => {
+  if (error instanceof TransportFrameTooLargeError) {
+    return makeHostProtocolFrameTooLargeError(error.size, error.max, error.operation)
   }
 
-  if (error instanceof FrameTruncatedError) {
-    return makeHostProtocolBinaryDecodeError(error.message, operation)
+  if (error instanceof TransportFrameTruncatedError) {
+    return makeHostProtocolBinaryDecodeError(error.message, error.operation)
   }
 
-  return makeHostProtocolHostUnavailableError(operation)
+  return makeHostProtocolHostUnavailableError(error.operation)
 }
 
 const formatUnknownError = (error: unknown): string => {

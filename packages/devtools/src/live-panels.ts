@@ -3,16 +3,18 @@ import {
   type BridgeCallState,
   type BridgeStreamRegistry,
   type BridgeStreamRegistryEntry,
+  InspectorSafetyPolicy,
   PermissionRegistry,
   type PermissionDecision,
   Process,
   type ProcessExitStatus,
   type ProcessSnapshot,
-  redact,
   ResourceRegistry,
-  type ResourceEntry
+  type ResourceEntry,
+  type InspectorSafetyPolicyApi,
+  type InspectorSafetySummary
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Match, Option, Stream } from "effect"
+import { Clock, Context, Effect, Layer, Match, Option, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
 
@@ -58,7 +60,6 @@ export interface ProcessPanelRow {
   readonly pid: number
   readonly command: string
   readonly ownerScope: string
-  readonly childPids: readonly number[]
   readonly lastExit: Option.Option<ProcessExitStatus>
   readonly state: ProcessSnapshot["state"]
 }
@@ -69,6 +70,7 @@ export interface LiveRuntimePanelsSnapshot {
   readonly resources: readonly ResourcePanelRow[]
   readonly permissions: readonly PermissionPanelRow[]
   readonly processes: readonly ProcessPanelRow[]
+  readonly safety: InspectorSafetySummary
 }
 
 export interface LiveRuntimePanelsApi {
@@ -85,6 +87,7 @@ export interface LiveRuntimePanelsOptions {
   readonly maxRows?: number
   readonly now?: () => number
   readonly frameInterval?: `${number} millis`
+  readonly inspectorSafety?: InspectorSafetyPolicyApi
 }
 
 export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRuntimePanelsApi>()(
@@ -94,50 +97,73 @@ export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRu
 export const LiveRuntimePanelsLive = (
   sources: LiveRuntimePanelSources,
   options: LiveRuntimePanelsOptions = {}
-): Layer.Layer<LiveRuntimePanels, never, PermissionRegistry | Process | ResourceRegistry> =>
-  Layer.effect(LiveRuntimePanels)(makeLiveRuntimePanels(sources, options))
+): Layer.Layer<
+  LiveRuntimePanels,
+  never,
+  PermissionRegistry | Process | ResourceRegistry | InspectorSafetyPolicy
+> => Layer.effect(LiveRuntimePanels)(makeLiveRuntimePanels(sources, options))
 
 export const makeLiveRuntimePanels = (
   sources: LiveRuntimePanelSources,
   options: LiveRuntimePanelsOptions = {}
-): Effect.Effect<LiveRuntimePanelsApi, never, PermissionRegistry | Process | ResourceRegistry> =>
+): Effect.Effect<
+  LiveRuntimePanelsApi,
+  never,
+  PermissionRegistry | Process | ResourceRegistry | InspectorSafetyPolicy
+> =>
   Effect.gen(function* () {
     const permissions = yield* PermissionRegistry
     const processes = yield* Process
     const resources = yield* ResourceRegistry
+    const inspectorSafety = options.inspectorSafety ?? (yield* InspectorSafetyPolicy)
     const maxRows = positiveRowLimit(options.maxRows, 256)
-    const now = options.now ?? Date.now
     const frameInterval = positiveFrameInterval(options.frameInterval, "16 millis")
 
     const list = (): Effect.Effect<LiveRuntimePanelsSnapshot, never, never> =>
       Effect.gen(function* () {
+        const timestamp = yield* currentTimeMillis(options.now)
         const bridgeCalls = yield* sources.bridgeCalls.list()
         const streams = yield* sources.streams.snapshot()
         const resourceSnapshot = yield* resources.list()
         const permissionRows = yield* permissions.listDecisions()
         const processRows = yield* processes.list()
 
-        return redact({
-          bridgeCalls: toBridgeCallRows(bridgeCalls, maxRows),
-          streams: streams.slice(-maxRows).map(toStreamRow),
-          resources: resourceSnapshot.entries
-            .slice(-maxRows)
-            .map((entry) => toResourceRow(entry, now())),
-          permissions: permissionRows.slice(-maxRows).map(toPermissionRow),
-          processes: processRows.slice(-maxRows).map(toProcessRow)
+        const decision = yield* inspectorSafety.sanitize({
+          source: "devtools.liveRuntime",
+          payload: {
+            bridgeCalls: toBridgeCallRows(bridgeCalls, maxRows),
+            streams: streams.slice(-maxRows).map(toStreamRow),
+            resources: resourceSnapshot.entries
+              .slice(-maxRows)
+              .map((entry) => toResourceRow(entry, timestamp)),
+            permissions: permissionRows.slice(-maxRows).map(toPermissionRow),
+            processes: processRows.slice(-maxRows).map(toProcessRow)
+          } satisfies Omit<LiveRuntimePanelsSnapshot, "safety">
         })
+        if (Option.isNone(decision.value)) {
+          return {
+            bridgeCalls: [],
+            streams: [],
+            resources: [],
+            permissions: [],
+            processes: [],
+            safety: decision.summary
+          } satisfies LiveRuntimePanelsSnapshot
+        }
+        return {
+          ...decision.value.value,
+          safety: decision.summary
+        } satisfies LiveRuntimePanelsSnapshot
       })
 
     return Object.freeze({
       list,
-      observe: () =>
-        Stream.fromEffect(list()).pipe(
-          Stream.concat(
-            Stream.fromEffectRepeat(Effect.sleep(frameInterval).pipe(Effect.andThen(list())))
-          )
-        )
+      observe: () => Stream.fromEffectSchedule(list(), Schedule.spaced(frameInterval))
     } satisfies LiveRuntimePanelsApi)
   })
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
 
 interface BridgeCallProjection {
   readonly id: string
@@ -269,7 +295,6 @@ const toProcessRow = (snapshot: ProcessSnapshot): ProcessPanelRow => ({
   pid: snapshot.pid,
   command: snapshot.command,
   ownerScope: snapshot.ownerScope,
-  childPids: snapshot.childPids,
   lastExit: snapshot.lastExit,
   state: snapshot.state
 })

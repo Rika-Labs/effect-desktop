@@ -1,41 +1,14 @@
-import { Effect } from "effect"
+import { HostProtocolStaleHandleError } from "./protocol.js"
 
-import { type BridgeResourceHandle, type BridgeRpcResourceSpec } from "./contracts.js"
-import { HostProtocolStaleHandleError, type HostProtocolError } from "./protocol.js"
-
-export interface BridgeResourceExchange {
-  readonly dispose: (handle: BridgeResourceHandle) => Effect.Effect<void, HostProtocolError, never>
-}
-
-export interface BridgeResourceProxy<
-  Kind extends string = string,
-  State extends string = string
-> extends BridgeResourceHandle<Kind, State> {
-  readonly dispose: () => Effect.Effect<void, HostProtocolError, never>
-}
-
-export const makeResourceProxy = <Spec extends BridgeRpcResourceSpec>(
-  spec: Spec,
-  handle: BridgeResourceHandle<Spec["kind"], Spec["state"]>,
-  exchange: BridgeResourceExchange
-): BridgeResourceProxy<Spec["kind"], Spec["state"]> => {
-  void spec
-  let disposed = false
-
-  return Object.freeze({
-    ...handle,
-    dispose: () => {
-      if (disposed) {
-        return Effect.void
-      }
-      return exchange.dispose(handle).pipe(Effect.tap(() => Effect.sync(() => (disposed = true))))
-    }
-  })
+interface ResourceHandleLike {
+  readonly kind: string
+  readonly id: string
+  readonly generation: number
 }
 
 export const makeStaleHandleError = (
   operation: string,
-  handle: BridgeResourceHandle,
+  handle: ResourceHandleLike,
   actualGeneration: number
 ): HostProtocolStaleHandleError =>
   new HostProtocolStaleHandleError({

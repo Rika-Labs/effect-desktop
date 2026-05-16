@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Clock, Effect } from "effect"
 
 import {
   HOST_PING_METHOD,
@@ -38,21 +38,23 @@ test("host handshake client requests host.version and decodes the protocol versi
 })
 
 test("host handshake client requests host.ping", async () => {
+  const timestamp = 1_715_000_000_001
   const requests: HostProtocolRequestEnvelope[] = []
   const client = makeHostHandshakeClient(pingExchange(requests), {
     nextRequestId: () => "request-ping",
-    nextTraceId: () => "trace-ping",
-    now: () => 1710000000001
+    nextTraceId: () => "trace-ping"
   })
 
-  await Effect.runPromise(client.ping())
+  await Effect.runPromise(
+    client.ping().pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
 
   expect(requests).toEqual([
     {
       kind: "request",
       id: "request-ping",
       method: HOST_PING_METHOD,
-      timestamp: 1710000000001,
+      timestamp,
       traceId: "trace-ping"
     }
   ])
@@ -196,3 +198,11 @@ const expectEffectFailure = async (
 
   throw new Error("expected Effect to fail")
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})

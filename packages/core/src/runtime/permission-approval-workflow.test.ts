@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Option } from "effect"
+import { Cause, Clock, Effect, Exit, Fiber, Option, Schedule, Stream } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
+import { type AuditEventsApi, type AuditEvent } from "./audit-events.js"
 import {
   Grant,
   makePermissionApprovalWorkflowLayer,
@@ -13,6 +14,8 @@ import {
   PermissionInvalidArgumentError,
   type PermissionRegistryApi
 } from "./permission-registry.js"
+
+const now = 1_715_000_000_000
 
 const provideEngine = <A, E, R>(
   effect: Effect.Effect<A, E, R | WorkflowEngine.WorkflowEngine>
@@ -29,11 +32,13 @@ test("PermissionApproval workflow grants when user approves", async () => {
   }
   const actor = { kind: "app" as const, id: "test-app" }
   const traceId = "trace-approve-1"
+  const auditRows: AuditEvent[] = []
 
   let capturedToken: string | undefined
 
   const layer = makePermissionApprovalWorkflowLayer({
     registry,
+    audit: memoryAudit(auditRows),
     notify: (token, _traceId) =>
       Effect.sync(() => {
         capturedToken = token
@@ -47,9 +52,8 @@ test("PermissionApproval workflow grants when user approves", async () => {
           Effect.provide(layer)
         )
       )
-      yield* Effect.sleep("10 millis")
-      expect(capturedToken).toBeDefined()
-      yield* resolveApprovalDeferred(capturedToken!, true)
+      const token = yield* waitForToken(() => capturedToken)
+      yield* resolveApprovalDeferred(token, true)
       return yield* Fiber.join(fiber)
     }).pipe(provideEngine)
   )
@@ -58,6 +62,12 @@ test("PermissionApproval workflow grants when user approves", async () => {
   expect(result.traceId).toBe(traceId)
   expect(result.token).toBeDefined()
   expect(result.grantedAt).toBeGreaterThan(0)
+  expect(auditRows.map((row) => row.kind)).toContain("approval-requested")
+  expect(auditRows.map((row) => row.kind)).toContain("approval-granted")
+  expect(auditRows[0]?.actor).toMatchObject(actor)
+  expect(JSON.stringify(auditRows[0]?.actor)).toBe(JSON.stringify(actor))
+  expect(JSON.stringify(auditRows)).not.toContain(result.token)
+  expect(JSON.stringify(auditRows)).toContain("<redacted:PermissionGrantToken>")
 })
 
 test("PermissionApproval workflow fails with PermissionDenied when user denies", async () => {
@@ -89,9 +99,8 @@ test("PermissionApproval workflow fails with PermissionDenied when user denies",
           Effect.provide(layer)
         )
       )
-      yield* Effect.sleep("10 millis")
-      expect(capturedToken).toBeDefined()
-      yield* resolveApprovalDeferred(capturedToken!, false)
+      const token = yield* waitForToken(() => capturedToken)
+      yield* resolveApprovalDeferred(token, false)
       return yield* Effect.exit(Fiber.join(fiber))
     }).pipe(provideEngine)
   )
@@ -104,6 +113,33 @@ test("PermissionApproval workflow fails with PermissionDenied when user denies",
       expect((failReason.error as { _tag: string })._tag).toBe("PermissionDenied")
     }
   }
+})
+
+const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
+    Effect.sync(() => {
+      rows.push(event)
+    }),
+  observe: () => Stream.empty
+})
+
+const waitForToken = (read: () => string | undefined): Effect.Effect<string, never, never> =>
+  Effect.suspend(() => {
+    const token = read()
+    return token === undefined
+      ? Effect.fail(new Error("waiting for approval token"))
+      : Effect.succeed(token)
+  }).pipe(
+    Effect.retry(Schedule.spaced("1 millis").pipe(Schedule.both(Schedule.recurs(100)))),
+    Effect.orDie
+  )
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
 })
 
 test("resolveApprovalDeferred constructs an Effect for the branded token", () => {
@@ -140,13 +176,14 @@ test("PermissionApproval workflow records a grant with ttl when ttlMs provided",
           Effect.provide(layer)
         )
       )
-      yield* Effect.sleep("10 millis")
-      yield* resolveApprovalDeferred(capturedToken!, true)
+      const token = yield* waitForToken(() => capturedToken)
+      yield* resolveApprovalDeferred(token, true)
       return yield* Fiber.join(fiber)
-    }).pipe(provideEngine)
+    }).pipe(provideEngine, Effect.provideService(Clock.Clock, fixedClock(now)))
   )
 
   expect(result).toBeInstanceOf(Grant)
+  expect(result.grantedAt).toBe(now)
   expect(result.expiresAt).toBeDefined()
   expect(result.expiresAt! - result.grantedAt).toBe(ttlMs)
 })

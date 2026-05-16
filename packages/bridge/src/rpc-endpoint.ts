@@ -1,8 +1,8 @@
 import { Context, Option } from "effect"
-import { Rpc } from "effect/unstable/rpc"
+import type { Any as RpcAny } from "effect/unstable/rpc/Rpc"
 
-interface AnnotatableRpc extends Rpc.Any {
-  annotate<I, S>(tag: Context.Key<I, S>, value: S): Rpc.Any
+interface AnnotatableRpc extends RpcAny {
+  annotate<I, S>(tag: Context.Key<I, S>, value: S): RpcAny
 }
 
 export type RpcEndpointKind = "query" | "mutation"
@@ -37,45 +37,45 @@ export interface RpcSupportMarker<Support extends RpcSupportMetadata> {
   readonly [RpcSupportTypeId]: Support
 }
 
-export type WithRpcEndpointKind<R extends Rpc.Any, Kind extends RpcEndpointKind> = R &
+export type WithRpcEndpointKind<R extends RpcAny, Kind extends RpcEndpointKind> = R &
   RpcEndpointKindMarker<Kind>
 
-export type WithRpcCapability<R extends Rpc.Any, Capability extends RpcCapabilityMetadata> = R &
+export type WithRpcCapability<R extends RpcAny, Capability extends RpcCapabilityMetadata> = R &
   RpcCapabilityMarker<Capability>
 
-export type WithRpcSupport<R extends Rpc.Any, Support extends RpcSupportMetadata> = R &
+export type WithRpcSupport<R extends RpcAny, Support extends RpcSupportMetadata> = R &
   RpcSupportMarker<Support>
 
-export const RpcEndpointKindAnnotation = Context.Service<RpcEndpointKind>(
+const RpcEndpointKindAnnotation = Context.Service<RpcEndpointKind>(
   "@effect-desktop/bridge/RpcEndpointKind"
 )
 
-export const RpcCapabilityAnnotation = Context.Service<RpcCapabilityMetadata>(
+const RpcCapabilityAnnotation = Context.Service<RpcCapabilityMetadata>(
   "@effect-desktop/bridge/RpcCapability"
 )
 
-export const RpcSupportAnnotation = Context.Service<RpcSupportMetadata>(
+const RpcSupportAnnotation = Context.Service<RpcSupportMetadata>(
   "@effect-desktop/bridge/RpcSupport"
 )
 
 export const RpcEndpoint = Object.freeze({
-  query: <R extends Rpc.Any>(rpc: R): WithRpcEndpointKind<R, "query"> =>
+  query: <R extends RpcAny>(rpc: R): WithRpcEndpointKind<R, "query"> =>
     annotateRpc(rpc, RpcEndpointKindAnnotation, "query") as WithRpcEndpointKind<R, "query">,
 
-  mutation: <R extends Rpc.Any>(rpc: R): WithRpcEndpointKind<R, "mutation"> =>
+  mutation: <R extends RpcAny>(rpc: R): WithRpcEndpointKind<R, "mutation"> =>
     annotateRpc(rpc, RpcEndpointKindAnnotation, "mutation") as WithRpcEndpointKind<R, "mutation">
 })
 
 export const RpcCapability =
   <Capability extends RpcCapabilityMetadata>(capability: Capability) =>
-  <R extends Rpc.Any>(rpc: R): WithRpcCapability<R, Capability> =>
+  <R extends RpcAny>(rpc: R): WithRpcCapability<R, Capability> =>
     annotateRpc(rpc, RpcCapabilityAnnotation, Object.freeze(capability)) as WithRpcCapability<
       R,
       Capability
     >
 
 export const RpcSupport = Object.freeze({
-  supported: <R extends Rpc.Any>(rpc: R): WithRpcSupport<R, { readonly status: "supported" }> =>
+  supported: <R extends RpcAny>(rpc: R): WithRpcSupport<R, { readonly status: "supported" }> =>
     annotateRpc(rpc, RpcSupportAnnotation, { status: "supported" }) as WithRpcSupport<
       R,
       { readonly status: "supported" }
@@ -83,7 +83,7 @@ export const RpcSupport = Object.freeze({
 
   unsupported:
     (reason: string) =>
-    <R extends Rpc.Any>(
+    <R extends RpcAny>(
       rpc: R
     ): WithRpcSupport<R, { readonly status: "unsupported"; readonly reason: string }> =>
       annotateRpc(rpc, RpcSupportAnnotation, { status: "unsupported", reason }) as WithRpcSupport<
@@ -92,13 +92,13 @@ export const RpcSupport = Object.freeze({
       >
 })
 
-export const rpcEndpointKind = (rpc: Rpc.Any): RpcEndpointKind =>
+export const rpcEndpointKind = (rpc: RpcAny): RpcEndpointKind =>
   Option.getOrElse(Context.getOption(rpc.annotations, RpcEndpointKindAnnotation), () => "mutation")
 
-export const rpcCapability = (rpc: Rpc.Any): Option.Option<RpcCapabilityMetadata> =>
+export const rpcCapability = (rpc: RpcAny): Option.Option<RpcCapabilityMetadata> =>
   Context.getOption(rpc.annotations, RpcCapabilityAnnotation)
 
-export const rpcSupport = (rpc: Rpc.Any): RpcSupportMetadata =>
+export const rpcSupport = (rpc: RpcAny): RpcSupportMetadata =>
   Option.getOrElse(Context.getOption(rpc.annotations, RpcSupportAnnotation), () => ({
     status: "supported"
   }))
@@ -113,5 +113,5 @@ export const rpcEndpointName = (tag: string): string => {
   return first === undefined ? segment : `${first.toLowerCase()}${segment.slice(1)}`
 }
 
-const annotateRpc = <R extends Rpc.Any, I, S>(rpc: R, tag: Context.Key<I, S>, value: S): R =>
+const annotateRpc = <R extends RpcAny, I, S>(rpc: R, tag: Context.Key<I, S>, value: S): R =>
   (rpc as R & AnnotatableRpc).annotate(tag, value) as R

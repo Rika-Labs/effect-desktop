@@ -26,12 +26,7 @@
     {
       "name": "BridgeClient",
       "kind": "type",
-      "signature": "export type BridgeClient<Contracts extends Readonly<Record<string, BridgeRpcGroup>>> = { readonly [Namespace in keyof Contracts]: BridgeClientFor<Contracts[Namespace]> }"
-    },
-    {
-      "name": "BridgeClientCallOptions",
-      "kind": "interface",
-      "signature": "export interface BridgeClientCallOptions { readonly signal?: AbortSignal }"
+      "signature": "export type BridgeClient<Contracts extends Readonly<Record<string, BridgeContract>>> = { readonly [Namespace in keyof Contracts]: BridgeClientFor<Contracts[Namespace]> }"
     },
     {
       "name": "BridgeClientErrorResponse",
@@ -41,27 +36,27 @@
     {
       "name": "BridgeClientEvent",
       "kind": "type",
-      "signature": "export type BridgeClientEvent<Spec extends BridgeRpcEventSpec> = Stream.Stream< Schema.Schema.Type<Spec[\"payload\"]>, HostProtocolError, never >"
+      "signature": "export type BridgeClientEvent<Spec extends BridgeEventSpec> = Stream.Stream< BridgeContractCodecType<Spec[\"payload\"]>, HostProtocolError, never >"
     },
     {
       "name": "BridgeClientExchange",
       "kind": "interface",
-      "signature": "export interface BridgeClientExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<BridgeClientResponse, HostProtocolError, never> readonly subscribe?: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> readonly stream?: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never> readonly cancel?: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, HostProtocolError, never> readonly resource?: BridgeResourceExchange }"
+      "signature": "export interface BridgeClientExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<unknown, HostProtocolError, never> readonly subscribe?: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> readonly stream?: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, never> /** * Sends a best-effort protocol cancel envelope. Implementations must stay bounded and * interruption-friendly; cancellation cleanup starts this effect in the background. */ readonly cancel?: ( request: HostProtocolCancelByRequestEnvelope ) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "BridgeClientFor",
       "kind": "type",
-      "signature": "export type BridgeClientFor<Contract extends BridgeRpcGroup> = Contract extends BridgeRpcGroup<string, infer Spec, infer Events> ? { readonly [Method in keyof Spec]: BridgeClientMethod<Spec[Method]> } & { readonly events: { readonly [Event in keyof Events]: BridgeClientEvent<Events[Event]> } } : never"
+      "signature": "export type BridgeClientFor<Contract extends BridgeContract> = Contract extends BridgeContract<string, infer Spec, infer Events> ? { readonly [Method in keyof Spec]: BridgeClientMethod<Spec[Method]> } & { readonly events: { readonly [Event in keyof Events]: BridgeClientEvent<Events[Event]> } } : never"
     },
     {
       "name": "BridgeClientMethod",
       "kind": "type",
-      "signature": "export type BridgeClientMethod<Spec extends BridgeRpcMethodSpec> = Spec[\"output\"] extends BridgeRpcStreamSpec ? undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Stream.Stream< Schema.Schema.Type<Spec[\"output\"][\"chunk\"]>, Schema.Schema.Type<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : Spec[\"output\"] extends BridgeRpcResourceSpec ? undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Effect.Effect< BridgeResourceProxy<Spec[\"output\"][\"kind\"], Spec[\"output\"][\"state\"]>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Effect.Effect< BridgeResourceProxy<Spec[\"output\"][\"kind\"], Spec[\"output\"][\"state\"]>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never > : undefined extends Schema.Schema.Type<Spec[\"input\"]> ? ( input?: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never > : ( input: Schema.Schema.Type<Spec[\"input\"]>, options?: BridgeClientCallOptions ) => Effect.Effect< Schema.Schema.Type<Extract<Spec[\"output\"], Schema.Schema<unknown>>>, Schema.Schema.Type<Spec[\"error\"]> | HostProtocolError, never >"
+      "signature": "export type BridgeClientMethod<Spec extends BridgeMethodSpec> = Spec[\"output\"] extends BridgeStreamSpec ? undefined extends BridgeContractCodecType<Spec[\"input\"]> ? ( input?: BridgeContractCodecType<Spec[\"input\"]> ) => Stream.Stream< BridgeContractCodecType<Spec[\"output\"][\"chunk\"]>, BridgeContractCodecType<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : ( input: BridgeContractCodecType<Spec[\"input\"]> ) => Stream.Stream< BridgeContractCodecType<Spec[\"output\"][\"chunk\"]>, BridgeContractCodecType<Spec[\"output\"][\"error\"]> | HostProtocolError, never > : undefined extends BridgeContractCodecType<Spec[\"input\"]> ? ( input?: BridgeContractCodecType<Spec[\"input\"]> ) => Effect.Effect< BridgeContractCodecType<Extract<Spec[\"output\"], BridgeContractCodec>>, BridgeContractCodecType<Spec[\"error\"]> | HostProtocolError, never > : ( input: BridgeContractCodecType<Spec[\"input\"]> ) => Effect.Effect< BridgeContractCodecType<Extract<Spec[\"output\"], BridgeContractCodec>>, BridgeContractCodecType<Spec[\"error\"]> | HostProtocolError, never >"
     },
     {
       "name": "BridgeClientOptions",
       "kind": "interface",
-      "signature": "export interface BridgeClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number readonly windowId?: string readonly originToken?: string }"
+      "signature": "export interface BridgeClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number readonly windowId?: string readonly originToken?: string readonly inspector?: BridgeInspector readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope }"
     },
     {
       "name": "BridgeClientResponse",
@@ -74,14 +69,74 @@
       "signature": "export interface BridgeClientSuccessResponse { readonly kind: \"success\" readonly payload: unknown }"
     },
     {
+      "name": "BridgeContract",
+      "kind": "type",
+      "signature": "export type BridgeContract< Tag extends string = string, Spec extends BridgeContractSpec = BridgeContractSpec, Events extends BridgeContractEvents = BridgeContractEvents, Group extends BridgeContractRpcGroup = BridgeContractRpcGroup > = Group & { readonly tag: Tag readonly spec: Spec readonly events: Events }"
+    },
+    {
+      "name": "BridgeContractCodec",
+      "kind": "type",
+      "signature": "export type BridgeContractCodec<Type = unknown, Encoded = unknown> = Schema.Codec< Type, Encoded, never, never >"
+    },
+    {
+      "name": "BridgeContractCodecType",
+      "kind": "type",
+      "signature": "export type BridgeContractCodecType<Codec extends BridgeContractCodec> = Codec[\"Type\"]"
+    },
+    {
+      "name": "BridgeContractEvents",
+      "kind": "type",
+      "signature": "export type BridgeContractEvents = Readonly<Record<string, BridgeEventSpec>>"
+    },
+    {
+      "name": "BridgeContractEventsFromGroup",
+      "kind": "type",
+      "signature": "export type BridgeContractEventsFromGroup<Group extends BridgeContractRpcGroup> = Group extends BridgeContractRpcGroup<infer Rpcs> ? { readonly [RpcTag in Rpcs[\"_tag\"] as BridgeEventName<RpcTag>]: Extract< Rpcs, { readonly _tag: RpcTag } > extends infer Current extends BridgeContractRpc ? BridgeContractEvent<Current[\"successSchema\"]> : never } : BridgeContractEvents"
+    },
+    {
+      "name": "bridgeContractFromRpcGroup",
+      "kind": "value",
+      "signature": "const bridgeContractFromRpcGroup: <Tag extends string, Group extends BridgeContractRpcGroup = BridgeContractRpcGroup<BridgeContractRpc>>(tag: Tag, group: Group) => BridgeContract<Tag, BridgeContractSpecFromGroup<Group>, BridgeContractEventsFromGroup<Group>, Group>"
+    },
+    {
+      "name": "BridgeContractRpc",
+      "kind": "type",
+      "signature": "export type BridgeContractRpc = RpcAnyWithProps & { readonly payloadSchema: BridgeContractCodec readonly successSchema: BridgeSuccessSchema readonly errorSchema: BridgeContractCodec }"
+    },
+    {
+      "name": "BridgeContractRpcGroup",
+      "kind": "type",
+      "signature": "export type BridgeContractRpcGroup<Rpcs extends BridgeContractRpc = BridgeContractRpc> = RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpcs> }"
+    },
+    {
+      "name": "BridgeContractSpec",
+      "kind": "type",
+      "signature": "export type BridgeContractSpec = Readonly<Record<string, BridgeMethodSpec>>"
+    },
+    {
+      "name": "BridgeContractSpecError",
+      "kind": "type",
+      "signature": "export type BridgeContractSpecError = InvalidBridgeMetadataError"
+    },
+    {
+      "name": "BridgeContractSpecFromGroup",
+      "kind": "type",
+      "signature": "export type BridgeContractSpecFromGroup<Group extends BridgeContractRpcGroup> = Group extends BridgeContractRpcGroup<infer Rpcs> ? { readonly [RpcTag in Rpcs[\"_tag\"] as BridgeMethodName<RpcTag>]: Extract< Rpcs, { readonly _tag: RpcTag } > extends infer Current extends BridgeContractRpc ? BridgeMethodSpec< Current[\"payloadSchema\"], BridgeContractOutput<Current[\"successSchema\"]>, Current[\"errorSchema\"] > : never } : BridgeContractSpec"
+    },
+    {
       "name": "BridgeEventHub",
       "kind": "interface",
-      "signature": "export interface BridgeEventHub { readonly exchange: { readonly subscribe: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> } readonly publish: < Events extends BridgeRpcEvents, Contract extends ContractWithEvents<Events>, Event extends keyof Events >( contract: Contract, event: Event, payload: Schema.Schema.Type<Events[Event][\"payload\"]> ) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface BridgeEventHub { readonly exchange: { readonly subscribe: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> } readonly publish: < Events extends BridgeContractEvents, Contract extends ContractWithEvents<Events>, Event extends keyof Events >( contract: Contract, event: Event, payload: BridgeContractCodecType<Events[Event][\"payload\"]> ) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "BridgeEventHubOptions",
       "kind": "interface",
       "signature": "export interface BridgeEventHubOptions { readonly now?: () => number readonly nextTraceId?: () => string readonly windowId?: string }"
+    },
+    {
+      "name": "BridgeEventSpec",
+      "kind": "interface",
+      "signature": "export interface BridgeEventSpec<Payload extends BridgeContractCodec = BridgeContractCodec> { readonly payload: Payload readonly backpressure?: BackpressureSpec }"
     },
     {
       "name": "BridgeHandlerRuntime",
@@ -91,87 +146,57 @@
     {
       "name": "BridgeHandlerRuntimeOptions",
       "kind": "interface",
-      "signature": "export interface BridgeHandlerRuntimeOptions { readonly now?: () => number readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly originAuth?: RendererOriginAuth readonly redaction?: RedactionFilterOptions readonly terminalStateTtlMs?: number }"
+      "signature": "export interface BridgeHandlerRuntimeOptions { readonly now?: () => number readonly onState?: (state: BridgeCallState) => Effect.Effect<void, never, never> readonly originAuth?: RendererOriginAuth readonly redaction?: RedactionFilterOptions readonly terminalStateTtlMs?: number readonly inspector?: BridgeInspector }"
     },
     {
-      "name": "BridgeResourceExchange",
+      "name": "BridgeInspector",
       "kind": "interface",
-      "signature": "export interface BridgeResourceExchange { readonly dispose: (handle: BridgeResourceHandle) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface BridgeInspector { readonly emit: (event: BridgeInspectorEvent) => Effect.Effect<void, never, never> readonly events: Stream.Stream<BridgeInspectorEvent, never, never> }"
     },
     {
-      "name": "BridgeResourceHandle",
-      "kind": "interface",
-      "signature": "export interface BridgeResourceHandle<Kind extends string = string, State extends string = string> { readonly kind: Kind readonly id: string readonly generation: number readonly ownerScope: string readonly state: State }"
+      "name": "BridgeInspectorBoundary",
+      "kind": "type",
+      "signature": "const BridgeInspectorBoundary: Schema.Literals<readonly [\"renderer\", \"bridge\", \"runtime\", \"host\"]>"
     },
     {
-      "name": "BridgeResourceHandleShape",
+      "name": "BridgeInspectorDirection",
+      "kind": "type",
+      "signature": "const BridgeInspectorDirection: Schema.Literals<readonly [\"inbound\", \"outbound\"]>"
+    },
+    {
+      "name": "BridgeInspectorEvent",
       "kind": "class",
-      "signature": "export class BridgeResourceHandleShape extends Schema.Class<BridgeResourceHandleShape>( \"BridgeResourceHandle\" )({ kind: Schema.NonEmptyString, id: Schema.NonEmptyString, generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)), ownerScope: Schema.NonEmptyString, state: Schema.String }) {}"
+      "signature": "export class BridgeInspectorEvent extends Schema.Class<BridgeInspectorEvent>( \"BridgeInspectorEvent\" )({ kind: BridgeInspectorEventKind, boundary: BridgeInspectorBoundary, direction: BridgeInspectorDirection, method: OptionalString, requestId: OptionalString, resourceId: OptionalString, traceId: OptionalString, timestamp: InspectorTimestamp, durationMs: Schema.optionalKey( Schema.Union([ Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)), Schema.Undefined ]) ), frameKind: OptionalString, errorTag: OptionalString, payload: OptionalUnknown }) {}"
     },
     {
-      "name": "BridgeResourceProxy",
+      "name": "BridgeInspectorEventKind",
+      "kind": "type",
+      "signature": "const BridgeInspectorEventKind: Schema.Literals<readonly [\"rpc.request\", \"rpc.response\", \"rpc.failure\", \"bridge.frame\", \"bridge.decodeFailure\", \"transport.connect\", \"transport.reconnect\", \"transport.backpressure\", \"transport.disconnect\"]>"
+    },
+    {
+      "name": "BridgeInspectorOptions",
       "kind": "interface",
-      "signature": "export interface BridgeResourceProxy< Kind extends string = string, State extends string = string > extends BridgeResourceHandle<Kind, State> { readonly dispose: () => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface BridgeInspectorOptions { readonly capacity?: number readonly onEvent?: (event: BridgeInspectorEvent) => Effect.Effect<void, never, never> }"
     },
     {
-      "name": "BridgeRpc",
+      "name": "BridgeMethodSpec",
+      "kind": "interface",
+      "signature": "export interface BridgeMethodSpec< Input extends BridgeContractCodec = BridgeContractCodec, Output extends BridgeContractCodec | BridgeStreamSpec = BridgeContractCodec | BridgeStreamSpec, Error extends BridgeContractCodec = BridgeContractCodec > { readonly input: Input readonly output: Output readonly error: Error readonly permission?: string readonly timeoutMs?: number readonly cachedResultMs?: number readonly cancellable?: boolean readonly backpressure?: BackpressureSpec readonly support?: RpcSupportMetadata }"
+    },
+    {
+      "name": "bridgeRuntime",
       "kind": "value",
-      "signature": "const BridgeRpc: Readonly<{ Resource: <Kind extends string, State extends string>(kind: Kind, state: State) => BridgeRpcResourceSpec<Kind, State>; Stream: <Chunk extends Schema.Schema<unknown>, Error extends Schema.Schema<unknown>>(chunk: Chunk, error: Error, backpressure?: BackpressureSpec) => BridgeRpcStreamSpec & { readonly chunk: Chunk; readonly error: Error; }; group: <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(tag: Tag, spec: Spec, events: Events) => BridgeRpcGroup<Tag, Spec, Events>; layer: <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(group: BridgeRpcGroup<Tag, Spec, Events>) => <Handlers extends BridgeRpcHandlers<Spec>>(handlers: Handlers) => BridgeRpcLayer<Tag, Spec, Handlers, Events>; }>"
+      "signature": "const bridgeRuntime: (rpc: RpcAny) => Option.Option<BridgeRuntimeMetadata>"
     },
     {
-      "name": "BridgeRpcEvents",
-      "kind": "type",
-      "signature": "export type BridgeRpcEvents = Readonly<Record<string, BridgeRpcEventSpec>>"
+      "name": "BridgeRuntime",
+      "kind": "value",
+      "signature": "const BridgeRuntime: (metadata: BridgeRuntimeMetadata) => <R extends RpcAny>(rpc: R) => R"
     },
     {
-      "name": "BridgeRpcEventSpec",
+      "name": "BridgeRuntimeMetadata",
       "kind": "interface",
-      "signature": "export interface BridgeRpcEventSpec { readonly payload: Schema.Schema<unknown> readonly backpressure?: BackpressureSpec }"
-    },
-    {
-      "name": "BridgeRpcGroup",
-      "kind": "interface",
-      "signature": "export interface BridgeRpcGroup< Tag extends string = string, Spec extends BridgeRpcSpec = BridgeRpcSpec, Events extends BridgeRpcEvents = BridgeRpcEvents > extends RpcGroup.RpcGroup<Rpc.Any> { readonly tag: Tag readonly spec: Spec readonly events: Events }"
-    },
-    {
-      "name": "BridgeRpcHandlers",
-      "kind": "type",
-      "signature": "export type BridgeRpcHandlers<Spec extends BridgeRpcSpec> = { readonly [Method in keyof Spec]: ( input: Schema.Schema.Type<Spec[Method][\"input\"]> ) => Spec[Method][\"output\"] extends BridgeRpcStreamSpec ? BridgeRpcOutputType<Spec[Method][\"output\"]> : Effect.Effect< BridgeRpcOutputType<Spec[Method][\"output\"]>, Schema.Schema.Type<Spec[Method][\"error\"]>, unknown > }"
-    },
-    {
-      "name": "BridgeRpcLayer",
-      "kind": "interface",
-      "signature": "export interface BridgeRpcLayer< Tag extends string, Spec extends BridgeRpcSpec, Handlers extends BridgeRpcHandlers<Spec>, Events extends BridgeRpcEvents = BridgeRpcEvents > { readonly group: BridgeRpcGroup<Tag, Spec, Events> readonly handlers: Handlers }"
-    },
-    {
-      "name": "BridgeRpcLayerEnvironment",
-      "kind": "type",
-      "signature": "export type BridgeRpcLayerEnvironment<Layer> = Layer extends BridgeRpcLayer<string, infer Spec, infer Handlers> ? { readonly [Method in keyof Spec]: HandlerEnvironment<Handlers[Method]> }[keyof Spec] : never"
-    },
-    {
-      "name": "BridgeRpcMethodSpec",
-      "kind": "interface",
-      "signature": "export interface BridgeRpcMethodSpec { readonly input: Schema.Schema<unknown> readonly output: Schema.Schema<unknown> | BridgeRpcStreamSpec | BridgeRpcResourceSpec readonly error: Schema.Schema<unknown> readonly permission?: string readonly timeoutMs?: number readonly cachedResultMs?: number readonly idempotent?: boolean readonly cancellable?: boolean readonly backpressure?: BackpressureSpec readonly support?: RpcSupportMetadata }"
-    },
-    {
-      "name": "BridgeRpcResourceSpec",
-      "kind": "interface",
-      "signature": "export interface BridgeRpcResourceSpec< Kind extends string = string, State extends string = string > { readonly _tag: \"BridgeRpcResourceSpec\" readonly kind: Kind readonly state: State readonly schema: typeof BridgeResourceHandleShape }"
-    },
-    {
-      "name": "BridgeRpcSpec",
-      "kind": "type",
-      "signature": "export type BridgeRpcSpec = Readonly<Record<string, BridgeRpcMethodSpec>>"
-    },
-    {
-      "name": "BridgeRpcSpecError",
-      "kind": "type",
-      "signature": "export type BridgeRpcSpecError = InvalidBridgeRpcSpec"
-    },
-    {
-      "name": "BridgeRpcStreamSpec",
-      "kind": "interface",
-      "signature": "export interface BridgeRpcStreamSpec { readonly _tag: \"BridgeRpcStreamSpec\" readonly chunk: Schema.Schema<unknown> readonly error: Schema.Schema<unknown> readonly backpressure?: BackpressureSpec }"
+      "signature": "export interface BridgeRuntimeMetadata { readonly timeoutMs?: number readonly cachedResultMs?: number readonly cancellable?: boolean readonly backpressure?: BackpressureSpec }"
     },
     {
       "name": "BridgeStreamBackpressureMetrics",
@@ -204,11 +229,6 @@
       "signature": "const BridgeStreamFrame: Schema.Union<readonly [typeof BridgeStreamDataFrame, typeof BridgeStreamErrorFrame, typeof BridgeStreamCompleteFrame, typeof BridgeStreamClosedFrame]>"
     },
     {
-      "name": "BridgeStreamLayerEnvironment",
-      "kind": "type",
-      "signature": "export type BridgeStreamLayerEnvironment<Layer> = Layer extends BridgeRpcLayer<string, infer Spec, infer Handlers> ? { readonly [Method in keyof Spec]: HandlerEnvironment<Handlers[Method]> }[keyof Spec] : never"
-    },
-    {
       "name": "BridgeStreamRegistry",
       "kind": "interface",
       "signature": "export interface BridgeStreamRegistry { readonly register: (streamId: string) => Effect.Effect<BridgeStreamRegistryEntry, never, never> readonly terminate: ( streamId: string, terminal: BridgeStreamTerminalType, now: number ) => Effect.Effect<boolean, never, never> readonly isTerminal: (streamId: string) => Effect.Effect<boolean, never, never> readonly gcExpired: (now: number) => Effect.Effect<number, never, never> readonly updateBackpressure: ( streamId: string, metrics: BridgeStreamBackpressureMetrics ) => Effect.Effect<void, never, never> readonly snapshot: () => Effect.Effect<ReadonlyArray<BridgeStreamRegistryEntry>, never, never> readonly observe: () => Stream.Stream<ReadonlyArray<BridgeStreamRegistryEntry>, never, never> }"
@@ -219,14 +239,14 @@
       "signature": "export interface BridgeStreamRegistryEntry { readonly streamId: string readonly generation: number readonly state: \"open\" | \"terminal\" readonly terminal?: BridgeStreamTerminalType readonly terminalAt?: number readonly backpressure?: BridgeStreamBackpressureMetrics }"
     },
     {
-      "name": "BridgeStreamRuntime",
-      "kind": "interface",
-      "signature": "export interface BridgeStreamRuntime<Env = never> { readonly stream: ( request: HostProtocolRequestEnvelope ) => Stream.Stream<HostProtocolStreamEnvelope, HostProtocolError, Env> readonly cancel: ( request: HostProtocolCancelByRequestEnvelope | HostProtocolCancelByResourceEnvelope ) => Effect.Effect<void, never, never> }"
+      "name": "BridgeStreamSchema",
+      "kind": "type",
+      "signature": "export type BridgeStreamSchema = RpcSchema.Stream<BridgeContractCodec, BridgeContractCodec>"
     },
     {
-      "name": "BridgeStreamRuntimeOptions",
+      "name": "BridgeStreamSpec",
       "kind": "interface",
-      "signature": "export interface BridgeStreamRuntimeOptions { readonly now?: () => number readonly nextStreamId?: () => string readonly cleanupGraceMs?: number readonly registry?: BridgeStreamRegistry }"
+      "signature": "export interface BridgeStreamSpec< Chunk extends BridgeContractCodec = BridgeContractCodec, Error extends BridgeContractCodec = BridgeContractCodec > { readonly _tag: \"BridgeStreamSpec\" readonly chunk: Chunk readonly error: Error readonly backpressure?: BackpressureSpec }"
     },
     {
       "name": "BridgeStreamTerminalType",
@@ -234,14 +254,29 @@
       "signature": "export type BridgeStreamTerminalType = \"complete\" | \"error\" | \"closed\""
     },
     {
+      "name": "BridgeSuccessSchema",
+      "kind": "type",
+      "signature": "export type BridgeSuccessSchema = BridgeContractCodec | BridgeStreamSchema"
+    },
+    {
       "name": "Client",
       "kind": "value",
-      "signature": "const Client: <Contracts extends Readonly<Record<string, BridgeRpcGroup>>>(contracts: Contracts, exchange: BridgeClientExchange, options?: BridgeClientOptions) => BridgeClient<Contracts>"
+      "signature": "const Client: <Contracts extends Readonly<Record<string, BridgeContract>>>(contracts: Contracts, exchange: BridgeClientExchange, options?: BridgeClientOptions) => BridgeClient<Contracts>"
     },
     {
       "name": "decodeHostProtocolEnvelope",
       "kind": "value",
       "signature": "const decodeHostProtocolEnvelope: (input: unknown) => HostProtocolEnvelope"
+    },
+    {
+      "name": "decodeHostProtocolFrame",
+      "kind": "value",
+      "signature": "const decodeHostProtocolFrame: (frame: Uint8Array, operation: string) => Effect.Effect<HostProtocolEnvelope, HostProtocolError, never>"
+    },
+    {
+      "name": "decodeHostProtocolFrameJson",
+      "kind": "value",
+      "signature": "const decodeHostProtocolFrameJson: (value: unknown, operation: string) => Effect.Effect<HostProtocolEnvelope, HostProtocolError, never>"
     },
     {
       "name": "DEFAULT_MAX_BACKFILL_EVENTS",
@@ -256,7 +291,7 @@
     {
       "name": "DesktopProtocolOptions",
       "kind": "interface",
-      "signature": "export interface DesktopProtocolOptions { readonly windowId?: string readonly originToken?: string readonly now?: () => number readonly nextTraceId?: () => string }"
+      "signature": "export interface DesktopProtocolOptions { readonly windowId?: string readonly originToken?: string readonly now?: () => number readonly nextRequestId?: () => string readonly nextTraceId?: () => string }"
     },
     {
       "name": "DesktopTransportRun",
@@ -291,17 +326,17 @@
     {
       "name": "encodeHostProtocolEnvelope",
       "kind": "value",
-      "signature": "const encodeHostProtocolEnvelope: (input: HostProtocolEnvelope) => { readonly kind: \"request\"; readonly id: string; readonly method: string; readonly timestamp: number; readonly traceId: string; readonly payload?: unknown; readonly windowId?: string; readonly originToken?: string; } | { readonly kind: \"response\"; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly error?: { readonly tag: \"FileNotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionDenied\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly resource?: string; } | { readonly timeoutMs: number; readonly tag: \"Timeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Cancelled\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly source: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"Unsupported\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidArgument\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly field: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ResourceBusy\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"DiskFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RateLimited\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"FrameTooLarge\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly sizeBytes: number; readonly limitBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"OriginInvalid\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly tag: \"StaleHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly expectedGeneration: number; readonly actualGeneration: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly ownerScope: string; readonly tag: \"CrossScopeHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly attemptedScope: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BackpressureOverflow\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly policy: string; readonly lostFrames: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RendererDisconnected\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly durationMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeRestarted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"HostUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"MethodNotFound\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidOutput\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionRevoked\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly revokedAt: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"StreamClosed\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"BinaryDecodeError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ReconnectBackfillExhausted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PanicInNativeCode\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly backtrace?: string; readonly location?: string; } | { readonly kind: string; readonly tag: \"NetworkError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"NotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"AlreadyExists\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidState\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly current: string; readonly attempted: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SymlinkEscapesRoot\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capabilityRoots: readonly string[]; readonly requested: string; readonly resolved: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDowngradeRefused\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly installedVersion: string; readonly manifestVersion: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDownloadTruncated\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly downloadedBytes: number; readonly expectedBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateStaleNotarization\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly notarizedAt: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsMigrationFailed\"; readonly message: string; readonly operation: string; readonly cause: string; readonly recoverable: boolean; readonly schemaVersion: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsRecoveredFromBackup\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly backupPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogSegmentCorrupt\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly segmentPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PtyForceKillTimeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly ptyId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Internal\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; }; readonly payload?: unknown; } | { readonly kind: \"event\"; readonly method: string; readonly timestamp: number; readonly traceId: string; readonly payload?: unknown; readonly windowId?: string; } | { readonly kind: \"stream\"; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly error?: { readonly tag: \"FileNotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionDenied\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly resource?: string; } | { readonly timeoutMs: number; readonly tag: \"Timeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Cancelled\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly source: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"Unsupported\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidArgument\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly field: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ResourceBusy\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"DiskFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RateLimited\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"FrameTooLarge\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly sizeBytes: number; readonly limitBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"OriginInvalid\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly tag: \"StaleHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly expectedGeneration: number; readonly actualGeneration: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly ownerScope: string; readonly tag: \"CrossScopeHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly attemptedScope: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BackpressureOverflow\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly policy: string; readonly lostFrames: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RendererDisconnected\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly durationMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeRestarted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"HostUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"MethodNotFound\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidOutput\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionRevoked\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly revokedAt: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"StreamClosed\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"BinaryDecodeError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ReconnectBackfillExhausted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PanicInNativeCode\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly backtrace?: string; readonly location?: string; } | { readonly kind: string; readonly tag: \"NetworkError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"NotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"AlreadyExists\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidState\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly current: string; readonly attempted: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SymlinkEscapesRoot\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capabilityRoots: readonly string[]; readonly requested: string; readonly resolved: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDowngradeRefused\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly installedVersion: string; readonly manifestVersion: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDownloadTruncated\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly downloadedBytes: number; readonly expectedBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateStaleNotarization\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly notarizedAt: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsMigrationFailed\"; readonly message: string; readonly operation: string; readonly cause: string; readonly recoverable: boolean; readonly schemaVersion: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsRecoveredFromBackup\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly backupPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogSegmentCorrupt\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly segmentPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PtyForceKillTimeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly ptyId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Internal\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; }; readonly payload?: unknown; readonly resourceId?: string; } | { readonly kind: \"stream\"; readonly timestamp: number; readonly traceId: string; readonly resourceId: string; readonly id?: string; readonly error?: { readonly tag: \"FileNotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionDenied\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly resource?: string; } | { readonly timeoutMs: number; readonly tag: \"Timeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Cancelled\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly source: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"Unsupported\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidArgument\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly field: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ResourceBusy\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"DiskFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RateLimited\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"FrameTooLarge\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly sizeBytes: number; readonly limitBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"OriginInvalid\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly tag: \"StaleHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly expectedGeneration: number; readonly actualGeneration: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly id: string; readonly ownerScope: string; readonly tag: \"CrossScopeHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly attemptedScope: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BackpressureOverflow\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly policy: string; readonly lostFrames: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RendererDisconnected\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly durationMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeRestarted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"HostUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"MethodNotFound\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidOutput\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionRevoked\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly revokedAt: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"StreamClosed\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"BinaryDecodeError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ReconnectBackfillExhausted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PanicInNativeCode\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly backtrace?: string; readonly location?: string; } | { readonly kind: string; readonly tag: \"NetworkError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"NotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"AlreadyExists\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidState\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly current: string; readonly attempted: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SymlinkEscapesRoot\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capabilityRoots: readonly string[]; readonly requested: string; readonly resolved: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDowngradeRefused\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly installedVersion: string; readonly manifestVersion: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDownloadTruncated\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly downloadedBytes: number; readonly expectedBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateStaleNotarization\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly notarizedAt: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsMigrationFailed\"; readonly message: string; readonly operation: string; readonly cause: string; readonly recoverable: boolean; readonly schemaVersion: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsRecoveredFromBackup\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly backupPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogSegmentCorrupt\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly segmentPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PtyForceKillTimeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly ptyId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Internal\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; }; readonly payload?: unknown; } | { readonly kind: \"cancel\"; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly resourceId?: string; } | { readonly kind: \"cancel\"; readonly timestamp: number; readonly traceId: string; readonly resourceId: string; readonly id?: string; }"
+      "signature": "const encodeHostProtocolEnvelope: (input: HostProtocolEnvelope) => { readonly kind: \"request\"; readonly method: string; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly payload?: unknown; readonly windowId?: string; readonly originToken?: string; } | { readonly kind: \"response\"; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly error?: { readonly tag: \"FileNotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionDenied\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly resource?: string; } | { readonly tag: \"Timeout\"; readonly message: string; readonly timeoutMs: number; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Cancelled\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly source: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"Unsupported\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidArgument\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly field: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ResourceBusy\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"DiskFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RateLimited\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"FrameTooLarge\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly sizeBytes: number; readonly limitBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"OriginInvalid\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly tag: \"StaleHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly id: string; readonly expectedGeneration: number; readonly actualGeneration: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly tag: \"CrossScopeHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly id: string; readonly ownerScope: string; readonly attemptedScope: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BackpressureOverflow\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly policy: string; readonly lostFrames: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RendererDisconnected\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly durationMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeRestarted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"HostUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"MethodNotFound\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidOutput\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionRevoked\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly revokedAt: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"StreamClosed\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"BinaryDecodeError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ReconnectBackfillExhausted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PanicInNativeCode\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly backtrace?: string; readonly location?: string; } | { readonly kind: string; readonly tag: \"NetworkError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"NotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"AlreadyExists\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidState\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly current: string; readonly attempted: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SymlinkEscapesRoot\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capabilityRoots: readonly string[]; readonly requested: string; readonly resolved: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDowngradeRefused\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly installedVersion: string; readonly manifestVersion: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDownloadTruncated\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly downloadedBytes: number; readonly expectedBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateStaleNotarization\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly notarizedAt: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsMigrationFailed\"; readonly message: string; readonly operation: string; readonly cause: string; readonly recoverable: boolean; readonly schemaVersion: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsRecoveredFromBackup\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly backupPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogSegmentCorrupt\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly segmentPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PtyForceKillTimeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly ptyId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Internal\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; }; readonly payload?: unknown; } | { readonly kind: \"event\"; readonly method: string; readonly timestamp: number; readonly traceId: string; readonly payload?: unknown; readonly windowId?: string; } | { readonly kind: \"stream\"; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly error?: { readonly tag: \"FileNotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionDenied\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly resource?: string; } | { readonly tag: \"Timeout\"; readonly message: string; readonly timeoutMs: number; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Cancelled\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly source: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"Unsupported\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidArgument\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly field: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ResourceBusy\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"DiskFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RateLimited\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"FrameTooLarge\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly sizeBytes: number; readonly limitBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"OriginInvalid\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly tag: \"StaleHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly id: string; readonly expectedGeneration: number; readonly actualGeneration: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly tag: \"CrossScopeHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly id: string; readonly ownerScope: string; readonly attemptedScope: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BackpressureOverflow\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly policy: string; readonly lostFrames: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RendererDisconnected\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly durationMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeRestarted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"HostUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"MethodNotFound\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidOutput\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionRevoked\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly revokedAt: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"StreamClosed\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"BinaryDecodeError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ReconnectBackfillExhausted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PanicInNativeCode\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly backtrace?: string; readonly location?: string; } | { readonly kind: string; readonly tag: \"NetworkError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"NotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"AlreadyExists\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidState\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly current: string; readonly attempted: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SymlinkEscapesRoot\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capabilityRoots: readonly string[]; readonly requested: string; readonly resolved: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDowngradeRefused\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly installedVersion: string; readonly manifestVersion: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDownloadTruncated\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly downloadedBytes: number; readonly expectedBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateStaleNotarization\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly notarizedAt: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsMigrationFailed\"; readonly message: string; readonly operation: string; readonly cause: string; readonly recoverable: boolean; readonly schemaVersion: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsRecoveredFromBackup\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly backupPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogSegmentCorrupt\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly segmentPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PtyForceKillTimeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly ptyId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Internal\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; }; readonly payload?: unknown; readonly resourceId?: string; } | { readonly kind: \"stream\"; readonly timestamp: number; readonly traceId: string; readonly resourceId: string; readonly error?: { readonly tag: \"FileNotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionDenied\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly resource?: string; } | { readonly tag: \"Timeout\"; readonly message: string; readonly timeoutMs: number; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Cancelled\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly source: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"Unsupported\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidArgument\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly field: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ResourceBusy\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"DiskFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly path: string; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RateLimited\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"FrameTooLarge\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly sizeBytes: number; readonly limitBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"OriginInvalid\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly tag: \"StaleHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly id: string; readonly expectedGeneration: number; readonly actualGeneration: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly kind: string; readonly tag: \"CrossScopeHandle\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly id: string; readonly ownerScope: string; readonly attemptedScope: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"BackpressureOverflow\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly policy: string; readonly lostFrames: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RendererDisconnected\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly durationMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeRestarted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"RuntimeUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly retryAfterMs: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"HostUnavailable\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"MethodNotFound\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"InvalidOutput\"; readonly method: string; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PermissionRevoked\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capability: string; readonly revokedAt: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"StreamClosed\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly reason: string; readonly tag: \"BinaryDecodeError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"ReconnectBackfillExhausted\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly streamId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PanicInNativeCode\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; readonly backtrace?: string; readonly location?: string; } | { readonly kind: string; readonly tag: \"NetworkError\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"NotFound\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"AlreadyExists\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly resource: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"InvalidState\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly current: string; readonly attempted: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SymlinkEscapesRoot\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly capabilityRoots: readonly string[]; readonly requested: string; readonly resolved: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogFull\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly freeBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDowngradeRefused\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly installedVersion: string; readonly manifestVersion: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateDownloadTruncated\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly downloadedBytes: number; readonly expectedBytes: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"UpdateStaleNotarization\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly notarizedAt: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsMigrationFailed\"; readonly message: string; readonly operation: string; readonly cause: string; readonly recoverable: boolean; readonly schemaVersion: number; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"SettingsRecoveredFromBackup\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly backupPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"EventLogSegmentCorrupt\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly segmentPath: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"PtyForceKillTimeout\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly ptyId: string; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; } | { readonly tag: \"Internal\"; readonly message: string; readonly operation: string; readonly recoverable: boolean; readonly platform?: \"macos\" | \"windows\" | \"linux\"; readonly code?: string; readonly cause?: unknown; readonly remediation?: string; readonly docsUrl?: string; }; readonly payload?: unknown; readonly id?: string; } | { readonly kind: \"cancel\"; readonly id: string; readonly timestamp: number; readonly traceId: string; readonly resourceId?: string; } | { readonly kind: \"cancel\"; readonly timestamp: number; readonly traceId: string; readonly resourceId: string; readonly id?: string; }"
+    },
+    {
+      "name": "encodeHostProtocolFrame",
+      "kind": "value",
+      "signature": "const encodeHostProtocolFrame: (envelope: HostProtocolEnvelope, operation: string) => Effect.Effect<Uint8Array, HostProtocolError, never>"
     },
     {
       "name": "EventHub",
       "kind": "value",
-      "signature": "const EventHub: (contracts: Iterable<BridgeRpcGroup>, options?: BridgeEventHubOptions) => Effect.Effect<BridgeEventHub, never, never>"
-    },
-    {
-      "name": "Handlers",
-      "kind": "value",
-      "signature": "const Handlers: (<Layers extends readonly AnyBridgeRpcLayer[]>(...layers: Layers) => BridgeHandlerRuntime<BridgeRpcLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyBridgeRpcLayer[]>(options: BridgeHandlerRuntimeOptions, ...layers: Layers) => BridgeHandlerRuntime<BridgeRpcLayerEnvironment<Layers[number]>>; }"
+      "signature": "const EventHub: (contracts: Iterable<BridgeContract>, options?: BridgeEventHubOptions) => Effect.Effect<BridgeEventHub, HostProtocolError, never>"
     },
     {
       "name": "HOST_PING_METHOD",
@@ -356,12 +391,12 @@
     {
       "name": "HostProtocolCancelByRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>( \"HostProtocolCancelByRequestEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString }) {}"
+      "signature": "export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>( \"HostProtocolCancelByRequestEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostIdentityString }) {}"
     },
     {
       "name": "HostProtocolCancelByResourceEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>( \"HostProtocolCancelByResourceEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString }) {}"
+      "signature": "export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>( \"HostProtocolCancelByResourceEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString }) {}"
     },
     {
       "name": "HostProtocolCancelledError",
@@ -389,6 +424,11 @@
       "signature": "const HostProtocolError: Schema.Union<readonly [typeof HostProtocolFileNotFoundError, typeof HostProtocolPermissionDeniedError, typeof HostProtocolTimeoutError, typeof HostProtocolCancelledError, typeof HostProtocolUnsupportedError, typeof HostProtocolInvalidArgumentError, typeof HostProtocolResourceBusyError, typeof HostProtocolDiskFullError, typeof HostProtocolRateLimitedError, typeof HostProtocolFrameTooLargeError, typeof HostProtocolOriginInvalidError, typeof HostProtocolStaleHandleError, typeof HostProtocolCrossScopeHandleError, typeof HostProtocolBackpressureOverflowError, typeof HostProtocolRendererDisconnectedError, typeof HostProtocolRuntimeRestartedError, typeof HostProtocolRuntimeUnavailableError, typeof HostProtocolHostUnavailableError, typeof HostProtocolMethodNotFoundError, typeof HostProtocolInvalidOutputError, typeof HostProtocolPermissionRevokedError, typeof HostProtocolStreamClosedError, typeof HostProtocolBinaryDecodeError, typeof HostProtocolReconnectBackfillExhaustedError, typeof HostProtocolPanicInNativeCodeError, typeof HostProtocolNetworkError, typeof HostProtocolNotFoundError, typeof HostProtocolAlreadyExistsError, typeof HostProtocolInvalidStateError, typeof HostProtocolSymlinkEscapesRootError, typeof HostProtocolEventLogFullError, typeof HostProtocolUpdateDowngradeRefusedError, typeof HostProtocolUpdateDownloadTruncatedError, typeof HostProtocolUpdateStaleNotarizationError, typeof HostProtocolSettingsMigrationFailedError, typeof HostProtocolSettingsRecoveredFromBackupError, typeof HostProtocolEventLogSegmentCorruptError, typeof HostProtocolPtyForceKillTimeoutError, typeof HostProtocolInternalError]>"
     },
     {
+      "name": "hostProtocolErrorFromRpcClientError",
+      "kind": "value",
+      "signature": "const hostProtocolErrorFromRpcClientError: (error: unknown) => HostProtocolError | undefined"
+    },
+    {
       "name": "hostProtocolErrorRecoverableDefault",
       "kind": "value",
       "signature": "const hostProtocolErrorRecoverableDefault: (tag: HostProtocolErrorTag) => boolean"
@@ -406,7 +446,7 @@
     {
       "name": "HostProtocolEventEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnvelope>( \"HostProtocolEventEnvelope\" )({ kind: Schema.Literal(\"event\"), method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, windowId: OptionalNonEmptyString, payload: OptionalUnknown }) {}"
+      "signature": "export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnvelope>( \"HostProtocolEventEnvelope\" )({ kind: Schema.Literal(\"event\"), method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString, windowId: OptionalHostIdentityString, payload: OptionalUnknown }) {}"
     },
     {
       "name": "HostProtocolEventLogFullError",
@@ -511,7 +551,7 @@
     {
       "name": "HostProtocolRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>( \"HostProtocolRequestEnvelope\" )({ kind: Schema.Literal(\"request\"), id: Schema.String, method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, windowId: OptionalNonEmptyString, originToken: OptionalNonEmptyString, payload: OptionalUnknown }) {}"
+      "signature": "export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>( \"HostProtocolRequestEnvelope\" )({ kind: Schema.Literal(\"request\"), id: Schema.String, method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString, windowId: OptionalHostIdentityString, originToken: OptionalHostIdentityString, payload: OptionalUnknown }) {}"
     },
     {
       "name": "HostProtocolResourceBusyError",
@@ -521,7 +561,7 @@
     {
       "name": "HostProtocolResponseEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolResponseEnvelope>( \"HostProtocolResponseEnvelope\" )({ kind: Schema.Literal(\"response\"), id: Schema.String, timestamp: UInt, traceId: HostProtocolNonEmptyString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolResponseEnvelope>( \"HostProtocolResponseEnvelope\" )({ kind: Schema.Literal(\"response\"), id: Schema.String, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolRuntimeRestartedError",
@@ -551,12 +591,12 @@
     {
       "name": "HostProtocolStreamByRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtocolStreamByRequestEnvelope>( \"HostProtocolStreamByRequestEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtocolStreamByRequestEnvelope>( \"HostProtocolStreamByRequestEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolStreamByResourceEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProtocolStreamByResourceEnvelope>( \"HostProtocolStreamByResourceEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostProtocolNonEmptyString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProtocolStreamByResourceEnvelope>( \"HostProtocolStreamByResourceEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolStreamClosedError",
@@ -619,19 +659,14 @@
       "signature": "export interface HostWindowExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> }"
     },
     {
-      "name": "InvalidBridgeRpcSpec",
+      "name": "InvalidBridgeMetadataError",
       "kind": "class",
-      "signature": "export class InvalidBridgeRpcSpec extends Data.TaggedError(\"InvalidBridgeRpcSpec\")<{ readonly tag: string readonly method: string readonly reason: string readonly message: string }> {}"
-    },
-    {
-      "name": "isResourceSpec",
-      "kind": "value",
-      "signature": "const isResourceSpec: (value: unknown) => value is BridgeRpcResourceSpec"
+      "signature": "export class InvalidBridgeMetadataError extends Data.TaggedError(\"InvalidBridgeMetadataError\")<{ readonly tag: string readonly method: string readonly reason: string readonly message: string }> {}"
     },
     {
       "name": "isStreamSpec",
       "kind": "value",
-      "signature": "const isStreamSpec: (value: unknown) => value is BridgeRpcStreamSpec"
+      "signature": "const isStreamSpec: (value: unknown) => value is BridgeStreamSpec"
     },
     {
       "name": "makeBridgeCallRegistry",
@@ -639,19 +674,24 @@
       "signature": "const makeBridgeCallRegistry: (maxEntries?: number) => Effect.Effect<BridgeCallRegistry, never, never>"
     },
     {
-      "name": "makeBridgeRpcGroup",
+      "name": "makeBridgeInspector",
       "kind": "value",
-      "signature": "const makeBridgeRpcGroup: <Tag extends string, Spec extends BridgeRpcSpec, Events extends BridgeRpcEvents>(tag: Tag, spec: Spec, events: Events) => BridgeRpcGroup<Tag, Spec, Events>"
+      "signature": "const makeBridgeInspector: (options?: BridgeInspectorOptions) => Effect.Effect<BridgeInspector, never, never>"
     },
     {
       "name": "makeBridgeStreamRegistry",
       "kind": "value",
-      "signature": "const makeBridgeStreamRegistry: (cleanupGraceMs?: number) => BridgeStreamRegistry"
+      "signature": "const makeBridgeStreamRegistry: (cleanupGraceMs?: number) => Effect.Effect<BridgeStreamRegistry, never, never>"
     },
     {
       "name": "makeDesktopClientProtocol",
       "kind": "value",
       "signature": "const makeDesktopClientProtocol: (transport: DesktopTransportSend & DesktopTransportRun, options?: DesktopProtocolOptions) => Effect.Effect<RpcClient.Protocol[\"Service\"], never, Scope.Scope>"
+    },
+    {
+      "name": "makeDesktopRpcHandlerRuntime",
+      "kind": "value",
+      "signature": "const makeDesktopRpcHandlerRuntime: <Rpcs extends Rpc.Any, E extends HostProtocolError = never, R = never>(group: RpcGroupWithRequests<Rpcs>, handlers: Layer.Layer<RpcServerLayerRequirements<Rpcs>, E, R>, options?: BridgeHandlerRuntimeOptions & { readonly nextTraceId?: () => string; }) => BridgeHandlerRuntime<RpcServerRuntimeEnvironment<Rpcs, R>>"
     },
     {
       "name": "makeDesktopServerProtocol",
@@ -714,14 +754,29 @@
       "signature": "const makeHostWindowClient: (exchange: HostWindowExchange, options?: HostWindowClientOptions) => HostWindowClient"
     },
     {
-      "name": "makeResourceProxy",
+      "name": "makeSecretBytes",
       "kind": "value",
-      "signature": "const makeResourceProxy: <Spec extends BridgeRpcResourceSpec>(spec: Spec, handle: BridgeResourceHandle<Spec[\"kind\"], Spec[\"state\"]>, exchange: BridgeResourceExchange) => BridgeResourceProxy<Spec[\"kind\"], Spec[\"state\"]>"
+      "signature": "const makeSecretBytes: (bytes: Uint8Array) => SecretBytes"
+    },
+    {
+      "name": "makeSecretBytesFromUtf8",
+      "kind": "value",
+      "signature": "const makeSecretBytesFromUtf8: (value: string) => SecretBytes"
+    },
+    {
+      "name": "makeSecretString",
+      "kind": "value",
+      "signature": "const makeSecretString: (value: string, options?: { readonly label?: string; }) => SecretString"
     },
     {
       "name": "makeStaleHandleError",
       "kind": "value",
-      "signature": "const makeStaleHandleError: (operation: string, handle: BridgeResourceHandle, actualGeneration: number) => HostProtocolStaleHandleError"
+      "signature": "const makeStaleHandleError: (operation: string, handle: ResourceHandleLike, actualGeneration: number) => HostProtocolStaleHandleError"
+    },
+    {
+      "name": "makeUnaryDesktopTransportFromBridgeClientExchange",
+      "kind": "value",
+      "signature": "const makeUnaryDesktopTransportFromBridgeClientExchange: (exchange: BridgeClientExchange, options?: UnaryDesktopTransportFromBridgeClientExchangeOptions) => Effect.Effect<DesktopTransportSend & DesktopTransportRun>"
     },
     {
       "name": "MENU_SET_APPLICATION_MENU_METHOD",
@@ -739,19 +794,49 @@
       "signature": "const negotiateHostVersion: (client: HostHandshakeClient, expectedProtocolVersion?: string) => Effect.Effect<HostVersionPayload, HostProtocolError, never>"
     },
     {
+      "name": "parseHostProtocolFrameJson",
+      "kind": "value",
+      "signature": "const parseHostProtocolFrameJson: (frame: Uint8Array, operation: string) => Effect.Effect<unknown, HostProtocolError, never>"
+    },
+    {
       "name": "redact",
       "kind": "value",
       "signature": "const redact: <A>(record: A, options?: RedactionFilterOptions) => A"
     },
     {
+      "name": "redactForJson",
+      "kind": "value",
+      "signature": "const redactForJson: <A>(record: A, options?: RedactionFilterOptions) => A"
+    },
+    {
+      "name": "redactForJsonWithEvidence",
+      "kind": "value",
+      "signature": "const redactForJsonWithEvidence: <A>(record: A, options?: RedactionFilterOptions) => RedactionResult<A>"
+    },
+    {
+      "name": "RedactionEvidence",
+      "kind": "interface",
+      "signature": "export interface RedactionEvidence { readonly path: string readonly action: \"redacted\" readonly reason: \"secret-pattern\" | \"redacted-value\" }"
+    },
+    {
       "name": "RedactionFilter",
       "kind": "value",
-      "signature": "const RedactionFilter: Readonly<{ redact: <A>(record: A, options?: RedactionFilterOptions) => A; redactedValue: \"[REDACTED]\"; defaultPattern: RegExp; }>"
+      "signature": "const RedactionFilter: Readonly<{ redact: <A>(record: A, options?: RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: RedactionFilterOptions) => A; redactWithEvidence: <A>(record: A, options?: RedactionFilterOptions) => RedactionResult<A>; redactForJsonWithEvidence: <A>(record: A, options?: RedactionFilterOptions) => RedactionResult<A>; redactedValue: Redacted.Redacted<string>; defaultPattern: RegExp; }>"
     },
     {
       "name": "RedactionFilterOptions",
       "kind": "interface",
       "signature": "export interface RedactionFilterOptions { readonly defaultPatternEnabled?: boolean readonly additionalPatterns?: readonly (RegExp | string)[] readonly allowlist?: readonly string[] }"
+    },
+    {
+      "name": "RedactionResult",
+      "kind": "interface",
+      "signature": "export interface RedactionResult<A> { readonly value: A readonly evidence: readonly RedactionEvidence[] }"
+    },
+    {
+      "name": "redactWithEvidence",
+      "kind": "value",
+      "signature": "const redactWithEvidence: <A>(record: A, options?: RedactionFilterOptions) => RedactionResult<A>"
     },
     {
       "name": "RENDERER_DISCONNECTED_EVENT",
@@ -816,17 +901,12 @@
     {
       "name": "rpcCapability",
       "kind": "value",
-      "signature": "const rpcCapability: (rpc: Rpc.Any) => Option.Option<RpcCapabilityMetadata>"
+      "signature": "const rpcCapability: (rpc: RpcAny) => Option.Option<RpcCapabilityMetadata>"
     },
     {
       "name": "RpcCapability",
       "kind": "value",
-      "signature": "const RpcCapability: <Capability extends RpcCapabilityMetadata>(capability: Capability) => <R extends Rpc.Any>(rpc: R) => WithRpcCapability<R, Capability>"
-    },
-    {
-      "name": "RpcCapabilityAnnotation",
-      "kind": "value",
-      "signature": "const RpcCapabilityAnnotation: Context.Service<RpcCapabilityMetadata, RpcCapabilityMetadata>"
+      "signature": "const RpcCapability: <Capability extends RpcCapabilityMetadata>(capability: Capability) => <R extends RpcAny>(rpc: R) => WithRpcCapability<R, Capability>"
     },
     {
       "name": "RpcCapabilityMarker",
@@ -851,22 +931,17 @@
     {
       "name": "RpcEndpoint",
       "kind": "value",
-      "signature": "const RpcEndpoint: Readonly<{ query: <R extends Rpc.Any>(rpc: R) => WithRpcEndpointKind<R, \"query\">; mutation: <R extends Rpc.Any>(rpc: R) => WithRpcEndpointKind<R, \"mutation\">; }>"
+      "signature": "const RpcEndpoint: Readonly<{ query: <R extends RpcAny>(rpc: R) => WithRpcEndpointKind<R, \"query\">; mutation: <R extends RpcAny>(rpc: R) => WithRpcEndpointKind<R, \"mutation\">; }>"
     },
     {
       "name": "rpcEndpointKind",
       "kind": "value",
-      "signature": "const rpcEndpointKind: (rpc: Rpc.Any) => RpcEndpointKind"
+      "signature": "const rpcEndpointKind: (rpc: RpcAny) => RpcEndpointKind"
     },
     {
       "name": "RpcEndpointKind",
       "kind": "type",
       "signature": "export type RpcEndpointKind = \"query\" | \"mutation\""
-    },
-    {
-      "name": "RpcEndpointKindAnnotation",
-      "kind": "value",
-      "signature": "const RpcEndpointKindAnnotation: Context.Service<RpcEndpointKind, RpcEndpointKind>"
     },
     {
       "name": "RpcEndpointKindMarker",
@@ -911,17 +986,12 @@
     {
       "name": "rpcSupport",
       "kind": "value",
-      "signature": "const rpcSupport: (rpc: Rpc.Any) => RpcSupportMetadata"
+      "signature": "const rpcSupport: (rpc: RpcAny) => RpcSupportMetadata"
     },
     {
       "name": "RpcSupport",
       "kind": "value",
-      "signature": "const RpcSupport: Readonly<{ supported: <R extends Rpc.Any>(rpc: R) => WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends Rpc.Any>(rpc: R) => WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>"
-    },
-    {
-      "name": "RpcSupportAnnotation",
-      "kind": "value",
-      "signature": "const RpcSupportAnnotation: Context.Service<RpcSupportMetadata, RpcSupportMetadata>"
+      "signature": "const RpcSupport: Readonly<{ supported: <R extends RpcAny>(rpc: R) => WithRpcSupport<R, { readonly status: \"supported\"; }>; unsupported: (reason: string) => <R extends RpcAny>(rpc: R) => WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; }>; }>"
     },
     {
       "name": "RpcSupportMarker",
@@ -934,9 +1004,29 @@
       "signature": "export type RpcSupportMetadata = | { readonly status: \"supported\" } | { readonly status: \"unsupported\" readonly reason: string }"
     },
     {
-      "name": "Streams",
+      "name": "SecretBytes",
+      "kind": "type",
+      "signature": "export type SecretBytes = Redacted.Redacted<Uint8Array>"
+    },
+    {
+      "name": "SecretString",
+      "kind": "type",
+      "signature": "export type SecretString = Redacted.Redacted<string>"
+    },
+    {
+      "name": "UnaryDesktopTransportFromBridgeClientExchangeOptions",
+      "kind": "interface",
+      "signature": "export interface UnaryDesktopTransportFromBridgeClientExchangeOptions extends Pick< BridgeClientOptions, \"nextTraceId\" | \"now\" | \"normalizeRequest\" > {}"
+    },
+    {
+      "name": "unsafeSecretBytes",
       "kind": "value",
-      "signature": "const Streams: (<Layers extends readonly AnyBridgeRpcLayer[]>(...layers: Layers) => BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>) & { withOptions: <Layers extends readonly AnyBridgeRpcLayer[]>(options: BridgeStreamRuntimeOptions, ...layers: Layers) => BridgeStreamRuntime<BridgeStreamLayerEnvironment<Layers[number]>>; }"
+      "signature": "const unsafeSecretBytes: (secret: SecretBytes) => Uint8Array"
+    },
+    {
+      "name": "unsafeSecretString",
+      "kind": "value",
+      "signature": "const unsafeSecretString: (secret: SecretString) => string"
     },
     {
       "name": "validateHostProtocolNonEmptyString",
@@ -984,19 +1074,24 @@
       "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.NonEmptyString }) {}"
     },
     {
+      "name": "wipeSecretBytes",
+      "kind": "value",
+      "signature": "const wipeSecretBytes: (secret: SecretBytes) => Effect.Effect<void, never, never>"
+    },
+    {
       "name": "WithRpcCapability",
       "kind": "type",
-      "signature": "export type WithRpcCapability<R extends Rpc.Any, Capability extends RpcCapabilityMetadata> = R & RpcCapabilityMarker<Capability>"
+      "signature": "export type WithRpcCapability<R extends RpcAny, Capability extends RpcCapabilityMetadata> = R & RpcCapabilityMarker<Capability>"
     },
     {
       "name": "WithRpcEndpointKind",
       "kind": "type",
-      "signature": "export type WithRpcEndpointKind<R extends Rpc.Any, Kind extends RpcEndpointKind> = R & RpcEndpointKindMarker<Kind>"
+      "signature": "export type WithRpcEndpointKind<R extends RpcAny, Kind extends RpcEndpointKind> = R & RpcEndpointKindMarker<Kind>"
     },
     {
       "name": "WithRpcSupport",
       "kind": "type",
-      "signature": "export type WithRpcSupport<R extends Rpc.Any, Support extends RpcSupportMetadata> = R & RpcSupportMarker<Support>"
+      "signature": "export type WithRpcSupport<R extends RpcAny, Support extends RpcSupportMetadata> = R & RpcSupportMarker<Support>"
     }
   ]
 }

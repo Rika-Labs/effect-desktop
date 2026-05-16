@@ -1,4 +1,4 @@
-import { Effect, Option, Queue, Scope, Schema } from "effect"
+import { Clock, Effect, Option, Queue, Scope, Schema } from "effect"
 import { RpcClient, RpcClientError, RpcMessage, RpcServer } from "effect/unstable/rpc"
 
 export const HOST_PING_METHOD = "host.ping"
@@ -26,7 +26,12 @@ const OptionalString = Schema.optionalKey(Schema.String)
 const OptionalNonEmptyString = Schema.optionalKey(HostProtocolNonEmptyString)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
 const StringRecord = Schema.Record(Schema.String, Schema.String)
-const HostIdentityString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00-\x1f\x7f]+$/u))
+const NulByte = String.fromCharCode(0)
+const UnitSeparatorByte = String.fromCharCode(31)
+const DeleteByte = String.fromCharCode(127)
+const NoControlTextPattern = new RegExp(`^[^${NulByte}-${UnitSeparatorByte}${DeleteByte}]+$`, "u")
+const HostIdentityString = Schema.NonEmptyString.check(Schema.isPattern(NoControlTextPattern))
+const OptionalHostIdentityString = Schema.optionalKey(HostIdentityString)
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 export const HOST_PROTOCOL_ERROR_SPECS = [
@@ -687,9 +692,27 @@ export const validateHostProtocolNonEmptyString = (
   value: string,
   operation: string
 ): Effect.Effect<string, HostProtocolInvalidArgumentError, never> =>
-  value.length > 0
-    ? Effect.succeed(value)
-    : Effect.fail(makeHostProtocolInvalidArgumentError(field, "must be non-empty", operation))
+  value.length === 0
+    ? Effect.fail(makeHostProtocolInvalidArgumentError(field, "must be non-empty", operation))
+    : hasAsciiControl(value)
+      ? Effect.fail(
+          makeHostProtocolInvalidArgumentError(
+            field,
+            "must not contain ASCII control characters",
+            operation
+          )
+        )
+      : Effect.succeed(value)
+
+const hasAsciiControl = (value: string): boolean => {
+  for (const char of value) {
+    const code = char.charCodeAt(0)
+    if (code <= 0x1f || code === 0x7f) {
+      return true
+    }
+  }
+  return false
+}
 
 export const validateOptionalHostProtocolNonEmptyString = (
   field: string,
@@ -842,9 +865,9 @@ export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolReques
   id: Schema.String,
   method: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
-  windowId: OptionalNonEmptyString,
-  originToken: OptionalNonEmptyString,
+  traceId: HostIdentityString,
+  windowId: OptionalHostIdentityString,
+  originToken: OptionalHostIdentityString,
   payload: OptionalUnknown
 }) {}
 
@@ -854,7 +877,7 @@ export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolRespo
   kind: Schema.Literal("response"),
   id: Schema.String,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
+  traceId: HostIdentityString,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
 }) {}
@@ -865,8 +888,8 @@ export class HostProtocolEventEnvelope extends Schema.Class<HostProtocolEventEnv
   kind: Schema.Literal("event"),
   method: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
-  windowId: OptionalNonEmptyString,
+  traceId: HostIdentityString,
+  windowId: OptionalHostIdentityString,
   payload: OptionalUnknown
 }) {}
 
@@ -877,7 +900,7 @@ export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtoc
   id: Schema.String,
   resourceId: OptionalNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
+  traceId: HostIdentityString,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
 }) {}
@@ -889,7 +912,7 @@ export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProto
   id: OptionalString,
   resourceId: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString,
+  traceId: HostIdentityString,
   payload: OptionalUnknown,
   error: Schema.optionalKey(HostProtocolError)
 }) {}
@@ -901,7 +924,7 @@ export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtoc
   id: Schema.String,
   resourceId: OptionalNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString
+  traceId: HostIdentityString
 }) {}
 
 export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>(
@@ -911,7 +934,7 @@ export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProto
   id: OptionalString,
   resourceId: HostProtocolNonEmptyString,
   timestamp: UInt,
-  traceId: HostProtocolNonEmptyString
+  traceId: HostIdentityString
 }) {}
 
 export const HostProtocolEnvelope = Schema.Union([
@@ -927,7 +950,9 @@ export const HostProtocolEnvelope = Schema.Union([
 export type HostProtocolEnvelope = typeof HostProtocolEnvelope.Type
 
 const decodeUnknownHostProtocolEnvelope = Schema.decodeUnknownSync(HostProtocolEnvelope)
+const decodeUnknownHostProtocolError = Schema.decodeUnknownSync(HostProtocolError)
 const encodeHostProtocolEnvelopeSync = Schema.encodeSync(HostProtocolEnvelope)
+const encodeHostProtocolErrorSync = Schema.encodeSync(HostProtocolError)
 
 export const decodeHostProtocolEnvelope = (input: unknown): HostProtocolEnvelope =>
   validateDecodedHostProtocolEnvelope(decodeUnknownHostProtocolEnvelope(input, StrictParseOptions))
@@ -981,6 +1006,7 @@ export interface DesktopProtocolOptions {
   readonly windowId?: string
   readonly originToken?: string
   readonly now?: () => number
+  readonly nextRequestId?: () => string
   readonly nextTraceId?: () => string
 }
 
@@ -988,15 +1014,21 @@ interface ResolvedDesktopProtocolOptions {
   readonly windowId: string
   readonly originToken: string
   readonly now: () => number
+  readonly nextRequestId: (clientId: number, requestId: string) => string
   readonly nextTraceId: () => string
 }
 
 const resolveProtocolOptions = (
-  options: DesktopProtocolOptions
+  options: DesktopProtocolOptions,
+  defaultNow: () => number
 ): ResolvedDesktopProtocolOptions => ({
   windowId: options.windowId ?? "",
   originToken: options.originToken ?? "",
-  now: options.now ?? Date.now,
+  now: options.now ?? defaultNow,
+  nextRequestId:
+    options.nextRequestId === undefined
+      ? (clientId, requestId) => clientRequestId(clientId, requestId)
+      : () => options.nextRequestId!(),
   nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
 })
 
@@ -1057,7 +1089,11 @@ const encodeCauseAsHostProtocolError = (
   const failure = cause.find((entry) => entry._tag === "Fail")
   if (failure !== undefined) {
     if (isHostProtocolError(failure.error)) {
-      return failure.error
+      return decodeUnknownHostProtocolError(failure.error, StrictParseOptions)
+    }
+    const permissionDenied = hostProtocolPermissionDeniedFromRpcError(failure.error, operation)
+    if (permissionDenied !== undefined) {
+      return permissionDenied
     }
     return makeHostProtocolInternalError(formatDefect(failure.error), operation)
   }
@@ -1067,9 +1103,75 @@ const encodeCauseAsHostProtocolError = (
   }
   const interrupt = cause.find((entry) => entry._tag === "Interrupt")
   if (interrupt !== undefined) {
-    return makeHostProtocolInternalError("interrupted", operation)
+    return new HostProtocolCancelledError({
+      tag: "Cancelled",
+      source: "renderer",
+      message: "bridge call canceled by renderer",
+      operation,
+      recoverable: true
+    })
   }
   return makeHostProtocolInternalError("unknown failure", operation)
+}
+
+const hostProtocolPermissionDeniedFromRpcError = (
+  error: unknown,
+  operation: string
+): HostProtocolPermissionDeniedError | undefined => {
+  const decoded = Schema.decodeUnknownOption(RpcPermissionDeniedError)(error)
+  if (Option.isNone(decoded)) {
+    return undefined
+  }
+  const input = decoded.value
+  return new HostProtocolPermissionDeniedError({
+    tag: "PermissionDenied",
+    capability: input.capability.kind,
+    message: input.message,
+    operation,
+    recoverable: false,
+    cause: error
+  })
+}
+
+const RpcPermissionDeniedCapability = Schema.Struct({
+  kind: HostIdentityString
+})
+
+const RpcPermissionDeniedActor = Schema.Struct({
+  kind: HostIdentityString,
+  id: HostIdentityString
+})
+
+const RpcPermissionDeniedError = Schema.Struct({
+  _tag: Schema.Literal("PermissionDenied"),
+  reason: HostIdentityString,
+  capability: RpcPermissionDeniedCapability,
+  actor: RpcPermissionDeniedActor,
+  traceId: HostIdentityString,
+  message: Schema.String
+})
+
+const hostProtocolErrorToRpcClientError = (
+  error: HostProtocolError
+): RpcClientError.RpcClientError =>
+  new RpcClientError.RpcClientError({
+    reason: new RpcClientError.RpcClientDefect({
+      message: error.message,
+      cause: error
+    })
+  })
+
+export const hostProtocolErrorFromRpcClientError = (
+  error: unknown
+): HostProtocolError | undefined => {
+  if (!(error instanceof RpcClientError.RpcClientError)) {
+    return undefined
+  }
+  const reason = error.reason
+  if (!(reason instanceof RpcClientError.RpcClientDefect) || !isHostProtocolError(reason.cause)) {
+    return undefined
+  }
+  return decodeUnknownHostProtocolError(reason.cause, StrictParseOptions)
 }
 
 export const makeDesktopClientProtocol = (
@@ -1077,7 +1179,8 @@ export const makeDesktopClientProtocol = (
   options: DesktopProtocolOptions = {}
 ): Effect.Effect<RpcClient.Protocol["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
-    const resolved = resolveProtocolOptions(options)
+    const clock = yield* Clock.Clock
+    const resolved = resolveProtocolOptions(options, () => clock.currentTimeMillisUnsafe())
 
     let writeToClient: ClientWriteFn = (_clientId, _response) => Effect.void
     const requestClients = new Map<
@@ -1087,6 +1190,7 @@ export const makeDesktopClientProtocol = (
         readonly requestId: string
       }
     >()
+    const clientRequestIds = new Map<string, string>()
 
     const protocol = yield* RpcClient.Protocol.make((write, _clientIds) => {
       writeToClient = write
@@ -1096,45 +1200,66 @@ export const makeDesktopClientProtocol = (
           request: RpcMessage.FromClientEncoded
         ): Effect.Effect<void, RpcClientError.RpcClientError> => {
           if (request._tag === "Request") {
-            const requestId = String(request.id)
-            const transportRequestId = clientRequestId(_clientId, requestId)
-            requestClients.set(transportRequestId, { clientId: _clientId, requestId })
-            const fields: {
-              kind: "request"
-              id: string
-              method: string
-              timestamp: number
-              traceId: string
-              windowId?: string
-              originToken?: string
-              payload?: unknown
-            } = {
-              kind: "request",
-              id: transportRequestId,
-              method: request.tag,
-              timestamp: resolved.now(),
-              traceId: request.traceId ?? resolved.nextTraceId()
-            }
-            if (resolved.windowId !== "") fields.windowId = resolved.windowId
-            if (resolved.originToken !== "") fields.originToken = resolved.originToken
-            if (request.payload !== undefined) fields.payload = request.payload
-            return transport.send(new HostProtocolRequestEnvelope(fields)) as Effect.Effect<
-              void,
-              RpcClientError.RpcClientError
-            >
+            return Effect.gen(function* () {
+              const requestId = String(request.id)
+              const transportRequestId = yield* validateHostProtocolNonEmptyString(
+                "id",
+                resolved.nextRequestId(_clientId, requestId),
+                request.tag
+              )
+              const timestamp = yield* validateHostProtocolTimestamp(resolved.now(), request.tag)
+              const traceId = yield* validateHostProtocolNonEmptyString(
+                "traceId",
+                request.traceId ?? resolved.nextTraceId(),
+                request.tag
+              )
+              const fields: {
+                kind: "request"
+                id: string
+                method: string
+                timestamp: number
+                traceId: string
+                windowId?: string
+                originToken?: string
+                payload?: unknown
+              } = {
+                kind: "request",
+                id: transportRequestId,
+                method: request.tag,
+                timestamp,
+                traceId
+              }
+              if (resolved.windowId !== "") fields.windowId = resolved.windowId
+              if (resolved.originToken !== "") fields.originToken = resolved.originToken
+              if (request.payload !== undefined) fields.payload = request.payload
+              const envelope = new HostProtocolRequestEnvelope(fields)
+              requestClients.set(transportRequestId, { clientId: _clientId, requestId })
+              clientRequestIds.set(clientRequestId(_clientId, requestId), transportRequestId)
+              yield* transport.send(envelope)
+            }).pipe(Effect.mapError(hostProtocolErrorToRpcClientError))
           }
           if (request._tag === "Interrupt") {
-            const requestId = String(request.requestId)
-            const transportRequestId = clientRequestId(_clientId, requestId)
-            requestClients.delete(transportRequestId)
-            return transport.send(
-              new HostProtocolCancelByRequestEnvelope({
-                kind: "cancel",
-                id: transportRequestId,
-                timestamp: resolved.now(),
-                traceId: resolved.nextTraceId()
-              })
-            ) as Effect.Effect<void, RpcClientError.RpcClientError>
+            return Effect.gen(function* () {
+              const requestId = String(request.requestId)
+              const clientRequestKey = clientRequestId(_clientId, requestId)
+              const transportRequestId = clientRequestIds.get(clientRequestKey) ?? clientRequestKey
+              const timestamp = yield* validateHostProtocolTimestamp(resolved.now(), requestId)
+              const traceId = yield* validateHostProtocolNonEmptyString(
+                "traceId",
+                resolved.nextTraceId(),
+                requestId
+              )
+              requestClients.delete(transportRequestId)
+              clientRequestIds.delete(clientRequestKey)
+              yield* transport.send(
+                new HostProtocolCancelByRequestEnvelope({
+                  kind: "cancel",
+                  id: transportRequestId,
+                  timestamp,
+                  traceId
+                })
+              )
+            }).pipe(Effect.mapError(hostProtocolErrorToRpcClientError))
           }
           return Effect.void
         },
@@ -1151,12 +1276,16 @@ export const makeDesktopClientProtocol = (
             return Effect.void
           }
           requestClients.delete(envelope.id)
+          clientRequestIds.delete(clientRequestId(pending.clientId, pending.requestId))
           const msg: RpcMessage.FromServerEncoded =
             envelope.error !== undefined
               ? {
                   _tag: "Exit",
                   requestId: pending.requestId,
-                  exit: { _tag: "Failure", cause: [{ _tag: "Fail", error: envelope.error }] }
+                  exit: {
+                    _tag: "Failure",
+                    cause: [{ _tag: "Fail", error: encodeHostProtocolErrorSync(envelope.error) }]
+                  }
                 }
               : {
                   _tag: "Exit",
@@ -1172,12 +1301,13 @@ export const makeDesktopClientProtocol = (
           }
           if (envelope.error !== undefined) {
             requestClients.delete(envelope.id)
+            clientRequestIds.delete(clientRequestId(pending.clientId, pending.requestId))
             const failure: RpcMessage.FromServerEncoded = {
               _tag: "Exit",
               requestId: pending.requestId,
               exit: {
                 _tag: "Failure",
-                cause: [{ _tag: "Fail", error: envelope.error }]
+                cause: [{ _tag: "Fail", error: encodeHostProtocolErrorSync(envelope.error) }]
               }
             }
             return writeToClient(pending.clientId, failure)
@@ -1203,8 +1333,15 @@ export const makeDesktopServerProtocol = (
   options: DesktopProtocolOptions = {}
 ): Effect.Effect<RpcServer.Protocol["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
-    const resolved = resolveProtocolOptions(options)
+    const clock = yield* Clock.Clock
+    const resolved = resolveProtocolOptions(options, () => clock.currentTimeMillisUnsafe())
     const disconnects = yield* Queue.unbounded<number>()
+    const hostRequestIds = new Map<string, string>()
+    const serverRequestIds = new Map<
+      string,
+      { readonly clientId: number; readonly requestId: string }
+    >()
+    let nextServerRequestId = 0n
 
     let writeToServer: ServerWriteFn = (_clientId, _data) => Effect.void
 
@@ -1215,6 +1352,7 @@ export const makeDesktopServerProtocol = (
         send: (_clientId: number, response: RpcMessage.FromServerEncoded): Effect.Effect<void> => {
           if (response._tag === "Exit") {
             const exit = response.exit
+            const requestId = resolveHostRequestId(hostRequestIds, _clientId, response.requestId)
             const fields: {
               kind: "response"
               id: string
@@ -1224,37 +1362,66 @@ export const makeDesktopServerProtocol = (
               error?: HostProtocolError
             } = {
               kind: "response",
-              id: response.requestId,
+              id: requestId,
               timestamp: resolved.now(),
               traceId: resolved.nextTraceId()
             }
             if (exit._tag === "Success") {
               fields.payload = exit.value
             } else {
-              fields.error = encodeCauseAsHostProtocolError(
-                exit.cause,
-                response.requestId,
-                resolved
-              )
+              fields.error = encodeCauseAsHostProtocolError(exit.cause, requestId, resolved)
             }
+            hostRequestIds.delete(serverRequestKey(_clientId, response.requestId))
+            serverRequestIds.delete(requestId)
             return transport.send(new HostProtocolResponseEnvelope(fields))
           }
           if (response._tag === "Chunk") {
             if (response.values.length === 0) {
               return Effect.void
             }
+            const requestId = resolveHostRequestId(hostRequestIds, _clientId, response.requestId)
             return Effect.forEach(
               response.values,
               (value) =>
                 transport.send(
                   new HostProtocolStreamByRequestEnvelope({
                     kind: "stream",
-                    id: response.requestId,
+                    id: requestId,
                     timestamp: resolved.now(),
                     traceId: resolved.nextTraceId(),
                     payload: value
                   })
                 ),
+              { discard: true }
+            )
+          }
+          if (response._tag === "Defect" || response._tag === "ClientProtocolError") {
+            const requestIds = hostRequestIdsForClient(serverRequestIds, _clientId)
+            if (requestIds.length === 0) {
+              return Effect.void
+            }
+            return Effect.forEach(
+              requestIds,
+              (requestId) => {
+                const pending = serverRequestIds.get(requestId)
+                const error =
+                  response._tag === "Defect"
+                    ? makeHostProtocolInternalError(formatDefect(response.defect), requestId)
+                    : makeHostProtocolInternalError(formatDefect(response.error), requestId)
+                serverRequestIds.delete(requestId)
+                if (pending !== undefined) {
+                  hostRequestIds.delete(serverRequestKey(pending.clientId, pending.requestId))
+                }
+                return transport.send(
+                  new HostProtocolResponseEnvelope({
+                    kind: "response",
+                    id: requestId,
+                    timestamp: resolved.now(),
+                    traceId: resolved.nextTraceId(),
+                    error
+                  })
+                )
+              },
               { discard: true }
             )
           }
@@ -1272,22 +1439,32 @@ export const makeDesktopServerProtocol = (
     yield* Effect.forkScoped(
       transport.run((envelope) => {
         if (envelope.kind === "request") {
+          const serverRequestId = String(nextServerRequestId)
+          nextServerRequestId += 1n
+          const clientId = 0
+          hostRequestIds.set(serverRequestKey(clientId, serverRequestId), envelope.id)
+          serverRequestIds.set(envelope.id, { clientId, requestId: serverRequestId })
+          const headers: Array<[string, string]> = [["x-effect-desktop-trace-id", envelope.traceId]]
+          if (envelope.windowId !== undefined) {
+            headers.push(["x-effect-desktop-window-id", envelope.windowId])
+          }
           const request: RpcMessage.FromClientEncoded = {
             _tag: "Request",
-            id: envelope.id,
+            id: serverRequestId,
             tag: envelope.method,
-            payload: envelope.payload,
-            headers: [],
+            payload: envelope.payload === undefined ? null : envelope.payload,
+            headers,
             traceId: envelope.traceId
           }
-          return writeToServer(0, request)
+          return writeToServer(clientId, request)
         }
         if (envelope.kind === "cancel" && typeof envelope.id === "string") {
+          const pending = serverRequestIds.get(envelope.id)
           const interrupt: RpcMessage.FromClientEncoded = {
             _tag: "Interrupt",
-            requestId: envelope.id
+            requestId: pending?.requestId ?? envelope.id
           }
-          return writeToServer(0, interrupt)
+          return writeToServer(pending?.clientId ?? 0, interrupt)
         }
         return Effect.void
       })
@@ -1295,3 +1472,25 @@ export const makeDesktopServerProtocol = (
 
     return protocol
   })
+
+const serverRequestKey = (clientId: number, requestId: string | bigint): string =>
+  `${clientId}:${String(requestId)}`
+
+const resolveHostRequestId = (
+  hostRequestIds: ReadonlyMap<string, string>,
+  clientId: number,
+  requestId: string | bigint
+): string => hostRequestIds.get(serverRequestKey(clientId, requestId)) ?? String(requestId)
+
+const hostRequestIdsForClient = (
+  serverRequestIds: ReadonlyMap<string, { readonly clientId: number; readonly requestId: string }>,
+  clientId: number
+): ReadonlyArray<string> => {
+  const requestIds: string[] = []
+  for (const [hostRequestId, pending] of serverRequestIds) {
+    if (pending.clientId === clientId) {
+      requestIds.push(hostRequestId)
+    }
+  }
+  return requestIds
+}
