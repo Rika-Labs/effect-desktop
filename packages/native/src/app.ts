@@ -1,13 +1,10 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -156,11 +153,6 @@ export const makeAppClientLayer = (client: AppClientApi): Layer.Layer<AppClient>
 export const makeAppServiceLayer = (client: AppClientApi): Layer.Layer<App> =>
   Layer.provide(AppLive, makeAppClientLayer(client))
 
-export const makeAppBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<AppClient> => AppSurface.bridgeClientLayer(exchange, options)
-
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 
 export type AppRpcHandlers = RpcGroup.HandlersFrom<AppRpc>
@@ -215,11 +207,6 @@ export const AppSurface = NativeSurface.make("App", AppRpcGroup, {
   bridgeClient: (client, exchange) => appClientFromRpcClient(client, exchange),
   client: (client) => appClientFromRpcClient(client, undefined)
 })
-
-export const makeHostAppRpcRuntime = (
-  handlers: AppRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => AppSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {

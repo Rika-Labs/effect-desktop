@@ -1,15 +1,11 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -172,12 +168,6 @@ export const makeSystemAppearanceServiceLayer = (
 ): Layer.Layer<SystemAppearance> =>
   Layer.provide(SystemAppearanceLive, makeSystemAppearanceClientLayer(client))
 
-export const makeSystemAppearanceBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<SystemAppearanceClient> =>
-  SystemAppearanceSurface.bridgeClientLayer(exchange, options)
-
 export type SystemAppearanceRpc = RpcGroup.Rpcs<typeof SystemAppearanceRpcGroup>
 
 export type SystemAppearanceRpcHandlers = RpcGroup.HandlersFrom<SystemAppearanceRpc>
@@ -240,12 +230,6 @@ export const SystemAppearanceSurface = NativeSurface.make(
       )
   }
 )
-
-export const makeHostSystemAppearanceRpcRuntime = (
-  handlers: SystemAppearanceRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  SystemAppearanceSurface.hostRuntime(handlers, runtimeOptions)
 
 const systemAppearanceClientFromRpcClient = (
   client: DesktopRpcClient<SystemAppearanceRpc>,

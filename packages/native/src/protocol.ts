@@ -1,8 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -10,7 +6,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 import * as nodePath from "node:path"
 
@@ -112,11 +108,6 @@ export const makeProtocolClientLayer = (client: ProtocolClientApi): Layer.Layer<
 export const makeProtocolServiceLayer = (client: ProtocolClientApi): Layer.Layer<Protocol> =>
   Layer.provide(ProtocolLive, makeProtocolClientLayer(client))
 
-export const makeProtocolBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ProtocolClient> => ProtocolSurface.bridgeClientLayer(exchange, options)
-
 export type ProtocolRpc = RpcGroup.Rpcs<typeof ProtocolRpcGroup>
 
 export type ProtocolRpcHandlers = RpcGroup.HandlersFrom<ProtocolRpc>
@@ -150,11 +141,6 @@ export const ProtocolSurface = NativeSurface.make("Protocol", ProtocolRpcGroup, 
   handlers: ProtocolHandlersLive,
   client: (client) => protocolClientFromRpcClient(client)
 })
-
-export const makeHostProtocolRpcRuntime = (
-  handlers: ProtocolRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => ProtocolSurface.hostRuntime(handlers, runtimeOptions)
 
 const protocolClientFromRpcClient = (client: DesktopRpcClient<ProtocolRpc>): ProtocolClientApi => {
   return Object.freeze({

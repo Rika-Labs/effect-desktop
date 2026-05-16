@@ -250,26 +250,8 @@ import {
   type WebViewClientApi,
   type WindowClientApi
 } from "./index.js"
-import { makeAppBridgeClientLayer } from "./app.js"
-import { makeClipboardBridgeClientLayer } from "./clipboard.js"
-import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
-import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
-import { makeDialogBridgeClientLayer } from "./dialog.js"
-import { makeDockBridgeClientLayer } from "./dock.js"
-import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
-import { makeMenuBridgeClientLayer } from "./menu.js"
-import { makeNotificationBridgeClientLayer } from "./notification.js"
-import { makePathBridgeClientLayer } from "./path.js"
-import { makePowerMonitorBridgeClientLayer } from "./power-monitor.js"
-import { makeProtocolBridgeClientLayer } from "./protocol.js"
-import { makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
-import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
-import { makeShellBridgeClientLayer } from "./shell.js"
-import { makeSystemAppearanceBridgeClientLayer } from "./system-appearance.js"
-import { makeTrayBridgeClientLayer } from "./tray.js"
-import { makeUpdaterBridgeClientLayer } from "./updater.js"
-import { makeWebViewBridgeClientLayer, webViewCapability } from "./webview.js"
-import { makeHostWindowRpcRuntime, makeWindowBridgeClientLayer } from "./window.js"
+import { webViewCapability } from "./webview.js"
+import { makeHostWindowRpcRuntime } from "./window.js"
 import {
   AppBeforeQuitEvent,
   AppCommandLine,
@@ -929,7 +911,7 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
       const openFiles = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
 
       return { info, openFiles }
-    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))))
   )
 
   expect(result.info).toEqual(
@@ -970,7 +952,7 @@ test("App bridge client keeps input decoding strict while event decoding remains
   const app = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* App
-    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))))
   )
 
   const invalidInput = { scheme: "effect-desktop", ignoredByHost: true }
@@ -1003,7 +985,7 @@ test("App bridge client rejects event envelopes for the wrong method", async () 
     Effect.gen(function* () {
       const app = yield* App
       return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
-    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))))
   )
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -1037,7 +1019,7 @@ test("App bridge client validates protocol registration scheme before host reque
       Effect.provide(
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(
+          AppSurface.bridgeClientLayer(
             appExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -1066,7 +1048,7 @@ test("App bridge client rejects malformed App.getInfo and App.getCommandLine out
       Effect.provide(
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(
+          AppSurface.bridgeClientLayer(
             appExchange(requests, (request) =>
               request.method === "App.getInfo"
                 ? {
@@ -1111,7 +1093,7 @@ test("App single-instance lock rejects invalid primary pid results", async () =>
         Effect.provide(
           Layer.provide(
             AppLive,
-            makeAppBridgeClientLayer(
+            AppSurface.bridgeClientLayer(
               appExchange(requests, (request) =>
                 request.method === "App.requestSingleInstanceLock"
                   ? { kind: "success", payload }
@@ -1187,7 +1169,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
       Effect.provide(
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(invalidUrlExchange, {
+          AppSurface.bridgeClientLayer(invalidUrlExchange, {
             nextRequestId: nextId(["unused"]),
             nextTraceId: nextId(["unused"]),
             now: nextNumber([1710000000000])
@@ -1205,7 +1187,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
       Effect.provide(
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(invalidSecondInstanceExchange, {
+          AppSurface.bridgeClientLayer(invalidSecondInstanceExchange, {
             nextRequestId: nextId(["unused"]),
             nextTraceId: nextId(["unused"]),
             now: nextNumber([1710000000000])
@@ -1223,7 +1205,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
       Effect.provide(
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(invalidBeforeQuitExchange, {
+          AppSurface.bridgeClientLayer(invalidBeforeQuitExchange, {
             nextRequestId: nextId(["unused"]),
             nextTraceId: nextId(["unused"]),
             now: nextNumber([1710000000000])
@@ -1270,7 +1252,7 @@ test("App bridge client rejects empty or NUL-bearing onOpenFile paths as Invalid
         Effect.provide(
           Layer.provide(
             AppLive,
-            makeAppBridgeClientLayer(exchange, {
+            AppSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["unused"]),
               nextTraceId: nextId(["unused"]),
               now: nextNumber([1710000000000])
@@ -1293,7 +1275,7 @@ test("App bridge client rejects empty or NUL-bearing lifecycle args as InvalidAr
       Effect.provide(
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(
+          AppSurface.bridgeClientLayer(
             appExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -1323,7 +1305,7 @@ test("App bridge client rejects non-portable quit exit codes as InvalidArgument"
       Effect.provide(
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(
+          AppSurface.bridgeClientLayer(
             appExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -1420,7 +1402,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
 
       return { blocked, canOpenDevtools, created, screenshot }
-    }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(WebViewLive, WebViewSurface.bridgeClientLayer(exchange))))
   )
 
   expect(result.created).toMatchObject(webviewHandle)
@@ -1468,7 +1450,7 @@ test("WebView captureScreenshot rejects empty byte payloads", async () => {
       Effect.provide(
         Layer.provide(
           WebViewLive,
-          makeWebViewBridgeClientLayer(
+          WebViewSurface.bridgeClientLayer(
             webViewExchange(requests, (request) => ({
               kind: "success",
               payload:
@@ -1531,7 +1513,7 @@ test("WebView bridge client rejects control-byte navigation-blocked reasons", as
       Effect.provide(
         Layer.provide(
           WebViewLive,
-          makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+          WebViewSurface.bridgeClientLayer(exchange, { nextTraceId: () => "trace" })
         )
       )
     )
@@ -1574,7 +1556,7 @@ test("WebView bridge client rejects invalid navigation-blocked event URLs", asyn
       Effect.provide(
         Layer.provide(
           WebViewLive,
-          makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+          WebViewSurface.bridgeClientLayer(exchange, { nextTraceId: () => "trace" })
         )
       )
     )
@@ -1592,7 +1574,7 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
   const client = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* WebView
-    }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(WebViewLive, WebViewSurface.bridgeClientLayer(exchange))))
   )
 
   const javascriptCreateExit = await Effect.runPromiseExit(
@@ -1655,7 +1637,7 @@ test("WebView bridge client rejects malformed screenshot output bytes as Invalid
         Effect.provide(
           Layer.provide(
             WebViewLive,
-            makeWebViewBridgeClientLayer(exchange, {
+            WebViewSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["capture-screenshot-request"]),
               nextTraceId: nextId(["capture-screenshot-trace"]),
               now: nextNumber([1710000000000])
@@ -1874,7 +1856,10 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
       return { activated }
     }).pipe(
       Effect.provide(
-        Layer.mergeAll(Layer.provide(MenuLive, makeMenuBridgeClientLayer(exchange)), commandLayer)
+        Layer.mergeAll(
+          Layer.provide(MenuLive, MenuSurface.bridgeClientLayer(exchange)),
+          commandLayer
+        )
       )
     )
   )
@@ -1940,7 +1925,7 @@ test("Menu bridge client rejects empty activation event identifiers as InvalidOu
           Layer.mergeAll(
             Layer.provide(
               MenuLive,
-              makeMenuBridgeClientLayer(exchange, {
+              MenuSurface.bridgeClientLayer(exchange, {
                 nextRequestId: nextId(["unused"]),
                 nextTraceId: nextId(["unused"]),
                 now: nextNumber([1710000000000])
@@ -1983,7 +1968,7 @@ test("Menu bridge client decodes activation events with no windowId field", asyn
         Layer.mergeAll(
           Layer.provide(
             MenuLive,
-            makeMenuBridgeClientLayer(exchange, {
+            MenuSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["unused"]),
               nextTraceId: nextId(["unused"]),
               now: nextNumber([1710000000000])
@@ -2009,7 +1994,7 @@ test("Menu bridge client returns invalid templates as typed Effect failures", as
       Effect.provide(
         Layer.provide(
           MenuLive,
-          makeMenuBridgeClientLayer(
+          MenuSurface.bridgeClientLayer(
             menuExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2110,7 +2095,7 @@ test("Menu bridge client rejects NUL-bearing accelerators before transport", asy
       Effect.provide(
         Layer.provide(
           MenuLive,
-          makeMenuBridgeClientLayer(
+          MenuSurface.bridgeClientLayer(
             menuExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2166,7 +2151,7 @@ test("Menu bridge client rejects application menu root items before transport", 
       Effect.provide(
         Layer.provide(
           MenuLive,
-          makeMenuBridgeClientLayer(
+          MenuSurface.bridgeClientLayer(
             menuExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2352,7 +2337,7 @@ test("ContextMenu bridge client validates window menu inputs and decodes activat
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
-          Layer.provide(ContextMenuLive, makeContextMenuBridgeClientLayer(exchange)),
+          Layer.provide(ContextMenuLive, ContextMenuSurface.bridgeClientLayer(exchange)),
           commandLayer
         )
       )
@@ -2402,7 +2387,7 @@ test("ContextMenu bridge client rejects invalid popup positions before transport
           Layer.mergeAll(
             Layer.provide(
               ContextMenuLive,
-              makeContextMenuBridgeClientLayer(exchange, {
+              ContextMenuSurface.bridgeClientLayer(exchange, {
                 nextRequestId: nextId(["unused"]),
                 nextTraceId: nextId(["unused"]),
                 now: nextNumber([1710000000000])
@@ -2455,7 +2440,7 @@ test("ContextMenu bridge client rejects empty activation event identifiers as In
           Layer.mergeAll(
             Layer.provide(
               ContextMenuLive,
-              makeContextMenuBridgeClientLayer(exchange, {
+              ContextMenuSurface.bridgeClientLayer(exchange, {
                 nextRequestId: nextId(["unused"]),
                 nextTraceId: nextId(["unused"]),
                 now: nextNumber([1710000000000])
@@ -2532,7 +2517,7 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
       yield* tray.destroy(created)
 
       return { activated, created }
-    }).pipe(Effect.provide(Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(TrayLive, TraySurface.bridgeClientLayer(exchange))))
   )
 
   expect(result.created).toMatchObject(trayHandle)
@@ -2580,7 +2565,7 @@ test("Tray bridge client rejects empty activation event identifiers as InvalidOu
       Effect.gen(function* () {
         const tray = yield* Tray
         return yield* Effect.exit(tray.onActivated().pipe(Stream.take(1), Stream.runCollect))
-      }).pipe(Effect.provide(Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))))
+      }).pipe(Effect.provide(Layer.provide(TrayLive, TraySurface.bridgeClientLayer(exchange))))
     )
 
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -2608,7 +2593,7 @@ test("Tray bridge client decodes activation events with no ownerWindowId field",
     Effect.gen(function* () {
       const tray = yield* Tray
       return yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
-    }).pipe(Effect.provide(Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(TrayLive, TraySurface.bridgeClientLayer(exchange))))
   )
 
   expect(Array.from(events)).toEqual([new TrayActivatedEvent({ tray: trayHandle })])
@@ -2623,7 +2608,7 @@ test("Tray bridge client rejects invalid icon and tooltip metadata before transp
       Effect.provide(
         Layer.provide(
           TrayLive,
-          makeTrayBridgeClientLayer(
+          TraySurface.bridgeClientLayer(
             trayExchange(requests, () => ({ kind: "success", payload: trayHandle }))
           )
         )
@@ -2654,7 +2639,7 @@ test("Tray bridge client rejects stale destroy handles before host transport", a
       Effect.provide(
         Layer.provide(
           TrayLive,
-          makeTrayBridgeClientLayer(
+          TraySurface.bridgeClientLayer(
             trayExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2736,7 +2721,7 @@ test("Dialog bridge client sends typed host envelopes and decodes outputs", asyn
       const confirmed = yield* dialog.confirm({ message: "Proceed?", confirmLabel: "Yes" })
 
       return { confirmed, directories, files, savePath }
-    }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange))))
   )
 
   expect(result.files).toEqual(["/canonical/file.txt"])
@@ -2761,7 +2746,7 @@ test("Dialog bridge client returns invalid input as typed Effect failures", asyn
       Effect.provide(
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2831,7 +2816,9 @@ test("Clipboard bridge client sends typed host envelopes and decodes outputs", a
       yield* clipboard.clear()
 
       return { image, text }
-    }).pipe(Effect.provide(Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(exchange))))
+    }).pipe(
+      Effect.provide(Layer.provide(ClipboardLive, ClipboardSurface.bridgeClientLayer(exchange)))
+    )
   )
 
   expect(result.text).toBe("from host")
@@ -2854,7 +2841,7 @@ test("Clipboard bridge client rejects mismatched image mime before transport", a
       Effect.provide(
         Layer.provide(
           ClipboardLive,
-          makeClipboardBridgeClientLayer(
+          ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2886,7 +2873,7 @@ test("Clipboard bridge client rejects malformed image headers from host as Inval
         Effect.provide(
           Layer.provide(
             ClipboardLive,
-            makeClipboardBridgeClientLayer(
+            ClipboardSurface.bridgeClientLayer(
               clipboardExchange(requests, (request) => ({
                 kind: "success",
                 payload: request.method === "Clipboard.readImage" ? payload : undefined
@@ -2912,7 +2899,7 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
       Effect.provide(
         Layer.provide(
           ClipboardLive,
-          makeClipboardBridgeClientLayer(
+          ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2930,7 +2917,7 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
       Effect.provide(
         Layer.provide(
           ClipboardLive,
-          makeClipboardBridgeClientLayer(
+          ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2950,7 +2937,7 @@ test("Clipboard bridge client runs generated methods inside the layer scope", as
       Effect.provide(
         Layer.provide(
           ClipboardLive,
-          makeClipboardBridgeClientLayer(
+          ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, (request) => ({
               kind: "success",
               payload: request.method === "Clipboard.readText" ? { text: "after scope" } : undefined
@@ -3049,7 +3036,9 @@ test("Notification bridge client sends typed host envelopes and decodes events",
 
       return { action, requested, shown, status, supported }
     }).pipe(
-      Effect.provide(Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange)))
+      Effect.provide(
+        Layer.provide(NotificationLive, NotificationSurface.bridgeClientLayer(exchange))
+      )
     )
   )
 
@@ -3100,7 +3089,7 @@ test("Notification bridge client returns invalid input as typed Effect failures"
         Effect.provide(
           Layer.provide(
             NotificationLive,
-            makeNotificationBridgeClientLayer(
+            NotificationSurface.bridgeClientLayer(
               notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
             )
           )
@@ -3136,7 +3125,7 @@ test("Notification bridge client rejects invalid action ids and labels before tr
         Effect.provide(
           Layer.provide(
             NotificationLive,
-            makeNotificationBridgeClientLayer(
+            NotificationSurface.bridgeClientLayer(
               notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
             )
           )
@@ -3186,7 +3175,9 @@ test("Notification action stream rejects malformed actionId payloads as InvalidO
         const notification = yield* Notification
         return yield* Effect.exit(notification.onAction().pipe(Stream.take(1), Stream.runCollect))
       }).pipe(
-        Effect.provide(Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange)))
+        Effect.provide(
+          Layer.provide(NotificationLive, NotificationSurface.bridgeClientLayer(exchange))
+        )
       )
     )
 
@@ -3253,7 +3244,7 @@ test("Path bridge client sends typed host envelopes and decodes canonical paths"
         home: yield* path.home(),
         downloads: yield* path.downloads()
       }
-    }).pipe(Effect.provide(Layer.provide(PathLive, makePathBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(PathLive, PathSurface.bridgeClientLayer(exchange))))
   )
 
   expect(result).toEqual({
@@ -3303,7 +3294,7 @@ test("Path bridge client rejects NUL-bearing host output as InvalidOutput", asyn
         Effect.provide(
           Layer.provide(
             PathLive,
-            makePathBridgeClientLayer(exchange, {
+            PathSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId([`${name}-request`]),
               nextTraceId: nextId([`${name}-trace`]),
               now: nextNumber([1710000000000])
@@ -3334,7 +3325,7 @@ test("Path bridge client rejects relative canonical paths from host as InvalidOu
       Effect.provide(
         Layer.provide(
           PathLive,
-          makePathBridgeClientLayer(
+          PathSurface.bridgeClientLayer(
             pathExchange([], () => ({ kind: "success", payload: { path: "relative/path" } }))
           )
         )
@@ -3400,7 +3391,7 @@ test("Protocol bridge client validates custom schemes and path boundaries", asyn
       Effect.provide(
         Layer.provide(
           ProtocolLive,
-          makeProtocolBridgeClientLayer(
+          ProtocolSurface.bridgeClientLayer(
             protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -3429,7 +3420,7 @@ test("Protocol bridge client rejects control characters in paths as InvalidArgum
       Effect.provide(
         Layer.provide(
           ProtocolLive,
-          makeProtocolBridgeClientLayer(
+          ProtocolSurface.bridgeClientLayer(
             protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -3513,7 +3504,7 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
       )
       return { available, emptyKeyExit, keys, secret }
     }).pipe(
-      Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+      Effect.provide(Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange)))
     )
   )
 
@@ -3549,7 +3540,9 @@ test("SafeStorage bridge client rejects control-byte keys as InvalidArgument", a
       Effect.gen(function* () {
         return yield* SafeStorage
       }).pipe(
-        Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+        Effect.provide(
+          Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
+        )
       )
     )
 
@@ -3583,7 +3576,9 @@ test("SafeStorage bridge client rejects invalid keys in list output as InvalidOu
         const storage = yield* SafeStorage
         return yield* Effect.exit(storage.list())
       }).pipe(
-        Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+        Effect.provide(
+          Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
+        )
       )
     )
 
@@ -3602,7 +3597,7 @@ test("SafeStorage bridge client decodes valid printable keys in list output", as
       const storage = yield* SafeStorage
       return yield* storage.list()
     }).pipe(
-      Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
+      Effect.provide(Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange)))
     )
   )
 
@@ -3690,7 +3685,7 @@ test("Updater bridge client sends typed host envelopes and decodes status values
       const downloaded = yield* updater.download({ version: "1.1.0" })
       const status = yield* updater.getStatus()
       return { check, downloaded, status }
-    }).pipe(Effect.provide(Layer.provide(UpdaterLive, makeUpdaterBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(UpdaterLive, UpdaterSurface.bridgeClientLayer(exchange))))
   )
 
   expect(result.check.available).toBe(true)
@@ -3837,7 +3832,9 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
       const flush = yield* reporter.flush()
       return { flush }
     }).pipe(
-      Effect.provide(Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)))
+      Effect.provide(
+        Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange))
+      )
     )
   )
 
@@ -3877,7 +3874,9 @@ test("CrashReporter bridge client rejects cyclic breadcrumb details before host 
         })
       )
     }).pipe(
-      Effect.provide(Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)))
+      Effect.provide(
+        Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange))
+      )
     )
   )
 
@@ -3900,7 +3899,7 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
         return yield* Effect.exit(reporter.flush())
       }).pipe(
         Effect.provide(
-          Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
+          Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange))
         )
       )
     )
@@ -3952,7 +3951,7 @@ test("Shell bridge client validates schemes and path argv before transport", asy
       Effect.provide(
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -3986,7 +3985,7 @@ test("Shell bridge client validates external URL schemes", async () => {
       Effect.provide(
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -4010,7 +4009,7 @@ test("Shell bridge client rejects control characters in external URLs before tra
       Effect.provide(
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -4420,7 +4419,7 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
         pointer: yield* screen.getPointerPoint(),
         pointerSupported: yield* screen.isSupported("getPointerPoint")
       }
-    }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(ScreenLive, ScreenSurface.bridgeClientLayer(exchange))))
   )
 
   expect(result.displays).toEqual([primaryDisplay])
@@ -4437,7 +4436,7 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
 
 test("native host RPC runtime denies protected Screen calls before handlers run", async () => {
   const calls: string[] = []
-  const runtime = makeHostScreenRpcRuntime(
+  const runtime = ScreenSurface.hostRuntime(
     {
       "Screen.getDisplays": () =>
         Effect.sync(() => {
@@ -4474,7 +4473,7 @@ test("native host RPC runtime denies protected Screen calls before handlers run"
 
 test("native host RPC runtime lets permission-free Screen support calls pass through", async () => {
   const calls: string[] = []
-  const runtime = makeHostScreenRpcRuntime(
+  const runtime = ScreenSurface.hostRuntime(
     {
       "Screen.getDisplays": () => Effect.succeed(new ScreenDisplaysResult({ displays: [] })),
       "Screen.getPrimaryDisplay": () => Effect.succeed(primaryDisplay),
@@ -4508,18 +4507,17 @@ test("native host RPC runtime lets permission-free Screen support calls pass thr
 })
 
 test("Screen bridge client validates generated protocol timestamps as typed failures", async () => {
-  const assertScreenBridgeClientOptionsRejectRequestId = (
-    makeLayer: typeof makeScreenBridgeClientLayer
+  const assertScreenSurfaceBridgeClientOptionsAcceptRequestId = (
+    makeLayer: typeof ScreenSurface.bridgeClientLayer
   ): void => {
     makeLayer(
       screenExchange([], () => ({ kind: "success", payload: {} })),
       {
-        // @ts-expect-error Effect RPC owns request IDs for generated Screen clients
         nextRequestId: () => "request-id"
       }
     )
   }
-  void assertScreenBridgeClientOptionsRejectRequestId
+  void assertScreenSurfaceBridgeClientOptionsAcceptRequestId
   const exchange = screenExchange([], () => ({ kind: "success", payload: { displays: [] } }))
   const result = await Effect.runPromiseExit(
     Effect.gen(function* () {
@@ -4527,7 +4525,10 @@ test("Screen bridge client validates generated protocol timestamps as typed fail
       return yield* screen.getDisplays()
     }).pipe(
       Effect.provide(
-        Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange, { now: () => Number.NaN }))
+        Layer.provide(
+          ScreenLive,
+          ScreenSurface.bridgeClientLayer(exchange, { now: () => Number.NaN })
+        )
       )
     )
   )
@@ -4549,7 +4550,7 @@ test("Screen bridge client rejects empty display lists as InvalidOutput", async 
     Effect.gen(function* () {
       const screen = yield* Screen
       return yield* screen.getDisplays()
-    }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(ScreenLive, ScreenSurface.bridgeClientLayer(exchange))))
   )
 
   expectExitFailure(result, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -4582,7 +4583,7 @@ test("Screen bridge client rejects invalid primary display topologies as Invalid
     Effect.gen(function* () {
       const screen = yield* Screen
       return yield* screen.getDisplays()
-    }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(ScreenLive, ScreenSurface.bridgeClientLayer(exchange))))
   )
 
   expectExitFailure(result, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -4659,7 +4660,7 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
       }
     }).pipe(
       Effect.provide(
-        Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+        Layer.provide(SystemAppearanceLive, SystemAppearanceSurface.bridgeClientLayer(exchange))
       )
     )
   )
@@ -4705,7 +4706,10 @@ test("PowerMonitor bridge client decodes power event streams", async () => {
       }
     }).pipe(
       Effect.provide(
-        Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(powerMonitorExchange()))
+        Layer.provide(
+          PowerMonitorLive,
+          PowerMonitorSurface.bridgeClientLayer(powerMonitorExchange())
+        )
       )
     )
   )
@@ -4758,7 +4762,9 @@ test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", 
               : power.onShutdown().pipe(Stream.take(1), Stream.runCollect)
         )
       }).pipe(
-        Effect.provide(Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange)))
+        Effect.provide(
+          Layer.provide(PowerMonitorLive, PowerMonitorSurface.bridgeClientLayer(exchange))
+        )
       )
     )
 
@@ -4816,7 +4822,7 @@ test("Dock bridge client sends typed host envelopes and maps support result", as
       yield* dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
       yield* dock.requestAttention()
       return yield* dock.isSupported("setJumpList")
-    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))))
   )
 
   expect(supported).toBe(true)
@@ -4842,7 +4848,7 @@ test("Dock bridge client rejects invalid badge text before transport", async () 
   const dock = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* Dock
-    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))))
   )
 
   const nulExit = await Effect.runPromiseExit(dock.setBadgeText("bad\u0000text"))
@@ -4865,7 +4871,7 @@ test("Dock bridge client rejects invalid numeric state before transport", async 
   const dock = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* Dock
-    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))))
   )
 
   const negativeBadgeExit = await Effect.runPromiseExit(dock.setBadgeCount(-1))
@@ -4908,7 +4914,7 @@ test("Dock bridge client rejects malformed jump-list items before transport", as
   const dock = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* Dock
-    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
+    }).pipe(Effect.provide(Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))))
   )
 
   for (const items of invalidItems) {
@@ -5033,7 +5039,7 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
       return { pressed, registered, supported }
     }).pipe(
       Effect.provide(
-        Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
       )
     )
   )
@@ -5072,7 +5078,7 @@ test("GlobalShortcut bridge client rejects inconsistent isSupported output as In
         return yield* Effect.exit(client.isSupported())
       }).pipe(
         Effect.provide(
-          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+          Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
         )
       )
     )
@@ -5108,7 +5114,7 @@ test("GlobalShortcut bridge client decodes valid isSupported outputs", async () 
         return yield* shortcuts.isSupported()
       }).pipe(
         Effect.provide(
-          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+          Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
         )
       )
     )
@@ -5149,7 +5155,7 @@ test("GlobalShortcut bridge client rejects invalid pressed event identifiers as 
         return yield* Effect.exit(shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect))
       }).pipe(
         Effect.provide(
-          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+          Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
         )
       )
     )
@@ -5168,7 +5174,7 @@ test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as
       Effect.provide(
         Layer.provide(
           GlobalShortcutLive,
-          makeGlobalShortcutBridgeClientLayer(
+          GlobalShortcutSurface.bridgeClientLayer(
             globalShortcutExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -5599,7 +5605,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     const afterClose = yield* registry.list()
 
     return { created, duringLifetime, afterClose }
-  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+  }).pipe(Effect.provide(Layer.provide(WindowLive, WindowSurface.bridgeClientLayer(rpcExchange))))
 
   const result = await Effect.runPromise(program)
 
@@ -6079,7 +6085,9 @@ test("host WindowClient adapter declares per-window scopes and closes scoped res
         const afterClose = yield* registry.list()
 
         return { child, afterClose }
-      }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+      }).pipe(
+        Effect.provide(Layer.provide(WindowLive, WindowSurface.bridgeClientLayer(rpcExchange)))
+      )
     })
   )
 
@@ -6110,7 +6118,7 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
       yield* client.close(created)
       const repeatedCloseExit = yield* Effect.exit(client.close(created))
       return { malformedInputExit, repeatedCloseExit, staleExit, unknownExit }
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(rpcExchange)))
+    }).pipe(Effect.provide(WindowSurface.bridgeClientLayer(rpcExchange)))
   )
 
   expectExitFailure(
@@ -6144,13 +6152,13 @@ test("host WindowClient adapter maps malformed generated RPC successes to typed 
     Effect.gen(function* () {
       const client = yield* WindowClient
       return yield* client.create({})
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(invalidCreateExchange)))
+    }).pipe(Effect.provide(WindowSurface.bridgeClientLayer(invalidCreateExchange)))
   )
   const closeExit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       const client = yield* WindowClient
       return yield* client.close(windowHandle)
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(invalidCloseExchange)))
+    }).pipe(Effect.provide(WindowSurface.bridgeClientLayer(invalidCloseExchange)))
   )
 
   expectExitFailure(
@@ -6170,7 +6178,7 @@ test("host WindowClient adapter exposes only supported callable methods", async 
   const client = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* WindowClient
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(rpcExchange)))
+    }).pipe(Effect.provide(WindowSurface.bridgeClientLayer(rpcExchange)))
   )
 
   expect("create" in client).toBe(true)
@@ -6194,7 +6202,7 @@ test("Window bridge client rejects invalid chrome inputs before crossing the hos
     const program = Effect.gen(function* () {
       const window = yield* Window
       return yield* Effect.exit(window.create(input as WindowCreateOptions))
-    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+    }).pipe(Effect.provide(Layer.provide(WindowLive, WindowSurface.bridgeClientLayer(rpcExchange))))
 
     const exit = await Effect.runPromise(program)
 
@@ -6212,7 +6220,7 @@ test("Shell bridge client rejects empty path strings as InvalidArgument", async 
       Effect.provide(
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -6239,7 +6247,7 @@ test("Shell bridge client rejects NUL bytes in path inputs as InvalidArgument", 
       Effect.provide(
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -6266,7 +6274,7 @@ test("Path bridge client rejects empty canonical path strings from host as Inval
       Effect.provide(
         Layer.provide(
           PathLive,
-          makePathBridgeClientLayer(
+          PathSurface.bridgeClientLayer(
             pathExchange([], () => ({ kind: "success", payload: { path: "" } }))
           )
         )
@@ -6286,7 +6294,7 @@ test("Updater bridge client rejects empty version strings as InvalidArgument", a
       Effect.provide(
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -6314,7 +6322,7 @@ test("Updater bridge client rejects check responses missing version when availab
       Effect.provide(
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: { available: true } }))
           )
         )
@@ -6344,7 +6352,7 @@ test("Updater bridge client requires version for update-bearing status states", 
         Effect.provide(
           Layer.provide(
             UpdaterLive,
-            makeUpdaterBridgeClientLayer(
+            UpdaterSurface.bridgeClientLayer(
               updaterExchange([], () => ({
                 kind: "success",
                 payload: { state }
@@ -6368,7 +6376,7 @@ test("Updater bridge client rejects out-of-bounds progress values from host as I
       Effect.provide(
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange([], () => ({
               kind: "success",
               payload: { state: "downloading", progress: 1.5 }
@@ -6391,7 +6399,7 @@ test("Updater bridge client rejects control-byte versions as InvalidArgument", a
       Effect.provide(
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -6423,7 +6431,7 @@ test("Updater bridge client rejects control-byte versions from host output", asy
       Effect.provide(
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(checkRequests, () => ({
               kind: "success",
               payload: { available: true, version: "1.2.3\n", notes: "update" }
@@ -6442,7 +6450,7 @@ test("Updater bridge client rejects control-byte versions from host output", asy
       Effect.provide(
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(statusRequests, () => ({
               kind: "success",
               payload: { state: "downloading", version: "2.0.0\u007f", progress: 0.5 }
@@ -6468,7 +6476,7 @@ test("Dialog bridge client rejects empty message strings as InvalidArgument", as
       Effect.provide(
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -6493,7 +6501,7 @@ test("Dialog bridge client rejects NUL bytes in defaultPath as InvalidArgument",
       Effect.provide(
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({
               kind: "success",
               payload: { paths: [] }
@@ -6529,7 +6537,7 @@ test("Dialog bridge client rejects malformed file filters before transport", asy
       Effect.provide(
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({
               kind: "success",
               payload: { paths: ["/canonical/file.txt"] }
@@ -6595,7 +6603,9 @@ test("Dialog bridge client rejects malformed host output paths as InvalidOutput"
             return yield* Effect.exit(dialog.openFile({ defaultPath: "/tmp/seed.txt" }))
           }
           return yield* Effect.exit(dialog.openDirectory({ defaultPath: "/tmp/seed.txt" }))
-        }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
+        }).pipe(
+          Effect.provide(Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange)))
+        )
       )
 
       expectExitFailure(
@@ -6626,7 +6636,7 @@ test("Dialog bridge client runs generated methods inside the layer scope", async
       Effect.provide(
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, (request) => ({
               kind: "success",
               payload: request.method === "Dialog.confirm" ? { confirmed: true } : undefined
@@ -6650,7 +6660,7 @@ test("Dialog bridge client rejects invalid native UI text before transport", asy
       Effect.provide(
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({
               kind: "success",
               payload: { paths: [] }

@@ -1,8 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -14,7 +10,7 @@ import {
   type HostProtocolError,
   unsafeSecretBytes
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -137,11 +133,6 @@ export const makeSafeStorageServiceLayer = (
   client: SafeStorageClientApi
 ): Layer.Layer<SafeStorage> => Layer.provide(SafeStorageLive, makeSafeStorageClientLayer(client))
 
-export const makeSafeStorageBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<SafeStorageClient> => SafeStorageSurface.bridgeClientLayer(exchange, options)
-
 export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>
 
 export type SafeStorageRpcHandlers = RpcGroup.HandlersFrom<SafeStorageRpc>
@@ -183,12 +174,6 @@ export const SafeStorageSurface = NativeSurface.make("SafeStorage", SafeStorageR
   handlers: SafeStorageHandlersLive,
   client: (client) => safeStorageClientFromRpcClient(client)
 })
-
-export const makeHostSafeStorageRpcRuntime = (
-  handlers: SafeStorageRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  SafeStorageSurface.hostRuntime(handlers, runtimeOptions)
 
 const safeStorageClientFromRpcClient = (
   client: DesktopRpcClient<SafeStorageRpc>

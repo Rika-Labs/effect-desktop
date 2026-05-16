@@ -16,7 +16,7 @@ Native RPC endpoints are authored through the package-internal `NativeSurface` h
 
 `Window` is exposed as an Effect service. `WindowRpcs` is the full Window method descriptor with support metadata, and `WindowSupportedRpcs` is the generated callable group used by the bridge client layer. The host runtime binds handlers through canonical Effect RPC groups and bridge protocol adapters. `WindowClient` remains the substitutable port used by tests and adapters, but its supported callable surface is `create` and `close`.
 
-`WindowBridgeClientOptions` omits `nextRequestId` because the generated Effect RPC protocol owns request identifiers for `WindowSurface.bridgeClientLayer(...)`. Tests that need deterministic request ids should assert observed requests at the exchange boundary instead of injecting ids through the Window options object.
+`*Surface.bridgeClientLayer(...)` is the bridge-client assembly API. Tests that need deterministic request ids should assert observed requests at the exchange boundary instead of routing through per-surface bridge-client aliases.
 
 The generated Window client validates caller input before transport and validates host success payloads before returning app values. Invalid caller input fails as `HostProtocolInvalidArgumentError`; malformed create or close success payloads fail as `HostProtocolInvalidOutputError`.
 

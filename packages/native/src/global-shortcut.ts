@@ -5,16 +5,12 @@ import {
   PermissionActor,
   PermissionContext,
   type CommandRegistryError,
-  type PermissionRegistry,
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
 } from "@effect-desktop/core"
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolAlreadyExistsError,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
@@ -260,11 +256,6 @@ export const makeGlobalShortcutServiceLayer = (
 ): Layer.Layer<GlobalShortcut> =>
   Layer.provide(GlobalShortcutLive, makeGlobalShortcutClientLayer(client))
 
-export const makeGlobalShortcutBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<GlobalShortcutClient> => GlobalShortcutSurface.bridgeClientLayer(exchange, options)
-
 export type GlobalShortcutRpc = RpcGroup.Rpcs<typeof GlobalShortcutRpcGroup>
 
 export type GlobalShortcutRpcHandlers = RpcGroup.HandlersFrom<GlobalShortcutRpc>
@@ -305,12 +296,6 @@ export const GlobalShortcutSurface = NativeSurface.make("GlobalShortcut", Global
   bridgeClient: (client, exchange) => globalShortcutClientFromRpcClient(client, exchange),
   client: (client) => globalShortcutClientFromRpcClient(client, undefined)
 })
-
-export const makeHostGlobalShortcutRpcRuntime = (
-  handlers: GlobalShortcutRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  GlobalShortcutSurface.hostRuntime(handlers, runtimeOptions)
 
 const globalShortcutClientFromRpcClient = (
   client: DesktopRpcClient<GlobalShortcutRpc>,

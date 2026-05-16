@@ -5,16 +5,12 @@ import {
   PermissionActor,
   PermissionContext,
   type CommandRegistryError,
-  type PermissionRegistry,
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
 } from "@effect-desktop/core"
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -161,11 +157,6 @@ export const makeMenuClientLayer = (client: MenuClientApi): Layer.Layer<MenuClie
 export const makeMenuServiceLayer = (client: MenuClientApi): Layer.Layer<Menu> =>
   Layer.provide(MenuLive, makeMenuClientLayer(client))
 
-export const makeMenuBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<MenuClient> => MenuSurface.bridgeClientLayer(exchange, options)
-
 export type MenuRpc = RpcGroup.Rpcs<typeof MenuRpcGroup>
 
 export type MenuRpcHandlers = RpcGroup.HandlersFrom<MenuRpc>
@@ -203,11 +194,6 @@ export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
   bridgeClient: (client, exchange) => menuClientFromRpcClient(client, exchange),
   client: (client) => menuClientFromRpcClient(client, undefined)
 })
-
-export const makeHostMenuRpcRuntime = (
-  handlers: MenuRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => MenuSurface.hostRuntime(handlers, runtimeOptions)
 
 export const menuCapability = (
   name: MenuCapabilityName,

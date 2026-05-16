@@ -1,13 +1,9 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -146,11 +142,6 @@ export const makeUpdaterClientLayer = (client: UpdaterClientApi): Layer.Layer<Up
 export const makeUpdaterServiceLayer = (client: UpdaterClientApi): Layer.Layer<Updater> =>
   Layer.provide(UpdaterLive, makeUpdaterClientLayer(client))
 
-export const makeUpdaterBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<UpdaterClient> => UpdaterSurface.bridgeClientLayer(exchange, options)
-
 export type UpdaterRpc = RpcGroup.Rpcs<typeof UpdaterRpcGroup>
 
 export type UpdaterRpcHandlers = RpcGroup.HandlersFrom<UpdaterRpc>
@@ -211,11 +202,6 @@ export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
       )
     )
 })
-
-export const makeHostUpdaterRpcRuntime = (
-  handlers: UpdaterRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => UpdaterSurface.hostRuntime(handlers, runtimeOptions)
 
 const updaterClientFromRpcClient = (
   client: DesktopRpcClient<UpdaterRpc>,

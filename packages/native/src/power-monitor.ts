@@ -1,14 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
+import { type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -99,11 +96,6 @@ export const makePowerMonitorServiceLayer = (
   client: PowerMonitorClientApi
 ): Layer.Layer<PowerMonitor> => Layer.provide(PowerMonitorLive, makePowerMonitorClientLayer(client))
 
-export const makePowerMonitorBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<PowerMonitorClient> => PowerMonitorSurface.bridgeClientLayer(exchange, options)
-
 export type PowerMonitorRpc = RpcGroup.Rpcs<typeof PowerMonitorRpcGroup>
 
 export type PowerMonitorRpcHandlers = RpcGroup.HandlersFrom<PowerMonitorRpc>
@@ -123,12 +115,6 @@ export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonit
   bridgeClient: (client, exchange) => powerMonitorClientFromRpcClient(client, exchange),
   client: (client) => powerMonitorClientFromRpcClient(client, undefined)
 })
-
-export const makeHostPowerMonitorRpcRuntime = (
-  handlers: PowerMonitorRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  PowerMonitorSurface.hostRuntime(handlers, runtimeOptions)
 
 const powerMonitorClientFromRpcClient = (
   client: DesktopRpcClient<PowerMonitorRpc>,

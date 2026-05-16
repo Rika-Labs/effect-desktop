@@ -5,16 +5,12 @@ import {
   PermissionActor,
   PermissionContext,
   type CommandRegistryError,
-  type PermissionRegistry,
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
 } from "@effect-desktop/core"
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -183,11 +179,6 @@ export const makeContextMenuServiceLayer = (
   client: ContextMenuClientApi
 ): Layer.Layer<ContextMenu> => Layer.provide(ContextMenuLive, makeContextMenuClientLayer(client))
 
-export const makeContextMenuBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ContextMenuClient> => ContextMenuSurface.bridgeClientLayer(exchange, options)
-
 export type ContextMenuRpc = RpcGroup.Rpcs<typeof ContextMenuRpcGroup>
 
 export type ContextMenuRpcHandlers = RpcGroup.HandlersFrom<ContextMenuRpc>
@@ -213,12 +204,6 @@ export const ContextMenuSurface = NativeSurface.make("ContextMenu", ContextMenuR
   bridgeClient: (client, exchange) => contextMenuClientFromRpcClient(client, exchange),
   client: (client) => contextMenuClientFromRpcClient(client, undefined)
 })
-
-export const makeHostContextMenuRpcRuntime = (
-  handlers: ContextMenuRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  ContextMenuSurface.hostRuntime(handlers, runtimeOptions)
 
 const contextMenuClientFromRpcClient = (
   client: DesktopRpcClient<ContextMenuRpc>,

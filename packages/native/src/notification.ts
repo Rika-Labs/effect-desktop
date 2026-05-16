@@ -1,13 +1,10 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -151,11 +148,6 @@ export const makeNotificationServiceLayer = (
   client: NotificationClientApi
 ): Layer.Layer<Notification> => Layer.provide(NotificationLive, makeNotificationClientLayer(client))
 
-export const makeNotificationBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<NotificationClient> => NotificationSurface.bridgeClientLayer(exchange, options)
-
 export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
 export type NotificationRpcHandlers = RpcGroup.HandlersFrom<NotificationRpc>
@@ -198,12 +190,6 @@ export const NotificationSurface = NativeSurface.make("Notification", Notificati
   bridgeClient: (client, exchange) => notificationClientFromRpcClient(client, exchange),
   client: (client) => notificationClientFromRpcClient(client, undefined)
 })
-
-export const makeHostNotificationRpcRuntime = (
-  handlers: NotificationRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  NotificationSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeNotificationService = (client: NotificationClientApi): NotificationServiceApi => {
   const service: NotificationServiceApi = {

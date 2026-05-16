@@ -1,8 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
@@ -10,7 +7,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -210,11 +207,6 @@ export const makeWebViewClientLayer = (client: WebViewClientApi): Layer.Layer<We
 export const makeWebViewServiceLayer = (client: WebViewClientApi): Layer.Layer<WebView> =>
   Layer.provide(WebViewLive, makeWebViewClientLayer(client))
 
-export const makeWebViewBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<WebViewClient> => WebViewSurface.bridgeClientLayer(exchange, options)
-
 export type WebViewRpc = RpcGroup.Rpcs<typeof WebViewRpcGroup>
 
 export type WebViewRpcHandlers = RpcGroup.HandlersFrom<WebViewRpc>
@@ -283,11 +275,6 @@ export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   bridgeClient: (client, exchange) => webViewClientFromRpcClient(client, exchange),
   client: (client) => webViewClientFromRpcClient(client, undefined)
 })
-
-export const makeHostWebViewRpcRuntime = (
-  handlers: WebViewRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => WebViewSurface.hostRuntime(handlers, runtimeOptions)
 
 export const webViewCapability = (
   name: WebViewCapabilityName,

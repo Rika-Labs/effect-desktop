@@ -1,8 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
-  type BridgeHandlerRuntime,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -11,7 +7,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import { P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -160,11 +156,6 @@ export const makeDockClientLayer = (client: DockClientApi): Layer.Layer<DockClie
 export const makeDockServiceLayer = (client: DockClientApi): Layer.Layer<Dock> =>
   Layer.provide(DockLive, makeDockClientLayer(client))
 
-export const makeDockBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<DockClient> => DockSurface.bridgeClientLayer(exchange, options)
-
 export type DockRpc = RpcGroup.Rpcs<typeof DockRpcGroup>
 
 export type DockRpcHandlers = RpcGroup.HandlersFrom<DockRpc>
@@ -214,11 +205,6 @@ export const DockSurface = NativeSurface.make("Dock", DockRpcGroup, {
   handlers: DockHandlersLive,
   client: (client) => dockClientFromRpcClient(client)
 })
-
-export const makeHostDockRpcRuntime = (
-  handlers: DockRpcHandlers,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => DockSurface.hostRuntime(handlers, runtimeOptions)
 
 const dockClientFromRpcClient = (client: DesktopRpcClient<DockRpc>): DockClientApi => {
   return Object.freeze({
