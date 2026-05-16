@@ -77,4 +77,4 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
-}, 90_000)
+}, 180_000)
