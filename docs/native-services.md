@@ -50,6 +50,17 @@ Desktop.make({
 })
 ```
 
+Each native surface also exposes an explicit all-permissions declaration layer:
+
+```ts
+Desktop.make({
+  id: "com.acme.windows",
+  windows: Desktop.window("main", { title: "Windows" }),
+  native: Desktop.native(Native.window),
+  permissions: Desktop.permissions(Native.Permissions.window.all)
+})
+```
+
 ## Current native modules
 
 | Module             | Purpose                     | Reference                                                         |

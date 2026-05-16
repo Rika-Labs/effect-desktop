@@ -117,6 +117,16 @@ export const all = Desktop.native(
 const nativePermission = (primitive: string, method: string): NativeInvokeCapability =>
   P.nativeInvoke({ primitive, methods: [method] })
 
+const permissionsLayer = (
+  ...surfaces: readonly NativePermissionSource[]
+): ReturnType<typeof Desktop.permissions> =>
+  Desktop.permissions(...allPermissionCapabilities(surfaces).map(Desktop.permission))
+
+const permissionGroup = (surface: NativePermissionSource) =>
+  Object.freeze({
+    all: permissionsLayer(surface)
+  })
+
 const allPermissionCapabilities = (
   surfaces: readonly NativePermissionSource[]
 ): readonly NormalizedCapability[] => {
@@ -152,18 +162,33 @@ const allPermissionCapabilities = (
 const allNativePermissionCapabilities = allPermissionCapabilities(BuiltInPermissionSources)
 
 export const Permissions = Object.freeze({
+  app: permissionGroup(AppSurface),
   clipboard: Object.freeze({
+    ...permissionGroup(ClipboardSurface),
     readText: nativePermission("Clipboard", "readText"),
     writeText: nativePermission("Clipboard", "writeText"),
     readImage: nativePermission("Clipboard", "readImage"),
     writeImage: nativePermission("Clipboard", "writeImage"),
-    clear: nativePermission("Clipboard", "clear"),
-    all: Desktop.permissions(
-      ...["readText", "writeText", "readImage", "writeImage", "clear"].map((method) =>
-        Desktop.permission(nativePermission("Clipboard", method))
-      )
-    )
+    clear: nativePermission("Clipboard", "clear")
   }),
+  contextMenu: permissionGroup(ContextMenuSurface),
+  crashReporter: permissionGroup(CrashReporterSurface),
+  dialog: permissionGroup(DialogSurface),
+  dock: permissionGroup(DockSurface),
+  globalShortcut: permissionGroup(GlobalShortcutSurface),
+  menu: permissionGroup(MenuSurface),
+  notification: permissionGroup(NotificationSurface),
+  path: permissionGroup(PathSurface),
+  powerMonitor: permissionGroup(PowerMonitorSurface),
+  protocol: permissionGroup(ProtocolSurface),
+  safeStorage: permissionGroup(SafeStorageSurface),
+  screen: permissionGroup(ScreenSurface),
+  shell: permissionGroup(ShellSurface),
+  systemAppearance: permissionGroup(SystemAppearanceSurface),
+  tray: permissionGroup(TraySurface),
+  updater: permissionGroup(UpdaterSurface),
+  webView: permissionGroup(WebViewSurface),
+  window: permissionGroup(WindowSurface),
   all: Desktop.permissions(...allNativePermissionCapabilities.map(Desktop.permission))
 })
 

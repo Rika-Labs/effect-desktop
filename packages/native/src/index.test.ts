@@ -26,6 +26,7 @@ import {
   DesktopSpineConfigError,
   DesktopRpcRegistry,
   DesktopRpcRegistryLive,
+  type DesktopPermissionsLayer,
   type DesktopRpcRegistration,
   P,
   PermissionRegistry,
@@ -374,6 +375,7 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect(native.Native.all).toBeDefined()
   expect(Layer.isLayer(native.Native.clipboard)).toBe(true)
   expect(Layer.isLayer(native.Native.Permissions.all)).toBe(true)
+  expect(Layer.isLayer(native.Native.Permissions.window.all)).toBe(true)
   expect(native.Native.Permissions.clipboard.readText).toMatchObject({
     kind: "native.invoke",
     primitive: "Clipboard",
@@ -398,35 +400,26 @@ test("native package root keeps contracts and implementation helpers behind subp
 })
 
 test("Native.Permissions.all declares every non-public native capability", async () => {
-  const rules = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(
-          Layer.provideMerge(
-            Desktop.app({ permissions: Native.Permissions.all }),
-            Layer.effect(PermissionRegistry, makePermissionRegistry())
-          )
-        )
-        const permissions = Context.get(context, PermissionRegistry)
-        return yield* permissions.query("native.invoke", {
-          kind: "app",
-          id: "native-permissions-all"
-        })
-      })
-    )
-  )
-  const declared = new Set(
-    rules.flatMap((rule) =>
-      rule.capability.kind === "native.invoke"
-        ? [`${rule.capability.primitive}.${rule.capability.methods.join(",")}`]
-        : []
-    )
-  )
+  const declared = await nativePermissionTags(Native.Permissions.all)
 
   expect(declared).toContain("App.quit")
   expect(declared).toContain("Clipboard.readText")
   expect(declared).toContain("Window.create")
   expect(declared).not.toContain("Clipboard.isSupported")
+})
+
+test("Native.Permissions surface all layers declare only their native surface", async () => {
+  const windowPermissions = await nativePermissionTags(Native.Permissions.window.all)
+  const dialogPermissions = await nativePermissionTags(Native.Permissions.dialog.all)
+  const clipboardPermissions = await nativePermissionTags(Native.Permissions.clipboard.all)
+
+  expect(windowPermissions).toContain("Window.create")
+  expect(windowPermissions).toContain("Window.close")
+  expect(windowPermissions).not.toContain("Clipboard.readText")
+  expect(dialogPermissions).toContain("Dialog.openFile")
+  expect(dialogPermissions).not.toContain("Window.create")
+  expect(clipboardPermissions).toContain("Clipboard.readText")
+  expect(clipboardPermissions).not.toContain("Clipboard.isSupported")
 })
 
 test("native contracts subpath exposes schema-coded payload contracts", async () => {
@@ -540,6 +533,35 @@ const expectImportRejected = async (specifier: string): Promise<void> => {
     rejected = true
   }
   expect(rejected).toBe(true)
+}
+
+const nativePermissionTags = async (
+  permissionsLayer: DesktopPermissionsLayer
+): Promise<ReadonlySet<string>> => {
+  const rules = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(
+          Layer.provideMerge(
+            Desktop.app({ permissions: permissionsLayer }),
+            Layer.effect(PermissionRegistry, makePermissionRegistry())
+          )
+        )
+        const permissions = Context.get(context, PermissionRegistry)
+        return yield* permissions.query("native.invoke", {
+          kind: "app",
+          id: "native-permissions"
+        })
+      })
+    )
+  )
+  return new Set(
+    rules.flatMap((rule) =>
+      rule.capability.kind === "native.invoke"
+        ? [`${rule.capability.primitive}.${rule.capability.methods.join(",")}`]
+        : []
+    )
+  )
 }
 
 const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = ["create", "close"]
