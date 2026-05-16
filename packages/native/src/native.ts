@@ -10,6 +10,7 @@ import { ContextMenuSurface } from "./context-menu.js"
 import { CrashReporterSurface } from "./crash-reporter.js"
 import { DiagnosticsBundleSurface } from "./diagnostics-bundle.js"
 import { DialogSurface } from "./dialog.js"
+import { EgressPolicySurface } from "./egress-policy.js"
 import { DockSurface } from "./dock.js"
 import { GlobalShortcutSurface } from "./global-shortcut.js"
 import { MenuSurface } from "./menu.js"
@@ -35,6 +36,7 @@ const BuiltInSurfaces = Object.freeze([
   CrashReporterSurface,
   DiagnosticsBundleSurface,
   DialogSurface,
+  EgressPolicySurface,
   DockSurface,
   GlobalShortcutSurface,
   MenuSurface,
@@ -66,6 +68,7 @@ const ContextMenu = ContextMenuSurface.selection
 const CrashReporter = CrashReporterSurface.selection
 const DiagnosticsBundle = DiagnosticsBundleSurface.selection
 const Dialog = DialogSurface.selection
+const EgressPolicy = EgressPolicySurface.selection
 const Dock = DockSurface.selection
 const GlobalShortcut = GlobalShortcutSurface.selection
 const Menu = MenuSurface.selection
@@ -97,6 +100,7 @@ export const Permissions = Object.freeze({
   crashReporter: CrashReporterSurface.permissions,
   diagnosticsBundle: DiagnosticsBundleSurface.permissions,
   dialog: DialogSurface.permissions,
+  egressPolicy: EgressPolicySurface.permissions,
   dock: DockSurface.permissions,
   globalShortcut: GlobalShortcutSurface.permissions,
   menu: MenuSurface.permissions,
@@ -123,6 +127,7 @@ export const Native = Object.freeze({
   CrashReporter,
   DiagnosticsBundle,
   Dialog,
+  EgressPolicy,
   Dock,
   GlobalShortcut,
   Menu,

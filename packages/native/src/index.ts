@@ -151,6 +151,29 @@ export {
   type DialogServiceApi
 } from "./dialog.js"
 export {
+  EgressPolicy,
+  EgressPolicyClient,
+  EgressPolicyHandlersLive,
+  EgressPolicyLive,
+  EgressPolicyMethodNames,
+  EgressPolicyRpcEvents,
+  EgressPolicyRpcs,
+  EgressPolicySurface,
+  makeEgressPolicyBridgeClientLayer,
+  makeEgressPolicyClientLayer,
+  makeEgressPolicyMemoryClient,
+  makeEgressPolicyServiceLayer,
+  makeEgressPolicyUnsupportedClient,
+  makeHostEgressPolicyRpcRuntime,
+  type EgressPolicyClientApi,
+  type EgressPolicyError,
+  type EgressPolicyMemoryClientOptions,
+  type EgressPolicyRpc,
+  type EgressPolicyRpcHandlers,
+  type EgressPolicyServiceApi,
+  type EgressPolicyServiceOptions
+} from "./egress-policy.js"
+export {
   Dock,
   DockClient,
   DockHandlersLive,

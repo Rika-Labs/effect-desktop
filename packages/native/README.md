@@ -4,7 +4,7 @@
 
 ## Purpose
 
-TypeScript-facing native services backed by the Rust host: `App`, `Window`, `WebView`, `Menu`, `Tray`, `Dialog`, `Clipboard`, `Notification`, `Shell`, `Screen`, `GlobalShortcut`, `Protocol`, `SafeStorage`, `Path`, `Updater`, `CrashReporter`, `DiagnosticsBundle`, `PowerMonitor`, `SystemAppearance`, `Dock`, `RealtimeMediaSession`.
+TypeScript-facing native services backed by the Rust host: `App`, `Window`, `WebView`, `Menu`, `Tray`, `Dialog`, `Clipboard`, `Notification`, `Shell`, `Screen`, `GlobalShortcut`, `Protocol`, `SafeStorage`, `Path`, `Updater`, `CrashReporter`, `DiagnosticsBundle`, `EgressPolicy`, `PowerMonitor`, `SystemAppearance`, `Dock`, `RealtimeMediaSession`.
 
 ## Public API
 

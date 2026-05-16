@@ -1,5 +1,6 @@
 mod diagnostics_bundle;
 mod dock;
+mod egress_policy;
 pub(crate) mod handshake;
 mod menu;
 mod realtime_media_session;
@@ -99,6 +100,9 @@ impl HostMethodRouter {
             host_protocol::DIAGNOSTICS_BUNDLE_IS_SUPPORTED_METHOD => {
                 diagnostics_bundle::is_supported()
             }
+            host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
+            host_protocol::EGRESS_POLICY_RECORD_METHOD => egress_policy::record(payload),
+            host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
                 menu::set_application_menu(&*self.window, payload)
             }
@@ -640,6 +644,90 @@ mod tests {
                     "supported": true
                 })),
                 error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn egress_policy_decide_routes_to_host_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-egress-policy",
+                    host_protocol::EGRESS_POLICY_DECIDE_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "destination": {
+                            "protocol": "https",
+                            "host": "api.example.test",
+                            "port": 443
+                        },
+                        "traceId": "trace-egress-policy"
+                    }),
+                ),
+                1710000000119,
+            )
+            .expect("egress policy request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-egress-policy".to_string(),
+                timestamp: 1710000000119,
+                trace_id: "trace-request-egress-policy".to_string(),
+                payload: Some(serde_json::json!({
+                    "decisionId": "trace-egress-policy",
+                    "outcome": "denied",
+                    "actor": { "kind": "extension", "id": "extension-1" },
+                    "destination": {
+                        "protocol": "https",
+                        "host": "api.example.test",
+                        "port": 443
+                    },
+                    "rule": {
+                        "id": "default-deny",
+                        "effect": "deny",
+                        "hosts": ["*"],
+                        "reason": "no matching egress allow rule"
+                    },
+                    "reason": "no matching egress allow rule"
+                })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn egress_policy_invalid_payload_returns_invalid_argument() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-egress-policy-invalid",
+                    host_protocol::EGRESS_POLICY_DECIDE_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "destination": {
+                            "protocol": "https",
+                            "host": ""
+                        }
+                    }),
+                ),
+                1710000000120,
+            )
+            .expect("egress policy request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-egress-policy-invalid".to_string(),
+                timestamp: 1710000000120,
+                trace_id: "trace-request-egress-policy-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "destination.host",
+                    "must be non-empty",
+                    host_protocol::EGRESS_POLICY_DECIDE_METHOD,
+                )),
             }
         );
     }

@@ -45,6 +45,10 @@ pub const DIAGNOSTICS_BUNDLE_COLLECT_STARTED_EVENT: &str = "DiagnosticsBundle.Co
 pub const DIAGNOSTICS_BUNDLE_SOURCE_REDACTED_EVENT: &str = "DiagnosticsBundle.SourceRedacted";
 pub const DIAGNOSTICS_BUNDLE_WRITE_COMPLETED_EVENT: &str = "DiagnosticsBundle.WriteCompleted";
 pub const DIAGNOSTICS_BUNDLE_FAILED_EVENT: &str = "DiagnosticsBundle.Failed";
+pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
+pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
+pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
+pub const EGRESS_POLICY_DECISION_RECORDED_EVENT: &str = "EgressPolicy.DecisionRecorded";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
@@ -55,6 +59,7 @@ pub const DEFAULT_RECONNECT_WINDOW_MS: u64 = 30_000;
 pub const DEFAULT_MAX_BACKFILL_EVENTS: u64 = 1_024;
 pub const REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -761,6 +766,327 @@ impl DiagnosticsBundleWriteResultPayload {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EgressPolicyActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EgressPolicyProtocol {
+    Http,
+    Https,
+    Ws,
+    Wss,
+    Tcp,
+    Udp,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EgressPolicyRuleEffect {
+    Allow,
+    Deny,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EgressPolicyOutcome {
+    Allowed,
+    Denied,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EgressPolicyActorPayload {
+    kind: EgressPolicyActorKind,
+    id: String,
+}
+
+impl EgressPolicyActorPayload {
+    pub fn new(kind: EgressPolicyActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn kind(&self) -> EgressPolicyActorKind {
+        self.kind
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EgressPolicyDestinationPayload {
+    protocol: EgressPolicyProtocol,
+    host: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+}
+
+impl EgressPolicyDestinationPayload {
+    pub fn new(
+        protocol: EgressPolicyProtocol,
+        host: impl Into<String>,
+        port: Option<u16>,
+        path: Option<String>,
+    ) -> Self {
+        Self {
+            protocol,
+            host: host.into(),
+            port,
+            path,
+        }
+    }
+
+    pub fn protocol(&self) -> EgressPolicyProtocol {
+        self.protocol
+    }
+
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    pub fn port(&self) -> Option<u16> {
+        self.port
+    }
+
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EgressPolicyRulePayload {
+    id: String,
+    effect: EgressPolicyRuleEffect,
+    hosts: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    protocols: Vec<EgressPolicyProtocol>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ports: Vec<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actor: Option<EgressPolicyActorPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl EgressPolicyRulePayload {
+    pub fn new(
+        id: impl Into<String>,
+        effect: EgressPolicyRuleEffect,
+        hosts: Vec<String>,
+        protocols: Vec<EgressPolicyProtocol>,
+        ports: Vec<u16>,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            effect,
+            hosts,
+            protocols,
+            ports,
+            actor: None,
+            reason,
+        }
+    }
+
+    pub fn with_actor(mut self, actor: EgressPolicyActorPayload) -> Self {
+        self.actor = Some(actor);
+        self
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn effect(&self) -> EgressPolicyRuleEffect {
+        self.effect
+    }
+
+    pub fn hosts(&self) -> &[String] {
+        &self.hosts
+    }
+
+    pub fn protocols(&self) -> &[EgressPolicyProtocol] {
+        &self.protocols
+    }
+
+    pub fn ports(&self) -> &[u16] {
+        &self.ports
+    }
+
+    pub fn actor(&self) -> Option<&EgressPolicyActorPayload> {
+        self.actor.as_ref()
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EgressPolicyDecisionPayload {
+    actor: EgressPolicyActorPayload,
+    destination: EgressPolicyDestinationPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl EgressPolicyDecisionPayload {
+    pub fn new(
+        actor: EgressPolicyActorPayload,
+        destination: EgressPolicyDestinationPayload,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            destination,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &EgressPolicyActorPayload {
+        &self.actor
+    }
+
+    pub fn destination(&self) -> &EgressPolicyDestinationPayload {
+        &self.destination
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EgressPolicyDecisionResultPayload {
+    decision_id: String,
+    outcome: EgressPolicyOutcome,
+    actor: EgressPolicyActorPayload,
+    destination: EgressPolicyDestinationPayload,
+    rule: EgressPolicyRulePayload,
+    reason: String,
+}
+
+impl EgressPolicyDecisionResultPayload {
+    pub fn new(
+        decision_id: impl Into<String>,
+        outcome: EgressPolicyOutcome,
+        actor: EgressPolicyActorPayload,
+        destination: EgressPolicyDestinationPayload,
+        rule: EgressPolicyRulePayload,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            decision_id: decision_id.into(),
+            outcome,
+            actor,
+            destination,
+            rule,
+            reason: reason.into(),
+        }
+    }
+
+    pub fn decision_id(&self) -> &str {
+        &self.decision_id
+    }
+
+    pub fn outcome(&self) -> EgressPolicyOutcome {
+        self.outcome
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EgressPolicyRecordPayload {
+    decision_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl EgressPolicyRecordPayload {
+    pub fn new(decision_id: impl Into<String>, trace_id: Option<String>) -> Self {
+        Self {
+            decision_id: decision_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn decision_id(&self) -> &str {
+        &self.decision_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EgressPolicyRecordResultPayload {
+    decision_id: String,
+    recorded: bool,
+}
+
+impl EgressPolicyRecordResultPayload {
+    pub fn recorded(decision_id: impl Into<String>) -> Self {
+        Self {
+            decision_id: decision_id.into(),
+            recorded: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EgressPolicySupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl EgressPolicySupportedPayload {
+    pub fn available() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+}
+
 impl WindowDestroyPayload {
     pub fn new(window_id: impl Into<String>) -> Self {
         Self {
@@ -1319,19 +1645,24 @@ mod tests {
         DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
         DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
         DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
-        DiagnosticsBundleWriteResultPayload, HostProtocolEnvelope, HostProtocolError,
-        HostVersionPayload, RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
-        RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
-        RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
-        RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
-        RealtimeMediaSessionInterruptPayload, RealtimeMediaSessionSelectDevicePayload,
-        RealtimeMediaSessionState, RealtimeMediaSessionStateEventPayload,
-        RealtimeMediaSessionSupportedPayload, RendererResumeDeniedPayload,
-        RendererResumeDeniedReason, RendererResumePayload, RendererResumedPayload, ResumeTicket,
-        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowTitleBarStyle,
-        WindowTrafficLights, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
-        DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
-        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
+        DiagnosticsBundleWriteResultPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
+        EgressPolicyDecisionPayload, EgressPolicyDecisionResultPayload,
+        EgressPolicyDestinationPayload, EgressPolicyOutcome, EgressPolicyProtocol,
+        EgressPolicyRecordPayload, EgressPolicyRecordResultPayload, EgressPolicyRuleEffect,
+        EgressPolicyRulePayload, EgressPolicySupportedPayload, HostProtocolEnvelope,
+        HostProtocolError, HostVersionPayload, RealtimeMediaDeviceKind,
+        RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
+        RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
+        RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
+        RealtimeMediaSessionIdentityPayload, RealtimeMediaSessionInterruptPayload,
+        RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
+        RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
+        RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
+        RendererResumedPayload, ResumeTicket, WindowCreatePayload, WindowCreateResponse,
+        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights,
+        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
+        DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
+        HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION, REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -1822,6 +2153,80 @@ mod tests {
             supported.reason(),
             Some(DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON)
         );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn egress_policy_payloads_serialize_canonically() {
+        let actor = EgressPolicyActorPayload::new(EgressPolicyActorKind::Extension, "extension-1");
+        let destination = EgressPolicyDestinationPayload::new(
+            EgressPolicyProtocol::Https,
+            "api.example.test",
+            Some(443),
+            Some("/v1".to_string()),
+        );
+        let rule = EgressPolicyRulePayload::new(
+            "allow-api",
+            EgressPolicyRuleEffect::Allow,
+            vec!["api.example.test".to_string()],
+            vec![EgressPolicyProtocol::Https],
+            vec![443],
+            Some("workspace policy allows API access".to_string()),
+        )
+        .with_actor(actor.clone());
+        let decision = EgressPolicyDecisionPayload::new(
+            actor.clone(),
+            destination.clone(),
+            Some("trace-egress".to_string()),
+        );
+
+        assert_eq!(actor.kind(), EgressPolicyActorKind::Extension);
+        assert_eq!(actor.id(), "extension-1");
+        assert_eq!(destination.host(), "api.example.test");
+        assert_eq!(destination.protocol(), EgressPolicyProtocol::Https);
+        assert_eq!(destination.port(), Some(443));
+        assert_eq!(destination.path(), Some("/v1"));
+        assert_eq!(rule.id(), "allow-api");
+        assert_eq!(rule.effect(), EgressPolicyRuleEffect::Allow);
+        assert_eq!(rule.hosts(), &["api.example.test".to_string()]);
+        assert_eq!(rule.protocols(), &[EgressPolicyProtocol::Https]);
+        assert_eq!(rule.ports(), &[443]);
+        assert_eq!(rule.actor(), Some(&actor));
+        assert_eq!(
+            serde_json::to_string(&decision).expect("decision payload should encode"),
+            r#"{"actor":{"kind":"extension","id":"extension-1"},"destination":{"protocol":"https","host":"api.example.test","port":443,"path":"/v1"},"traceId":"trace-egress"}"#
+        );
+
+        let result = EgressPolicyDecisionResultPayload::new(
+            "decision-1",
+            EgressPolicyOutcome::Allowed,
+            actor,
+            destination,
+            rule,
+            "workspace policy allows API access",
+        );
+        assert_eq!(result.decision_id(), "decision-1");
+        assert_eq!(result.outcome(), EgressPolicyOutcome::Allowed);
+        assert_eq!(
+            serde_json::to_string(&result).expect("decision result should encode"),
+            r#"{"decisionId":"decision-1","outcome":"allowed","actor":{"kind":"extension","id":"extension-1"},"destination":{"protocol":"https","host":"api.example.test","port":443,"path":"/v1"},"rule":{"id":"allow-api","effect":"allow","hosts":["api.example.test"],"protocols":["https"],"ports":[443],"actor":{"kind":"extension","id":"extension-1"},"reason":"workspace policy allows API access"},"reason":"workspace policy allows API access"}"#
+        );
+
+        let record = EgressPolicyRecordPayload::new("decision-1", Some("trace-record".to_string()));
+        assert_eq!(record.trace_id(), Some("trace-record"));
+        assert_eq!(record.decision_id(), "decision-1");
+        assert_eq!(
+            serde_json::to_string(&EgressPolicyRecordResultPayload::recorded("decision-1"))
+                .expect("record result should encode"),
+            r#"{"decisionId":"decision-1","recorded":true}"#
+        );
+
+        let supported = EgressPolicySupportedPayload::unsupported(EGRESS_POLICY_UNSUPPORTED_REASON);
+        assert!(!supported.supported());
+        assert_eq!(supported.reason(), Some(EGRESS_POLICY_UNSUPPORTED_REASON));
         assert_eq!(
             serde_json::to_string(&supported).expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
