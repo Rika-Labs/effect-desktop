@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Settings`
 
-Typed key/value store built on Effect `KeyValueStore` and `SqlClient`. Used for preferences, small per-user data, anything you'd reach for `localStorage` to do.
+Typed key/value store built on Effect `KeyValueStore` and `SqlClient`. Use it for preferences, feature flags, and small configuration values. Use `SqlClient` for app records and query-shaped data.
 
 ## Import
 
@@ -19,25 +19,30 @@ import {
   type Store,
   SettingsError,
   SettingsMigrated,
-  SettingsRecoveredFromBackup,
-  makeSettingsLayer
+  SettingsRecoveredFromBackup
 } from "@effect-desktop/core"
 ```
 
 ## API
 
 ```ts
-const settings = yield* Settings
-const store = yield* settings.open({
+const store = yield * Settings
+```
+
+`Settings.layer(...)` provides a SQLite-backed store:
+
+```ts
+Settings.layer({
   path: "preferences.sqlite",
-  ownerScope: "window-main",
   schemaVersion: 1,
-  backupPath?: "preferences.backup.sqlite",
-  migrations?: Migration[]
+  backupPath: "preferences.backup.sqlite",
+  migrations: []
 })
 ```
 
-`Store`:
+`Settings.window(...)` provides the same store for a `Desktop.window(...)` service layer and binds ownership to that window's `ResourceOwner`. `Settings.memory(...)` provides an in-memory store for tests.
+
+`Store` / `SettingsApi`:
 
 | Method         | Signature                                               |
 | -------------- | ------------------------------------------------------- |
@@ -66,7 +71,7 @@ Migrations run inside a SQLite transaction with the metadata update. Emit `Setti
 
 ## Recovery
 
-When `open` detects corruption and a `backupPath` is provided, Settings replaces the corrupt file with the backup and reopens it. A failed copy returns `SettingsRecoveredFromBackup`.
+When the layer detects corruption and a `backupPath` is provided, Settings replaces the corrupt file with the backup and reopens it. A failed copy returns `SettingsRecoveredFromBackup`.
 
 ## Errors
 
@@ -76,21 +81,27 @@ When `open` detects corruption and a `backupPath` is provided, Settings replaces
 
 ## Layer
 
-`makeSettingsLayer(filename, ownerScope)` returns a layer that depends on `SqlClient`, `PermissionRegistry`, and `ResourceRegistry`.
+`Settings.layer(options)` returns a layer that depends on `ResourceOwner`, `PermissionRegistry`, and `ResourceRegistry`.
+
+`Settings.window(options)` returns the same layer shape. `Desktop.window(...)` supplies a window `ResourceOwner` automatically for its third-argument services layer.
+
+`Settings.memory(options?)` returns an in-memory layer with no external dependencies.
 
 ## Example
 
 ```ts
 const program = Effect.gen(function* () {
-  const settings = yield* Settings
-  const store = yield* settings.open({
-    path: "settings.sqlite",
-    ownerScope: "window-main",
-    schemaVersion: 1
-  })
+  const store = yield* Settings
   yield* store.set("theme", Schema.Literals(["light", "dark"]), "dark")
   return yield* store.getOrDefault("theme", Schema.Literals(["light", "dark"]), "light")
-})
+}).pipe(
+  Effect.provide(
+    Settings.layer({
+      path: "settings.sqlite",
+      schemaVersion: 1
+    })
+  )
+)
 ```
 
 ## Related

@@ -3,24 +3,21 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   UpdaterCheckInput,
   UpdaterCheckResult,
@@ -131,22 +128,24 @@ export type UpdaterServiceApi = UpdaterClientApi
 
 export class Updater extends Context.Service<Updater, UpdaterServiceApi>()(
   "@effect-desktop/native/Updater"
-) {}
+) {
+  static readonly layer = Layer.effect(Updater)(
+    Effect.gen(function* () {
+      const client = yield* UpdaterClient
+      return Updater.of({
+        check: (options) => client.check(options),
+        download: (options) => client.download(options),
+        install: (options) => client.install(options),
+        installAndRestart: (options) => client.installAndRestart(options),
+        getStatus: () => client.getStatus(),
+        readyForRestart: () => client.readyForRestart(),
+        onPreparingRestart: () => client.onPreparingRestart()
+      } satisfies UpdaterServiceApi)
+    })
+  )
+}
 
-export const UpdaterLive = Layer.effect(Updater)(
-  Effect.gen(function* () {
-    const client = yield* UpdaterClient
-    return Object.freeze({
-      check: (options) => client.check(options),
-      download: (options) => client.download(options),
-      install: (options) => client.install(options),
-      installAndRestart: (options) => client.installAndRestart(options),
-      getStatus: () => client.getStatus(),
-      readyForRestart: () => client.readyForRestart(),
-      onPreparingRestart: () => client.onPreparingRestart()
-    } satisfies UpdaterServiceApi)
-  })
-)
+export const UpdaterLive = Updater.layer
 
 export const makeUpdaterClientLayer = (client: UpdaterClientApi): Layer.Layer<UpdaterClient> =>
   Layer.succeed(UpdaterClient)(client)
@@ -171,7 +170,7 @@ export const makeUpdaterBridgeClientLayer = (
 
 export type UpdaterRpc = RpcGroup.Rpcs<typeof UpdaterRpcGroup>
 
-export type UpdaterRpcHandlers = Parameters<typeof UpdaterRpcGroup.toLayer>[0]
+export type UpdaterRpcHandlers = RpcGroup.HandlersFrom<UpdaterRpc>
 
 export const UpdaterHandlersLive = UpdaterRpcGroup.toLayer({
   "Updater.check": (input) =>
@@ -206,8 +205,9 @@ export const UpdaterHandlersLive = UpdaterRpcGroup.toLayer({
     })
 })
 
-export const UpdaterSurface = DesktopRpc.surface("Updater", UpdaterRpcGroup, {
+export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
   service: UpdaterClient,
+  capabilities: UpdaterMethodNames,
   handlers: UpdaterHandlersLive,
   client: (client) =>
     updaterClientFromRpcClient(client, () =>
@@ -223,8 +223,7 @@ export const UpdaterSurface = DesktopRpc.surface("Updater", UpdaterRpcGroup, {
 export const makeHostUpdaterRpcRuntime = (
   handlers: UpdaterRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(UpdaterRpcGroup, UpdaterRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => UpdaterSurface.hostRuntime(handlers, runtimeOptions)
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
@@ -277,33 +276,8 @@ const makeUpdaterBridgeProtocolLayer = (
 const subscribeUpdaterEvent = (
   exchange: BridgeClientExchange,
   method: "Updater.PreparingRestart"
-): Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never> => {
-  if (exchange.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeUpdaterEventEnvelope(method, envelope)))
-}
-
-const decodeUpdaterEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<UpdaterPreparingRestartEvent, UpdaterError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Effect.mapError(
-    Schema.decodeUnknownEffect(UpdaterPreparingRestartEvent)(envelope.payload, StrictParseOptions),
-    (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-  )
-}
+): Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never> =>
+  subscribeNativeEvent(exchange, method, UpdaterPreparingRestartEvent, StrictParseOptions)
 
 const decodeUpdaterCheckInput = (
   input: unknown,
@@ -339,11 +313,13 @@ function updaterRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Updater.${method}` as const, {
+  return NativeSurface.rpc("Updater", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runUpdaterRpc = <A, E>(

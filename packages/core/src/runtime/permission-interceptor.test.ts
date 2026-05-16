@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { Effect, Exit, Layer, Option, Schema } from "effect"
 import { Headers } from "effect/unstable/http"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import { RequestId } from "effect/unstable/rpc/RpcMessage"
 
 import { RpcCapability, rpcCapability } from "@effect-desktop/bridge"
 
@@ -23,6 +24,32 @@ const RegistryLayer = Layer.effect(
   PermissionRegistry,
   makePermissionRegistry({ traceId: () => "trace-test", nextToken: () => "token-test" })
 )
+
+const deniedHandler = (onRun: () => void) =>
+  Effect.sync(onRun).pipe(
+    Effect.andThen(Effect.die("permission interceptor should deny before invoking handler"))
+  )
+
+const rpcHandlerOptions = (headers: Headers.Headers = Headers.empty) => ({
+  client: new Rpc.ServerClient(1),
+  requestId: RequestId(1n),
+  headers
+})
+
+const rpcMiddlewareOptions = (
+  rpc: Rpc.AnyWithProps,
+  payload: unknown,
+  headers: Headers.Headers = Headers.empty
+) => ({
+  ...rpcHandlerOptions(headers),
+  rpc,
+  payload
+})
+
+const permissionMiddlewareRpc = (rpc: unknown): Rpc.AnyWithProps =>
+  // Effect RPC's erased middleware view widens middleware errors; these direct
+  // middleware tests preserve the concrete RPC value and erase it only here.
+  rpc as Rpc.AnyWithProps
 
 test("P.filesystemRead produces a valid filesystem.read capability", () => {
   const cap = P.filesystemRead({ roots: ["/tmp/app"] })
@@ -207,17 +234,10 @@ test("makePermissionInterceptorLayer fails denied calls as typed middleware erro
       Effect.gen(function* () {
         const middleware = yield* PermissionInterceptor
         return yield* middleware(
-          Effect.sync(() => {
+          deniedHandler(() => {
             handlerCalls += 1
-            return {} as never
           }),
-          {
-            client: undefined as never,
-            requestId: 1 as never,
-            rpc: GuardedRpc as never,
-            payload: { path: "/tmp/app/file.txt" },
-            headers: Headers.empty
-          }
+          rpcMiddlewareOptions(permissionMiddlewareRpc(GuardedRpc), { path: "/tmp/app/file.txt" })
         )
       })
     ).pipe(Effect.provide(interceptorLayer), Effect.provide(RegistryLayer))
@@ -251,17 +271,10 @@ test("makePermissionInterceptorLayer fails malformed capabilities closed", async
       Effect.gen(function* () {
         const middleware = yield* PermissionInterceptor
         return yield* middleware(
-          Effect.sync(() => {
+          deniedHandler(() => {
             handlerCalls += 1
-            return {} as never
           }),
-          {
-            client: undefined as never,
-            requestId: 1 as never,
-            rpc: GuardedRpc as never,
-            payload: { path: "/tmp/app/file.txt" },
-            headers: Headers.empty
-          }
+          rpcMiddlewareOptions(permissionMiddlewareRpc(GuardedRpc), { path: "/tmp/app/file.txt" })
         )
       })
     ).pipe(Effect.provide(makePermissionInterceptorLayer()), Effect.provide(RegistryLayer))
@@ -294,16 +307,17 @@ test("makePermissionInterceptorLayer builds actor and trace context from RPC hea
     Effect.scoped(
       Effect.gen(function* () {
         const middleware = yield* PermissionInterceptor
-        return yield* middleware(Effect.succeed({} as never), {
-          client: undefined as never,
-          requestId: 1 as never,
-          rpc: GuardedRpc as never,
-          payload: { path: "/tmp/app/file.txt" },
-          headers: Headers.fromInput({
-            "x-effect-desktop-window-id": "window-main",
-            "x-effect-desktop-trace-id": "trace-renderer"
-          })
-        })
+        return yield* middleware(
+          Effect.die("permission interceptor should deny before invoking handler"),
+          rpcMiddlewareOptions(
+            permissionMiddlewareRpc(GuardedRpc),
+            { path: "/tmp/app/file.txt" },
+            Headers.fromInput({
+              "x-effect-desktop-window-id": "window-main",
+              "x-effect-desktop-trace-id": "trace-renderer"
+            })
+          )
+        )
       })
     ).pipe(Effect.provide(makePermissionInterceptorLayer()), Effect.provide(RegistryLayer))
   )
@@ -336,20 +350,17 @@ test("makePermissionInterceptorLayer returns typed denial for malformed RPC head
       Effect.gen(function* () {
         const middleware = yield* PermissionInterceptor
         return yield* middleware(
-          Effect.sync(() => {
+          deniedHandler(() => {
             handlerCalls += 1
-            return {} as never
           }),
-          {
-            client: undefined as never,
-            requestId: 1 as never,
-            rpc: GuardedRpc as never,
-            payload: { path: "/tmp/app/file.txt" },
-            headers: Headers.fromInput({
+          rpcMiddlewareOptions(
+            permissionMiddlewareRpc(GuardedRpc),
+            { path: "/tmp/app/file.txt" },
+            Headers.fromInput({
               "x-effect-desktop-window-id": "window\nforged",
               "x-effect-desktop-trace-id": "trace-renderer"
             })
-          }
+          )
         )
       })
     ).pipe(Effect.provide(makePermissionInterceptorLayer()), Effect.provide(RegistryLayer))

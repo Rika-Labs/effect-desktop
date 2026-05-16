@@ -3,24 +3,21 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   NotificationActionEvent,
   NotificationClickEvent,
@@ -95,6 +92,12 @@ export const NotificationMethodNames = Object.freeze([
   "getPermissionStatus"
 ] as const)
 
+const NotificationCapabilityMethods = Object.freeze([
+  "show",
+  "close",
+  "requestPermission"
+] as const satisfies readonly (typeof NotificationMethodNames)[number][])
+
 export interface NotificationClientApi {
   readonly show: (
     input: NotificationShowOptions
@@ -138,14 +141,16 @@ export interface NotificationServiceApi {
 
 export class Notification extends Context.Service<Notification, NotificationServiceApi>()(
   "@effect-desktop/native/Notification"
-) {}
+) {
+  static readonly layer = Layer.effect(Notification)(
+    Effect.gen(function* () {
+      const client = yield* NotificationClient
+      return Notification.of(makeNotificationService(client))
+    })
+  )
+}
 
-export const NotificationLive = Layer.effect(Notification)(
-  Effect.gen(function* () {
-    const client = yield* NotificationClient
-    return makeNotificationService(client)
-  })
-)
+export const NotificationLive = Notification.layer
 
 export const makeNotificationClientLayer = (
   client: NotificationClientApi
@@ -168,7 +173,7 @@ export const makeNotificationBridgeClientLayer = (
 
 export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
-export type NotificationRpcHandlers = Parameters<typeof NotificationRpcGroup.toLayer>[0]
+export type NotificationRpcHandlers = RpcGroup.HandlersFrom<NotificationRpc>
 
 export const NotificationHandlersLive = NotificationRpcGroup.toLayer({
   "Notification.show": (input) =>
@@ -201,8 +206,9 @@ export const NotificationHandlersLive = NotificationRpcGroup.toLayer({
     })
 })
 
-export const NotificationSurface = DesktopRpc.surface("Notification", NotificationRpcGroup, {
+export const NotificationSurface = NativeSurface.make("Notification", NotificationRpcGroup, {
   service: NotificationClient,
+  capabilities: NotificationCapabilityMethods,
   handlers: NotificationHandlersLive,
   client: (client) => notificationClientFromRpcClient(client, undefined)
 })
@@ -211,11 +217,7 @@ export const makeHostNotificationRpcRuntime = (
   handlers: NotificationRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(
-    NotificationRpcGroup,
-    NotificationRpcGroup.toLayer(handlers),
-    runtimeOptions
-  )
+  NotificationSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeNotificationService = (client: NotificationClientApi): NotificationServiceApi => {
   const service: NotificationServiceApi = {
@@ -285,43 +287,13 @@ const subscribeNotificationEvent = <A>(
   exchange: BridgeClientExchange | undefined,
   method: string,
   schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, NotificationError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeNotificationEventEnvelope(method, schema, envelope)))
-}
-
-const decodeNotificationEventEnvelope = <A>(
-  operation: string,
-  schema: Schema.Codec<A, unknown, never, never>,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<A, NotificationError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(schema)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
-}
+): Stream.Stream<A, NotificationError, never> => subscribeNativeEvent(exchange, method, schema)
 
 const toNotificationShowInput = (input: NotificationShowOptions): unknown => ({
   title: input.title,
   body: input.body,
   ...(input.actions === undefined ? {} : { actions: input.actions }),
-  ...(input.ownerWindow === undefined
-    ? {}
-    : { ownerWindow: toWindowHandle(input.ownerWindow as WindowHandle) })
+  ...(input.ownerWindow === undefined ? {} : { ownerWindow: toWindowHandle(input.ownerWindow) })
 })
 
 const toWindowHandle = (handle: WindowHandle): WindowHandle =>
@@ -331,7 +303,7 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as WindowHandle
+  })
 
 const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
   Object.freeze({
@@ -340,7 +312,7 @@ const toNotificationHandle = (handle: NotificationHandle): NotificationHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as NotificationHandle
+  })
 
 const decodeNotificationShowInput = (
   input: unknown
@@ -363,11 +335,13 @@ function notificationRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`Notification.${method}` as const, {
+  return NativeSurface.rpc("Notification", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runNotificationRpc = <A, E>(

@@ -3,7 +3,7 @@ export * from "./codec.js"
 export * from "./contracts.js"
 export * from "./events.js"
 export * from "./streams.js"
-export * from "./handlers.js"
+export * from "./runtime.js"
 export * from "./handshake.js"
 export {
   BridgeInspectorBoundary,

@@ -90,7 +90,7 @@ interface ReactDesktopContextValue {
 interface ReactDesktopRuntime {
   readonly clients: ReactDesktopClientMap
   readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
-  readonly dispose: () => Promise<void>
+  readonly disposeEffect: Effect.Effect<void, never, never>
 }
 
 const ReactDesktopContext = createContext<ReactDesktopContextValue | undefined>(undefined)
@@ -104,7 +104,7 @@ export const ReactDesktop = Object.freeze({
       )
       useEffect(
         () => () => {
-          void runtime.dispose()
+          void Effect.runCallback(runtime.disposeEffect)
         },
         [runtime]
       )
@@ -172,16 +172,13 @@ const makeReactDesktopRuntime = (
   try {
     clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
   } catch (error) {
-    void runtime.dispose()
+    void Effect.runCallback(runtime.disposeEffect)
     throw error
   }
   const frameworkRuntime = makeFrameworkRuntime(runtime)
   return Object.freeze({
     clients,
     runtime: frameworkRuntime,
-    dispose: async () => {
-      await frameworkRuntime.dispose()
-      await runtime.dispose()
-    }
+    disposeEffect: frameworkRuntime.disposeEffect.pipe(Effect.andThen(runtime.disposeEffect))
   })
 }

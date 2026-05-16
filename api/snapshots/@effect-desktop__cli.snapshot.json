@@ -96,7 +96,7 @@
     {
       "name": "BuildStepName",
       "kind": "type",
-      "signature": "export type BuildStepName = \"renderer\" | \"runtime\" | \"native-host\" | \"bridge\" | \"manifest\""
+      "signature": "export type BuildStepName = | \"renderer\" | \"runtime\" | \"native-host\" | \"webview-runtime\" | \"bridge\" | \"manifest\""
     },
     {
       "name": "BuildStepReport",

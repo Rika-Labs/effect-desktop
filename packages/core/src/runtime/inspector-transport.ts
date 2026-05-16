@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Queue, Ref, Schema, Stream } from "effect"
+import { Clock, Context, Data, Effect, Layer, Queue, Ref, Schema, Stream } from "effect"
 
 export class InspectorSession extends Schema.Class<InspectorSession>("InspectorSession")({
   sessionId: Schema.NonEmptyString,
@@ -95,7 +95,8 @@ export const makeInspectorTransport = (
       DEFAULT_SUBSCRIBER_BUFFER,
       "subscriberBuffer"
     )
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     const sessionId =
       options.sessionId ?? `inspector-${yield* Effect.sync(() => crypto.randomUUID())}`
     if (sessionId.length === 0) {

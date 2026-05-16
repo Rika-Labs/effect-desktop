@@ -1,4 +1,4 @@
-import { Effect, Exit, Schema } from "effect"
+import { Clock, Effect, Exit, Schema } from "effect"
 import { DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
 import { makeSecretString } from "@effect-desktop/bridge"
@@ -58,8 +58,6 @@ export interface PermissionApprovalWorkflowOptions {
 }
 
 export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalWorkflowOptions) => {
-  const now = options.now ?? Date.now
-
   return PermissionApprovalWorkflow.toLayer((payload, _executionId) =>
     Effect.gen(function* () {
       const capability = payload.capability
@@ -114,7 +112,7 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
         })
       }
 
-      const grantedAt = now()
+      const grantedAt = yield* currentTimeMillis(options.now)
       const expiresAt = payload.ttlMs !== undefined ? grantedAt + payload.ttlMs : undefined
 
       const grant = yield* options.registry
@@ -178,6 +176,9 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
     })
   )
 }
+
+const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
+  now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
 
 const grantAuditToken = (token: string) =>
   makeSecretString(token, { label: "PermissionGrantToken" })

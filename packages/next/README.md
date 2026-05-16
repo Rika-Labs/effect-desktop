@@ -24,7 +24,7 @@ and `isSupported`.
 
 - This package does not expose server-component desktop RPC APIs.
 - This package does not define desktop APIs. Use `Rpc.make`, `RpcGroup.make`, and
-  `Desktop.rpc(group, handlers)` in app code (compose multiple via `Layer.mergeAll`).
+  `Desktop.rpc(group, handlers)` in app code (compose multiple via `Desktop.rpcs`).
 - This package does not open startup windows. Startup windows belong to
   `Desktop.make({ windows })` and the host runtime.
 - This package does not own the app's Next.js version.

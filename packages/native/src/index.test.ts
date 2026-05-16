@@ -23,24 +23,25 @@ import {
   CommandRegistryHandlerFailureError,
   CommandRegistry,
   Desktop,
-  DesktopRpcRegistry,
-  DesktopRpcRegistryLive,
-  type DesktopRpcRegistration,
+  DesktopSpineConfigError,
+  type DesktopNativeLayer,
+  type DesktopPermissionsLayer,
+  type AnyDesktopRpcRegistration,
   P,
   PermissionRegistry,
   ResourceRegistry,
   makeCommandRegistry,
   makePermissionRegistry,
+  makeResourceId,
   makeResourceRegistry,
   type AuditEventsApi,
   type CommandRegistryApi,
   type DesktopRpcClient,
-  type NormalizedCapability,
-  type ResourceId
+  type NormalizedCapability
 } from "@effect-desktop/core"
 import {
   Cause,
-  Context,
+  Clock,
   Deferred,
   Effect,
   Exit,
@@ -62,6 +63,7 @@ import {
   AppLive,
   AppMethodNames,
   AppSurface,
+  Native,
   NativeCapabilities,
   NativeCapabilitiesLive,
   UnsupportedCapability,
@@ -155,7 +157,6 @@ import {
   ScreenLive,
   ScreenMethodNames,
   ScreenSurface,
-  makeHostScreenRpcRuntime,
   Shell,
   ShellHandlersLive,
   ShellRpcs,
@@ -198,51 +199,30 @@ import {
   WindowClient,
   WindowLive,
   WindowMethodNames,
-  makeHostWindowRpcRuntime,
-  makeAppBridgeClientLayer,
   makeAppServiceLayer,
-  makeClipboardBridgeClientLayer,
   makeClipboardServiceLayer,
-  makeContextMenuBridgeClientLayer,
   makeContextMenuServiceLayer,
-  makeCrashReporterBridgeClientLayer,
   makeCrashReporterMemoryClient,
   makeCrashReporterServiceLayer,
-  makeDialogBridgeClientLayer,
   makeDialogServiceLayer,
-  makeDockBridgeClientLayer,
   makeDockServiceLayer,
   makeGlobalShortcutAlreadyRegisteredError,
-  makeGlobalShortcutBridgeClientLayer,
   makeLinuxDockClient,
   makeLinuxGlobalShortcutClient,
   makeLinuxSafeStorageClient,
   makeGlobalShortcutServiceLayer,
-  makePowerMonitorBridgeClientLayer,
-  makeScreenBridgeClientLayer,
   makeScreenServiceLayer,
   makeSecretBytesFromUtf8,
-  makeSystemAppearanceBridgeClientLayer,
   makeSystemAppearanceServiceLayer,
-  makeUpdaterBridgeClientLayer,
   makeUpdaterServiceLayer,
-  makeMenuBridgeClientLayer,
   makeMenuServiceLayer,
-  makeNotificationBridgeClientLayer,
   makeNotificationServiceLayer,
-  makePathBridgeClientLayer,
   makePathServiceLayer,
-  makeProtocolBridgeClientLayer,
   makeProtocolServiceLayer,
-  makeSafeStorageBridgeClientLayer,
   makeSafeStorageServiceLayer,
-  makeShellBridgeClientLayer,
   makeShellServiceLayer,
-  makeTrayBridgeClientLayer,
   makeTrayServiceLayer,
-  makeWebViewBridgeClientLayer,
   makeWebViewServiceLayer,
-  makeWindowBridgeClientLayer,
   makeWindowServiceLayer,
   unsafeSecretBytes,
   wipeSecretBytes,
@@ -265,7 +245,27 @@ import {
   type WebViewClientApi,
   type WindowClientApi
 } from "./index.js"
-import { webViewCapability } from "./webview.js"
+import { makeAppBridgeClientLayer } from "./app.js"
+import { makeClipboardBridgeClientLayer } from "./clipboard.js"
+import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
+import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
+import { makeDialogBridgeClientLayer } from "./dialog.js"
+import { makeDockBridgeClientLayer } from "./dock.js"
+import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
+import { makeMenuBridgeClientLayer } from "./menu.js"
+import { makeNotificationBridgeClientLayer } from "./notification.js"
+import { makePathBridgeClientLayer } from "./path.js"
+import { makePowerMonitorBridgeClientLayer } from "./power-monitor.js"
+import { makeProtocolBridgeClientLayer } from "./protocol.js"
+import { makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
+import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
+import { makeShellBridgeClientLayer } from "./shell.js"
+import { makeSystemAppearanceBridgeClientLayer } from "./system-appearance.js"
+import { makeTrayBridgeClientLayer } from "./tray.js"
+import { makeUpdaterBridgeClientLayer } from "./updater.js"
+import { makeWebViewBridgeClientLayer, webViewCapability } from "./webview.js"
+import { makeHostWindowRpcRuntime, makeWindowBridgeClientLayer } from "./window.js"
 import {
   AppBeforeQuitEvent,
   AppCommandLine,
@@ -323,6 +323,7 @@ import {
 } from "./contracts/index.js"
 import {
   AppEventRouter,
+  AppEventRouterLive,
   broadcastRoute,
   firstResponderRoute,
   makeAppEventRouter,
@@ -343,27 +344,9 @@ const runScopedPromiseExit = <A, E>(
   effect: Effect.Effect<A, E, Scope.Scope>
 ): Promise<Exit.Exit<A, E>> => Effect.runPromiseExit(Effect.scoped(effect))
 
-// Snapshot helper: builds a surface's serverLayer against DesktopRpcRegistryLive
-// and returns the captured registrations. The cast mirrors the framework's
-// snapshotRegistrationsSync — Desktop.rpc layer bodies only do Effect.sync, so
-// handler R requirements are not actually resolved here even though TypeScript
-// thinks the surface layer needs the service (e.g., Screen).
 const snapshotSurfaceRegistrations = (
-  serverLayer: Layer.Layer<never, never, any>
-): Promise<ReadonlyArray<DesktopRpcRegistration<unknown, unknown>>> =>
-  Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const ctx = yield* Layer.build(
-          Layer.provideMerge(
-            serverLayer as Layer.Layer<never, never, DesktopRpcRegistry>,
-            DesktopRpcRegistryLive
-          )
-        )
-        return yield* Context.get(ctx, DesktopRpcRegistry).snapshot
-      })
-    )
-  )
+  serverLayer: ReadonlyArray<AnyDesktopRpcRegistration>
+): Promise<ReadonlyArray<AnyDesktopRpcRegistration>> => Promise.resolve(serverLayer)
 
 test("native package root keeps contracts and implementation helpers behind subpaths", async () => {
   const native = await import("@effect-desktop/native")
@@ -372,6 +355,12 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect(native.WindowLive).toBeDefined()
   expect(native.ClipboardSurface).toBeDefined()
   expect(native.DialogSurface).toBeDefined()
+  expect(native.Native.all).toBeDefined()
+  expect(native.Native.Permissions.clipboard.readText).toBeDefined()
+  expect(Array.isArray(native.Native.available(native.Native.Clipboard))).toBe(true)
+  expect(Array.isArray(Desktop.native(native.Native.all))).toBe(true)
+  expect("readText" in native.Native.Clipboard).toBe(false)
+  expect("Permissions" in native.Native).toBe(true)
   expect(native.NativeCapabilities).toBeFunction()
   expect(native.NativeCapabilitiesLive).toBeDefined()
   expect(native.UnsupportedCapability).toBeFunction()
@@ -386,6 +375,101 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect("UpdateWorkflow" in native).toBe(false)
   expect("makeUnsupportedWindowClient" in native).toBe(false)
   expect("makeUnsupportedClipboardClient" in native).toBe(false)
+  expect("makeClipboardBridgeClientLayer" in native).toBe(false)
+  expect("makeHostClipboardRpcRuntime" in native).toBe(false)
+})
+
+test("native services expose canonical static layers", () => {
+  expect(AppLive).toBe(App.layer)
+  expect(ClipboardLive).toBe(Clipboard.layer)
+  expect(ContextMenuLive).toBe(ContextMenu.layer)
+  expect(CrashReporterLive).toBe(CrashReporter.layer)
+  expect(DialogLive).toBe(Dialog.layer)
+  expect(DockLive).toBe(Dock.layer)
+  expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
+  expect(MenuLive).toBe(Menu.layer)
+  expect(NotificationLive).toBe(Notification.layer)
+  expect(PathLive).toBe(Path.layer)
+  expect(PowerMonitorLive).toBe(PowerMonitor.layer)
+  expect(ProtocolLive).toBe(Protocol.layer)
+  expect(SafeStorageLive).toBe(SafeStorage.layer)
+  expect(ScreenLive).toBe(Screen.layer)
+  expect(ShellLive).toBe(Shell.layer)
+  expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
+  expect(TrayLive).toBe(Tray.layer)
+  expect(UpdaterLive).toBe(Updater.layer)
+  expect(WebViewLive).toBe(WebView.layer)
+  expect(WindowLive).toBe(Window.layer)
+  expect(AppEventRouterLive).toBe(AppEventRouter.layer)
+})
+
+test("Native.Permissions.all declares every public native capability", () => {
+  const declared = nativePermissionTags(Native.Permissions.all)
+
+  expect(declared).toContain("App.quit")
+  expect(declared).toContain("Clipboard.readText")
+  expect(declared).toContain("Window.create")
+  expect(declared).not.toContain("Clipboard.isSupported")
+})
+
+test("native capability groups declare only their native surface", () => {
+  const windowPermissions = nativePermissionTags(Native.Permissions.window.all)
+  const dialogPermissions = nativePermissionTags(Native.Permissions.dialog.all)
+  const clipboardPermissions = nativePermissionTags(Native.Permissions.clipboard.all)
+
+  expect(windowPermissions).toContain("Window.create")
+  expect(windowPermissions).toContain("Window.close")
+  expect(windowPermissions).not.toContain("Clipboard.readText")
+  expect(dialogPermissions).toContain("Dialog.openFile")
+  expect(dialogPermissions).not.toContain("Window.create")
+  expect(clipboardPermissions).toContain("Clipboard.readText")
+  expect(clipboardPermissions).not.toContain("Clipboard.isSupported")
+})
+
+test("native permission constants can declare a selected method", () => {
+  const declared = nativePermissionTags(Desktop.permission(Native.Permissions.clipboard.readText))
+
+  expect(declared).toContain("Clipboard.readText")
+  expect(declared).not.toContain("Clipboard.writeText")
+})
+
+test("native capability selections come from their surfaces", () => {
+  const declared = nativePermissionTags(Desktop.permission(ClipboardSurface.permissions.readText))
+
+  expect(Native.Clipboard).toBe(ClipboardSurface.selection)
+  expect(Native.Dialog).toBe(DialogSurface.selection)
+  expect(Native.Permissions.clipboard.readText).toEqual(ClipboardSurface.permissions.readText)
+  expect("isSupported" in Native.Clipboard).toBe(false)
+  expect("getInfo" in Native.App).toBe(false)
+  expect(declared).toContain("Clipboard.readText")
+})
+
+test("native capability bundles dedupe repeated surfaces and permissions", async () => {
+  const native = Desktop.native(Native.Clipboard)
+  const declaredPermissions = Desktop.permissions(
+    Desktop.permission(Native.Permissions.clipboard.readText),
+    Desktop.permission(Native.Permissions.clipboard.writeText),
+    Desktop.permission(Native.Permissions.clipboard.readText)
+  )
+  const graph = await Effect.runPromise(
+    Desktop.runtimeGraph({
+      id: "native-deduped-capabilities",
+      windows: Desktop.window("main", { title: "Native Dedupe" }),
+      native,
+      permissions: declaredPermissions
+    })
+  )
+  const declared = nativePermissionTagList(declaredPermissions)
+
+  expect(graph.nodes.filter((node) => node.id === "native:Clipboard")).toHaveLength(1)
+  expect(declared.filter((tag) => tag === "Clipboard.readText")).toHaveLength(1)
+  expect(declared.filter((tag) => tag === "Clipboard.writeText")).toHaveLength(1)
+})
+
+test("native availability selection does not grant authority", () => {
+  const declared = nativePermissionTags(Native.available(Native.Clipboard))
+
+  expect(declared.size).toBe(0)
 })
 
 test("native contracts subpath exposes schema-coded payload contracts", async () => {
@@ -394,6 +478,92 @@ test("native contracts subpath exposes schema-coded payload contracts", async ()
   expect(contracts.WindowCreateInput).toBeFunction()
   expect(contracts.ClipboardText).toBeFunction()
   expect(contracts.DialogOpenResult).toBeFunction()
+})
+
+test("Desktop.native registers selected native surfaces into app manifests", () => {
+  const app = Desktop.make({
+    id: "native-selected",
+    windows: Desktop.window("main", { title: "Native Selected" }),
+    native: Desktop.native(Native.Clipboard, Native.Dialog)
+  })
+  const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
+    Array.from(group.group.requests.keys())
+  )
+
+  expect(tags).toContain("Clipboard.readText")
+  expect(tags).toContain("Dialog.openFile")
+  expect(tags).not.toContain("Window.create")
+})
+
+test("Desktop.native availability does not require matching permissions during graph build", async () => {
+  const graph = await Effect.runPromise(
+    Desktop.runtimeGraph({
+      id: "native-no-permissions",
+      windows: Desktop.window("main", { title: "Native No Permissions" }),
+      native: Native.available(Native.Clipboard)
+    })
+  )
+
+  expect(graph.nodes.some((node) => node.id === "native:Clipboard")).toBe(true)
+  expect(graph.nodes.some((node) => node.id === "native:Window")).toBe(false)
+})
+
+test("Desktop.native rejects duplicate native surfaces as typed config errors", async () => {
+  const exit = await Effect.runPromiseExit(
+    Desktop.runtimeGraph({
+      id: "native-duplicate",
+      windows: Desktop.window("main", { title: "Native Duplicate" }),
+      native: Desktop.native(Native.available(Native.Clipboard), Native.available(Native.Clipboard))
+    })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(DesktopSpineConfigError)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "invalid-config",
+      contract: "Clipboard"
+    })
+  }
+})
+
+test("Desktop.native rejects duplicate RPC methods across native and app RPC layers", async () => {
+  const exit = await Effect.runPromiseExit(
+    Desktop.runtimeGraph({
+      id: "native-rpc-duplicate",
+      windows: Desktop.window("main", { title: "Native RPC Duplicate" }),
+      native: Native.available(Native.Clipboard),
+      rpcs: ClipboardSurface.serverLayer
+    })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(DesktopSpineConfigError)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "duplicate-rpc",
+      method: "Clipboard.readText"
+    })
+  }
+})
+
+test("Native.all registers every built-in native surface", () => {
+  const app = Desktop.make({
+    id: "native-all",
+    windows: Desktop.window("main", { title: "Native All" }),
+    native: Desktop.native(Native.all)
+  })
+  const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
+    Array.from(group.group.requests.keys())
+  )
+
+  expect(tags).toContain("App.getInfo")
+  expect(tags).toContain("Clipboard.readText")
+  expect(tags).toContain("Window.create")
 })
 
 test("native package exports reject implementation-only subpaths", async () => {
@@ -412,6 +582,24 @@ const expectImportRejected = async (specifier: string): Promise<void> => {
     rejected = true
   }
   expect(rejected).toBe(true)
+}
+
+const nativePermissionTags = (
+  nativeLayer: DesktopNativeLayer | DesktopPermissionsLayer
+): ReadonlySet<string> => {
+  const tags = nativePermissionTagList(nativeLayer)
+  return new Set(tags)
+}
+
+const nativePermissionTagList = (
+  nativeLayer: DesktopNativeLayer | DesktopPermissionsLayer
+): readonly string[] => {
+  const capabilities = nativeLayer.filter((item): item is NormalizedCapability => "kind" in item)
+  return capabilities.flatMap((capability) =>
+    capability.kind === "native.invoke"
+      ? [`${capability.primitive}.${capability.methods.join(",")}`]
+      : []
+  )
 }
 
 const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = ["create", "close"]
@@ -569,7 +757,7 @@ const expectedTrayMethods: Array<(typeof TrayMethodNames)[number]> = [
   "isSupported"
 ]
 
-const resourceId = (value: string): ResourceId => value as ResourceId
+const resourceId = makeResourceId
 
 const windowHandle: WindowHandle = {
   kind: "window",
@@ -782,6 +970,31 @@ test("App bridge client keeps input decoding strict while event decoding remains
   expectExitFailure(inputExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(Array.from(eventResult)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
   expect(requests).toEqual([])
+})
+
+test("App bridge client rejects event envelopes for the wrong method", async () => {
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+    subscribe: () =>
+      Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          timestamp: 1710000000401,
+          traceId: "event-trace",
+          method: "App.onOpenUrl",
+          payload: { path: "README.md" }
+        })
+      )
+  }
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
 test("App bridge client validates protocol registration scheme before host requests", async () => {
@@ -1632,6 +1845,71 @@ test("Menu bindCommand closes the command listener with its resource scope", asy
   expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
 })
 
+test("Menu bindCommand keeps listening after a command invocation failure", async () => {
+  const calls: string[] = []
+  const commandCalls: unknown[] = []
+  const activated = await Effect.runPromise(Queue.unbounded<MenuActivatedEvent>())
+  const recovered = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+  let attempts = 0
+  await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
+  await Effect.runPromise(
+    registerTestCommand(commands, {
+      id: "app.file.open",
+      payload: Schema.Struct({
+        itemId: Schema.String,
+        windowId: Schema.optionalKey(Schema.String)
+      }),
+      capability: menuCommandCapability,
+      ownerScope: "app",
+      handler: (input) =>
+        Effect.gen(function* () {
+          attempts += 1
+          commandCalls.push(input)
+          if (attempts === 1) {
+            return yield* Effect.fail(new Error("command failed"))
+          }
+          yield* Deferred.succeed(recovered, undefined)
+        })
+    })
+  )
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      return yield* menu.bindCommand("file.open", "app.file.open")
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeMenuServiceLayer({
+            ...menuClient(calls),
+            onActivated: () => Stream.fromQueue(activated)
+          }),
+          Layer.succeed(ResourceRegistry)(resources),
+          Layer.succeed(CommandRegistry)(commands)
+        )
+      )
+    )
+  )
+
+  const event = new MenuActivatedEvent({
+    itemId: "file.open",
+    commandId: "app.file.open",
+    windowId: "window-1"
+  })
+  await Effect.runPromise(Queue.offer(activated, event))
+  await Effect.runPromise(Queue.offer(activated, event))
+  await Effect.runPromise(Deferred.await(recovered))
+
+  expect(commandCalls).toEqual([
+    { itemId: "file.open", windowId: "window-1" },
+    { itemId: "file.open", windowId: "window-1" }
+  ])
+  expect(calls).toEqual(["bindCommand:file.open:app.file.open"])
+})
+
 test("Menu bridge client validates templates, sends host envelopes, and decodes activation events", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = menuExchange(requests, () => ({ kind: "success", payload: undefined }))
@@ -1794,8 +2072,9 @@ test("Menu bridge client returns invalid templates as typed Effect failures", as
 
   const exit = await Effect.runPromiseExit(
     client.setApplicationMenu({
+      // @ts-expect-error intentionally malformed template item omits label.
       items: [{ type: "item", id: "file.open", commandId: "app.file.open" }]
-    } as never)
+    })
   )
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -2437,9 +2716,8 @@ test("Tray bridge client rejects stale destroy handles before host transport", a
     )
   )
 
-  const exit = await Effect.runPromiseExit(
-    client.destroy({ ...trayHandle, state: "closed" } as unknown as TrayHandle)
-  )
+  // @ts-expect-error intentionally stale handle state exercises runtime decoding.
+  const exit = await Effect.runPromiseExit(client.destroy({ ...trayHandle, state: "closed" }))
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
@@ -2544,9 +2822,8 @@ test("Dialog bridge client returns invalid input as typed Effect failures", asyn
     )
   )
 
-  const exit = await Effect.runPromiseExit(
-    client.message({ level: "fatal", message: "bad" } as never)
-  )
+  // @ts-expect-error intentionally malformed dialog level exercises runtime decoding.
+  const exit = await Effect.runPromiseExit(client.message({ level: "fatal", message: "bad" }))
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
@@ -2883,7 +3160,8 @@ test("Notification bridge client returns invalid input as typed Effect failures"
       )
     )
 
-    const exit = await Effect.runPromiseExit(client.show(input as never))
+    // @ts-expect-error intentionally malformed notification text exercises runtime decoding.
+    const exit = await Effect.runPromiseExit(client.show(input))
 
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
     expect(label).toBeDefined()
@@ -3595,6 +3873,7 @@ test("CrashReporter rejects cyclic breadcrumb details", async () => {
 })
 
 test("CrashReporter bridge client records breadcrumbs", async () => {
+  const timestamp = 1_710_000_555_000
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = crashReporterExchange(requests, (request) => ({
     kind: "success",
@@ -3612,7 +3891,10 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
       const flush = yield* reporter.flush()
       return { flush }
     }).pipe(
-      Effect.provide(Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)))
+      Effect.provide(
+        Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
+      ),
+      Effect.provideService(Clock.Clock, fixedClock(timestamp))
     )
   )
 
@@ -3624,7 +3906,8 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
       {
         category: "user",
         message: "clicked save",
-        details: { authorization: "<redacted:redacted>" }
+        details: { authorization: "<redacted:redacted>" },
+        timestamp
       }
     ],
     ["CrashReporter.flush", null]
@@ -3754,7 +4037,7 @@ test("Shell bridge client validates external URL schemes", async () => {
       const denied = yield* Effect.exit(client.openExternal("myapp://callback"))
       yield* client.openExternal("myapp://callback", { allowedSchemes: ["MyApp"] })
       const javascriptDenied = yield* Effect.exit(
-        client.openExternal("javascript:alert(1)", { allowedSchemes: ["javascript"] } as never)
+        client.openExternal("javascript:alert(1)", { allowedSchemes: ["javascript"] })
       )
       return { denied, javascriptDenied }
     }).pipe(
@@ -3830,11 +4113,11 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
   }
 
   expect(ScreenSurface.group).toBe(ScreenRpcs)
-  expect(Layer.isLayer(ScreenSurface.serverLayer)).toBe(true)
+  expect(Array.isArray(ScreenSurface.serverLayer)).toBe(true)
   expect(Layer.isLayer(ScreenSurface.clientLayer)).toBe(true)
   expect(Layer.isLayer(ScreenSurface.testClientLayer)).toBe(true)
-  // Identity assertion: build serverLayer against the registry, snapshot, and
-  // confirm (group, handlers) was threaded through unchanged.
+  // Identity assertion: inspect the declaration data and confirm (group, handlers)
+  // was threaded through unchanged.
   const screenRegistrations = await snapshotSurfaceRegistrations(ScreenSurface.serverLayer)
   expect(screenRegistrations).toHaveLength(1)
   expect(screenRegistrations[0]?.group).toBe(ScreenRpcs)
@@ -4050,10 +4333,10 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
 
     expect(name).toBe(surface.tag)
     expect(surface.group).toBe(group)
-    expect(Layer.isLayer(surface.serverLayer)).toBe(true)
-    // Identity assertion: build serverLayer against the registry, snapshot, and
-    // confirm the (group, handlers) pair survived. Catches surface() regressions
-    // where the wrong group or handlers reference is captured.
+    expect(Array.isArray(surface.serverLayer)).toBe(true)
+    // Identity assertion: inspect declaration data and confirm the (group, handlers)
+    // pair survived. Catches surface() regressions where the wrong group or handlers
+    // reference is captured.
     const surfaceRegistrations = await snapshotSurfaceRegistrations(surface.serverLayer)
     expect(surfaceRegistrations).toHaveLength(1)
     expect(surfaceRegistrations[0]?.group).toBe(group)
@@ -4280,6 +4563,58 @@ test("native host RPC runtime lets permission-free Screen support calls pass thr
 
   expect(response).toEqual({ kind: "success", payload: { supported: true } })
   expect(calls).toEqual(["getDisplays"])
+})
+
+test("native host RPC runtime uses the Effect Clock for inspector state timestamps", async () => {
+  const timestamp = 1_710_000_777_000
+  const events: unknown[] = []
+  const runtime = makeNativeHostRpcRuntime(
+    ScreenRpcs,
+    ScreenRpcs.toLayer({
+      "Screen.getDisplays": () => Effect.succeed(new ScreenDisplaysResult({ displays: [] })),
+      "Screen.getPrimaryDisplay": () => Effect.succeed(primaryDisplay),
+      "Screen.getPointerPoint": () => Effect.succeed(new ScreenPoint({ x: 12, y: 34 })),
+      "Screen.isSupported": () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
+    }),
+    {
+      originAuth: RendererOriginAuth.unsafeDisabledForTests,
+      nativeHostInspector: {
+        publish: (event) =>
+          Effect.sync(() => {
+            events.push(event)
+          }),
+        events: Stream.empty
+      }
+    }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "screen-inspected",
+          method: "Screen.isSupported",
+          timestamp: 1710000000000,
+          traceId: "trace-screen-inspected",
+          payload: { method: "getDisplays" }
+        })
+      )
+      .pipe(
+        Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())),
+        Effect.provideService(Clock.Clock, fixedClock(timestamp))
+      )
+  )
+
+  expect(response).toEqual({ kind: "success", payload: { supported: true } })
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      kind: "host",
+      message: "Pending",
+      timestamp,
+      traceId: "trace-screen-inspected"
+    })
+  )
 })
 
 test("Screen bridge client validates generated protocol timestamps as typed failures", async () => {
@@ -5871,7 +6206,8 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
       const malformedInputExit = yield* Effect.exit(
         client.close({
           ...windowHandle,
-          id: resourceId("")
+          // @ts-expect-error intentionally malformed handle id exercises runtime decoding.
+          id: ""
         })
       )
       const unknownExit = yield* Effect.exit(client.close(windowHandle))
@@ -7397,6 +7733,14 @@ const nextNumber = (values: readonly number[]) => {
     return value
   }
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.void
+})
 
 const expectExitFailure = <E>(
   exit: Exit.Exit<unknown, E>,

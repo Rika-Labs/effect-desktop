@@ -22,8 +22,7 @@ import { SqlClient, SqlClientLive } from "@effect-desktop/core"
 
 ```ts
 const SqliteLive = SqlClientLive({
-  filename: "app.sqlite", // or ":memory:"
-  ownerScope: "window-main"
+  filename: "app.sqlite" // or ":memory:"
 })
 ```
 
@@ -31,8 +30,10 @@ const SqliteLive = SqlClientLive({
 
 - Validates the path.
 - Checks the `sqlite.open` permission for file-backed databases.
-- Registers a scoped `sqlite` resource.
+- Registers a scoped `sqlite` resource under the current `ResourceOwner`.
 - Delegates query execution, transactions, prepared statements, and driver errors to `@effect/sql-sqlite-bun`.
+
+`Desktop.runtime(...)` provides an app owner. `Desktop.window(..., services)` provides a window owner for window-scoped layers. Tests can provide `ResourceOwner.test(...)`.
 
 ## Queries
 

@@ -34,12 +34,11 @@ import { PTY } from "@effect-desktop/core"
 const program = Effect.gen(function* () {
   const pty = yield* PTY
   const session = yield* pty.open({
-    shell: "/bin/zsh",
-    args: [],
+    argv: ["/bin/zsh"],
     cwd: process.env.HOME,
     env: process.env,
-    size: { rows: 24, cols: 80 },
-    ownerScope: "terminal-window"
+    rows: 24,
+    cols: 80
   })
 
   // Stream output
@@ -76,10 +75,10 @@ yield * session.signal("SIGTERM")
 
 ## 6. Cleanup
 
-When `"terminal-window"` closes, the PTY is closed, the process is signaled, and the resource is unregistered. Explicit close:
+When the owning `ResourceOwner` scope closes, the PTY is closed, the process is signaled, and the resource is unregistered. Explicit close:
 
 ```ts
-yield * session.close
+yield * session.kill()
 ```
 
 ## Adapter substitution

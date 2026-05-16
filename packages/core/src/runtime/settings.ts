@@ -2,6 +2,7 @@ import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } f
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import type { PermissionRegistry } from "./permission-registry.js"
+import { ResourceOwner } from "./resource-owner.js"
 import type { ResourceRegistry } from "./resources.js"
 import { SqlClientLive, type SqlitePolicyError } from "./sqlite.js"
 
@@ -12,8 +13,13 @@ const SettingsMetadataText = Schema.NonEmptyString.check(
   Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
 )
 const SettingsKeySchema = SettingsMetadataText
+const SettingsMutationOptionsSchema = Schema.Struct({
+  source: Schema.optionalKey(Schema.String)
+})
 
-export class SettingsOpenInput extends Schema.Class<SettingsOpenInput>("SettingsOpenInput")({
+export class SettingsResolvedInput extends Schema.Class<SettingsResolvedInput>(
+  "SettingsResolvedInput"
+)({
   path: NonEmptyString,
   ownerScope: NonEmptyString,
   namespace: SettingsMetadataText,
@@ -66,9 +72,8 @@ export type SettingsError =
   | SettingsMigrationFailedError
   | SettingsRecoveredFromBackupError
 
-export interface SettingsOpenOptions {
+export interface SettingsOptions {
   readonly path: string
-  readonly ownerScope: string
   readonly namespace?: string
   readonly schemaVersion: number
   readonly migrations?: readonly SettingsMigration[]
@@ -76,19 +81,31 @@ export interface SettingsOpenOptions {
   readonly now?: () => number
 }
 
+export interface SettingsMemoryOptions {
+  readonly namespace?: string
+  readonly schemaVersion?: number
+  readonly migrations?: readonly SettingsMigration[]
+  readonly now?: () => number
+}
+
 export interface SettingsMutationOptions {
   readonly source?: string
 }
 
+export type SettingSchema<A> = Schema.Schema<A> & {
+  readonly DecodingServices: never
+  readonly EncodingServices: never
+}
+
 export interface SettingKey<A> {
   readonly name: string
-  readonly schema: Schema.Schema<A>
+  readonly schema: SettingSchema<A>
   readonly defaultValue?: A
 }
 
 export const makeSettingKey = <A>(options: {
   readonly name: string
-  readonly schema: Schema.Schema<A>
+  readonly schema: SettingSchema<A>
   readonly defaultValue?: A
 }): SettingKey<A> => Object.freeze(options)
 
@@ -109,19 +126,26 @@ export interface SettingsStore {
   readonly key: typeof makeSettingKey
   readonly get: <A>(
     key: string | SettingKey<A>,
-    schema?: Schema.Schema<A>
+    schema?: SettingSchema<A>
   ) => Effect.Effect<Option.Option<A>, SettingsError, never>
   readonly getOrDefault: <A>(
     key: string | SettingKey<A>,
-    schema?: Schema.Schema<A>,
+    schema?: SettingSchema<A>,
     defaultValue?: A
   ) => Effect.Effect<A, SettingsError, never>
-  readonly set: <A>(
-    key: string | SettingKey<A>,
-    schemaOrValue: Schema.Schema<A> | A,
-    valueOrOptions?: A | SettingsMutationOptions,
-    options?: SettingsMutationOptions
-  ) => Effect.Effect<void, SettingsError, never>
+  readonly set: {
+    <A>(
+      key: string,
+      schema: SettingSchema<A>,
+      value: unknown,
+      options?: SettingsMutationOptions
+    ): Effect.Effect<void, SettingsError, never>
+    <A>(
+      key: SettingKey<A>,
+      value: unknown,
+      options?: SettingsMutationOptions
+    ): Effect.Effect<void, SettingsError, never>
+  }
   readonly delete: (
     key: string,
     options?: SettingsMutationOptions
@@ -129,7 +153,7 @@ export interface SettingsStore {
   readonly keys: () => Effect.Effect<readonly string[], SettingsError, never>
   readonly update: <A, E, R>(
     key: string,
-    schema: Schema.Schema<A>,
+    schema: SettingSchema<A>,
     update: (current: Option.Option<A>) => Effect.Effect<A, E, R>,
     options?: SettingsMutationOptions
   ) => Effect.Effect<A, E | SettingsError, R>
@@ -138,11 +162,9 @@ export interface SettingsStore {
   readonly close: () => Effect.Effect<void, never, never>
 }
 
-export interface SettingsApi {
-  readonly open: (
-    options: SettingsOpenOptions
-  ) => Effect.Effect<SettingsStore, SettingsError, never>
-}
+export interface SettingsApi extends SettingsStore {}
+
+export type Store = SettingsStore
 
 const VERSION_KEY_SUFFIX = "__meta__/version"
 const INDEX_KEY_SUFFIX = "__meta__/keys"
@@ -162,19 +184,18 @@ const kvGet = (
       if (raw === undefined) {
         return Effect.succeed(Option.none())
       }
-      return Effect.try({
-        try: (): Option.Option<unknown> => {
-          const parsed: unknown = JSON.parse(raw)
-          return Option.some(parsed)
-        },
-        catch: (error) =>
-          new SettingsInvalidArgumentError({
-            operation,
-            field: storeKey,
-            message: formatUnknownError(error),
-            cause: Option.some(error)
-          })
-      })
+      return Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(raw).pipe(
+        Effect.map(Option.some),
+        Effect.mapError(
+          (error) =>
+            new SettingsInvalidArgumentError({
+              operation,
+              field: storeKey,
+              message: formatUnknownError(error),
+              cause: Option.some(error)
+            })
+        )
+      )
     })
   )
 
@@ -308,80 +329,120 @@ const writeVersion = (
 ): Effect.Effect<void, SettingsError, never> => kvSet(kv, versionKey(namespace), version, operation)
 
 export const makeSettings = (
-  kv: KeyValueStore.KeyValueStore
-): Effect.Effect<SettingsApi, never, never> =>
-  Effect.sync(() =>
-    Object.freeze({
-      open: (options: SettingsOpenOptions) =>
-        Effect.gen(function* () {
-          const input = yield* decodeOpenInput(
-            {
-              path: options.path,
-              ownerScope: options.ownerScope,
-              namespace: options.namespace ?? "default",
-              schemaVersion: options.schemaVersion,
-              ...(options.backupPath === undefined ? {} : { backupPath: options.backupPath })
-            },
-            "Settings.open"
+  kv: KeyValueStore.KeyValueStore,
+  options: SettingsOptions | SettingsMemoryOptions,
+  ownerScope = "memory"
+): Effect.Effect<SettingsApi, SettingsError, never> => {
+  const path = "path" in options ? options.path : ":memory:"
+  const backupPath = "backupPath" in options ? options.backupPath : undefined
+  return Effect.gen(function* () {
+    const input = yield* decodeResolvedInput(
+      {
+        path,
+        ownerScope,
+        namespace: options.namespace ?? "default",
+        schemaVersion: options.schemaVersion ?? 1,
+        ...(backupPath === undefined ? {} : { backupPath })
+      },
+      "Settings.layer"
+    )
+    const changes = yield* PubSub.sliding<SettingsChange>({ capacity: 1024, replay: 0 })
+    const migratedPub = yield* PubSub.sliding<SettingsMigrated>({
+      capacity: 16,
+      replay: 16
+    })
+    const now =
+      options.now === undefined
+        ? Clock.currentTimeMillis
+        : Effect.sync(options.now).pipe(
+            Effect.catchDefect((error) =>
+              Effect.fail(
+                new SettingsMigrationFailedError({
+                  schemaVersion: input.schemaVersion,
+                  operation: "Settings.layer",
+                  cause: Option.some(error)
+                })
+              )
+            )
           )
-          const changes = yield* PubSub.sliding<SettingsChange>({ capacity: 1024, replay: 0 })
-          const migratedPub = yield* PubSub.sliding<SettingsMigrated>({
-            capacity: 16,
-            replay: 16
-          })
-          const now =
-            options.now === undefined
-              ? Clock.currentTimeMillis
-              : Effect.sync(options.now).pipe(
-                  Effect.catchDefect((error) =>
-                    Effect.fail(
-                      new SettingsMigrationFailedError({
-                        schemaVersion: input.schemaVersion,
-                        operation: "Settings.open",
-                        cause: Option.some(error)
-                      })
-                    )
-                  )
-                )
 
-          yield* initialize(kv, input, options.migrations ?? [], now, migratedPub)
+    yield* initialize(kv, input, options.migrations ?? [], now, migratedPub)
 
-          return makeStore(kv, input.namespace, changes, migratedPub)
-        }).pipe(
-          Effect.withSpan("Settings.open", {
-            attributes: {
-              path: options.path,
-              ownerScope: options.ownerScope,
-              namespace: options.namespace ?? "default",
-              schemaVersion: options.schemaVersion
-            }
-          })
-        )
+    return makeStore(kv, input.namespace, changes, migratedPub)
+  }).pipe(
+    Effect.withSpan("Settings.layer", {
+      attributes: {
+        path,
+        ownerScope,
+        namespace: options.namespace ?? "default",
+        schemaVersion: options.schemaVersion ?? 1
+      }
     })
   )
+}
 
-export class Settings extends Context.Service<Settings, SettingsApi>()("Settings") {}
+export class Settings extends Context.Service<Settings, SettingsApi>()("Settings") {
+  static layer(
+    options: SettingsOptions
+  ): Layer.Layer<
+    Settings,
+    SettingsError | SqlitePolicyError,
+    ResourceOwner | PermissionRegistry | ResourceRegistry
+  > {
+    return Layer.unwrap(
+      Effect.gen(function* () {
+        const owner = yield* ResourceOwner
+        return settingsLayer(options, owner.scopeId)
+      })
+    )
+  }
 
-const SettingsFromKv: Layer.Layer<Settings, never, KeyValueStore.KeyValueStore> = Layer.effect(
+  static window(
+    options: SettingsOptions
+  ): Layer.Layer<
+    Settings,
+    SettingsError | SqlitePolicyError,
+    ResourceOwner | PermissionRegistry | ResourceRegistry
+  > {
+    return Settings.layer(options)
+  }
+
+  static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> {
+    return settingsMemoryLayer(options)
+  }
+}
+
+const settingsLayer = (
+  options: SettingsOptions,
+  ownerScope: string
+): Layer.Layer<
   Settings,
-  Effect.gen(function* () {
-    const kv = yield* KeyValueStore.KeyValueStore
-    return yield* makeSettings(kv)
-  })
-)
-
-export const makeSettingsLayer = (
-  path: string,
-  ownerScope = "settings"
-): Layer.Layer<Settings, SqlitePolicyError, PermissionRegistry | ResourceRegistry> =>
-  SettingsFromKv.pipe(
+  SettingsError | SqlitePolicyError,
+  ResourceOwner | PermissionRegistry | ResourceRegistry
+> =>
+  settingsFromKv(options, ownerScope).pipe(
     Layer.provide(KeyValueStore.layerSql()),
-    Layer.provide(SqlClientLive({ filename: path, ownerScope }))
+    Layer.provide(SqlClientLive({ filename: options.path }))
   )
 
-export const makeSettingsLayerMemory: Layer.Layer<Settings, never, never> = SettingsFromKv.pipe(
-  Layer.provide(KeyValueStore.layerMemory)
-)
+const settingsMemoryLayer = (
+  options: SettingsMemoryOptions = {}
+): Layer.Layer<Settings, SettingsError, never> =>
+  settingsFromKv(options, "memory").pipe(Layer.provide(KeyValueStore.layerMemory))
+
+const settingsFromKv = (
+  options: SettingsOptions | SettingsMemoryOptions,
+  ownerScope: string
+): Layer.Layer<Settings, SettingsError, KeyValueStore.KeyValueStore> =>
+  Layer.effect(
+    Settings,
+    Effect.gen(function* () {
+      const kv = yield* KeyValueStore.KeyValueStore
+      return yield* Effect.acquireRelease(makeSettings(kv, options, ownerScope), (store) =>
+        store.close()
+      )
+    })
+  )
 
 const makeStore = (
   kv: KeyValueStore.KeyValueStore,
@@ -391,7 +452,7 @@ const makeStore = (
 ): SettingsStore => {
   const get = <A>(
     key: string | SettingKey<A>,
-    schema?: Schema.Schema<A>
+    schema?: SettingSchema<A>
   ): Effect.Effect<Option.Option<A>, SettingsError, never> =>
     Effect.gen(function* () {
       const resolved = yield* resolveSettingKey(key, schema, "Settings.get")
@@ -409,7 +470,7 @@ const makeStore = (
   return Object.freeze({
     key: makeSettingKey,
     get,
-    getOrDefault: <A>(key: string | SettingKey<A>, schema?: Schema.Schema<A>, defaultValue?: A) =>
+    getOrDefault: <A>(key: string | SettingKey<A>, schema?: SettingSchema<A>, defaultValue?: A) =>
       Effect.gen(function* () {
         const resolved = yield* resolveSettingKey(key, schema, "Settings.getOrDefault")
         const value = yield* get(resolved)
@@ -433,8 +494,8 @@ const makeStore = (
       }),
     set: <A>(
       key: string | SettingKey<A>,
-      schemaOrValue: Schema.Schema<A> | A,
-      valueOrOptions?: A | SettingsMutationOptions,
+      schemaOrValue: unknown,
+      valueOrOptions?: unknown,
       options?: SettingsMutationOptions
     ) =>
       Effect.gen(function* () {
@@ -483,7 +544,7 @@ const makeStore = (
       ),
     update: <A, E, R>(
       key: string,
-      schema: Schema.Schema<A>,
+      schema: SettingSchema<A>,
       updateFn: (current: Option.Option<A>) => Effect.Effect<A, E, R>,
       options?: SettingsMutationOptions
     ) =>
@@ -517,7 +578,7 @@ const makeStore = (
 
 const initialize = (
   kv: KeyValueStore.KeyValueStore,
-  input: SettingsOpenInput,
+  input: SettingsResolvedInput,
   migrations: readonly SettingsMigration[],
   now: Effect.Effect<number, SettingsError, never>,
   migrated: PubSub.PubSub<SettingsMigrated>
@@ -655,11 +716,11 @@ const migrationContext = (
     })
 })
 
-const decodeOpenInput = (
+const decodeResolvedInput = (
   input: unknown,
   operation: string
-): Effect.Effect<SettingsOpenInput, SettingsInvalidArgumentError, never> =>
-  Schema.decodeUnknownEffect(SettingsOpenInput)(input).pipe(
+): Effect.Effect<SettingsResolvedInput, SettingsInvalidArgumentError, never> =>
+  Schema.decodeUnknownEffect(SettingsResolvedInput)(input).pipe(
     Effect.mapError(
       (error) =>
         new SettingsInvalidArgumentError({
@@ -692,7 +753,7 @@ const isSettingKey = <A>(value: string | SettingKey<A>): value is SettingKey<A> 
 
 const resolveSettingKey = <A>(
   key: string | SettingKey<A>,
-  schema: Schema.Schema<A> | undefined,
+  schema: SettingSchema<A> | undefined,
   operation: string
 ): Effect.Effect<SettingKey<A>, SettingsInvalidArgumentError, never> =>
   Effect.gen(function* () {
@@ -718,13 +779,13 @@ const resolveSettingKey = <A>(
 
 const resolveSettingSetInput = <A>(
   key: string | SettingKey<A>,
-  schemaOrValue: Schema.Schema<A> | A,
-  valueOrOptions: A | SettingsMutationOptions | undefined,
+  schemaOrValue: unknown,
+  valueOrOptions: unknown,
   options: SettingsMutationOptions | undefined,
   operation: string
 ): Effect.Effect<
   SettingKey<A> & {
-    readonly value: A
+    readonly value: unknown
     readonly options: SettingsMutationOptions | undefined
   },
   SettingsInvalidArgumentError,
@@ -733,27 +794,67 @@ const resolveSettingSetInput = <A>(
   Effect.gen(function* () {
     if (isSettingKey(key)) {
       const resolved = yield* resolveSettingKey(key, undefined, operation)
+      const resolvedOptions = yield* decodeMutationOptions(valueOrOptions, operation)
       return {
         ...resolved,
-        value: schemaOrValue as A,
-        options: valueOrOptions as SettingsMutationOptions | undefined
+        value: schemaOrValue,
+        options: resolvedOptions
       }
     }
-    const resolved = yield* resolveSettingKey(key, schemaOrValue as Schema.Schema<A>, operation)
+    const schema = yield* resolveSettingSchema<A>(schemaOrValue, operation)
+    const resolved = yield* resolveSettingKey(key, schema, operation)
     return {
       ...resolved,
-      value: valueOrOptions as A,
+      value: valueOrOptions,
       options
     }
   })
 
+const decodeMutationOptions = (
+  options: unknown,
+  operation: string
+): Effect.Effect<SettingsMutationOptions | undefined, SettingsInvalidArgumentError, never> => {
+  if (options === undefined) {
+    return Effect.succeed(undefined)
+  }
+
+  return Schema.decodeUnknownEffect(SettingsMutationOptionsSchema)(options).pipe(
+    Effect.mapError(
+      (error) =>
+        new SettingsInvalidArgumentError({
+          operation,
+          field: "options",
+          message: formatUnknownError(error),
+          cause: Option.some(error)
+        })
+    )
+  )
+}
+
+const resolveSettingSchema = <A>(
+  schema: unknown,
+  operation: string
+): Effect.Effect<SettingSchema<A>, SettingsInvalidArgumentError, never> =>
+  isSettingSchema<A>(schema)
+    ? Effect.succeed(schema)
+    : Effect.fail(
+        new SettingsInvalidArgumentError({
+          operation,
+          field: "schema",
+          message: "schema is required when using a raw setting key",
+          cause: Option.none()
+        })
+      )
+
+const isSettingSchema = <A>(schema: unknown): schema is SettingSchema<A> => Schema.isSchema(schema)
+
 const encodeValue = <A>(
-  schema: Schema.Schema<A>,
-  value: A,
+  schema: SettingSchema<A>,
+  value: unknown,
   key: string,
   operation: string
 ): Effect.Effect<unknown, SettingsInvalidArgumentError, never> =>
-  (Schema.encodeUnknownEffect(schema)(value) as Effect.Effect<unknown, unknown, never>).pipe(
+  Schema.encodeUnknownEffect(schema)(value).pipe(
     Effect.mapError(
       (error) =>
         new SettingsInvalidArgumentError({
@@ -766,12 +867,12 @@ const encodeValue = <A>(
   )
 
 const decodeValue = <A>(
-  schema: Schema.Schema<A>,
+  schema: SettingSchema<A>,
   value: unknown,
   key: string,
   operation: string
 ): Effect.Effect<A, SettingsInvalidArgumentError, never> =>
-  (Schema.decodeUnknownEffect(schema)(value) as Effect.Effect<A, unknown, never>).pipe(
+  Schema.decodeUnknownEffect(schema)(value).pipe(
     Effect.mapError(
       (error) =>
         new SettingsInvalidArgumentError({

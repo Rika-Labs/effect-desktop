@@ -12,6 +12,7 @@ import {
 } from "@effect-desktop/bridge"
 import {
   Cause,
+  Clock,
   Context,
   Effect,
   Exit,
@@ -38,14 +39,20 @@ import {
   ExecutionEvent,
   type ExecutionInspectorCollectorApi
 } from "./inspector-events.js"
+import { ResourceOwner, type ResourceOwnerApi } from "./resource-owner.js"
 import { holdScopedExecutionPermit } from "./execution-budgets.js"
 
 const NonEmptyString = Schema.NonEmptyString
 const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0))
-// eslint-disable-next-line no-control-regex -- PTY signals and env values must not contain control bytes or NUL.
-const PtySignalString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000-\u001F\u007F]+$/))
-const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]+$/))
-const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
+const NulByte = String.fromCharCode(0)
+const UnitSeparatorByte = String.fromCharCode(31)
+const DeleteByte = String.fromCharCode(127)
+const NoControlTextPattern = new RegExp(`^[^${NulByte}-${UnitSeparatorByte}${DeleteByte}]+$`, "u")
+const NoNulTextPattern = new RegExp(`^[^${NulByte}]+$`, "u")
+const OptionalNoNulTextPattern = new RegExp(`^[^${NulByte}]*$`, "u")
+const PtySignalString = Schema.NonEmptyString.check(Schema.isPattern(NoControlTextPattern))
+const EnvironmentVariableName = Schema.NonEmptyString.check(Schema.isPattern(NoNulTextPattern))
+const EnvironmentVariableValue = Schema.String.check(Schema.isPattern(OptionalNoNulTextPattern))
 
 export class PtyOpenInput extends Schema.Class<PtyOpenInput>("PtyOpenInput")({
   command: NonEmptyString,
@@ -77,7 +84,6 @@ export type PtyError = HostProtocolError
 
 export interface PtyOpenOptions {
   readonly argv: readonly [string, ...string[]]
-  readonly ownerScope: string
   readonly rows: number
   readonly cols: number
   readonly cwd?: string
@@ -90,9 +96,9 @@ export interface PtyHandle {
   readonly output: Stream.Stream<Uint8Array, PtyError, never>
   readonly outputMetrics: Effect.Effect<PtyOutputMetrics, never, never>
   readonly onExit: Effect.Effect<PtyExitStatus, PtyError, never>
-  readonly write: (chunk: Uint8Array) => Effect.Effect<void, PtyError, never>
+  readonly write: (chunk: unknown) => Effect.Effect<void, PtyError, never>
   readonly resize: (size: PtyResizeInput) => Effect.Effect<void, PtyError, never>
-  readonly kill: (signal?: PtySignalInput) => Effect.Effect<void, PtyError, never>
+  readonly kill: (signal?: unknown) => Effect.Effect<void, PtyError, never>
 }
 
 export interface PtyApi {
@@ -129,10 +135,18 @@ export interface PtyBudgetPolicy {
   readonly outputBufferBytes?: number
   readonly outputCoalesceBytes?: number
   readonly outputCoalesceMs?: number
-  readonly outputOverflow?: PtyOutputOverflow
+  readonly outputOverflow?: unknown
 }
 
 export type PtyOutputOverflow = "block" | "dropNewest" | "dropOldest" | "error"
+
+interface ResolvedPtyBudgetPolicy {
+  readonly maxConcurrent: number
+  readonly outputBufferBytes: number
+  readonly outputCoalesceBytes: number
+  readonly outputCoalesceMs: number
+  readonly outputOverflow: PtyOutputOverflow
+}
 
 export interface PtyOutputMetrics {
   readonly coalescedFrames: number
@@ -155,32 +169,29 @@ export interface PtyPermissionPolicy {
   readonly spawn?: readonly string[]
 }
 
-const DEFAULT_PTY_BUDGETS: Required<PtyBudgetPolicy> = Object.freeze({
+const DEFAULT_PTY_BUDGETS: ResolvedPtyBudgetPolicy = Object.freeze({
   maxConcurrent: 16,
   outputBufferBytes: 262_144,
   outputCoalesceBytes: 65_536,
   outputCoalesceMs: 4,
   outputOverflow: "dropOldest"
 })
-const PTY_OUTPUT_OVERFLOWS = new Set<PtyOutputOverflow>([
-  "block",
-  "dropNewest",
-  "dropOldest",
-  "error"
-])
+const PTY_OUTPUT_OVERFLOWS = new Set<string>(["block", "dropNewest", "dropOldest", "error"])
 const DEFAULT_GRACEFUL_SHUTDOWN_MS = 5_000
 const EMPTY_PTY_PERMISSIONS: PtyPermissionPolicy = Object.freeze({})
 
 export const makePty = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: PtyOptions
 ): Effect.Effect<PtyApi, HostProtocolInvalidArgumentError, never> =>
   Effect.gen(function* () {
     const adapter = options.adapter
-    const budgets = { ...DEFAULT_PTY_BUDGETS, ...options.budgets }
+    const rawBudgets: Required<PtyBudgetPolicy> = { ...DEFAULT_PTY_BUDGETS, ...options.budgets }
     const gracefulShutdownMs = options.gracefulShutdownMs ?? DEFAULT_GRACEFUL_SHUTDOWN_MS
     const inspector = options.inspector ?? disabledExecutionInspectorCollector
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     if (!Number.isFinite(gracefulShutdownMs) || gracefulShutdownMs <= 0) {
       return yield* Effect.fail(
         makeHostProtocolInvalidArgumentError(
@@ -193,7 +204,7 @@ export const makePty = (
     const permissions = options.permissions ?? EMPTY_PTY_PERMISSIONS
     const ptyBudgetScope = yield* Scope.make()
     const ptyBudgets = yield* RcMap.make({
-      lookup: (_ownerScope: string) => Semaphore.make(budgets.maxConcurrent)
+      lookup: (_ownerScope: string) => Semaphore.make(rawBudgets.maxConcurrent)
     }).pipe(Scope.provide(ptyBudgetScope))
 
     const api: PtyApi = Object.freeze({
@@ -203,7 +214,7 @@ export const makePty = (
             {
               command: options.argv[0],
               args: options.argv.slice(1),
-              ownerScope: options.ownerScope,
+              ownerScope: owner.scopeId,
               rows: options.rows,
               cols: options.cols,
               ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
@@ -212,7 +223,7 @@ export const makePty = (
             "PTY.open"
           )
           yield* authorizePtyOpen(permissions, input)
-          yield* validatePtyBudgets(budgets, "PTY.open")
+          const budgets = yield* validatePtyBudgets(rawBudgets, "PTY.open")
           yield* inspector.publish(
             new ExecutionEvent({
               kind: "pty",
@@ -287,7 +298,7 @@ export const makePty = (
                 status: "failure",
                 operation: "PTY.open",
                 command: options.argv[0],
-                ownerScope: options.ownerScope,
+                ownerScope: owner.scopeId,
                 errorTag: error._tag,
                 message: error.message,
                 timestamp: now()
@@ -298,7 +309,7 @@ export const makePty = (
             attributes: {
               command: options.argv[0],
               argc: options.argv.length,
-              ownerScope: options.ownerScope,
+              ownerScope: owner.scopeId,
               rows: options.rows,
               cols: options.cols
             }
@@ -312,12 +323,13 @@ export class PTY extends Context.Service<PTY, PtyApi>()("PTY") {}
 
 export const PtyLayer = (
   options: PtyOptions
-): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceRegistry> =>
+): Layer.Layer<PTY, HostProtocolInvalidArgumentError, ResourceOwner | ResourceRegistry> =>
   Layer.effect(
     PTY,
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
-      return yield* makePty(registry, options)
+      return yield* makePty(registry, owner, options)
     })
   )
 
@@ -327,7 +339,7 @@ const makeHandle = (
   ptyScope: Scope.Closeable,
   disposalOrigin: Ref.Ref<PtyDisposalOrigin>,
   command: string,
-  budgets: Required<PtyBudgetPolicy>,
+  budgets: ResolvedPtyBudgetPolicy,
   registry: ResourceRegistryApi,
   inspector: ExecutionInspectorCollectorApi,
   now: () => number
@@ -342,7 +354,8 @@ const makeHandle = (
       }),
       command,
       budgets,
-      outputMetrics
+      outputMetrics,
+      now
     )
     const exitStatus = Effect.tryPromise({
       try: () => child.exited,
@@ -365,7 +378,7 @@ const makeHandle = (
       output,
       outputMetrics: Ref.get(outputMetrics),
       onExit,
-      write: (chunk: Uint8Array) =>
+      write: (chunk: unknown) =>
         Effect.gen(function* () {
           const bytes = yield* decodeWriteInput(chunk, "PTY.write")
           yield* assertPtyHandleFresh(registry, resource, "PTY.write")
@@ -383,7 +396,7 @@ const makeHandle = (
             catch: (error) => mapPtyError(error, command, "PTY.resize")
           })
         }),
-      kill: (signal?: PtySignalInput) =>
+      kill: (signal?: unknown) =>
         Effect.gen(function* () {
           const decodedSignal =
             signal === undefined ? undefined : yield* decodeSignalInput(signal, "PTY.kill")
@@ -415,12 +428,13 @@ interface OutputFrame {
 const makeOutputStream = (
   source: Stream.Stream<Uint8Array, PtyError, never>,
   command: string,
-  policy: Required<PtyBudgetPolicy>,
-  metrics: Ref.Ref<PtyOutputMetrics>
+  policy: ResolvedPtyBudgetPolicy,
+  metrics: Ref.Ref<PtyOutputMetrics>,
+  now: () => number
 ): Stream.Stream<Uint8Array, PtyError, never> =>
   source.pipe(
     Stream.mapEffect((chunk) => recordInputChunk(metrics, chunk).pipe(Effect.as(chunk))),
-    coalesceOutputFrames(policy),
+    coalesceOutputFrames(policy, now),
     Stream.mapError((error) => mapPtyError(error, command, "PTY.output")),
     Stream.mapEffect((frame) => applyOutputPolicy(command, policy, metrics, frame)),
     Stream.filterMap(Filter.fromPredicateOption((frame) => frame)),
@@ -433,14 +447,15 @@ const makeOutputStream = (
 
 const coalesceOutputFrames =
   (
-    policy: Required<PtyBudgetPolicy>
+    policy: ResolvedPtyBudgetPolicy,
+    now: () => number
   ): ((
     source: Stream.Stream<Uint8Array, PtyError, never>
   ) => Stream.Stream<OutputFrame, PtyError, never>) =>
   (source) =>
     Stream.transformPull(source, (pull) =>
       Effect.sync(() => {
-        const coalescer = makeOutputCoalescer(policy)
+        const coalescer = makeOutputCoalescer(policy, now)
         let pending: OutputFrame[] = []
         let sourceDone = false
 
@@ -524,7 +539,7 @@ const takeNonEmptyOutputFrames = (
 
 const applyOutputPolicy = (
   command: string,
-  policy: Required<PtyBudgetPolicy>,
+  policy: ResolvedPtyBudgetPolicy,
   metrics: Ref.Ref<PtyOutputMetrics>,
   frame: OutputFrame
 ): Effect.Effect<Option.Option<OutputFrame>, PtyError, never> =>
@@ -542,7 +557,7 @@ const applyOutputPolicy = (
   })
 
 const outputBufferStrategy = (
-  policy: Required<PtyBudgetPolicy>
+  policy: ResolvedPtyBudgetPolicy
 ): "dropping" | "sliding" | "suspend" => {
   if (policy.outputOverflow === "dropNewest" || policy.outputOverflow === "error") {
     return "dropping"
@@ -554,7 +569,7 @@ const outputBufferStrategy = (
 }
 
 const makeOutputMetrics = (
-  policy: Required<PtyBudgetPolicy>
+  policy: ResolvedPtyBudgetPolicy
 ): Effect.Effect<Ref.Ref<PtyOutputMetrics>, never, never> =>
   Ref.make({
     coalescedFrames: 0,
@@ -626,7 +641,10 @@ interface OutputCoalescer {
   readonly push: (chunk: Uint8Array) => readonly OutputFrame[]
 }
 
-const makeOutputCoalescer = (policy: Required<PtyBudgetPolicy>): OutputCoalescer => {
+const makeOutputCoalescer = (
+  policy: ResolvedPtyBudgetPolicy,
+  now: () => number
+): OutputCoalescer => {
   const chunks: Uint8Array[] = []
   let bufferedBytes = 0
   let windowStartedAt = 0
@@ -649,7 +667,7 @@ const makeOutputCoalescer = (policy: Required<PtyBudgetPolicy>): OutputCoalescer
       if (bufferedBytes === 0) {
         return Number.POSITIVE_INFINITY
       }
-      return Math.max(0, policy.outputCoalesceMs - (Date.now() - windowStartedAt))
+      return Math.max(0, policy.outputCoalesceMs - (now() - windowStartedAt))
     },
     flush,
     flushTimer: () => flush(),
@@ -659,18 +677,18 @@ const makeOutputCoalescer = (policy: Required<PtyBudgetPolicy>): OutputCoalescer
         return []
       }
 
-      const now = Date.now()
+      const timestamp = now()
       const frames: OutputFrame[] = []
       if (
         bufferedBytes > 0 &&
         policy.outputCoalesceMs > 0 &&
-        now - windowStartedAt >= policy.outputCoalesceMs
+        timestamp - windowStartedAt >= policy.outputCoalesceMs
       ) {
         frames.push(flush())
       }
 
       if (bufferedBytes === 0) {
-        windowStartedAt = now
+        windowStartedAt = timestamp
       }
       chunks.push(chunk)
       bufferedBytes += chunk.byteLength
@@ -698,7 +716,7 @@ const concatChunks = (chunks: readonly Uint8Array[], totalBytes: number): Uint8A
   return bytes
 }
 
-const outputQueueCapacity = (policy: Required<PtyBudgetPolicy>): number =>
+const outputQueueCapacity = (policy: ResolvedPtyBudgetPolicy): number =>
   Math.max(1, Math.ceil(policy.outputBufferBytes / policy.outputCoalesceBytes))
 
 const observeChildExit = (
@@ -773,12 +791,13 @@ const disposeChild = (
         try: () => child.terminateTree(),
         catch: (error) => mapPtyError(error, command, "PTY.dispose.terminateTree")
       }).pipe(
-        Effect.catch((error: HostProtocolError) =>
+        Effect.tapError((error: HostProtocolError) =>
           Effect.logWarning("PTY.dispose.terminateTree failed", {
             command,
             reason: error.message
           })
-        )
+        ),
+        Effect.ignore
       )
       const gracefulExit = yield* waitForChildExit(child, command, gracefulShutdownMs)
       if (Option.isNone(gracefulExit) && child.isRunning()) {
@@ -817,12 +836,13 @@ const forceKillChild = (child: PtyChild, command: string): Effect.Effect<void, n
     try: () => child.forceKillTree(),
     catch: (error) => mapPtyError(error, command, "PTY.dispose.forceKillTree")
   }).pipe(
-    Effect.catch((error: HostProtocolError) =>
+    Effect.tapError((error: HostProtocolError) =>
       Effect.logWarning("PTY.dispose.forceKillTree failed", {
         command,
         reason: error.message
       })
-    )
+    ),
+    Effect.ignore
   )
 
 const waitForChildExit = (
@@ -935,7 +955,7 @@ const authorizePtyOpen = (
 const validatePtyBudgets = (
   budgets: Required<PtyBudgetPolicy>,
   operation: string
-): Effect.Effect<void, HostProtocolInvalidArgumentError, never> =>
+): Effect.Effect<ResolvedPtyBudgetPolicy, HostProtocolInvalidArgumentError, never> =>
   Effect.gen(function* () {
     yield* validatePositiveIntegerBudget("maxConcurrent", budgets.maxConcurrent, operation)
     yield* validatePositiveIntegerBudget("outputBufferBytes", budgets.outputBufferBytes, operation)
@@ -945,7 +965,7 @@ const validatePtyBudgets = (
       operation
     )
     yield* validatePositiveIntegerBudget("outputCoalesceMs", budgets.outputCoalesceMs, operation)
-    if (!PTY_OUTPUT_OVERFLOWS.has(budgets.outputOverflow)) {
+    if (!isPtyOutputOverflow(budgets.outputOverflow)) {
       return yield* Effect.fail(
         makeHostProtocolInvalidArgumentError(
           "outputOverflow",
@@ -954,10 +974,17 @@ const validatePtyBudgets = (
         )
       )
     }
+    return {
+      ...budgets,
+      outputOverflow: budgets.outputOverflow
+    }
   })
 
+const isPtyOutputOverflow = (value: unknown): value is PtyOutputOverflow =>
+  typeof value === "string" && PTY_OUTPUT_OVERFLOWS.has(value)
+
 const validatePositiveIntegerBudget = (
-  field: keyof Required<PtyBudgetPolicy>,
+  field: keyof ResolvedPtyBudgetPolicy,
   value: number,
   operation: string
 ): Effect.Effect<void, HostProtocolInvalidArgumentError, never> =>

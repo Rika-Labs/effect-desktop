@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Fiber, Schema, Stream } from "effect"
+import { Clock, Effect, Fiber, Schema, Stream } from "effect"
 
 import {
   DesktopRuntimeEvent,
@@ -8,7 +8,7 @@ import {
 } from "./desktop-devtools.js"
 import { makeInspectorCollectors, RendererInspectorEvent } from "./inspector-events.js"
 import { makeInspectorTransport } from "./inspector-transport.js"
-import { makeTelemetry } from "./telemetry.js"
+import { InspectorLogEvent, makeTelemetry } from "./telemetry.js"
 
 const now = 1_715_000_000_000
 
@@ -51,6 +51,32 @@ test("DesktopDevtools streams inspector and Effect telemetry runtime events thro
       ).toBe(true)
       expect(decoded.some((event) => event.telemetry?.kind === "log")).toBe(true)
     })
+  )
+})
+
+test("DesktopDevtools timestamps telemetry fallback events with the Effect Clock", async () => {
+  const timestamp = now + 42
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const collectors = yield* makeInspectorCollectors()
+      const telemetry = yield* makeTelemetry({ now: () => now })
+      const devtools = makeDesktopDevtools(collectors, {
+        ...telemetry,
+        eventFeed: Stream.make(
+          new InspectorLogEvent({
+            kind: "log",
+            record: { message: "untimed" }
+          })
+        )
+      })
+
+      const events = Array.from(yield* devtools.events.pipe(Stream.take(1), Stream.runCollect))
+
+      expect(events).toHaveLength(1)
+      expect(events[0]?.source).toBe("telemetry")
+      expect(events[0]?.timestampMs).toBe(timestamp)
+    }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
   )
 })
 
@@ -99,4 +125,12 @@ test("DesktopDevtools forwards the shared runtime feed into InspectorTransport",
       expect(events.every((event) => event.payload instanceof DesktopRuntimeEvent)).toBe(true)
     })
   )
+})
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.void
 })

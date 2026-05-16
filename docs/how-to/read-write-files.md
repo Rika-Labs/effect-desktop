@@ -8,7 +8,7 @@ effect_version: 4
 
 # How to read and write files
 
-`Filesystem` is the runtime filesystem service. It enforces root containment, requires an owner scope on every operation, and returns typed failures.
+`Filesystem` is the runtime filesystem service. It enforces root containment, uses the current `ResourceOwner` for scoped handles, and returns typed failures.
 
 ## 1. Declare the root
 
@@ -38,24 +38,17 @@ import { Filesystem } from "@effect-desktop/core"
 
 const program = Effect.gen(function* () {
   const fs = yield* Filesystem
-  const text = yield* fs.readFileString({
-    path: "/Users/me/Documents/notes.md",
-    ownerScope: "window-main"
-  })
+  const bytes = yield* fs.read("/Users/me/Documents/notes.md")
+  const text = new TextDecoder().decode(bytes)
 })
 ```
 
-For binary, `readFileBytes`. For listings, `readDirectory`.
+Use `read` for bytes and decode when you need text.
 
 ## 3. Write
 
 ```ts
-yield *
-  fs.writeFileString({
-    path: "/Users/me/Documents/draft.md",
-    content: "# Hello",
-    ownerScope: "window-main"
-  })
+yield * fs.writeAtomic("/Users/me/Documents/draft.md", new TextEncoder().encode("# Hello"))
 ```
 
 Writes are atomic via a temp file + rename. A partial write does not leave a half-written file behind.
@@ -65,15 +58,9 @@ Writes are atomic via a temp file + rename. A partial write does not leave a hal
 ```ts
 import { Stream } from "effect"
 
-const watcher =
-  yield *
-  fs.watch({
-    path: "/Users/me/Documents",
-    ownerScope: "window-main"
-  })
+const events = fs.watch("/Users/me/Documents")
 
-yield *
-  watcher.events.pipe(Stream.runForEach((event) => Effect.log(`${event.kind}: ${event.path}`)))
+yield * events.pipe(Stream.runForEach((event) => Effect.log(`${event.kind}: ${event.path}`)))
 ```
 
 Watcher resources close when their scope closes.

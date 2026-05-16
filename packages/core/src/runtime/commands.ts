@@ -1,4 +1,5 @@
 import {
+  Clock,
   Context,
   Data,
   Effect,
@@ -29,13 +30,13 @@ import {
   PermissionInterceptor
 } from "./permission-interceptor.js"
 import {
+  makeResourceId,
   ResourceRegistry,
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistryApi,
   type ScopeId
 } from "./resources.js"
-import type { DesktopRpcRegistrationGroup as RpcGroupWithRequests } from "./desktop-rpc-registry.js"
 
 const NonEmptyString = Schema.NonEmptyString
 // eslint-disable-next-line no-control-regex -- Intentionally matches control chars to reject them.
@@ -97,9 +98,9 @@ export type CommandRegistryError =
   | CommandRegistryCommittedAuditFailedError
   | PermissionDenied
 
-export interface CommandGroupRegistration<Group extends RpcGroup.Any & RpcGroupWithRequests, E, R> {
-  readonly group: Group
-  readonly handlers: Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<Group>>, E, R>
+export interface CommandGroupRegistration<Rpcs extends Rpc.Any, E, R> {
+  readonly group: RpcGroup.RpcGroup<Rpcs>
+  readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
   readonly ownerScope: ScopeId
 }
 
@@ -125,8 +126,8 @@ export class CommandSnapshot extends Schema.Class<CommandSnapshot>("CommandSnaps
 }) {}
 
 export interface CommandRegistryApi {
-  readonly registerGroup: <Group extends RpcGroup.Any & RpcGroupWithRequests, E, R>(
-    registration: CommandGroupRegistration<Group, E, R>
+  readonly registerGroup: <Rpcs extends Rpc.Any, E, R>(
+    registration: CommandGroupRegistration<Rpcs, E, R>
   ) => Effect.Effect<ResourceHandle<"command-group", "registered">, CommandRegistryError | E, R>
   readonly unregister: (id: string) => Effect.Effect<void, CommandRegistryError, never>
   readonly invoke: (
@@ -168,7 +169,8 @@ export const makeCommandRegistry = (
   Effect.gen(function* () {
     const commands = yield* Ref.make<ReadonlyMap<string, StoredCommand>>(new Map())
     const invocations = yield* PubSub.sliding<CommandInvocationRecord>({ capacity: 1024 })
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
 
     const remove = (
       id: string,
@@ -263,9 +265,9 @@ export class CommandRegistry extends Context.Service<CommandRegistry, CommandReg
 ) {}
 
 export const DesktopCommands = Object.freeze({
-  layer: <Group extends RpcGroup.Any & RpcGroupWithRequests, E, R>(
-    group: Group,
-    handlers: Layer.Layer<Rpc.ToHandler<RpcGroup.Rpcs<Group>>, E, R>,
+  layer: <Rpcs extends Rpc.Any, E, R>(
+    group: RpcGroup.RpcGroup<Rpcs>,
+    handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>,
     options: { readonly ownerScope?: ScopeId } = {}
   ): Layer.Layer<never, CommandRegistryError | E, CommandRegistry | ResourceRegistry | R> =>
     Layer.effectDiscard(
@@ -458,7 +460,7 @@ const readCommandTimestamp = (
     )
   )
 
-const registerCommandGroup = <Group extends RpcGroup.Any & RpcGroupWithRequests, E, R>(
+const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
   commands: Ref.Ref<ReadonlyMap<string, StoredCommand>>,
   resources: ResourceRegistryApi,
   permissions: PermissionRegistryApi,
@@ -470,7 +472,7 @@ const registerCommandGroup = <Group extends RpcGroup.Any & RpcGroupWithRequests,
   ) => Effect.Effect<StoredCommand | undefined, never, never>,
   audit: AuditEventsApi | undefined,
   now: () => number,
-  registration: CommandGroupRegistration<Group, E, R>
+  registration: CommandGroupRegistration<Rpcs, E, R>
 ): Effect.Effect<ResourceHandle<"command-group", "registered">, CommandRegistryError | E, R> => {
   let reservedIds: readonly string[] = []
   let reservedToken: symbol | undefined
@@ -497,11 +499,11 @@ const registerCommandGroup = <Group extends RpcGroup.Any & RpcGroupWithRequests,
   return Effect.gen(function* () {
     const registrationToken = Symbol("command-group")
     reservedToken = registrationToken
-    // RpcGroupWithRequests is the metadata view we need for enumeration; RpcTest needs the full group.
-    const rpcGroup = registration.group as unknown as RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>
     const scope = yield* Scope.make()
     commandScope = scope
-    const client = yield* RpcTest.makeClient(rpcGroup.middleware(PermissionInterceptor)).pipe(
+    const client = yield* RpcTest.makeClient(
+      registration.group.middleware(PermissionInterceptor)
+    ).pipe(
       Effect.provide(registration.handlers),
       Effect.provide(makePermissionInterceptorLayer()),
       Effect.provideService(PermissionRegistry, permissions),
@@ -620,8 +622,8 @@ type DynamicRpcClient = Readonly<
   >
 >
 
-const prepareCommandGroup = <Group extends RpcGroup.Any & RpcGroupWithRequests, E, R>(
-  registration: CommandGroupRegistration<Group, E, R>,
+const prepareCommandGroup = <Rpcs extends Rpc.Any, E, R>(
+  registration: CommandGroupRegistration<Rpcs, E, R>,
   client: unknown,
   registrationToken: symbol
 ): Effect.Effect<readonly StoredCommand[], CommandRegistryInvalidInputError, never> =>
@@ -739,10 +741,10 @@ const decodeCommandId = (
     )
   )
 
-const commandResourceId = (id: string): ResourceId => `command:${id}` as ResourceId
+const commandResourceId = (id: string): ResourceId => makeResourceId(`command:${id}`)
 
 const commandGroupResourceId = (ids: readonly string[]): ResourceId =>
-  `command-group:${ids.join(",")}` as ResourceId
+  makeResourceId(`command-group:${ids.join(",")}`)
 
 const auditCommand = (
   audit: AuditEventsApi | undefined,

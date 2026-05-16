@@ -8,11 +8,11 @@ import { SqlError } from "effect/unstable/sql/SqlError"
 import * as SqlModel from "effect/unstable/sql/SqlModel"
 
 import {
-  PermissionActor,
   PermissionRegistry,
   type PermissionRegistryApi,
   type PermissionRegistryError
 } from "./permission-registry.js"
+import { ResourceOwner, type ResourceOwnerApi } from "./resource-owner.js"
 import { ResourceRegistry } from "./resources.js"
 
 export { SqlClient, SqlError, SqlModel }
@@ -28,12 +28,11 @@ export interface SqlClientLayerConfig extends Omit<
   "filename"
 > {
   readonly filename: string
-  readonly ownerScope: string
 }
 
 export class SqliteInvalidArgumentError extends Data.TaggedError("InvalidArgument")<{
   readonly operation: string
-  readonly field: "filename" | "ownerScope"
+  readonly field: "filename"
   readonly message: string
   readonly cause: Option.Option<unknown>
 }> {}
@@ -45,14 +44,15 @@ export const SqlClientLive = (
 ): Layer.Layer<
   SqlClient | UpstreamSqliteClient.SqliteClient,
   SqlitePolicyError,
-  ResourceRegistry | PermissionRegistry
+  ResourceOwner | ResourceRegistry | PermissionRegistry
 > =>
   Layer.effectContext(
     Effect.gen(function* () {
+      const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
       const permissions = yield* PermissionRegistry
       const input = yield* decodeSqlClientLayerConfig(config)
-      const filename = yield* authorizeSqliteFilename(input, permissions)
+      const filename = yield* authorizeSqliteFilename(input, owner, permissions)
       const sqlScope = yield* Scope.make("sequential")
       yield* Effect.addFinalizer(() => Scope.close(sqlScope, Exit.void).pipe(Effect.ignore))
 
@@ -67,7 +67,7 @@ export const SqlClientLive = (
       const handle = yield* registry
         .register({
           kind: "sqlite",
-          ownerScope: input.ownerScope,
+          ownerScope: owner.scopeId,
           state: "open",
           dispose: Scope.close(sqlScope, Exit.void).pipe(Effect.ignore)
         })
@@ -84,16 +84,15 @@ const decodeSqlClientLayerConfig = (
 ): Effect.Effect<SqlClientLayerConfig, SqliteInvalidArgumentError, never> =>
   Effect.gen(function* () {
     const filename = yield* decodeStringField(config.filename, "filename", "SqlClientLive")
-    const ownerScope = yield* decodeStringField(config.ownerScope, "ownerScope", "SqlClientLive")
-    return { ...config, filename, ownerScope }
+    return { ...config, filename }
   })
 
 const decodeStringField = (
   value: unknown,
-  field: "filename" | "ownerScope",
+  field: "filename",
   operation: string
 ): Effect.Effect<string, SqliteInvalidArgumentError, never> =>
-  Schema.decodeUnknownEffect(field === "filename" ? SqlitePathString : NonEmptyString)(value).pipe(
+  Schema.decodeUnknownEffect(SqlitePathString)(value).pipe(
     Effect.mapError(
       (error) =>
         new SqliteInvalidArgumentError({
@@ -107,6 +106,7 @@ const decodeStringField = (
 
 const authorizeSqliteFilename = (
   input: SqlClientLayerConfig,
+  owner: ResourceOwnerApi,
   permissions: PermissionRegistryApi
 ): Effect.Effect<string, SqliteInvalidArgumentError | PermissionRegistryError, never> =>
   Effect.gen(function* () {
@@ -122,7 +122,7 @@ const authorizeSqliteFilename = (
         audit: "always"
       },
       {
-        actor: new PermissionActor({ kind: "resource", id: input.ownerScope }),
+        actor: owner.actor,
         resource: canonicalPath
       },
       { source: "SqlClientLive" }

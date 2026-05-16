@@ -27,6 +27,7 @@ import {
 } from "./permission-registry.js"
 import { PermissionDenied } from "./permission-interceptor.js"
 import {
+  makeResourceId,
   makeResourceRegistry,
   ResourceRegistry,
   type ManagedResourceHandle,
@@ -380,35 +381,8 @@ test("CommandRegistry distinguishes committed handler runs from post-handler aud
 
 test("CommandRegistry accepts empty trace ids in context and falls back in invocation history", async () => {
   const rows: AuditEvent[] = []
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const permissions = {
-    declare: () => Effect.die("unused"),
-    query: () => Effect.die("unused"),
-    check: () =>
-      Effect.succeed({
-        token: "grant-1",
-        capability: commandCapability,
-        actor,
-        source: "check",
-        traceId: "trace-1",
-        grantedAt: 1
-      } as unknown as {
-        readonly token: string
-        readonly capability: NormalizedCapability
-        readonly actor: PermissionActor
-        readonly source: string
-        readonly traceId: string
-      }),
-    grant: () => Effect.die("unused"),
-    revoke: () => Effect.die("unused"),
-    inspect: () => Effect.die("unused"),
-    use: (_grant: unknown, effect: Effect.Effect<unknown, unknown, never>) => effect,
-    listDecisions: () => Effect.succeed([] as const),
-    observeDecisions: () => Stream.empty
-  } as unknown as PermissionRegistryApi
-  const registry = await Effect.runPromise(
-    makeCommandRegistry(resources, permissions, { audit: memoryAudit(rows) })
-  )
+  const { registry, permissions } = await makeTestRegistry(rows)
+  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
   await Effect.runPromise(registry.registerGroup(registration("openProject")))
 
   const contextWithEmptyTrace = { actor, traceId: "" } as PermissionContext
@@ -647,9 +621,7 @@ const registration = (
   return {
     group,
     ownerScope: "window-1",
-    handlers: group.toLayer({
-      [tag]: handler
-    } as never)
+    handlers: group.toLayer(Effect.succeed({ [tag]: handler }))
   }
 }
 
@@ -706,7 +678,7 @@ const delayedCleanupResourceRegistry = (
         const id =
           input.id !== undefined && !cleanupById.has(input.id)
             ? input.id
-            : (`generated-${++generated}` as ResourceId)
+            : makeResourceId(`generated-${++generated}`)
         cleanupById.set(id, input.dispose ?? Effect.void)
         const generation = generationById.get(id) ?? 0
 
@@ -753,7 +725,7 @@ const stalledRegisterResourceRegistry = (
       Effect.gen(function* () {
         yield* Deferred.succeed(registerStarted, undefined)
         yield* Deferred.await(allowRegister)
-        const id = input.id ?? ("generated-1" as ResourceId)
+        const id = input.id ?? makeResourceId("generated-1")
         cleanupById.set(id, input.dispose ?? Effect.void)
 
         return {
@@ -797,7 +769,7 @@ const firstRegisterStalledResourceRegistry = (
     input: RegisterResourceInput<Kind, State>
   ): Effect.Effect<ManagedResourceHandle<Kind, State>, never, never> =>
     Effect.sync(() => {
-      const id = input.id ?? ("generated-1" as ResourceId)
+      const id = input.id ?? makeResourceId("generated-1")
       const generation = generationById.get(id) ?? 0
       cleanupById.set(id, input.dispose ?? Effect.void)
 

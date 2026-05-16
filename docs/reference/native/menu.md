@@ -1,6 +1,6 @@
 ---
 title: Menu (native)
-description: App and window menu bars.
+description: App and window menus.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,14 +8,24 @@ effect_version: 4
 
 # `Menu`
 
-App-level menu bar (macOS, some Windows). Bind menu items to command ids registered with `CommandRegistry`.
+App and window menus. Menu items can bind to command ids registered with `CommandRegistry`.
+
+## Import
+
+```ts
+import { Desktop } from "@effect-desktop/core"
+import { Menu, MenuError, MenuRpcs, Native } from "@effect-desktop/native"
+```
 
 ## Methods
 
-| Method    | Payload                      | Success |
-| --------- | ---------------------------- | ------- |
-| `setMenu` | `{ template: MenuTemplate }` | `void`  |
-| `popup`   | `{ template, x?, y? }`       | `void`  |
+| Method               | Payload                 | Success                  |
+| -------------------- | ----------------------- | ------------------------ |
+| `setApplicationMenu` | `{ template }`          | `void`                   |
+| `setWindowMenu`      | `{ window, template }`  | `void`                   |
+| `clear`              | `{ scope?, window? }`   | `void`                   |
+| `bindCommand`        | `{ itemId, commandId }` | `void`                   |
+| `capability`         | `{ name, platform? }`   | `{ supported: boolean }` |
 
 `MenuTemplate` — array of items with `{ label, accelerator?, command?, submenu?, type? }`.
 
@@ -24,9 +34,19 @@ App-level menu bar (macOS, some Windows). Bind menu items to command ids registe
 - `MenuError` — generic.
 - `MenuCommandBindingError` — command id not found in `CommandRegistry`.
 
-## Capability
+## App composition
 
-`menuCapability(options)` builds the matching `PermissionRegistry` declaration.
+```ts
+Desktop.make({
+  id: "com.acme.menu",
+  windows: Desktop.window("main", { title: "Menu" }),
+  native: Desktop.native(Native.Menu),
+  permissions: Desktop.permissions(...Native.Permissions.menu.all.map(Desktop.permission))
+})
+```
+
+`Native.Menu` registers the menu surface. `Native.Permissions.menu.all` grants menu authority.
+`menuCapability(...)` is a platform support helper; it does not grant permission.
 
 ## Related
 

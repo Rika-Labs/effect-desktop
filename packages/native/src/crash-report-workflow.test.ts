@@ -1,15 +1,20 @@
 import { expect, test } from "bun:test"
-import { Cause, Data, Effect, Exit, Layer, Schema } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, Schedule, Schema } from "effect"
+import { TestClock } from "effect/testing"
 import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
+import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { PersistedQueue } from "effect/unstable/persistence"
-import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
+import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
   CrashReport,
+  CrashSubmissionWorkflow,
   CrashReportDrainConfigError,
   CrashReportGroupLayer,
   CrashReportReactivityLayer,
   crashReportRateLimitIntervalMs,
+  makeCrashReportDrainLayer,
+  makeCrashSubmissionWorkflowLayer,
   makeCrashReportQueueUploadHandler,
   makeCrashReportQueue
 } from "./crash-report-workflow.js"
@@ -21,7 +26,7 @@ const makeTestReport = (id: string): CrashReport =>
       { category: "navigation", message: "page loaded" },
       { category: "error", message: "unhandled exception" }
     ],
-    capturedAt: Date.now()
+    capturedAt: 1_710_000_000_000
   })
 
 const queueLayer = PersistedQueue.layer.pipe(Layer.provide(PersistedQueue.layerStoreMemory))
@@ -50,21 +55,6 @@ test("CrashReport schema round-trips a report with breadcrumbs", async () => {
       expect(decoded.breadcrumbs).toHaveLength(2)
       expect(decoded.breadcrumbs[0]?.category).toBe("navigation")
     })
-  )
-})
-
-test("PersistedQueue smoke: offer and take a CrashReport", async () => {
-  const report = makeTestReport("queue-smoke-1")
-
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const queue = yield* makeCrashReportQueue
-      yield* queue.offer(report)
-
-      const taken = yield* queue.take((r) => Effect.succeed(r))
-      expect(taken.id).toBe("queue-smoke-1")
-      expect(taken.breadcrumbs).toHaveLength(2)
-    }).pipe(Effect.provide(queueLayer))
   )
 })
 
@@ -119,6 +109,108 @@ test("CrashReport queue upload handler enqueues flushed breadcrumbs", async () =
   )
 })
 
+test("CrashReport drain consumes queued reports through the submission workflow", async () => {
+  const requests: Array<{ readonly method: string; readonly url: string }> = []
+  const httpLayer = Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request, url) =>
+      Effect.sync(() => {
+        requests.push({ method: request.method, url: url.toString() })
+        return HttpClientResponse.fromWeb(request, new Response(null, { status: 200 }))
+      })
+    )
+  )
+
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const queue = yield* makeCrashReportQueue
+        const log = yield* EL.EventLog
+        const report = makeTestReport("drain-submit-1")
+
+        yield* Layer.build(
+          makeCrashReportDrainLayer({
+            endpointUrl: "https://crash.example/reports",
+            rateLimitPerHour: 3_600_000
+          })
+        )
+        yield* queue.offer(report, { id: report.id })
+
+        const entries = yield* log.entries.pipe(
+          Effect.flatMap((entries) =>
+            entries.some(
+              (entry) => entry.event === "crash-report-submitted" && entry.primaryKey === report.id
+            )
+              ? Effect.succeed(entries)
+              : Effect.fail(new Error("waiting for crash report submission"))
+          ),
+          Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(100))))
+        )
+
+        expect(requests).toEqual([{ method: "POST", url: "https://crash.example/reports" }])
+        expect(entries.some((entry) => entry.event === "crash-report-dropped")).toBe(false)
+      })
+    ).pipe(
+      Effect.provide(queueLayer),
+      Effect.provide(eventLogLayer),
+      Effect.provide(WorkflowEngine.layerMemory),
+      Effect.provide(httpLayer)
+    )
+  )
+})
+
+test("CrashSubmissionWorkflow records dropped reports after exhausted submit retries", async () => {
+  let attempts = 0
+  const httpLayer = Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request, url) =>
+      Effect.sync(() => {
+        attempts += 1
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(null, {
+            status: 503,
+            statusText: `unavailable:${url.toString()}`
+          })
+        )
+      })
+    )
+  )
+
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const report = makeTestReport("drop-submit-1")
+        const log = yield* EL.EventLog
+        const fiber = yield* CrashSubmissionWorkflow.execute(report).pipe(Effect.forkChild)
+
+        yield* Effect.yieldNow
+        yield* TestClock.adjust("1 hour")
+        yield* Fiber.join(fiber)
+
+        const entries = yield* log.entries
+        expect(attempts).toBe(11)
+        expect(
+          entries.some(
+            (entry) => entry.event === "crash-report-dropped" && entry.primaryKey === report.id
+          )
+        ).toBe(true)
+        expect(
+          entries.some(
+            (entry) => entry.event === "crash-report-submitted" && entry.primaryKey === report.id
+          )
+        ).toBe(false)
+      })
+    ).pipe(
+      Effect.provide(makeCrashSubmissionWorkflowLayer("https://crash.example/reports")),
+      Effect.provide(eventLogLayer),
+      Effect.provide(WorkflowEngine.layerMemory),
+      Effect.provide(httpLayer),
+      Effect.provide(TestClock.layer())
+    )
+  )
+})
+
 test("crashReportRateLimitIntervalMs rejects invalid rate limits", async () => {
   const valid = await Effect.runPromise(crashReportRateLimitIntervalMs(120))
   expect(valid).toBe(30_000)
@@ -129,48 +221,6 @@ test("crashReportRateLimitIntervalMs rejects invalid rate limits", async () => {
     const failure = exit.cause.reasons.find(Cause.isFailReason)
     expect(failure?.error).toBeInstanceOf(CrashReportDrainConfigError)
   }
-})
-
-class FlakyError extends Data.TaggedError("FlakyError")<{
-  readonly attempt: number
-}> {}
-
-test("Activity.retry retries a transient failure inside a Workflow", async () => {
-  let attempts = 0
-
-  const RetryTest = Workflow.make({
-    name: "RetryTest",
-    payload: { id: Schema.String },
-    idempotencyKey: (p) => p.id,
-    success: Schema.Number,
-    error: Schema.TaggedStruct("FlakyError", { attempt: Schema.Number })
-  })
-
-  const flakyActivity = Activity.make({
-    name: "flaky-activity",
-    success: Schema.Number,
-    error: Schema.TaggedStruct("FlakyError", { attempt: Schema.Number }),
-    execute: Effect.sync(() => {
-      attempts += 1
-      return attempts
-    }).pipe(
-      Effect.flatMap((attempt) =>
-        attempt < 3 ? Effect.fail(new FlakyError({ attempt })) : Effect.succeed(attempt)
-      )
-    )
-  })
-
-  const layer = RetryTest.toLayer(() => flakyActivity.pipe(Activity.retry({ times: 5 })))
-
-  const result = await Effect.runPromise(
-    RetryTest.execute({ id: "retry-test-1" }).pipe(
-      Effect.provide(layer),
-      Effect.provide(WorkflowEngine.layerMemory)
-    )
-  )
-
-  expect(result).toBe(3)
-  expect(attempts).toBe(3)
 })
 
 test("CrashReport optionalKey fields are absent when not provided", () => {
@@ -193,32 +243,4 @@ test("CrashReport preserves optional fields when provided", () => {
   })
   expect(withOptionals.appVersion).toBe("1.2.3")
   expect(withOptionals.platform).toBe("darwin")
-})
-
-test("EventLog writes crash-report-submitted and crash-report-dropped events", async () => {
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const log = yield* EL.EventLog
-      const { CrashReportEventSchema } = yield* Effect.promise(
-        () => import("./crash-report-workflow.js")
-      )
-
-      const report = makeTestReport("event-log-test-1")
-
-      yield* log.write({
-        schema: CrashReportEventSchema,
-        event: "crash-report-submitted",
-        payload: report
-      })
-
-      yield* log.write({
-        schema: CrashReportEventSchema,
-        event: "crash-report-dropped",
-        payload: report
-      })
-
-      const entries = yield* log.entries
-      expect(entries.length).toBeGreaterThanOrEqual(2)
-    }).pipe(Effect.provide(eventLogLayer))
-  )
 })

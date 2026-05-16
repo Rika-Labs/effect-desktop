@@ -13,7 +13,8 @@ System clipboard read/write.
 ## Import
 
 ```ts
-import { Clipboard, ClipboardClient, ClipboardRpcs, ClipboardError } from "@effect-desktop/native"
+import { Desktop } from "@effect-desktop/core"
+import { Clipboard, ClipboardError, ClipboardRpcs, Native } from "@effect-desktop/native"
 ```
 
 ## Methods
@@ -27,9 +28,21 @@ import { Clipboard, ClipboardClient, ClipboardRpcs, ClipboardError } from "@effe
 
 `ClipboardError` — generic platform clipboard failure.
 
-## Layer
+## App composition
 
-`ClipboardLive`, `ClipboardHandlersLive`, `makeClipboardBridgeClientLayer(exchange, options)`.
+```ts
+Desktop.make({
+  id: "com.acme.clipboard",
+  windows: Desktop.window("main", { title: "Clipboard" }),
+  native: Desktop.native(Native.Clipboard),
+  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+})
+```
+
+`Native.Clipboard` registers the clipboard surface. `Native.Permissions.clipboard.readText` grants read-text authority.
+`ClipboardLive` and `ClipboardHandlersLive` are runtime layers behind the native surface.
+
+Use `Native.Permissions.clipboard.all` only when the app grants every privileged clipboard method.
 
 ## Test layer
 

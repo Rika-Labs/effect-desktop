@@ -7,6 +7,7 @@ import {
   isDesktopStreamOptions,
   makeDesktopRendererRpcLayer,
   makeFrameworkRuntime,
+  makeFrameworkScopedOperation,
   type DesktopRpcsLayer,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
@@ -24,7 +25,7 @@ import {
   type DesktopRpcRegistrationGroup as RpcGroupWithRequests
 } from "@effect-desktop/core/renderer"
 import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Fiber, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createApp as createVueApp,
@@ -145,7 +146,7 @@ interface VueDesktopContext {
 interface VueDesktopRuntime {
   readonly clients: DesktopRendererRpcClientMap
   readonly runtime: FrameworkRuntime<RendererRpcClients, MissingDesktopRpcClientError>
-  readonly dispose: () => Promise<void>
+  readonly disposeEffect: Effect.Effect<void, never, never>
 }
 
 const VueDesktopKey: InjectionKey<VueDesktopContext> = Symbol("VueDesktop")
@@ -157,7 +158,7 @@ export const VueDesktop = Object.freeze({
       const runtime = makeVueDesktopRuntime(app, options?.transport, options?.rpcs)
       provide(VueDesktopKey, { clients: runtime.clients, runtime: runtime.runtime })
       onScopeDispose(() => {
-        void runtime.dispose()
+        void Effect.runCallback(runtime.disposeEffect)
       })
     }
 
@@ -216,7 +217,7 @@ export const VueDesktop = Object.freeze({
         const unmount = vueApp.unmount.bind(vueApp)
         vueApp.unmount = () => {
           unmount()
-          void runtime.dispose()
+          void Effect.runCallback(runtime.disposeEffect)
         }
         return vueApp
       },
@@ -242,17 +243,14 @@ const makeVueDesktopRuntime = (
   try {
     clients = runtime.runSync(Effect.service(RendererRpcClients)).clients
   } catch (error) {
-    void runtime.dispose()
+    void Effect.runCallback(runtime.disposeEffect)
     throw error
   }
   const frameworkRuntime = makeFrameworkRuntime(runtime)
   return Object.freeze({
     clients,
     runtime: frameworkRuntime,
-    dispose: async () => {
-      await frameworkRuntime.dispose()
-      await runtime.dispose()
-    }
+    disposeEffect: frameworkRuntime.disposeEffect.pipe(Effect.andThen(runtime.disposeEffect))
   })
 }
 
@@ -261,34 +259,17 @@ const useMutation = <R, ER, I, A, E>(
   makeEffect: (input: I) => Effect.Effect<A, E, R>
 ): VueMutation<I, A, E | ER> => {
   const state = shallowRef<VueAsyncState<A, E | ER>>({ status: "idle" })
-  let currentFiber: Fiber.Fiber<A, E | ER> | undefined
+  const operation = makeFrameworkScopedOperation(runtime)
 
   onScopeDispose(() => {
-    const fiber = currentFiber
-    currentFiber = undefined
-    if (fiber !== undefined) {
-      interruptFrameworkFiber(fiber)
-    }
+    operation.dispose()
   })
 
   const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
-    if (currentFiber !== undefined) {
-      interruptFrameworkFiber(currentFiber)
-    }
     state.value = { status: "running" }
-    const fiber = runtime.runFork(makeEffect(input as I))
-    currentFiber = fiber
+    const [exit, isLatest] = await operation.runLatestPromiseExit(makeEffect(input as I))
 
-    const exit = await new Promise<Exit.Exit<A, E | ER>>((resolve) => {
-      fiber.addObserver((completed) => {
-        queueMicrotask(() => {
-          resolve(completed)
-        })
-      })
-    })
-
-    if (currentFiber === fiber) {
-      currentFiber = undefined
+    if (isLatest) {
       state.value = Exit.isSuccess(exit)
         ? { status: "success", value: exit.value }
         : { status: "failure", cause: exit.cause }
@@ -303,10 +284,7 @@ const useMutation = <R, ER, I, A, E>(
     }) as VueComposable<I, void>,
     runPromise: runPromiseImpl as VueComposable<I, Promise<Exit.Exit<A, E | ER>>>,
     reset: () => {
-      if (currentFiber !== undefined) {
-        interruptFrameworkFiber(currentFiber)
-        currentFiber = undefined
-      }
+      operation.reset()
       state.value = { status: "idle" }
     }
   }

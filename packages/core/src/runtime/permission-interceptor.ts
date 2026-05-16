@@ -33,6 +33,7 @@ const PermissionDeniedCapability = Schema.Union([
   Schema.Struct({ kind: Schema.String })
 ])
 type PermissionDeniedCapability = typeof PermissionDeniedCapability.Type
+type NativeInvokeCapability = Extract<NormalizedCapabilityType, { readonly kind: "native.invoke" }>
 
 const PermissionDeniedSchema = Schema.TaggedStruct("PermissionDenied", {
   reason: Schema.String,
@@ -166,7 +167,7 @@ export const P = Object.freeze({
   nativeInvoke: (options: {
     readonly primitive: string
     readonly methods: readonly string[]
-  }): NormalizedCapabilityType =>
+  }): NativeInvokeCapability =>
     Object.freeze({
       kind: "native.invoke" as const,
       primitive: options.primitive,
@@ -355,7 +356,7 @@ export const validatePermissions = (
             reason: "undeclared-capability",
             contract: req.kind,
             capability: req,
-            message: `capability "${req.kind}" is required by a contract but was not declared in Desktop.app({ permissions })`
+            message: `capability "${req.kind}" is required by a contract but was not declared with Desktop.permission(...)`
           })
         )
       }

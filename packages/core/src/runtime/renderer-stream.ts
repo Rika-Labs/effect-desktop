@@ -2,7 +2,7 @@ import { Cause, Effect, Exit, Fiber, FiberSet, ManagedRuntime, Scope, Stream } f
 
 export interface FrameworkRuntime<R = never, ER = never> {
   readonly runFork: <A, E>(effect: Effect.Effect<A, E, R>) => Fiber.Fiber<A, E | ER>
-  readonly dispose: () => Promise<void>
+  readonly disposeEffect: Effect.Effect<void, never, never>
 }
 
 export interface FrameworkScopedOperation<R = never, ER = never> {
@@ -43,10 +43,11 @@ export const makeFrameworkRuntime = <R, ER>(
 ): FrameworkRuntime<R, ER> => {
   const scope = runtime.runSync(Scope.make())
   const runFork = runtime.runSync(Scope.provide(FiberSet.makeRuntime<R, unknown, unknown>(), scope))
+  const disposeEffect = Scope.close(scope, Exit.void)
 
   return Object.freeze({
     runFork: <A, E>(effect: Effect.Effect<A, E, R>) => runFork(effect),
-    dispose: () => runtime.runPromise(Scope.close(scope, Exit.void))
+    disposeEffect
   })
 }
 
@@ -62,18 +63,8 @@ export const runFrameworkEffect = <R, ER, A, E>(
   }
 }
 
-export const runFrameworkPromiseExit = <R, ER, A, E>(
-  runtime: FrameworkRuntime<R, ER>,
-  effect: Effect.Effect<A, E, R>
-): Promise<Exit.Exit<A, E | ER>> =>
-  new Promise((resolve) => {
-    const fiber = runtime.runFork(effect)
-    fiber.addObserver((exit) => {
-      queueMicrotask(() => {
-        resolve(exit)
-      })
-    })
-  })
+const awaitFrameworkFiber = <A, E>(fiber: Fiber.Fiber<A, E>): Promise<Exit.Exit<A, E>> =>
+  Effect.runPromise(Fiber.await(fiber))
 
 export const observeFrameworkFiber = <A, E>(
   fiber: Fiber.Fiber<A, E>,
@@ -115,13 +106,7 @@ export const makeFrameworkScopedOperation = <R, ER>(
     interruptLatest = () => {
       interruptFrameworkFiber(fiber)
     }
-    const exit = await new Promise<Exit.Exit<A, E | ER>>((resolve) => {
-      fiber.addObserver((completed) => {
-        queueMicrotask(() => {
-          resolve(completed)
-        })
-      })
-    })
+    const exit = await awaitFrameworkFiber(fiber)
     if (generation === currentGeneration) {
       interruptLatest = undefined
     }
@@ -134,11 +119,19 @@ export const makeFrameworkScopedOperation = <R, ER>(
       effect: Effect.Effect<A, E, R>,
       onExit: (exit: Exit.Exit<A, E | ER>) => void
     ): void => {
-      void runLatestPromiseExit(effect).then(([exit, isLatest]) => {
-        if (isLatest) {
-          queueMicrotask(() => {
-            onExit(exit)
-          })
+      interrupt()
+      const currentGeneration = generation + 1
+      generation = currentGeneration
+      const fiber = runtime.runFork(effect)
+      interruptLatest = () => {
+        interruptFrameworkFiber(fiber)
+      }
+      observeFrameworkFiber(fiber, (exit) => {
+        if (generation === currentGeneration) {
+          interruptLatest = undefined
+        }
+        if (!disposed && generation === currentGeneration) {
+          onExit(exit)
         }
       })
     },

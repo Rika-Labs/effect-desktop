@@ -21,11 +21,12 @@ import { basename, dirname, join, relative } from "node:path"
 import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
-import { Effect, Exit, Option } from "effect"
+import { Clock, Effect, Exit, Option, Schema } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
   canonicalUpdateManifestBytes,
+  BuildCommandFailedError,
   DoctorMissing,
   formatDoctorReport,
   runCli,
@@ -43,12 +44,362 @@ import {
   type PublicApiSnapshotReport,
   type SignCommandRunner
 } from "./index.js"
-import type { UpdateManifest } from "./update-manifest.js"
-import type { PackageCommandRunner } from "./package-pipeline.js"
+import { UpdateManifest } from "./update-manifest.js"
+import { PackageCommandFailedError, type PackageCommandRunner } from "./package-pipeline.js"
+import { SignCommandFailedError } from "./signing-pipeline.js"
 import { desktopArtifactExtension, desktopPlatformDirectory, hostBinaryName } from "./targets.js"
 import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
 const REPO_ROOT = join(import.meta.dir, "../../..")
+
+const CliJsonError = Schema.fromJsonString(
+  Schema.Struct({
+    tag: Schema.String,
+    message: Schema.String
+  })
+)
+const decodeCliJsonError = Schema.decodeUnknownSync(CliJsonError)
+const CliJsonConfigError = Schema.fromJsonString(
+  Schema.Struct({
+    tag: Schema.String,
+    message: Schema.String,
+    field: Schema.optionalKey(Schema.String)
+  })
+)
+const decodeCliJsonConfigError = Schema.decodeUnknownSync(CliJsonConfigError)
+const CliJsonMessage = Schema.fromJsonString(
+  Schema.Struct({
+    message: Schema.String
+  })
+)
+const decodeCliJsonMessage = Schema.decodeUnknownSync(CliJsonMessage)
+const PackageMissingBuildArtifactJsonError = Schema.fromJsonString(
+  Schema.Struct({
+    tag: Schema.Literal("PackageMissingBuildArtifactError"),
+    message: Schema.String,
+    remediation: Schema.String
+  })
+)
+const decodePackageMissingBuildArtifactJsonError = Schema.decodeUnknownSync(
+  PackageMissingBuildArtifactJsonError
+)
+const JsonObject = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
+const decodeJsonObject = Schema.decodeUnknownSync(JsonObject)
+const SignReportJson = Schema.fromJsonString(
+  Schema.Struct({
+    artifacts: Schema.Array(
+      Schema.Struct({
+        signedPaths: Schema.Array(Schema.String)
+      })
+    )
+  })
+)
+const decodeSignReportJson = Schema.decodeUnknownSync(SignReportJson)
+const NotarizeArtifactsReportJson = Schema.fromJsonString(
+  Schema.Struct({
+    artifacts: Schema.Array(
+      Schema.Struct({
+        submissionId: Schema.optionalKey(Schema.String)
+      })
+    )
+  })
+)
+const decodeNotarizeArtifactsReportJson = Schema.decodeUnknownSync(NotarizeArtifactsReportJson)
+const NotarizeStepsReportJson = Schema.fromJsonString(
+  Schema.Struct({
+    steps: Schema.Array(
+      Schema.Struct({
+        command: Schema.optionalKey(Schema.Array(Schema.String))
+      })
+    )
+  })
+)
+const decodeNotarizeStepsReportJson = Schema.decodeUnknownSync(NotarizeStepsReportJson)
+const BuildStepsReportJson = Schema.fromJsonString(
+  Schema.Struct({
+    steps: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        status: Schema.String,
+        provider: Schema.optionalKey(Schema.String),
+        reason: Schema.optionalKey(Schema.String)
+      })
+    )
+  })
+)
+const decodeBuildStepsReportJson = Schema.decodeUnknownSync(BuildStepsReportJson)
+const DocsManifestPagesJson = Schema.fromJsonString(
+  Schema.Struct({
+    pages: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        title: Schema.String,
+        path: Schema.String
+      })
+    )
+  })
+)
+const decodeDocsManifestPagesJson = Schema.decodeUnknownSync(DocsManifestPagesJson)
+const BuildChromeManifestJson = Schema.fromJsonString(
+  Schema.Struct({
+    hostManifest: Schema.Struct({
+      webEngine: Schema.String,
+      webEngineRuntime: Schema.String,
+      webEnginePath: Schema.String
+    })
+  })
+)
+const decodeBuildChromeManifestJson = Schema.decodeUnknownSync(BuildChromeManifestJson)
+const BuildChromeReportJson = Schema.fromJsonString(
+  Schema.Struct({
+    providers: Schema.Struct({
+      webEngine: Schema.String
+    }),
+    providerMeasurements: Schema.Array(
+      Schema.Struct({
+        webEngine: Schema.String
+      })
+    ),
+    steps: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        provider: Schema.optionalKey(Schema.String),
+        elapsedMs: Schema.Number
+      })
+    )
+  })
+)
+const decodeBuildChromeReportJson = Schema.decodeUnknownSync(BuildChromeReportJson)
+const RendererCspDirectiveJson = Schema.Struct({
+  name: Schema.String,
+  values: Schema.Array(Schema.String)
+})
+const RendererSecurityManifestJson = Schema.fromJsonString(
+  Schema.Struct({
+    rendererManifest: Schema.Struct({
+      navigationPolicy: Schema.String,
+      devtoolsInProd: Schema.Boolean,
+      csp: Schema.Struct({
+        directives: Schema.Array(RendererCspDirectiveJson)
+      })
+    })
+  })
+)
+const decodeRendererSecurityManifestJson = Schema.decodeUnknownSync(RendererSecurityManifestJson)
+const RendererDisabledCspManifestJson = Schema.fromJsonString(
+  Schema.Struct({
+    rendererManifest: Schema.Struct({
+      csp: Schema.Struct({
+        directives: Schema.Array(Schema.Unknown)
+      })
+    })
+  })
+)
+const decodeRendererDisabledCspManifestJson = Schema.decodeUnknownSync(
+  RendererDisabledCspManifestJson
+)
+const HostWindowsManifestJson = Schema.fromJsonString(
+  Schema.Struct({
+    hostManifest: Schema.Struct({
+      windows: Schema.Unknown
+    })
+  })
+)
+const decodeHostWindowsManifestJson = Schema.decodeUnknownSync(HostWindowsManifestJson)
+const PackageAppMetadataJson = Schema.fromJsonString(
+  Schema.Struct({
+    kind: Schema.String,
+    sha256: Schema.String,
+    providerBudgetChecks: Schema.optionalKey(
+      Schema.Array(
+        Schema.Struct({
+          metric: Schema.String,
+          budget: Schema.Number,
+          status: Schema.String
+        })
+      )
+    )
+  })
+)
+const decodePackageAppMetadataJson = Schema.decodeUnknownSync(PackageAppMetadataJson)
+const LinuxPackageArtifactJson = Schema.fromJsonString(
+  Schema.Struct({
+    kind: Schema.String,
+    sizeBytes: Schema.Number,
+    linuxIntegration: Schema.optionalKey(
+      Schema.Struct({
+        desktopFile: Schema.String,
+        appStreamId: Schema.String,
+        flatpakAppId: Schema.String,
+        snapName: Schema.String
+      })
+    )
+  })
+)
+const decodeLinuxPackageArtifactJson = Schema.decodeUnknownSync(LinuxPackageArtifactJson)
+const PublishReportJson = Schema.fromJsonString(
+  Schema.Struct({
+    manifestPath: Schema.String
+  })
+)
+const decodePublishReportJson = Schema.decodeUnknownSync(PublishReportJson)
+const UpdateManifestJson = Schema.fromJsonString(UpdateManifest)
+const decodeUpdateManifestJson = Schema.decodeUnknownSync(UpdateManifestJson)
+const ProductionCheckJsonReport = Schema.fromJsonString(
+  Schema.Struct({
+    passed: Schema.Boolean,
+    failures: Schema.Array(
+      Schema.Struct({
+        rule: Schema.String
+      })
+    ),
+    acknowledgements: Schema.Array(Schema.Unknown)
+  })
+)
+const decodeProductionCheckJsonReport = Schema.decodeUnknownSync(ProductionCheckJsonReport)
+const DoctorJsonReport = Schema.fromJsonString(
+  Schema.Struct({
+    passed: Schema.Boolean,
+    probes: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        status: Schema.String,
+        installCommand: Schema.optionalKey(Schema.String),
+        installHint: Schema.optionalKey(Schema.String)
+      })
+    )
+  })
+)
+const decodeDoctorJsonReport = Schema.decodeUnknownSync(DoctorJsonReport)
+const ReproDiffJsonError = Schema.fromJsonString(
+  Schema.Struct({
+    tag: Schema.Literal("ReproDiffError"),
+    report: Schema.Struct({
+      differences: Schema.Array(
+        Schema.Struct({
+          relativePath: Schema.String,
+          kind: Schema.String,
+          firstDifferenceOffset: Schema.optionalKey(Schema.Number),
+          firstEntryKind: Schema.optionalKey(Schema.String),
+          secondEntryKind: Schema.optionalKey(Schema.String),
+          firstSymlinkTarget: Schema.optionalKey(Schema.String),
+          secondSymlinkTarget: Schema.optionalKey(Schema.String),
+          firstMode: Schema.optionalKey(Schema.Number),
+          secondMode: Schema.optionalKey(Schema.Number)
+        })
+      )
+    })
+  })
+)
+const decodeReproDiffJsonError = Schema.decodeUnknownSync(ReproDiffJsonError)
+
+const runBuildFixtureIo = (
+  invocation: Parameters<CommandRunner>[0],
+  run: () => Promise<unknown>
+): Effect.Effect<void, BuildCommandFailedError, never> =>
+  Effect.tryPromise({
+    try: run,
+    catch: (cause) =>
+      new BuildCommandFailedError({
+        step: invocation.step,
+        command: [invocation.command, ...invocation.args],
+        cwd: invocation.cwd,
+        exitCode: undefined,
+        message: cause instanceof Error ? cause.message : String(cause)
+      })
+  }).pipe(Effect.asVoid)
+
+interface BuildFixtureOutputOptions {
+  readonly rendererHtml?: string
+  readonly runtimeJs?: string
+  readonly nativeHost?: string
+}
+
+const writeBuildFixtureOutput = (
+  invocation: Parameters<CommandRunner>[0],
+  options: BuildFixtureOutputOptions = {}
+): Effect.Effect<void, BuildCommandFailedError, never> =>
+  Effect.gen(function* () {
+    if (invocation.step === "renderer") {
+      yield* runBuildFixtureIo(invocation, () =>
+        mkdir(join(invocation.cwd, "dist"), { recursive: true })
+      )
+      yield* runBuildFixtureIo(invocation, () =>
+        writeFile(join(invocation.cwd, "dist", "index.html"), options.rendererHtml ?? "<h1>ok</h1>")
+      )
+      return
+    }
+
+    if (invocation.step === "runtime") {
+      const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
+      const entryPath = invocation.args[1]
+      if (outdir === undefined || entryPath === undefined) {
+        return
+      }
+
+      const outputFile = basename(entryPath).replace(/\.tsx?$/, ".js")
+      yield* runBuildFixtureIo(invocation, () => mkdir(outdir, { recursive: true }))
+      yield* runBuildFixtureIo(invocation, () =>
+        writeFile(join(outdir, outputFile), options.runtimeJs ?? "console.log('ok')\n")
+      )
+      return
+    }
+
+    if (invocation.step === "native-host") {
+      yield* runBuildFixtureIo(invocation, () =>
+        mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
+      )
+      yield* runBuildFixtureIo(invocation, () =>
+        writeFile(join(invocation.cwd, "target", "release", "host"), options.nativeHost ?? "host")
+      )
+    }
+  })
+
+const runSignFixtureIo = (
+  invocation: Parameters<SignCommandRunner>[0],
+  run: () => Promise<unknown>
+): Effect.Effect<void, SignCommandFailedError, never> =>
+  Effect.tryPromise({
+    try: run,
+    catch: (cause) =>
+      new SignCommandFailedError({
+        step: invocation.step,
+        command: [invocation.command, ...invocation.args],
+        cwd: invocation.cwd,
+        exitCode: undefined,
+        message: cause instanceof Error ? cause.message : String(cause)
+      })
+  }).pipe(Effect.asVoid)
+
+const runPackageFixtureIo = (
+  invocation: Parameters<PackageCommandRunner>[0],
+  run: () => Promise<unknown>
+): Effect.Effect<void, PackageCommandFailedError, never> =>
+  Effect.tryPromise({
+    try: run,
+    catch: (cause) => packageFixtureError(invocation, cause)
+  }).pipe(Effect.asVoid)
+
+const readPackageFixtureText = (
+  invocation: Parameters<PackageCommandRunner>[0],
+  path: string
+): Effect.Effect<string, PackageCommandFailedError, never> =>
+  Effect.tryPromise({
+    try: () => readFile(path, "utf8"),
+    catch: (cause) => packageFixtureError(invocation, cause)
+  })
+
+const packageFixtureError = (
+  invocation: Parameters<PackageCommandRunner>[0],
+  cause: unknown
+): PackageCommandFailedError =>
+  new PackageCommandFailedError({
+    step: invocation.step,
+    command: [invocation.command, ...invocation.args],
+    cwd: invocation.cwd,
+    exitCode: undefined,
+    message: cause instanceof Error ? cause.message : String(cause)
+  })
 
 const expectPromiseRejects = async (promise: Promise<unknown>): Promise<void> => {
   let rejected = false
@@ -69,13 +420,18 @@ test("doctor report renders selected layer providers", () => {
     probes: [],
     layerGraph: {
       appId: "notes",
-      providers: { runtime: "test" },
+      providers: { runtime: "test", webview: "system" },
       nodes: [],
       providerFacts: [
         {
           id: "test",
           kind: "runtime",
           capabilities: ["FileSystem"]
+        },
+        {
+          id: "system",
+          kind: "webview",
+          capabilities: ["WindowWebView"]
         }
       ],
       failures: []
@@ -83,6 +439,7 @@ test("doctor report renders selected layer providers", () => {
   })
 
   expect(output).toContain("layer providers   runtime:test")
+  expect(output).toContain("webview:system")
   expect(output).toContain("layer failures    0")
 })
 
@@ -235,7 +592,7 @@ test("desktop value-flag usage errors honor --json", async () => {
     })
   )
 
-  const payload = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+  const payload = decodeCliJsonError(stderr.join(""))
   expect(exitCode).toBe(1)
   expect(stdout.join("")).toBe("")
   expect(payload).toEqual({
@@ -316,11 +673,7 @@ test("desktop check --production --json writes failed reports to stderr", async 
       })
     )
 
-    const report = JSON.parse(stderr.join("")) as {
-      readonly passed: boolean
-      readonly failures: ReadonlyArray<{ readonly rule: string }>
-      readonly acknowledgements: ReadonlyArray<unknown>
-    }
+    const report = decodeProductionCheckJsonReport(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(stdout.join("")).toBe("")
     expect(report.passed).toBe(false)
@@ -347,11 +700,7 @@ test("desktop check --production --json emits structured config-loading failures
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-      readonly field?: string
-    }
+    const payload = decodeCliJsonConfigError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("BuildConfigError")
     expect(payload.tag).toBe("BuildConfigError")
@@ -386,10 +735,7 @@ test("desktop check --production rejects duplicate config flags before loading c
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(stdout.join("")).toBe("")
     expect(payload.tag).toBe("CliUsageError")
@@ -434,11 +780,7 @@ test("desktop check --production rejects missing app metadata before security ch
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-      readonly field?: string
-    }
+    const payload = decodeCliJsonConfigError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(stdout.join("")).toBe("")
     expect(payload).toEqual({
@@ -487,11 +829,7 @@ test("desktop check --production --json emits structured renderer-loading failur
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-      readonly field?: string
-    }
+    const payload = decodeCliJsonConfigError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.message).toContain("missing.ts")
   } finally {
@@ -572,11 +910,7 @@ test("desktop check --production --json writes passed reports to stdout", async 
       })
     )
 
-    const report = JSON.parse(stdout.join("")) as {
-      readonly passed: boolean
-      readonly failures: ReadonlyArray<unknown>
-      readonly acknowledgements: ReadonlyArray<unknown>
-    }
+    const report = decodeProductionCheckJsonReport(stdout.join(""))
     expect(exitCode).toBe(0)
     expect(stderr.join("")).toBe("")
     expect(report).toEqual({
@@ -721,10 +1055,7 @@ test("desktop check rejects mixed mode flags before dispatch", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("CliUsageError")
     expect(payload.message).toContain("mutually exclusive")
@@ -759,10 +1090,7 @@ test("desktop commands reject unknown flags before execution", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("CliUsageError")
     expect(payload.message).toContain("unknown flag")
@@ -798,15 +1126,7 @@ test("desktop doctor reports typed missing Rust toolchain failures", async () =>
       })
     )
 
-    const report = JSON.parse(stderr.join("")) as {
-      readonly passed: boolean
-      readonly probes: ReadonlyArray<{
-        readonly name: string
-        readonly status: string
-        readonly installCommand?: string
-        readonly installHint?: string
-      }>
-    }
+    const report = decodeDoctorJsonReport(stderr.join(""))
     const rustProbe = report.probes.find((probe) => probe.name === "rust-toolchain")
     expect(exitCode).toBe(1)
     expect(report.passed).toBe(false)
@@ -1026,10 +1346,7 @@ test("desktop doctor rejects empty app metadata strings", async () => {
       })
     )
 
-    const report = JSON.parse(stderr.join("")) as {
-      readonly passed: boolean
-      readonly probes: ReadonlyArray<{ readonly name: string; readonly status: string }>
-    }
+    const report = decodeDoctorJsonReport(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(report.passed).toBe(false)
     expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
@@ -1069,10 +1386,7 @@ test("desktop doctor rejects config paths outside the workspace", async () => {
       })
     )
 
-    const report = JSON.parse(stderr.join("")) as {
-      readonly passed: boolean
-      readonly probes: ReadonlyArray<{ readonly name: string; readonly status: string }>
-    }
+    const report = decodeDoctorJsonReport(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(report.passed).toBe(false)
     expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
@@ -1116,10 +1430,7 @@ test("desktop doctor rejects invalid security config", async () => {
       })
     )
 
-    const report = JSON.parse(stderr.join("")) as {
-      readonly passed: boolean
-      readonly probes: ReadonlyArray<{ readonly name: string; readonly status: string }>
-    }
+    const report = decodeDoctorJsonReport(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(report.passed).toBe(false)
     expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
@@ -1326,12 +1637,7 @@ test("desktop check --repro --json returns structured diff reports", async () =>
       })
     )
 
-    const report = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly report: {
-        readonly differences: readonly [{ readonly firstDifferenceOffset: number }]
-      }
-    }
+    const report = decodeReproDiffJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(report.tag).toBe("ReproDiffError")
     expect(report.report.differences[0]?.firstDifferenceOffset).toBe(4)
@@ -1363,8 +1669,14 @@ test("desktop check --repro rejects target drift between passes", async () => {
           }),
         packageRunner: () =>
           Effect.gen(function* () {
-            yield* Effect.promise(() => mkdir(packageRoot, { recursive: true }))
-            yield* Effect.promise(() => writeFile(join(packageRoot, "app.deb"), "identical\n"))
+            yield* Effect.tryPromise({
+              try: () => mkdir(packageRoot, { recursive: true }),
+              catch: (cause) => cause
+            })
+            yield* Effect.tryPromise({
+              try: () => writeFile(join(packageRoot, "app.deb"), "identical\n"),
+              catch: (cause) => cause
+            })
             return {
               outputPath: packageRoot
             }
@@ -1445,17 +1757,7 @@ reproSymlinkTest(
         })
       )
 
-      const report = JSON.parse(stderr.join("")) as {
-        readonly tag: string
-        readonly report: {
-          readonly differences: ReadonlyArray<{
-            readonly relativePath: string
-            readonly kind: string
-            readonly firstEntryKind?: string
-            readonly secondEntryKind?: string
-          }>
-        }
-      }
+      const report = decodeReproDiffJsonError(stderr.join(""))
       expect(exitCode).toBe(1)
       expect(report.tag).toBe("ReproDiffError")
       const drift = report.report.differences.find((difference) =>
@@ -1508,17 +1810,7 @@ reproSymlinkTest(
         })
       )
 
-      const report = JSON.parse(stderr.join("")) as {
-        readonly tag: string
-        readonly report: {
-          readonly differences: ReadonlyArray<{
-            readonly relativePath: string
-            readonly kind: string
-            readonly firstSymlinkTarget?: string
-            readonly secondSymlinkTarget?: string
-          }>
-        }
-      }
+      const report = decodeReproDiffJsonError(stderr.join(""))
       expect(exitCode).toBe(1)
       expect(report.tag).toBe("ReproDiffError")
       const drift = report.report.differences.find((difference) =>
@@ -1613,17 +1905,7 @@ reproModeTest("desktop check --repro reports mode drift between byte-identical f
       })
     )
 
-    const report = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly report: {
-        readonly differences: ReadonlyArray<{
-          readonly relativePath: string
-          readonly kind: string
-          readonly firstMode?: number
-          readonly secondMode?: number
-        }>
-      }
-    }
+    const report = decodeReproDiffJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(report.tag).toBe("ReproDiffError")
     const drift = report.report.differences.find((difference) =>
@@ -1675,17 +1957,7 @@ reproModeTest(
         })
       )
 
-      const report = JSON.parse(stderr.join("")) as {
-        readonly tag: string
-        readonly report: {
-          readonly differences: ReadonlyArray<{
-            readonly relativePath: string
-            readonly kind: string
-            readonly firstMode?: number
-            readonly secondMode?: number
-          }>
-        }
-      }
+      const report = decodeReproDiffJsonError(stderr.join(""))
       expect(exitCode).toBe(1)
       expect(report.tag).toBe("ReproDiffError")
       const drift = report.report.differences.find((difference) =>
@@ -1798,7 +2070,7 @@ test("desktop check --api rejects snapshots for the wrong package", async () => 
       "snapshots",
       "@effect-desktop__fixture.snapshot.json"
     )
-    const snapshot = JSON.parse(await readFile(snapshotPath, "utf8")) as Record<string, unknown>
+    const snapshot = decodeJsonObject(await readFile(snapshotPath, "utf8"))
     await writeFile(
       snapshotPath,
       `${JSON.stringify({ ...snapshot, packageName: "@effect-desktop/other" }, null, 2)}\n`
@@ -1816,10 +2088,7 @@ test("desktop check --api rejects snapshots for the wrong package", async () => 
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("PublicApiFileError")
     expect(payload.message).toContain("packageName")
@@ -1887,10 +2156,7 @@ test("desktop check --api rejects invalid package names", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("PublicApiPackageError")
     expect(payload.message).toContain("invalid package name")
@@ -1988,10 +2254,7 @@ test("desktop check --api --json reports missing snapshots as typed values", asy
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("PublicApiFileError")
     expect(payload.message).toContain("snapshot")
@@ -2053,10 +2316,7 @@ test("desktop check --docs reports missing pages as typed values", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("DocsGateMissingPageError")
     expect(payload.message).toContain("missing.md")
@@ -2068,9 +2328,7 @@ test("desktop check --docs reports missing pages as typed values", async () => {
 test("desktop check --docs rejects non-string page paths as typed manifest errors", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
   try {
-    await writeDocsManifest(directory, [
-      { id: "installation", title: "Installation", path: 42 as never }
-    ])
+    await writeDocsManifest(directory, [{ id: "installation", title: "Installation", path: 42 }])
     const stderr: string[] = []
 
     const exitCode = await Effect.runPromise(
@@ -2084,10 +2342,7 @@ test("desktop check --docs rejects non-string page paths as typed manifest error
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("DocsGateManifestError")
     expect(payload.message).toContain("page path")
@@ -2173,15 +2428,9 @@ test("desktop check --docs reports failing runnable examples", async () => {
 test("desktop check --docs rejects placeholder examples on required pages", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
   try {
-    const sourceManifest = JSON.parse(
+    const sourceManifest = decodeDocsManifestPagesJson(
       await readFile(join(REPO_ROOT, "docs", "docs-manifest.json"), "utf8")
-    ) as {
-      readonly pages: readonly {
-        readonly id: string
-        readonly title: string
-        readonly path: string
-      }[]
-    }
+    )
     await writeDocsManifest(directory, sourceManifest.pages, "engineering/SPEC.md §25.3")
     const coverageTokens = [
       "runCli",
@@ -2243,10 +2492,7 @@ test("desktop check --docs rejects placeholder examples on required pages", asyn
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("DocsGateCoverageError")
     expect(payload.message).toContain("docs/filesystem.md")
@@ -2313,10 +2559,7 @@ test("desktop check --docs rejects manifest paths outside the repo", async () =>
       })
     )
     expect(exitCode).toBe(1)
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(payload.tag).toBe("DocsGateManifestError")
     expect(payload.message).toContain("escapes the repo")
   } finally {
@@ -2341,10 +2584,7 @@ test("desktop check --docs rejects absolute manifest paths", async () => {
       })
     )
     expect(exitCode).toBe(1)
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(payload.tag).toBe("DocsGateManifestError")
     expect(payload.message).toContain("escapes the repo")
   } finally {
@@ -2416,10 +2656,7 @@ test("desktop check --release rejects incomplete spec gate identities", async ()
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateManifestError")
     expect(payload.message).toContain("unknown")
@@ -2450,10 +2687,7 @@ test("desktop check --release rejects malformed checklist shape", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateManifestError")
     expect(payload.message).toContain("gates")
@@ -2573,10 +2807,7 @@ test("desktop check --release rejects unknown evidence sources", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateEvidenceError")
     expect(payload.message).toContain("unsupported evidence")
@@ -2613,10 +2844,7 @@ test("desktop check --release rejects empty evidence anchors", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateEvidenceError")
     expect(payload.message).toContain("empty evidence anchor")
@@ -2658,10 +2886,7 @@ test("desktop check --release rejects evidence from another gate", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateEvidenceError")
     expect(payload.message).toContain("does not accept evidence")
@@ -2802,10 +3027,7 @@ test("desktop check --release rejects subject package before build", async () =>
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateEvidenceError")
     expect(payload.message).toContain("release subject inspector")
@@ -2851,10 +3073,7 @@ test("desktop check --release reports missing subject workflow command", async (
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateEvidenceError")
     expect(payload.message).toContain("release subject basic-template")
@@ -2888,10 +3107,7 @@ test("desktop check --release rejects empty CVSS exemption sections", async () =
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("ReleaseGateEvidenceError")
     expect(payload.message).toContain("non-empty Justification")
@@ -3008,10 +3224,7 @@ test("desktop check --a11y rejects zero-pass axe reports", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("no axe pass evidence")
@@ -3043,10 +3256,7 @@ test("desktop check --a11y rejects comment-only required tokens", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("prefers-reduced-motion")
@@ -3077,10 +3287,7 @@ test("desktop check --a11y binds RTL audit modes to Arabic rendered state", asyn
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("rtl")
@@ -3113,10 +3320,7 @@ test("desktop check --a11y rejects missing manifest template arrays", async () =
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateManifestError")
     expect(payload.message).toContain("templates")
@@ -3156,10 +3360,7 @@ test("desktop check --a11y binds audit mode IDs to semantics", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("light-ltr direction")
@@ -3187,10 +3388,7 @@ test("desktop check --a11y binds Pa11y audit files to modes", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("pa11y.dark-ltr.json")
@@ -3280,10 +3478,7 @@ test("desktop check --a11y rejects invalid contrast colors", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("foreground")
@@ -3328,10 +3523,7 @@ test("desktop check --a11y rejects invalid contrast minimums", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("minimumRatio")
@@ -3369,10 +3561,7 @@ test("desktop check --a11y rejects paths outside the workspace", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("must stay inside")
@@ -3408,10 +3597,7 @@ test("desktop check --a11y rejects screencast directories", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("AccessibilityGateEvidenceError")
     expect(payload.message).toContain("screencast file")
@@ -3827,14 +4013,11 @@ test("semver guard rejects wrong-typed manifest fields", async () => {
     if (!isSemverManifestFixture(manifest)) {
       throw new Error("invalid semver manifest fixture")
     }
-    const manifestRecord = manifest as unknown as {
-      readonly deprecationPolicy: Readonly<Record<string, unknown>>
-    }
     await writeSemverFixture(directory, {
       manifest: {
         ...manifest,
         deprecationPolicy: {
-          ...manifestRecord.deprecationPolicy,
+          ...manifest.deprecationPolicy,
           minimumMinorReleases: "3"
         }
       }
@@ -3890,9 +4073,9 @@ test("desktop sign signs macOS app bundle with hardened runtime entitlements", a
       join(artifactRoot, "effect-desktop-entitlements.plist"),
       "utf8"
     )
-    const report = JSON.parse(await readFile(join(outputRoot, "sign-report.json"), "utf8")) as {
-      readonly artifacts: readonly [{ readonly signedPaths: readonly string[] }]
-    }
+    const report = decodeSignReportJson(
+      await readFile(join(outputRoot, "sign-report.json"), "utf8")
+    )
 
     expect(exitCode).toBe(0)
     expect(stdout.join("")).toContain("Effect Desktop sign")
@@ -3932,7 +4115,7 @@ test("desktop sign rejects malformed permission entries before macOS codesign", 
       })
     )
 
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(error.tag).toBe("SignConfigError")
     expect(error.message).toContain("permissions[0]")
@@ -3961,7 +4144,7 @@ test("desktop sign fails macOS signing without a Developer ID identity", async (
       })
     )
 
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(error.tag).toBe("SignConfigError")
     expect(error.message).toContain("signing.macos.identity")
@@ -4042,7 +4225,7 @@ test("desktop sign rejects invalid Windows timestamp URLs before signtool", asyn
       })
     )
 
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(calls).toEqual([])
     expect(error.tag).toBe("SignConfigError")
@@ -4080,7 +4263,7 @@ test("desktop sign rejects malformed Windows certificate thumbprints", async () 
       })
     )
 
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(calls).toEqual([])
     expect(error.tag).toBe("SignConfigError")
@@ -4152,7 +4335,7 @@ test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", async ()
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
         const outputPath = invocation.args[invocation.args.indexOf("--output") + 1]
         if (typeof outputPath === "string") {
-          yield* Effect.promise(() => writeFile(outputPath, "signature"))
+          yield* runSignFixtureIo(invocation, () => writeFile(outputPath, "signature"))
         }
       })
 
@@ -4238,10 +4421,7 @@ test("desktop sign rejects Linux signable artifacts without linuxIntegration met
     const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
     const artifactRoot = dirname(artifactPath)
     const artifactJsonPath = join(artifactRoot, "artifact.json")
-    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
-      string,
-      unknown
-    >
+    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
     delete artifactJson["linuxIntegration"]
     await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
     const calls: string[] = []
@@ -4315,7 +4495,7 @@ test("desktop sign rejects artifact fileName that escapes the metadata directory
           calls.push(invocation.step)
           const outputPath = invocation.args[invocation.args.indexOf("--output") + 1]
           if (typeof outputPath === "string") {
-            yield* Effect.promise(() => writeFile(outputPath, "signature"))
+            yield* runSignFixtureIo(invocation, () => writeFile(outputPath, "signature"))
           }
         })
       const stderr: string[] = []
@@ -4395,10 +4575,7 @@ test("desktop sign skips artifacts whose metadata target does not match the requ
     })
     const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
     const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
-      string,
-      unknown
-    >
+    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
     artifactJson["target"] = "linux-x64"
     await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
 
@@ -4422,7 +4599,7 @@ test("desktop sign skips artifacts whose metadata target does not match the requ
       })
     )
 
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(calls).toEqual([])
     expect(error.tag).toBe("SignFileError")
@@ -4478,10 +4655,7 @@ test("desktop notarize skips artifacts whose metadata target does not match the 
     })
     const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
     const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
-      string,
-      unknown
-    >
+    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
     artifactJson["target"] = "macos-x64"
     await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
 
@@ -4505,7 +4679,7 @@ test("desktop notarize skips artifacts whose metadata target does not match the 
       })
     )
 
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(calls).toEqual([])
     expect(error.tag).toBe("NotarizeFileError")
@@ -4541,7 +4715,7 @@ test("desktop notarize rejects stale artifacts from a different app identity", a
         }
       })
     )
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
 
     expect(exitCode).toBe(1)
     expect(calls).toEqual([])
@@ -4590,12 +4764,12 @@ test("desktop notarize submits staples and assesses unstapled macOS artifacts", 
       })
     )
 
-    const report = JSON.parse(
+    const report = decodeNotarizeArtifactsReportJson(
       await readFile(
         join(directory, "apps", "inspector", "dist", "desktop", "macos", "notarize-report.json"),
         "utf8"
       )
-    ) as { readonly artifacts: readonly [{ readonly submissionId: string }] }
+    )
 
     expect(exitCode).toBe(0)
     expect(stdout.join("")).toContain("Effect Desktop notarize")
@@ -4859,12 +5033,12 @@ test("desktop notarize ignores zip sidecars that stapler cannot staple", async (
       })
     )
 
-    const report = JSON.parse(
+    const report = decodeNotarizeArtifactsReportJson(
       await readFile(
         join(directory, "apps", "inspector", "dist", "desktop", "macos", "notarize-report.json"),
         "utf8"
       )
-    ) as { readonly artifacts: readonly unknown[] }
+    )
 
     expect(exitCode).toBe(0)
     expect(calls).toEqual(["stapler-validate", "spctl-assess"])
@@ -4917,12 +5091,12 @@ test("desktop notarize redacts Apple ID password credentials in the persisted re
       })
     )
 
-    const report = JSON.parse(
+    const report = decodeNotarizeStepsReportJson(
       await readFile(
         join(directory, "apps", "inspector", "dist", "desktop", "macos", "notarize-report.json"),
         "utf8"
       )
-    ) as { readonly steps: readonly [{ readonly command?: readonly string[] }] }
+    )
     const submitStep = report.steps.find((step) => step.command?.includes("notarytool") === true)
 
     expect(exitCode).toBe(0)
@@ -5061,8 +5235,8 @@ test("desktop publish writes a byte-stable Ed25519-signed update manifest", asyn
       "desktop",
       "update-manifest.json"
     )
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as UpdateManifest
-    const report = JSON.parse(stdout.join("")) as { readonly manifestPath: string }
+    const manifest = decodeUpdateManifestJson(await readFile(manifestPath, "utf8"))
+    const report = decodePublishReportJson(stdout.join(""))
 
     expect(exitCode).toBe(0)
     expect(report.manifestPath).toBe(manifestPath)
@@ -5141,10 +5315,7 @@ test("desktop publish rejects invalid publish timestamps before writing manifest
         })
       )
 
-      const payload = JSON.parse(stderr.join("")) as {
-        readonly tag: string
-        readonly message: string
-      }
+      const payload = decodeCliJsonError(stderr.join(""))
       expect(exitCode).toBe(1)
       expect(payload.tag).toBe("PublishConfigError")
       expect(payload.message).toContain("publish timestamp")
@@ -5222,12 +5393,12 @@ test("desktop publish encodes artifact URLs for query-string feed URLs", async (
       })
     )
 
-    const manifest = JSON.parse(
+    const manifest = decodeUpdateManifestJson(
       await readFile(
         join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
         "utf8"
       )
-    ) as UpdateManifest
+    )
 
     expect(exitCode).toBe(0)
     expect(manifest.artifacts[0]).toMatchObject({
@@ -5271,13 +5442,25 @@ test("desktop publish rejects tampered manifest signatures through canonical byt
       })
     )
 
-    const manifest = JSON.parse(
+    const manifest = decodeUpdateManifestJson(
       await readFile(
         join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
         "utf8"
       )
-    ) as UpdateManifest
-    const tampered = { ...manifest, version: "9.9.9" }
+    )
+    const tampered: UpdateManifest = {
+      schemaVersion: manifest.schemaVersion,
+      appId: manifest.appId,
+      version: "9.9.9",
+      channel: manifest.channel,
+      keyVersion: manifest.keyVersion,
+      publishedAt: manifest.publishedAt,
+      ...(manifest.rollback === undefined ? {} : { rollback: manifest.rollback }),
+      ...(manifest.minVersion === undefined ? {} : { minVersion: manifest.minVersion }),
+      ...(manifest.maxVersion === undefined ? {} : { maxVersion: manifest.maxVersion }),
+      artifacts: manifest.artifacts,
+      signature: manifest.signature
+    }
 
     expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
     expect(verifyUpdateManifest(tampered, key.publicKey)).toBe(false)
@@ -5383,7 +5566,7 @@ test("desktop publish rejects invalid app ids before writing manifests", async (
       })
     )
 
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(error.tag).toBe("PublishConfigError")
     expect(error.message).toContain("app.id must be a reverse-DNS ASCII identifier")
@@ -5435,7 +5618,7 @@ test("desktop publish rejects non-SemVer app versions before writing manifests",
       })
     )
 
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(error.tag).toBe("PublishConfigError")
     expect(error.message).toContain("app.version must be a SemVer X.Y.Z string")
@@ -5615,7 +5798,7 @@ test("desktop publish rejects stale artifacts from a different app identity", as
         }
       })
     )
-    const error = JSON.parse(stderr.join("")) as { readonly tag: string; readonly message: string }
+    const error = decodeCliJsonError(stderr.join(""))
 
     expect(exitCode).toBe(1)
     expect(error.tag).toBe("PublishConfigError")
@@ -5650,10 +5833,7 @@ test("desktop publish rejects artifact target mismatching platform directory", a
     })
     const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
     const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
-      string,
-      unknown
-    >
+    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
     artifactJson["target"] = "linux-x64"
     await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
 
@@ -5894,10 +6074,7 @@ test("desktop publish accepts rollback manifests with maxVersion", async () => {
     })
     const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
     const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
-      string,
-      unknown
-    >
+    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
     artifactJson["appVersion"] = "1.2.3"
     await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
     const manifestPath = join(
@@ -5918,7 +6095,7 @@ test("desktop publish accepts rollback manifests with maxVersion", async () => {
       })
     )
     expect(exitCode).toBe(0)
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as UpdateManifest
+    const manifest = decodeUpdateManifestJson(await readFile(manifestPath, "utf8"))
     expect(manifest).toMatchObject({ rollback: true, maxVersion: "2.0.0" })
   } finally {
     if (previousPrivateKey === undefined) {
@@ -5998,10 +6175,7 @@ test("desktop publish accepts update.minVersion equal to app.version", async () 
     })
     const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
     const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
-      string,
-      unknown
-    >
+    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
     artifactJson["appVersion"] = "1.2.3"
     await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
     const exitCode = await Effect.runPromise(
@@ -6058,12 +6232,12 @@ test("desktop publish signs macOS app directory artifacts with deterministic dir
       })
     )
 
-    const manifest = JSON.parse(
+    const manifest = decodeUpdateManifestJson(
       await readFile(
         join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
         "utf8"
       )
-    ) as UpdateManifest
+    )
 
     expect(exitCode).toBe(0)
     expect(manifest.artifacts).toHaveLength(1)
@@ -6109,10 +6283,7 @@ test("desktop publish rejects symbolic links inside directory artifacts", async 
     )
     const digest = await digestArtifactFixture(artifactPath)
     const artifactJsonPath = join(artifactRoot, "artifact.json")
-    const artifactJson = JSON.parse(await readFile(artifactJsonPath, "utf8")) as Record<
-      string,
-      unknown
-    >
+    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
     artifactJson["sizeBytes"] = digest.sizeBytes
     artifactJson["sha256"] = digest.sha256
     await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
@@ -6167,31 +6338,10 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
     const runner: CommandRunner = (invocation) =>
       Effect.gen(function* () {
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        if (invocation.step === "renderer") {
-          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
-          )
-        }
-        if (invocation.step === "runtime") {
-          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-          const entryPath = invocation.args[1]
-          if (outdir !== undefined && entryPath !== undefined) {
-            const entryBase = basename(entryPath)
-            const outputFile = entryBase.replace(/\.tsx?$/, ".js")
-            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-            yield* Effect.promise(() => writeFile(join(outdir, outputFile), "console.log('ok')\n"))
-          }
-        }
         if (invocation.step === "native-host") {
           nativeHostEmbedEnv.push(invocation.env?.["EFFECT_DESKTOP_EMBED_DIST"])
-          yield* Effect.promise(() =>
-            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
-          )
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
-          )
         }
+        yield* writeBuildFixtureOutput(invocation)
       })
 
     const stdout: string[] = []
@@ -6210,16 +6360,11 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
     )
 
     const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
-    const report = JSON.parse(await readFile(join(layout, "build-report.json"), "utf8")) as Record<
-      string,
-      unknown
-    >
-    const appManifest = JSON.parse(
-      await readFile(join(layout, "app-manifest.json"), "utf8")
-    ) as Record<string, unknown>
-    const bridgeManifest = JSON.parse(
+    const report = decodeJsonObject(await readFile(join(layout, "build-report.json"), "utf8"))
+    const appManifest = decodeJsonObject(await readFile(join(layout, "app-manifest.json"), "utf8"))
+    const bridgeManifest = decodeJsonObject(
       await readFile(join(layout, "bridge", "bridge-manifest.json"), "utf8")
-    ) as Record<string, unknown>
+    )
 
     expect(exitCode).toBe(0)
     expect(stdout.join("")).toContain("Effect Desktop build")
@@ -6317,36 +6462,14 @@ test("desktop build stages renderer runtime host bridge manifests and report", a
   }
 })
 
-test("desktop build emits explicit chromium web engine selection in the host manifest", async () => {
+test("desktop build emits explicit chrome web engine selection in the host manifest", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-web-engine-"))
   try {
-    await writePlaygroundFixture(directory, { web: { engine: "chromium" } })
-    const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        if (invocation.step === "renderer") {
-          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
-          )
-        }
-        if (invocation.step === "runtime") {
-          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-          if (outdir !== undefined) {
-            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-            yield* Effect.promise(() =>
-              writeFile(join(outdir, "runtime.js"), "console.log('ok')\n")
-            )
-          }
-        }
-        if (invocation.step === "native-host") {
-          yield* Effect.promise(() =>
-            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
-          )
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
-          )
-        }
-      })
+    await writePlaygroundFixture(directory, { web: { engine: "chrome" } })
+    const chromeRuntime = join(directory, "apps", "inspector", "native", "chrome", "linux-x64")
+    await mkdir(chromeRuntime, { recursive: true })
+    await writeFile(join(chromeRuntime, "cef-runtime.txt"), "pinned test runtime")
+    const runner: CommandRunner = (invocation) => writeBuildFixtureOutput(invocation)
 
     const exitCode = await Effect.runPromise(
       runCli({
@@ -6356,10 +6479,15 @@ test("desktop build emits explicit chromium web engine selection in the host man
         commandRunner: runner,
         writeStdout: () => {},
         writeStderr: () => {}
-      })
+      }).pipe(
+        Effect.provideService(
+          Clock.Clock,
+          fixedEffectClock([100, 110, 200, 220, 300, 330, 400, 460])
+        )
+      )
     )
 
-    const manifest = JSON.parse(
+    const manifest = decodeBuildChromeManifestJson(
       await readFile(
         join(
           directory,
@@ -6372,12 +6500,8 @@ test("desktop build emits explicit chromium web engine selection in the host man
         ),
         "utf8"
       )
-    ) as {
-      readonly hostManifest: {
-        readonly webEngine: string
-      }
-    }
-    const report = JSON.parse(
+    )
+    const report = decodeBuildChromeReportJson(
       await readFile(
         join(
           directory,
@@ -6390,26 +6514,54 @@ test("desktop build emits explicit chromium web engine selection in the host man
         ),
         "utf8"
       )
-    ) as {
-      readonly providers: {
-        readonly webEngine: string
-      }
-      readonly providerMeasurements: readonly {
-        readonly webEngine: string
-      }[]
-      readonly steps: readonly {
-        readonly name: string
-        readonly provider?: string
-      }[]
-    }
+    )
 
     expect(exitCode).toBe(0)
-    expect(manifest.hostManifest.webEngine).toBe("chromium")
-    expect(report.providers.webEngine).toBe("chromium")
-    expect(report.providerMeasurements[0]?.webEngine).toBe("chromium")
+    expect(manifest.hostManifest.webEngine).toBe("chrome")
+    expect(manifest.hostManifest.webEngineRuntime).toBe("cef")
+    expect(manifest.hostManifest.webEnginePath).toBe("native/chrome")
+    expect(report.providers.webEngine).toBe("chrome")
+    expect(report.providerMeasurements[0]?.webEngine).toBe("chrome")
     expect(report.steps.find((step) => step.name === "native-host")?.provider).toBe(
-      "webview:chromium"
+      "webview:chrome"
     )
+    expect(report.steps.find((step) => step.name === "webview-runtime")?.provider).toBe(
+      "webview:chrome"
+    )
+    expect(report.steps.find((step) => step.name === "webview-runtime")?.elapsedMs).toBe(60)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build rejects chrome web engine when the bundled runtime is absent", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-chrome-"))
+  try {
+    await writePlaygroundFixture(directory, { web: { engine: "chrome" } })
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("BuildConfigError")
+    expect(stderr.join("")).toContain("web.engine chrome requires bundled Chromium/CEF assets")
+    expect(stderr.join("")).toContain("native/chrome/linux-x64")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -6423,29 +6575,7 @@ test("desktop build emits node runtime launch manifest for node runtime config",
     const runner: CommandRunner = (invocation) =>
       Effect.gen(function* () {
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        if (invocation.step === "renderer") {
-          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
-          )
-        }
-        if (invocation.step === "runtime") {
-          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-          if (outdir !== undefined) {
-            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-            yield* Effect.promise(() =>
-              writeFile(join(outdir, "runtime.js"), "console.log('ok')\n")
-            )
-          }
-        }
-        if (invocation.step === "native-host") {
-          yield* Effect.promise(() =>
-            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
-          )
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
-          )
-        }
+        yield* writeBuildFixtureOutput(invocation)
       })
 
     const exitCode = await Effect.runPromise(
@@ -6460,9 +6590,7 @@ test("desktop build emits node runtime launch manifest for node runtime config",
     )
 
     const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
-    const appManifest = JSON.parse(
-      await readFile(join(layout, "app-manifest.json"), "utf8")
-    ) as Record<string, unknown>
+    const appManifest = decodeJsonObject(await readFile(join(layout, "app-manifest.json"), "utf8"))
 
     expect(exitCode).toBe(0)
     expect(calls).toContain(
@@ -6492,29 +6620,7 @@ test("desktop build reuses provider-owned nodes when only runtime source changes
     const runner: CommandRunner = (invocation) =>
       Effect.gen(function* () {
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        if (invocation.step === "renderer") {
-          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
-          )
-        }
-        if (invocation.step === "runtime") {
-          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-          if (outdir !== undefined) {
-            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-            yield* Effect.promise(() =>
-              writeFile(join(outdir, "runtime.js"), "console.log('runtime')\n")
-            )
-          }
-        }
-        if (invocation.step === "native-host") {
-          yield* Effect.promise(() =>
-            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
-          )
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
-          )
-        }
+        yield* writeBuildFixtureOutput(invocation, { runtimeJs: "console.log('runtime')\n" })
       })
 
     const runBuild = () =>
@@ -6535,14 +6641,9 @@ test("desktop build reuses provider-owned nodes when only runtime source changes
 
     expect(await runBuild()).toBe(0)
 
-    const report = JSON.parse(await readFile(join(layout, "build-report.json"), "utf8")) as {
-      readonly steps: readonly {
-        readonly name: string
-        readonly provider?: string
-        readonly status: string
-        readonly reason: string
-      }[]
-    }
+    const report = decodeBuildStepsReportJson(
+      await readFile(join(layout, "build-report.json"), "utf8")
+    )
     expect(calls).toEqual([
       `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`
     ])
@@ -6569,29 +6670,10 @@ test("desktop build reuses native host when only renderer source changes", async
     const runner: CommandRunner = (invocation) =>
       Effect.gen(function* () {
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        if (invocation.step === "renderer") {
-          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>renderer</h1>")
-          )
-        }
-        if (invocation.step === "runtime") {
-          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-          if (outdir !== undefined) {
-            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-            yield* Effect.promise(() =>
-              writeFile(join(outdir, "runtime.js"), "console.log('runtime')\n")
-            )
-          }
-        }
-        if (invocation.step === "native-host") {
-          yield* Effect.promise(() =>
-            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
-          )
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
-          )
-        }
+        yield* writeBuildFixtureOutput(invocation, {
+          rendererHtml: "<h1>renderer</h1>",
+          runtimeJs: "console.log('runtime')\n"
+        })
       })
 
     const runBuild = () =>
@@ -6612,13 +6694,9 @@ test("desktop build reuses native host when only renderer source changes", async
 
     expect(await runBuild()).toBe(0)
 
-    const report = JSON.parse(await readFile(join(layout, "build-report.json"), "utf8")) as {
-      readonly steps: readonly {
-        readonly name: string
-        readonly provider?: string
-        readonly status: string
-      }[]
-    }
+    const report = decodeBuildStepsReportJson(
+      await readFile(join(layout, "build-report.json"), "utf8")
+    )
     expect(calls).toEqual(["renderer:bun run build"])
     expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
       ["renderer", "rebuilt", "renderer:react"],
@@ -6627,6 +6705,106 @@ test("desktop build reuses native host when only renderer source changes", async
       ["bridge", "reused", undefined],
       ["manifest", "rebuilt", undefined]
     ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build ignores malformed build cache and rebuilds nodes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-cache-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const appRoot = join(directory, "apps", "inspector")
+    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+    const calls: string[] = []
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+        yield* writeBuildFixtureOutput(invocation, {
+          rendererHtml: "<h1>renderer</h1>",
+          runtimeJs: "console.log('runtime')\n"
+        })
+      })
+
+    const runBuild = () =>
+      Effect.runPromise(
+        runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+      )
+
+    expect(await runBuild()).toBe(0)
+    calls.length = 0
+    await writeFile(join(layout, ".build-cache.json"), "{bad json")
+
+    expect(await runBuild()).toBe(0)
+
+    const report = decodeBuildStepsReportJson(
+      await readFile(join(layout, "build-report.json"), "utf8")
+    )
+    expect(calls).toEqual([
+      "renderer:bun run build",
+      `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`,
+      "native-host:cargo build -p host --release"
+    ])
+    expect(report.steps.map((step) => [step.name, step.status])).toEqual([
+      ["renderer", "rebuilt"],
+      ["runtime", "rebuilt"],
+      ["native-host", "rebuilt"],
+      ["bridge", "rebuilt"],
+      ["manifest", "rebuilt"]
+    ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build reports unreadable build cache before running build steps", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-unreadable-cache-"))
+  try {
+    await writePlaygroundFixture(directory)
+    const appRoot = join(directory, "apps", "inspector")
+    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+    const calls: string[] = []
+    const stderr: string[] = []
+    const runner: CommandRunner = (invocation) =>
+      Effect.gen(function* () {
+        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+        yield* writeBuildFixtureOutput(invocation, {
+          rendererHtml: "<h1>renderer</h1>",
+          runtimeJs: "console.log('runtime')\n"
+        })
+      })
+
+    const runBuild = () =>
+      Effect.runPromise(
+        runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+      )
+
+    expect(await runBuild()).toBe(0)
+    calls.length = 0
+    stderr.length = 0
+    await rm(join(layout, ".build-cache.json"), { force: true })
+    await mkdir(join(layout, ".build-cache.json"))
+
+    expect(await runBuild()).toBe(1)
+
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("failed to read")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -6695,7 +6873,7 @@ test("desktop check --repro preserves nested build stderr", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as { readonly message: string }
+    const payload = decodeCliJsonMessage(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.message).toContain("first build failed")
     expect(payload.message).toContain("renderer command exited with 1")
@@ -6723,6 +6901,38 @@ test("desktop build rejects missing runtime.entry", async () => {
     )
     expect(exitCode).toBe(1)
     expect(stderr.join("")).toContain("runtime.entry is required")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop build rejects runtime.entry directories with a precise config error", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-entry-dir-"))
+  try {
+    await writePlaygroundFixture(directory, { runtime: { entry: "src" } })
+    const calls: string[] = []
+    const stderr: string[] = []
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+        cwd: directory,
+        hostTarget: "linux-x64",
+        commandRunner: (invocation) =>
+          Effect.sync(() => {
+            calls.push(invocation.step)
+          }),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+    )
+
+    expect(exitCode).toBe(1)
+    expect(calls).toEqual([])
+    expect(stderr.join("")).toContain("BuildConfigError")
+    expect(stderr.join("")).toContain("runtime.entry must be an existing file, not a directory")
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -6946,8 +7156,10 @@ test("desktop build refuses renderer dist symlinks that escape dist", async () =
     const runner: CommandRunner = (invocation) =>
       Effect.gen(function* () {
         if (invocation.step === "renderer") {
-          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-          yield* Effect.promise(() =>
+          yield* runBuildFixtureIo(invocation, () =>
+            mkdir(join(invocation.cwd, "dist"), { recursive: true })
+          )
+          yield* runBuildFixtureIo(invocation, () =>
             symlink("../secret.txt", join(invocation.cwd, "dist", "secret.txt"))
           )
         }
@@ -7030,29 +7242,7 @@ test("desktop build emits validated renderer security policy", async () => {
       }
     })
     const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        if (invocation.step === "renderer") {
-          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
-          )
-        }
-        if (invocation.step === "runtime") {
-          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-          if (outdir !== undefined) {
-            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-            yield* Effect.promise(() => writeFile(join(outdir, "runtime.js"), "runtime"))
-          }
-        }
-        if (invocation.step === "native-host") {
-          yield* Effect.promise(() =>
-            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
-          )
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
-          )
-        }
-      })
+      writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
     const exitCode = await Effect.runPromise(
       runCli({
         argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
@@ -7064,7 +7254,7 @@ test("desktop build emits validated renderer security policy", async () => {
       })
     )
 
-    const manifest = JSON.parse(
+    const manifest = decodeRendererSecurityManifestJson(
       await readFile(
         join(
           directory,
@@ -7077,18 +7267,7 @@ test("desktop build emits validated renderer security policy", async () => {
         ),
         "utf8"
       )
-    ) as {
-      readonly rendererManifest: {
-        readonly navigationPolicy: string
-        readonly devtoolsInProd: boolean
-        readonly csp: {
-          readonly directives: readonly {
-            readonly name: string
-            readonly values: readonly string[]
-          }[]
-        }
-      }
-    }
+    )
 
     expect(exitCode).toBe(0)
     expect(manifest.rendererManifest.navigationPolicy).toBe("ask")
@@ -7122,29 +7301,7 @@ test("desktop build emits disabled renderer CSP policy when explicitly acknowled
       }
     })
     const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        if (invocation.step === "renderer") {
-          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
-          )
-        }
-        if (invocation.step === "runtime") {
-          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-          if (outdir !== undefined) {
-            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-            yield* Effect.promise(() => writeFile(join(outdir, "runtime.js"), "runtime"))
-          }
-        }
-        if (invocation.step === "native-host") {
-          yield* Effect.promise(() =>
-            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
-          )
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
-          )
-        }
-      })
+      writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
     const exitCode = await Effect.runPromise(
       runCli({
         argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
@@ -7156,7 +7313,7 @@ test("desktop build emits disabled renderer CSP policy when explicitly acknowled
       })
     )
 
-    const manifest = JSON.parse(
+    const manifest = decodeRendererDisabledCspManifestJson(
       await readFile(
         join(
           directory,
@@ -7169,13 +7326,7 @@ test("desktop build emits disabled renderer CSP policy when explicitly acknowled
         ),
         "utf8"
       )
-    ) as {
-      readonly rendererManifest: {
-        readonly csp: {
-          readonly directives: readonly unknown[]
-        }
-      }
-    }
+    )
 
     expect(exitCode).toBe(0)
     expect(manifest.rendererManifest.csp.directives).toEqual([])
@@ -7247,29 +7398,7 @@ test("desktop build emits validated window config in host manifest", async () =>
     }
     await writePlaygroundFixture(directory, { windows })
     const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        if (invocation.step === "renderer") {
-          yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
-          )
-        }
-        if (invocation.step === "runtime") {
-          const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-          if (outdir !== undefined) {
-            yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-            yield* Effect.promise(() => writeFile(join(outdir, "runtime.js"), "runtime"))
-          }
-        }
-        if (invocation.step === "native-host") {
-          yield* Effect.promise(() =>
-            mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
-          )
-          yield* Effect.promise(() =>
-            writeFile(join(invocation.cwd, "target", "release", "host"), "host")
-          )
-        }
-      })
+      writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
 
     const exitCode = await Effect.runPromise(
       runCli({
@@ -7282,7 +7411,7 @@ test("desktop build emits validated window config in host manifest", async () =>
       })
     )
 
-    const manifest = JSON.parse(
+    const manifest = decodeHostWindowsManifestJson(
       await readFile(
         join(
           directory,
@@ -7295,11 +7424,7 @@ test("desktop build emits validated window config in host manifest", async () =>
         ),
         "utf8"
       )
-    ) as {
-      readonly hostManifest: {
-        readonly windows: unknown
-      }
-    }
+    )
 
     expect(exitCode).toBe(0)
     expect(manifest.hostManifest.windows).toEqual(windows)
@@ -7345,11 +7470,7 @@ test("desktop package reports missing build output before reading manifests", as
       })
     )
 
-    const error = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-      readonly remediation: string
-    }
+    const error = decodePackageMissingBuildArtifactJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(error.tag).toBe("PackageMissingBuildArtifactError")
     expect(error.message).toContain("app-manifest.json")
@@ -7401,10 +7522,7 @@ test("desktop package rejects malformed build manifests as typed package errors"
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("PackageFileError")
     expect(payload.message).toContain("app-manifest.json")
@@ -7465,10 +7583,7 @@ test("desktop package rejects malformed runtime launch manifests", async () => {
       })
     )
 
-    const payload = JSON.parse(stderr.join("")) as {
-      readonly tag: string
-      readonly message: string
-    }
+    const payload = decodeCliJsonError(stderr.join(""))
     expect(exitCode).toBe(1)
     expect(payload.tag).toBe("PackageFileError")
     expect(payload.message).toContain("runtimeManifest.engine")
@@ -7540,7 +7655,7 @@ test("desktop package rejects runtime launch contract drift and path escapes", a
       await writeBuildLayoutFixture(directory, "linux-x64", "node")
       const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
       const manifestPath = join(layout, "app-manifest.json")
-      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>
+      const manifest = { ...decodeJsonObject(await readFile(manifestPath, "utf8")) }
       testCase.mutate(manifest)
       await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
       const stderr: string[] = []
@@ -7566,10 +7681,7 @@ test("desktop package rejects runtime launch contract drift and path escapes", a
         })
       )
 
-      const payload = JSON.parse(stderr.join("")) as {
-        readonly tag: string
-        readonly message: string
-      }
+      const payload = decodeCliJsonError(stderr.join(""))
       expect(exitCode).toBe(1)
       expect(payload.tag).toBe("PackageFileError")
       expect(payload.message).toContain(testCase.message)
@@ -7590,7 +7702,7 @@ test("desktop package accepts node runtime launch manifests", async () => {
         calls.push(invocation.step)
         const output = invocation.args.at(-1)
         if (output !== undefined) {
-          yield* Effect.promise(() => writeFile(output, invocation.step))
+          yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
         }
       })
 
@@ -7624,7 +7736,7 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", async ()
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
         const output = invocation.args.at(-1)
         if (output !== undefined) {
-          yield* Effect.promise(() => writeFile(output, invocation.step))
+          yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
         }
       })
 
@@ -7646,18 +7758,12 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", async ()
     const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
     const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
     const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
-    const appMetadata = JSON.parse(await readFile(join(appRoot, "artifact.json"), "utf8")) as {
-      readonly kind: string
-      readonly sha256: string
-      readonly providerBudgetChecks: readonly {
-        readonly metric: string
-        readonly budget: number
-        readonly status: string
-      }[]
-    }
-    const packageReport = JSON.parse(
+    const appMetadata = decodePackageAppMetadataJson(
+      await readFile(join(appRoot, "artifact.json"), "utf8")
+    )
+    const packageReport = decodeJsonObject(
       await readFile(join(outputRoot, "package-report.json"), "utf8")
-    ) as Record<string, unknown>
+    )
 
     expect(exitCode).toBe(0)
     expect(stdout.join("")).toContain("Effect Desktop package")
@@ -7723,10 +7829,9 @@ packageModeTest("desktop package metadata digest includes directory file modes",
         })
       )
       expect(exitCode).toBe(0)
-      const appMetadata = JSON.parse(await readFile(join(appRoot, "artifact.json"), "utf8")) as {
-        readonly kind: string
-        readonly sha256: string
-      }
+      const appMetadata = decodePackageAppMetadataJson(
+        await readFile(join(appRoot, "artifact.json"), "utf8")
+      )
       expect(appMetadata.kind).toBe("app")
       expect(appMetadata.sha256).toHaveLength(64)
       return appMetadata.sha256
@@ -7758,7 +7863,7 @@ test("desktop package stages macOS app bundle before explicit dmg artifact", asy
     const runner: PackageCommandRunner = (invocation) =>
       Effect.gen(function* () {
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        yield* Effect.promise(() => writeFile(dmgPath, invocation.step))
+        yield* runPackageFixtureIo(invocation, () => writeFile(dmgPath, invocation.step))
       })
 
     const report = await Effect.runPromise(
@@ -7798,7 +7903,7 @@ test("desktop package stages macOS app bundle before explicit zip artifact", asy
     const runner: PackageCommandRunner = (invocation) =>
       Effect.gen(function* () {
         calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        yield* Effect.promise(() => writeFile(zipPath, invocation.step))
+        yield* runPackageFixtureIo(invocation, () => writeFile(zipPath, invocation.step))
       })
 
     const report = await Effect.runPromise(
@@ -7838,7 +7943,7 @@ test("desktop package preserves sibling artifacts during targeted runs", async (
       Effect.gen(function* () {
         const output = invocation.args.at(-1)
         if (output !== undefined) {
-          yield* Effect.promise(() => writeFile(output, invocation.step))
+          yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
         }
       })
 
@@ -8026,7 +8131,7 @@ test("desktop package rejects build manifest app name drift", async () => {
     await writeBuildLayoutFixture(directory, "macos-arm64")
     const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "macos-arm64")
     const manifestPath = join(layout, "app-manifest.json")
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>
+    const manifest = { ...decodeJsonObject(await readFile(manifestPath, "utf8")) }
     manifest["name"] = "Different App"
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
     const stderr: string[] = []
@@ -8081,13 +8186,15 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", asy
       Effect.gen(function* () {
         calls.push(`${invocation.step}:${invocation.command}`)
         if (invocation.step === "linux-appimage") {
-          yield* Effect.promise(() => writeFile(artifactPaths.appimage, "appimage"))
+          yield* runPackageFixtureIo(invocation, () =>
+            writeFile(artifactPaths.appimage, "appimage")
+          )
         }
         if (invocation.step === "linux-deb") {
-          yield* Effect.promise(() => writeFile(artifactPaths.deb, "deb"))
+          yield* runPackageFixtureIo(invocation, () => writeFile(artifactPaths.deb, "deb"))
         }
         if (invocation.step === "linux-rpm") {
-          yield* Effect.promise(() => writeFile(artifactPaths.rpm, "rpm"))
+          yield* runPackageFixtureIo(invocation, () => writeFile(artifactPaths.rpm, "rpm"))
         }
       })
 
@@ -8103,21 +8210,12 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", asy
     )
 
     const appImageRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage")
-    const debMetadata = JSON.parse(
+    const debMetadata = decodeLinuxPackageArtifactJson(
       await readFile(
         join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.deb", "artifact.json"),
         "utf8"
       )
-    ) as {
-      readonly kind: string
-      readonly sizeBytes: number
-      readonly linuxIntegration?: {
-        readonly desktopFile: string
-        readonly appStreamId: string
-        readonly flatpakAppId: string
-        readonly snapName: string
-      }
-    }
+    )
 
     expect(exitCode).toBe(0)
     expect(calls).toEqual([
@@ -8230,9 +8328,9 @@ test("desktop package maps linux arm64 RPM metadata to aarch64", async () => {
         args = invocation.args
         const specPath = invocation.args[1]
         if (typeof specPath === "string") {
-          spec = yield* Effect.promise(() => readFile(specPath, "utf8"))
+          spec = yield* readPackageFixtureText(invocation, specPath)
         }
-        yield* Effect.promise(() => writeFile(rpmPath, "rpm"))
+        yield* runPackageFixtureIo(invocation, () => writeFile(rpmPath, "rpm"))
       })
 
     const exitCode = await Effect.runPromise(
@@ -8270,9 +8368,9 @@ test("desktop package emits Windows per-user MSI with app-specific UpgradeCode",
       Effect.gen(function* () {
         const wxsPath = invocation.args[1]
         if (typeof wxsPath === "string") {
-          wxs = yield* Effect.promise(() => readFile(wxsPath, "utf8"))
+          wxs = yield* readPackageFixtureText(invocation, wxsPath)
         }
-        yield* Effect.promise(() => writeFile(msiPath, "msi"))
+        yield* runPackageFixtureIo(invocation, () => writeFile(msiPath, "msi"))
       })
 
     const exitCode = await Effect.runPromise(
@@ -8749,7 +8847,7 @@ const writeDocsFixture = async (
 
 const writeDocsManifest = async (
   root: string,
-  pages: readonly { readonly id: string; readonly title: string; readonly path: string }[],
+  pages: readonly unknown[],
   source = "test"
 ): Promise<void> => {
   await mkdir(join(root, "docs"), { recursive: true })
@@ -9027,15 +9125,19 @@ const semverManifestFixture = (): unknown => ({
   }
 })
 
+const isJsonRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
 const isSemverManifestFixture = (
   value: unknown
 ): value is {
   readonly appendixCRows: readonly string[]
+  readonly deprecationPolicy: Readonly<Record<string, unknown>>
 } =>
-  typeof value === "object" &&
-  value !== null &&
+  isJsonRecord(value) &&
   "appendixCRows" in value &&
-  Array.isArray(value.appendixCRows)
+  Array.isArray(value["appendixCRows"]) &&
+  isJsonRecord(value["deprecationPolicy"])
 
 const semverMatrixFixture = (): Record<string, unknown> => ({
   schemaVersion: 1,
@@ -9325,32 +9427,7 @@ const verifyUpdateManifest = (manifest: UpdateManifest, publicKey: string): bool
 }
 
 const deterministicBuildRunner = (): CommandRunner => (invocation) =>
-  Effect.gen(function* () {
-    if (invocation.step === "renderer") {
-      yield* Effect.promise(() => mkdir(join(invocation.cwd, "dist"), { recursive: true }))
-      yield* Effect.promise(() =>
-        writeFile(join(invocation.cwd, "dist", "index.html"), "<h1>ok</h1>")
-      )
-    }
-    if (invocation.step === "runtime") {
-      const outdir = invocation.args[invocation.args.indexOf("--outdir") + 1]
-      const entryPath = invocation.args[1]
-      if (outdir !== undefined && entryPath !== undefined) {
-        const entryBase = basename(entryPath)
-        const outputFile = entryBase.replace(/\.tsx?$/, ".js")
-        yield* Effect.promise(() => mkdir(outdir, { recursive: true }))
-        yield* Effect.promise(() => writeFile(join(outdir, outputFile), "console.log('runtime')\n"))
-      }
-    }
-    if (invocation.step === "native-host") {
-      yield* Effect.promise(() =>
-        mkdir(join(invocation.cwd, "target", "release"), { recursive: true })
-      )
-      yield* Effect.promise(() =>
-        writeFile(join(invocation.cwd, "target", "release", "host"), "host")
-      )
-    }
-  })
+  writeBuildFixtureOutput(invocation, { runtimeJs: "console.log('runtime')\n" })
 
 const deterministicPackageRunner =
   (content: () => string): PackageCommandRunner =>
@@ -9359,7 +9436,7 @@ const deterministicPackageRunner =
       if (invocation.step === "linux-deb") {
         const output = invocation.args.at(-1)
         if (output !== undefined) {
-          yield* Effect.promise(() => writeFile(output, content()))
+          yield* runPackageFixtureIo(invocation, () => writeFile(output, content()))
         }
       }
     })
@@ -9371,11 +9448,11 @@ const modeDriftPackageRunner =
       if (invocation.step === "linux-deb") {
         const output = invocation.args.at(-1)
         if (output !== undefined) {
-          yield* Effect.promise(() => writeFile(output, "deb"))
+          yield* runPackageFixtureIo(invocation, () => writeFile(output, "deb"))
           const dir = dirname(output)
           const hostPath = join(dir, "host")
-          yield* Effect.promise(() => writeFile(hostPath, "host"))
-          yield* Effect.promise(() => chmod(hostPath, mode()))
+          yield* runPackageFixtureIo(invocation, () => writeFile(hostPath, "host"))
+          yield* runPackageFixtureIo(invocation, () => chmod(hostPath, mode()))
         }
       }
     })
@@ -9387,20 +9464,20 @@ const symlinkDriftPackageRunner =
       if (invocation.step === "linux-deb") {
         const output = invocation.args.at(-1)
         if (output !== undefined) {
-          yield* Effect.promise(() => writeFile(output, "deb"))
+          yield* runPackageFixtureIo(invocation, () => writeFile(output, "deb"))
           const dir = dirname(output)
           const linkPath = join(dir, "app-link")
-          yield* Effect.promise(() => writeFile(join(dir, "target-a.txt"), "a"))
-          yield* Effect.promise(() => writeFile(join(dir, "target-b.txt"), "b"))
+          yield* runPackageFixtureIo(invocation, () => writeFile(join(dir, "target-a.txt"), "a"))
+          yield* runPackageFixtureIo(invocation, () => writeFile(join(dir, "target-b.txt"), "b"))
           const decision = mode()
           if (decision === "symlink") {
-            yield* Effect.promise(() => symlink("target-a.txt", linkPath))
+            yield* runPackageFixtureIo(invocation, () => symlink("target-a.txt", linkPath))
           } else if (decision === "symlink-a") {
-            yield* Effect.promise(() => symlink("target-a.txt", linkPath))
+            yield* runPackageFixtureIo(invocation, () => symlink("target-a.txt", linkPath))
           } else if (decision === "symlink-b") {
-            yield* Effect.promise(() => symlink("target-b.txt", linkPath))
+            yield* runPackageFixtureIo(invocation, () => symlink("target-b.txt", linkPath))
           } else {
-            yield* Effect.promise(() => writeFile(linkPath, "regular"))
+            yield* runPackageFixtureIo(invocation, () => writeFile(linkPath, "regular"))
           }
         }
       }
@@ -9429,5 +9506,16 @@ const fixedClock = (values: readonly number[]): (() => number) => {
     const value = values[index] ?? values[values.length - 1]
     index += 1
     return value ?? 0
+  }
+}
+
+const fixedEffectClock = (values: readonly number[]): Clock.Clock => {
+  const now = fixedClock(values)
+  return {
+    currentTimeMillisUnsafe: now,
+    currentTimeMillis: Effect.sync(now),
+    currentTimeNanosUnsafe: () => BigInt(now()) * 1_000_000n,
+    currentTimeNanos: Effect.sync(() => BigInt(now()) * 1_000_000n),
+    sleep: () => Effect.yieldNow
   }
 }

@@ -35,7 +35,7 @@ if (Client === undefined || HostProtocolEnvelope === undefined) {
 
 ## Failure model
 
-Bridge failures are typed. Invalid arguments, unsupported methods, missing handlers, invalid output, closed streams, and protocol state errors stay visible to callers and devtools.
+Bridge failures are typed. Invalid arguments, unsupported methods, missing RPCs, invalid output, closed streams, and protocol state errors stay visible to callers and devtools.
 
 ## Streams
 

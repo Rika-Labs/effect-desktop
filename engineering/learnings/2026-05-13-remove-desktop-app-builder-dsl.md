@@ -6,7 +6,7 @@ Issue: #1278
 
 `Desktop.make(...)` now returns a frozen metadata descriptor instead of a custom app definition with
 its own `pipe`, `layers`, `Desktop.provide`, and `Desktop.toLayer` composition model. Runtime
-lowering is the normal `Desktop.app(App)` / `Desktop.runtime(App)` Layer surface.
+lowering is the normal `Desktop.layer(App)` / `Desktop.runtime(App)` Layer surface.
 
 RPC handlers moved into `Desktop.make({ rpcs: [...] })` as descriptor metadata, while their
 implementations remain ordinary Effect RPC layers. `Desktop.Rpcs.layer(...)` stayed because it owns
@@ -35,7 +35,7 @@ const App = Desktop.make({
   rpcs: [Desktop.Rpcs.layer(NotesRpcs, NotesRpcsLive)]
 })
 
-const MainLayer = Desktop.app(App).pipe(Layer.provide(GreetingLive))
+const MainLayer = Desktop.layer(App).pipe(Layer.provide(GreetingLive))
 ```
 
 ## Review changes
@@ -44,7 +44,7 @@ Review changed the implementation in three places:
 
 - descriptor RPC layers now preserve handler `E` and `R` instead of erasing them behind metadata;
 - descriptor fields that `Desktop.make` always materializes are concrete, not optional;
-- tests now prove an RPC handler can require an external service supplied around `Desktop.app(App)`.
+- tests now prove an RPC handler can require an external service supplied around `Desktop.layer(App)`.
 
 ## Architecture-debt sweep
 

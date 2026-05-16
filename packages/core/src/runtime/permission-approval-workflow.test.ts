@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Option, Stream } from "effect"
+import { Cause, Clock, Effect, Exit, Fiber, Option, Schedule, Stream } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import { type AuditEventsApi, type AuditEvent } from "./audit-events.js"
@@ -14,6 +14,8 @@ import {
   PermissionInvalidArgumentError,
   type PermissionRegistryApi
 } from "./permission-registry.js"
+
+const now = 1_715_000_000_000
 
 const provideEngine = <A, E, R>(
   effect: Effect.Effect<A, E, R | WorkflowEngine.WorkflowEngine>
@@ -122,17 +124,23 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
 })
 
 const waitForToken = (read: () => string | undefined): Effect.Effect<string, never, never> =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      const token = read()
-      if (token !== undefined) {
-        return token
-      }
-      yield* Effect.sleep("1 millis")
-    }
-    expect(read()).toBeDefined()
-    return read()!
-  })
+  Effect.suspend(() => {
+    const token = read()
+    return token === undefined
+      ? Effect.fail(new Error("waiting for approval token"))
+      : Effect.succeed(token)
+  }).pipe(
+    Effect.retry(Schedule.spaced("1 millis").pipe(Schedule.both(Schedule.recurs(100)))),
+    Effect.orDie
+  )
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.yieldNow
+})
 
 test("resolveApprovalDeferred constructs an Effect for the branded token", () => {
   const effect = resolveApprovalDeferred("workflow-token-example", true)
@@ -171,10 +179,11 @@ test("PermissionApproval workflow records a grant with ttl when ttlMs provided",
       const token = yield* waitForToken(() => capturedToken)
       yield* resolveApprovalDeferred(token, true)
       return yield* Fiber.join(fiber)
-    }).pipe(provideEngine)
+    }).pipe(provideEngine, Effect.provideService(Clock.Clock, fixedClock(now)))
   )
 
   expect(result).toBeInstanceOf(Grant)
+  expect(result.grantedAt).toBe(now)
   expect(result.expiresAt).toBeDefined()
   expect(result.expiresAt! - result.grantedAt).toBe(ttlMs)
 })

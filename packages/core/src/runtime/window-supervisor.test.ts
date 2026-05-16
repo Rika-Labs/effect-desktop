@@ -6,6 +6,8 @@ import { pathToFileURL } from "node:url"
 import type { HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
 import { Cause, ConfigProvider, Effect, Exit, Layer } from "effect"
 
+import { ResourceOwner } from "./resource-owner.js"
+import { WindowContext } from "./window-context.js"
 import {
   APP_EXPORT_ENV,
   APP_MODULE_ENV,
@@ -40,11 +42,13 @@ test("openDeclaredWindows opens declared windows and smoke-test destroys them", 
         client,
         [
           {
+            _tag: "DesktopWindowRegistration",
             id: "main",
             spec: { title: "Notes", width: 960, height: 640, renderer: "/" },
             services: undefined
           },
           {
+            _tag: "DesktopWindowRegistration",
             id: "prefs",
             spec: { title: "Preferences" },
             services: undefined
@@ -76,6 +80,11 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
   const created: WindowCreateInput[] = []
   const destroyed: string[] = []
   const events: string[] = []
+  const contexts: Array<{
+    readonly registrationId: string
+    readonly hostWindowId: string
+    readonly ownerScope: string
+  }> = []
   const client: HostWindowClient = {
     create: (input = {}) =>
       Effect.sync(() => {
@@ -89,33 +98,73 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
   }
 
   const mainServices = Layer.effectDiscard(
-    Effect.acquireRelease(
-      Effect.sync(() => events.push("main:acquired")),
-      () =>
+    Effect.gen(function* () {
+      const context = yield* WindowContext
+      const owner = yield* ResourceOwner
+      return yield* Effect.acquireRelease(
         Effect.sync(() => {
-          events.push("main:released")
+          contexts.push({
+            registrationId: context.registrationId,
+            hostWindowId: context.hostWindowId,
+            ownerScope: owner.scopeId
+          })
+          events.push("main:acquired")
+        }),
+        () =>
+          Effect.sync(() => {
+            events.push("main:released")
+          })
+      )
+    })
+  )
+
+  const prefsServices = Layer.effectDiscard(
+    Effect.gen(function* () {
+      const context = yield* WindowContext
+      const owner = yield* ResourceOwner
+      return yield* Effect.sync(() => {
+        contexts.push({
+          registrationId: context.registrationId,
+          hostWindowId: context.hostWindowId,
+          ownerScope: owner.scopeId
         })
-    )
+        events.push("prefs:acquired")
+      })
+    })
   )
 
   await Effect.runPromise(
     Effect.scoped(
       openDeclaredWindows(client, [
         {
+          _tag: "DesktopWindowRegistration",
           id: "main",
           spec: { title: "Main" },
           services: mainServices
         },
         {
+          _tag: "DesktopWindowRegistration",
           id: "prefs",
           spec: { title: "Preferences" },
-          services: undefined
+          services: prefsServices
         }
       ])
     )
   )
 
-  expect(events).toEqual(["main:acquired", "main:released"])
+  expect(events).toEqual(["main:acquired", "prefs:acquired", "main:released"])
+  expect(contexts).toEqual([
+    {
+      registrationId: "main",
+      hostWindowId: "window-1",
+      ownerScope: "window:window-1"
+    },
+    {
+      registrationId: "prefs",
+      hostWindowId: "window-2",
+      ownerScope: "window:window-2"
+    }
+  ])
   expect(destroyed).toEqual(["window-2", "window-1"])
 })
 
@@ -137,7 +186,7 @@ test("openDeclaredWindows tears down a window when its services Layer fails to b
   }
 
   const failingServices = Layer.effectDiscard(
-    Effect.acquireRelease(Effect.fail(new ServicesBuildFailure()), () =>
+    Effect.acquireRelease(Effect.fail(new ServicesBuildFailure() as never), () =>
       Effect.sync(() => {
         released.push("released")
       })
@@ -148,6 +197,7 @@ test("openDeclaredWindows tears down a window when its services Layer fails to b
     Effect.scoped(
       openDeclaredWindows(client, [
         {
+          _tag: "DesktopWindowRegistration",
           id: "main",
           spec: { title: "Main" },
           services: failingServices
@@ -181,6 +231,7 @@ test("startup environment decodes declared window specs through Effect Config an
   expect(config.smokeTest).toBe(true)
   expect(windows).toEqual([
     {
+      _tag: "DesktopWindowRegistration",
       id: "main",
       spec: {
         title: "Terminal",
@@ -305,6 +356,7 @@ test("startup environment decodes module exports and gives app modules precedenc
 
     expect(windows).toEqual([
       {
+        _tag: "DesktopWindowRegistration",
         id: "module",
         spec: { title: "Module", width: 800 },
         services: undefined
@@ -344,6 +396,7 @@ test("startup environment defaults blank module export to default", async () => 
 
     expect(windows).toEqual([
       {
+        _tag: "DesktopWindowRegistration",
         id: "main",
         spec: { title: "Default Export" },
         services: undefined

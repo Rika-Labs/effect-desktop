@@ -3,24 +3,21 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type HostProtocolEventEnvelope,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  Rpc,
   RpcClient,
-  RpcCapability,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, DesktopRpc, type DesktopRpcClient } from "@effect-desktop/core"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/webview.js"
 import {
   type WebViewCapabilityName,
@@ -140,6 +137,18 @@ export const WebViewMethodNames = Object.freeze([
   "destroy"
 ] as const)
 
+const WebViewCapabilityMethods = Object.freeze([
+  "create",
+  "loadRoute",
+  "loadUrl",
+  "reload",
+  "goBack",
+  "goForward",
+  "captureScreenshot",
+  "setNavigationPolicy",
+  "destroy"
+] as const satisfies readonly (typeof WebViewMethodNames)[number][])
+
 export interface WebViewClientApi {
   readonly create: (
     input: WebViewCreateOptions
@@ -189,14 +198,16 @@ export interface WebViewServiceApi extends Omit<WebViewClientApi, "create" | "ca
 
 export class WebView extends Context.Service<WebView, WebViewServiceApi>()(
   "@effect-desktop/native/WebView"
-) {}
+) {
+  static readonly layer = Layer.effect(WebView)(
+    Effect.gen(function* () {
+      const client = yield* WebViewClient
+      return WebView.of(makeWebViewService(client))
+    })
+  )
+}
 
-export const WebViewLive = Layer.effect(WebView)(
-  Effect.gen(function* () {
-    const client = yield* WebViewClient
-    return makeWebViewService(client)
-  })
-)
+export const WebViewLive = WebView.layer
 
 export const makeWebViewClientLayer = (client: WebViewClientApi): Layer.Layer<WebViewClient> =>
   Layer.succeed(WebViewClient)(client)
@@ -217,7 +228,7 @@ export const makeWebViewBridgeClientLayer = (
 
 export type WebViewRpc = RpcGroup.Rpcs<typeof WebViewRpcGroup>
 
-export type WebViewRpcHandlers = Parameters<typeof WebViewRpcGroup.toLayer>[0]
+export type WebViewRpcHandlers = RpcGroup.HandlersFrom<WebViewRpc>
 
 export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
   "WebView.create": (input) =>
@@ -276,8 +287,9 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
     })
 })
 
-export const WebViewSurface = DesktopRpc.surface("WebView", WebViewRpcGroup, {
+export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   service: WebViewClient,
+  capabilities: WebViewCapabilityMethods,
   handlers: WebViewHandlersLive,
   client: (client) => webViewClientFromRpcClient(client, undefined)
 })
@@ -285,8 +297,7 @@ export const WebViewSurface = DesktopRpc.surface("WebView", WebViewRpcGroup, {
 export const makeHostWebViewRpcRuntime = (
   handlers: WebViewRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  makeNativeHostRpcRuntime(WebViewRpcGroup, WebViewRpcGroup.toLayer(handlers), runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry> => WebViewSurface.hostRuntime(handlers, runtimeOptions)
 
 export const webViewCapability = (
   name: WebViewCapabilityName,
@@ -410,34 +421,8 @@ const makeWebViewBridgeProtocolLayer = (
 const subscribeWebViewEvent = (
   exchange: BridgeClientExchange | undefined,
   method: "WebView.NavigationBlocked"
-): Stream.Stream<WebViewNavigationBlockedEvent, WebViewError, never> => {
-  if (exchange?.subscribe === undefined) {
-    return Stream.fail(
-      makeHostProtocolInvalidOutputError(method, "event exchange does not support subscriptions")
-    )
-  }
-
-  return exchange
-    .subscribe(method)
-    .pipe(Stream.mapEffect((envelope) => decodeWebViewEventEnvelope(method, envelope)))
-}
-
-const decodeWebViewEventEnvelope = (
-  operation: string,
-  envelope: HostProtocolEventEnvelope
-): Effect.Effect<WebViewNavigationBlockedEvent, WebViewError, never> => {
-  if (envelope.method !== operation) {
-    return Effect.fail(
-      makeHostProtocolInvalidOutputError(operation, `unexpected event method: ${envelope.method}`)
-    )
-  }
-
-  return Schema.decodeUnknownEffect(WebViewNavigationBlockedEvent)(envelope.payload).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-    )
-  )
-}
+): Stream.Stream<WebViewNavigationBlockedEvent, WebViewError, never> =>
+  subscribeNativeEvent(exchange, method, WebViewNavigationBlockedEvent)
 
 const defaultWebViewCreateOptions = (): WebViewCreateOptions => ({
   url: "app://localhost/",
@@ -454,7 +439,7 @@ const toWebViewHandle = (handle: WebViewHandle): WebViewHandle =>
     generation: handle.generation,
     ownerScope: handle.ownerScope,
     state: handle.state
-  }) as WebViewHandle
+  })
 
 const decodeWebViewCreateInput = (
   input: unknown
@@ -527,11 +512,13 @@ function webviewRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return Rpc.make(`WebView.${method}` as const, {
+  return NativeSurface.rpc("WebView", method, {
     payload,
     success,
-    error: HostProtocolErrorSchema
-  }).pipe(RpcCapability(capability))
+    authority: NativeSurface.authority.custom(capability),
+    endpoint: "mutation",
+    support: NativeSurface.support.supported
+  })
 }
 
 const runWebViewRpc = <A, E>(

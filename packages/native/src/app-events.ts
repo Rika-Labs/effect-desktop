@@ -114,13 +114,20 @@ export interface AppEventRouterOptions {
 
 export class AppEventRouter extends Context.Service<AppEventRouter, AppEventRouterApi>()(
   "@effect-desktop/native/AppEventRouter"
-) {}
+) {
+  static readonly layer = Layer.effect(AppEventRouter)(
+    makeAppEventRouter().pipe(Effect.map(AppEventRouter.of))
+  )
+}
 
-export const AppEventRouterLive = Layer.effect(AppEventRouter)(makeAppEventRouter())
+export const AppEventRouterLive = AppEventRouter.layer
 
 export const firstResponderRoute: AppEventRoute = Object.freeze({ _tag: "firstResponder" })
 export const broadcastRoute: AppEventRoute = Object.freeze({ _tag: "broadcast" })
-const WindowIdString = /^[^\x00-\x1f\x7f]+$/
+const NulByte = String.fromCharCode(0)
+const UnitSeparatorByte = String.fromCharCode(31)
+const DeleteByte = String.fromCharCode(127)
+const WindowIdString = new RegExp(`^[^${NulByte}-${UnitSeparatorByte}${DeleteByte}]+$`, "u")
 const validateWindowId = (windowId: string): string => {
   if (windowId.length === 0 || !WindowIdString.test(windowId)) {
     throw new RangeError("AppEventRouter requires a printable non-empty window id")

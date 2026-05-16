@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { Cause, Context, Data, Effect, Layer, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
+import { BackupManifestJson } from "./backup.js"
 
 const RestorePhase = Schema.Literals(["validate", "quiesce", "database", "files", "rollback"])
 type RestorePhase = typeof RestorePhase.Type
@@ -74,11 +75,16 @@ export const RestoreWorkflowLayer: Layer.Layer<
           .readFile(manifestPath)
           .pipe(Effect.mapError(wrapError("validate")))
         const raw = new TextDecoder().decode(manifestBytes)
-        const parsed = yield* Effect.try({
-          try: () => JSON.parse(raw) as { label: string; format: string },
-          catch: (e) =>
-            new RestoreError({ phase: "validate", message: "manifest is not valid JSON", cause: e })
-        })
+        const parsed = yield* Schema.decodeUnknownEffect(BackupManifestJson)(raw).pipe(
+          Effect.mapError(
+            (e) =>
+              new RestoreError({
+                phase: "validate",
+                message: "manifest is not valid backup manifest JSON",
+                cause: e
+              })
+          )
+        )
         if (parsed.format !== "effect-desktop-backup-v1") {
           return yield* Effect.fail(
             new RestoreError({

@@ -11,6 +11,7 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import {
+  Clock,
   Context,
   Effect,
   Exit,
@@ -25,6 +26,7 @@ import {
 import type { PlatformError } from "effect/PlatformError"
 
 import { ResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+import { ResourceOwner, type ResourceOwnerApi } from "./resource-owner.js"
 import {
   disabledFilesystemInspectorCollector,
   FilesystemInspectorEvent,
@@ -128,7 +130,7 @@ export interface FilesystemApi {
   ) => Effect.Effect<void, FilesystemError, never>
   readonly watch: (
     path: string,
-    options?: { readonly ownerScope: string; readonly bufferSize?: number }
+    options?: { readonly bufferSize?: number }
   ) => Stream.Stream<FilesystemEvent, FilesystemError, never>
 }
 
@@ -147,13 +149,15 @@ export interface FilesystemOptions {
 
 export const makeFilesystem = (
   registry: ResourceRegistryApi,
+  owner: ResourceOwnerApi,
   options: FilesystemOptions = {}
 ): Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fileSystem = yield* EffectFileSystem.FileSystem
     const permissions = options.permissions ?? EMPTY_FILESYSTEM_PERMISSIONS
     const inspector = options.inspector ?? disabledFilesystemInspectorCollector
-    const now = options.now ?? Date.now
+    const clock = yield* Clock.Clock
+    const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
 
     return Object.freeze({
       read: (path: string) =>
@@ -304,15 +308,13 @@ export const makeFilesystem = (
             path: authorizedPath
           })
         }).pipe(Effect.withSpan("Filesystem.remove", { attributes: { path } })),
-      watch: (
-        path: string,
-        options?: { readonly ownerScope: string; readonly bufferSize?: number }
-      ) =>
+      watch: (path: string, options?: { readonly bufferSize?: number }) =>
         Stream.unwrap(
           Effect.gen(function* () {
             const input = yield* decodeWatchInput(
               {
                 path,
+                ownerScope: owner.scopeId,
                 ...(options === undefined ? {} : options)
               },
               "Filesystem.watch"
@@ -426,11 +428,12 @@ export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()("Fi
 export const FilesystemLive: Layer.Layer<
   Filesystem,
   never,
-  ResourceRegistry | EffectFileSystem.FileSystem
+  ResourceOwner | ResourceRegistry | EffectFileSystem.FileSystem
 > = Layer.effect(Filesystem)(
   Effect.gen(function* () {
+    const owner = yield* ResourceOwner
     const registry = yield* ResourceRegistry
-    return yield* makeFilesystem(registry)
+    return yield* makeFilesystem(registry, owner)
   })
 )
 
@@ -527,7 +530,7 @@ const statFilesystemPath = (
   path: string
 ): Effect.Effect<FilesystemStatResult, FilesystemError, never> =>
   Effect.gen(function* () {
-    const isSymlink = yield* pathIsSymlink(fileSystem, path)
+    const isSymlink = yield* pathIsSymlink(fileSystem, path, "Filesystem.stat")
     if (isSymlink) {
       return new FilesystemStatResult({
         path,
@@ -701,7 +704,7 @@ const denyEscapingHardLink = (
   operation: string
 ): Effect.Effect<void, FilesystemError, never> =>
   Effect.gen(function* () {
-    if (yield* pathIsSymlink(fileSystem, canonicalPath)) {
+    if (yield* pathIsSymlink(fileSystem, canonicalPath, operation)) {
       return
     }
 
@@ -956,11 +959,16 @@ const statKind = (stats: EffectFileSystem.File.Info): FilesystemEntryKind => {
 
 const pathIsSymlink = (
   fileSystem: EffectFileSystem.FileSystem,
-  path: string
-): Effect.Effect<boolean, never, never> =>
+  path: string,
+  operation: string
+): Effect.Effect<boolean, FilesystemError, never> =>
   fileSystem.readLink(path).pipe(
     Effect.as(true),
-    Effect.catch(() => Effect.succeed(false))
+    Effect.catch((error) =>
+      isNotSymlinkPlatformError(error)
+        ? Effect.succeed(false)
+        : Effect.fail(mapFilesystemError(error, path, operation))
+    )
   )
 
 const modifiedAtMs = (stats: EffectFileSystem.File.Info): number =>
@@ -1111,6 +1119,18 @@ const isPlatformError = (error: unknown): error is PlatformError =>
 
 const isNotFoundPlatformError = (error: unknown): boolean =>
   isPlatformError(error) && error.reason._tag === "NotFound"
+
+const isNotSymlinkPlatformError = (error: unknown): boolean => {
+  if (!isPlatformError(error)) {
+    return false
+  }
+
+  if (error.reason._tag === "NotFound") {
+    return true
+  }
+
+  return "cause" in error.reason && nodeErrorCode(error.reason.cause) === "EINVAL"
+}
 
 const isPermissionDeniedPlatformError = (error: unknown): boolean =>
   isPlatformError(error) && error.reason._tag === "PermissionDenied"

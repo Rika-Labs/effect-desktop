@@ -14,7 +14,7 @@
 
 ## Target Shape
 
-Use `Desktop.make(config)` as a frozen desktop metadata descriptor and `Desktop.app(App)` / `Desktop.runtime(App)` as the canonical runtime `Layer` surface. App authors compose ordinary Effect layers with normal `Layer` operators before attaching RPC handlers, or around `Desktop.app(App)` when providing external services:
+Use `Desktop.make(config)` as a frozen desktop metadata descriptor and `Desktop.layer(App)` / `Desktop.runtime(App)` as the canonical runtime `Layer` surface. App authors compose ordinary Effect layers with normal `Layer` operators before attaching RPC handlers, or around `Desktop.layer(App)` when providing external services:
 
 ```ts
 const NotesLayer = NotesRpcs.toLayer({
@@ -33,7 +33,7 @@ export const NotesApp = Desktop.make({
   rpcs: Desktop.rpc(NotesRpcs, NotesRpcsLive) // amended by PR #1306; was Desktop.Rpcs.layer in the array form.
 })
 
-export const MainLayer = Desktop.app(NotesApp)
+export const MainLayer = Desktop.layer(NotesApp)
 ```
 
 `Desktop.Rpcs.layer(...)` remains because it owns desktop-specific metadata pairing: it keeps the `RpcGroup` available for manifests, endpoint descriptors, duplicate detection, and runtime permission wiring while the handler implementation remains a normal Effect RPC layer.
@@ -41,11 +41,11 @@ export const MainLayer = Desktop.app(NotesApp)
 ## Implementation Plan
 
 1. Replace `DesktopAppDefinition` with `DesktopAppDescriptor`: metadata only, no custom `pipe`, no arbitrary `layers`, no stored parallel Layer array.
-2. Remove `Desktop.provide` and `Desktop.toLayer`; use `Desktop.app(App)` for runtime lowering.
+2. Remove `Desktop.provide` and `Desktop.toLayer`; use `Desktop.layer(App)` for runtime lowering.
 3. Make `Desktop.manifest(...)` and `Desktop.describeRpcs(...)` read descriptor `rpcs` directly.
-4. Keep `Desktop.make(...)`, `Desktop.app(...)`, `Desktop.runtime(...)`, `Desktop.runtimeGraph(...)`, `Desktop.launch(layer)`, and `Desktop.Rpcs.layer(...)`.
+4. Keep `Desktop.make(...)`, `Desktop.layer(...)`, `Desktop.runtime(...)`, `Desktop.runtimeGraph(...)`, `Desktop.launch(layer)`, and `Desktop.Rpcs.layer(...)`.
 5. Update package root exports and API snapshots to remove deleted prerelease DSL symbols.
-6. Migrate core tests, React/Vue/Solid/Astro/Next tests, examples, templates, and docs from `Desktop.make(...).pipe(Desktop.provide(...))` and `Desktop.toLayer(...)` to `Desktop.make({ ... rpcs })` and `Desktop.app(App)`.
+6. Migrate core tests, React/Vue/Solid/Astro/Next tests, examples, templates, and docs from `Desktop.make(...).pipe(Desktop.provide(...))` and `Desktop.toLayer(...)` to `Desktop.make({ ... rpcs })` and `Desktop.layer(App)`.
 7. Update error messages that tell users to provide RPCs through the old DSL.
 
 ## Architecture-Debt Sweep

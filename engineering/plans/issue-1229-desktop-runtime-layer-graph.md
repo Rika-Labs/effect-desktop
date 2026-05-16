@@ -2,7 +2,7 @@
 
 ## Current state
 
-`Desktop.app(App)` and `Desktop.app(config)` already assemble a useful runtime spine, but the provider graph is implicit:
+`Desktop.layer(App)` and `Desktop.layer(config)` already assemble a useful runtime spine, but the provider graph is implicit:
 
 - core services are merged inside `packages/core/src/runtime/desktop-app.ts`;
 - Bun platform services are hardcoded through `BunServicesLayer`;
@@ -21,7 +21,7 @@ Add a `DesktopRuntime` service in `packages/core/src/runtime/desktop-app.ts` tha
 
 Add `Desktop.runtime(config)` / `DesktopRuntimeLive(config)` as the explicit composition root. It should use `Layer.unwrap` for provider selection, then merge provider layers, core layers, workflow layers, RPC server bindings, `DesktopApp`, and `DesktopRuntime`.
 
-Keep `Desktop.app(config)` and `Desktop.app(App)` as entry points that delegate to the explicit runtime graph. App-specific service layers are composed with normal Effect `Layer` operators outside the desktop descriptor.
+Keep `Desktop.layer(config)` and `Desktop.layer(App)` as entry points that delegate to the explicit runtime graph. App-specific service layers are composed with normal Effect `Layer` operators outside the desktop descriptor.
 
 Provider selection should be data, not app code branching. Start with the provider ids this repo can support locally:
 

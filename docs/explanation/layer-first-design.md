@@ -63,9 +63,8 @@ export const WindowLive = Layer.effect(Window)(
   })
 )
 
-// 4. Client layer (wraps an exchange)
-export const makeWindowBridgeClientLayer = (exchange, options) =>
-  Layer.effect(WindowClient)(/* RpcClient.make + bridge protocol */)
+// 4. Native app-composition layer
+export const window = Native.surface(WindowSurface)
 
 // 5. Test layer
 //    Provided by @effect-desktop/test as TestWindow.layer()
@@ -114,7 +113,7 @@ const RuntimeLive = Layer.mergeAll(
 )
 ```
 
-`Desktop.make` and `Desktop.app` give you sensible defaults so you don't usually compose the whole graph by hand. But the graph is always **inspectable** — `Desktop.runtimeGraphSnapshot()` returns it as data, and the devtools layer-graph panel renders it.
+`Desktop.make` and `Desktop.layer` give you sensible defaults so you don't usually compose the whole graph by hand. But the graph is always **inspectable** — `Desktop.runtimeGraphSnapshot()` returns it as data, and the devtools layer-graph panel renders it.
 
 ## Deep modules, narrow interfaces
 

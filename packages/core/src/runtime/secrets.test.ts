@@ -139,7 +139,8 @@ test("Secrets rejects empty generated audit trace ids before side effects", asyn
 })
 
 test("SecretBytes rejects non-byte input", () => {
-  expect(() => makeSecretBytes("refresh-token" as never)).toThrow(TypeError)
+  // @ts-expect-error intentionally invalid secret material exercises runtime guard.
+  expect(() => makeSecretBytes("refresh-token")).toThrow(TypeError)
   const bytes = new Uint8Array([1, 2, 3])
   const secret = makeSecretBytes(bytes)
   bytes.fill(0)

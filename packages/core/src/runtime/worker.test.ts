@@ -1,13 +1,29 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Option, Queue, Schema, Stream } from "effect"
+import {
+  Cause,
+  Clock,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Option,
+  Queue,
+  Schedule,
+  Schema,
+  Stream
+} from "effect"
 
+import {
+  makeExecutionInspectorCollector,
+  type ExecutionInspectorCollectorApi
+} from "./inspector-events.js"
 import {
   makePermissionRegistry,
   PermissionActor,
-  PermissionContext,
   type NormalizedCapability
 } from "./permission-registry.js"
-import { makeResourceRegistry, type ResourceId, type ResourceRegistryApi } from "./resources.js"
+import type { ResourceOwnerApi } from "./resource-owner.js"
+import { makeResourceId, makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
 import {
   makeWorker,
   WorkerCapabilityNotHeldError,
@@ -26,14 +42,19 @@ import {
 const EchoIn = Schema.Struct({ text: Schema.String })
 const EchoOut = Schema.Struct({ echoed: Schema.String })
 
-const actor = new PermissionActor({ kind: "app", id: "app-main" })
-const context = new PermissionContext({ actor, traceId: "trace-worker" })
+const TEST_OWNER: ResourceOwnerApi = Object.freeze({
+  kind: "test",
+  scopeId: "scope-main",
+  actor: new PermissionActor({ kind: "resource", id: "scope-main" }),
+  attributes: Object.freeze({ scopeId: "scope-main" })
+})
+const context = { traceId: "trace-worker" }
 const filesystemReadCapability: NormalizedCapability = {
   kind: "filesystem.read",
   roots: ["/tmp"],
   audit: "always"
 }
-const id = (value: string): ResourceId => value as ResourceId
+const id = makeResourceId
 
 test("Worker validates channel send and receive through schemas", async () => {
   const runtime = await makeFakeRuntime()
@@ -41,7 +62,6 @@ test("Worker validates channel send and receive through schemas", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -62,20 +82,20 @@ test("Worker rejects generated resource ids that violate non-empty contract", as
   const registry = await Effect.runPromise(
     makeResourceRegistry({
       now: () => 1,
-      nextId: () => id("")
+      // @ts-expect-error intentionally invalid generated id exercises registry validation.
+      nextId: () => ""
     })
   )
   const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
 
   const service = await Effect.runPromise(
-    makeWorker(registry, permissions, {
+    makeWorker(registry, permissions, TEST_OWNER, {
       adapter: makeFakeAdapter(runtime)
     })
   )
   const exit = await Effect.runPromiseExit(
     service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context
@@ -94,7 +114,6 @@ test("Worker closes with the owning resource scope", async () => {
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -113,7 +132,6 @@ test("Worker owner-scope close interrupts unfinished exit observers", async () =
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./hanging-exit-worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -137,7 +155,6 @@ test("Worker list returns live snapshots and removes closed workers", async () =
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./listed-worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -164,7 +181,6 @@ test("Worker list normalizes fractional uptime before snapshot construction", as
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./fractional-clock-worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context
@@ -196,7 +212,7 @@ test("Worker list normalizes invalid uptime before snapshot construction", async
     const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
     const workerNow = [100, timestamp]
     const service = await Effect.runPromise(
-      makeWorker(registry, permissions, {
+      makeWorker(registry, permissions, TEST_OWNER, {
         adapter: makeFakeAdapter(runtime),
         now: () => workerNow.shift() ?? timestamp
       })
@@ -204,7 +220,6 @@ test("Worker list normalizes invalid uptime before snapshot construction", async
     await Effect.runPromise(
       service.spawn({
         script: "./invalid-clock-worker.ts",
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -215,6 +230,43 @@ test("Worker list normalizes invalid uptime before snapshot construction", async
 
     expect(listed[0]?.uptimeMs).toBe(0)
   }
+})
+
+test("Worker spawn failure timestamps fall back to the Effect Clock", async () => {
+  const timestamp = 1_715_001_345_000
+  const inspector = await Effect.runPromise(makeExecutionInspectorCollector())
+  let spawnCalls = 0
+  const runtime = await makeFakeRuntime()
+  const fixture = await makeFixture(
+    {
+      spawn: () => {
+        spawnCalls += 1
+        return Effect.succeed(runtime)
+      }
+    },
+    [],
+    { inspector, now: () => Number.NaN }
+  )
+  const observed = Effect.runFork(inspector.events.pipe(Stream.take(1), Stream.runCollect))
+  await Effect.runPromise(Effect.yieldNow)
+
+  const exit = await Effect.runPromiseExit(
+    fixture.service
+      .spawn({
+        script: "./worker.ts",
+        inputSchema: EchoIn,
+        outputSchema: EchoOut,
+        context,
+        capabilities: [filesystemReadCapability]
+      })
+      .pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+  )
+  const events = [...(await Effect.runPromise(Fiber.join(observed)))]
+
+  expectFailure(exit, WorkerCapabilityNotHeldError)
+  expect(spawnCalls).toBe(0)
+  expect(events[0]?.status).toBe("failure")
+  expect(events[0]?.timestamp).toBe(timestamp)
 })
 
 test("Worker rejects missing capabilities as CapabilityNotHeld before adapter spawn", async () => {
@@ -230,7 +282,6 @@ test("Worker rejects missing capabilities as CapabilityNotHeld before adapter sp
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -248,7 +299,6 @@ test("Worker reports crashes on the messages error channel", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -297,7 +347,6 @@ test("Worker disposes resource and releases budget when runtime exits by itself"
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -312,7 +361,6 @@ test("Worker disposes resource and releases budget when runtime exits by itself"
   const nextHandle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -342,7 +390,6 @@ test("Worker enforces the per-scope concurrent worker budget", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker-one.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -352,17 +399,16 @@ test("Worker enforces the per-scope concurrent worker budget", async () => {
   const busy = await Effect.runPromiseExit(
     fixture.service.spawn({
       script: "./worker-two.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
       capabilities: [filesystemReadCapability]
     })
   )
+  await Effect.runPromise(handle.close)
   const otherScope = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker-three.ts",
-      ownerScope: "scope-other",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -402,7 +448,6 @@ test("Worker releases the per-scope budget after adapter failure", async () => {
   const failed = await Effect.runPromiseExit(
     fixture.service.spawn({
       script: "./worker-one.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -412,7 +457,6 @@ test("Worker releases the per-scope budget after adapter failure", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker-two.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -431,7 +475,6 @@ test("Worker validates malformed sends before transmission", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -439,7 +482,7 @@ test("Worker validates malformed sends before transmission", async () => {
     })
   )
 
-  const exit = await Effect.runPromiseExit(handle.send({ nope: true } as never))
+  const exit = await Effect.runPromiseExit(handle.send({ nope: true }))
 
   expect(runtime.sent).toEqual([])
   expectFailure(exit, WorkerChannelError)
@@ -462,7 +505,6 @@ test("Worker rejects negative graceful shutdown durations before adapter spawn",
   const exit = await Effect.runPromiseExit(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context
@@ -477,11 +519,11 @@ test("Worker rejects negative graceful shutdown durations before adapter spawn",
 
 test("Worker rejects malformed channel schemas before adapter spawn", async () => {
   const cases: ReadonlyArray<{
-    readonly inputSchema: Schema.Decoder<{ readonly text: string }, never>
-    readonly outputSchema: Schema.Decoder<{ readonly echoed: string }, never>
+    readonly inputSchema: unknown
+    readonly outputSchema: unknown
   }> = [
-    { inputSchema: undefined as never, outputSchema: EchoOut },
-    { inputSchema: EchoIn, outputSchema: undefined as never }
+    { inputSchema: undefined, outputSchema: EchoOut },
+    { inputSchema: EchoIn, outputSchema: undefined }
   ]
 
   for (const workerOptions of cases) {
@@ -497,7 +539,6 @@ test("Worker rejects malformed channel schemas before adapter spawn", async () =
     const exit = await Effect.runPromiseExit(
       fixture.service.spawn({
         script: "./worker.ts",
-        ownerScope: "scope-main",
         inputSchema: workerOptions.inputSchema,
         outputSchema: workerOptions.outputSchema,
         context
@@ -517,7 +558,6 @@ test("Worker send rejects handles after close", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -538,7 +578,6 @@ test("Worker send rejects handles after owner scope close", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -559,7 +598,6 @@ test("Worker send rejects handles after runtime exit", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -584,7 +622,6 @@ test("Worker validates malformed outputs on the messages stream", async () => {
   const handle = await Effect.runPromise(
     fixture.service.spawn({
       script: "./worker.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -628,7 +665,6 @@ test("Worker disposes two workers in deterministic newest-first scope order", as
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./first.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -638,7 +674,6 @@ test("Worker disposes two workers in deterministic newest-first scope order", as
   await Effect.runPromise(
     fixture.service.spawn({
       script: "./second.ts",
-      ownerScope: "scope-main",
       inputSchema: EchoIn,
       outputSchema: EchoOut,
       context,
@@ -671,7 +706,6 @@ test("Worker default Bun adapter sends, receives, and closes a real worker", asy
     const handle = await Effect.runPromise(
       fixture.service.spawn({
         script,
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -707,7 +741,6 @@ test("Worker default Bun adapter reports construction failures as Unsupported", 
     const exit = await Effect.runPromiseExit(
       fixture.service.spawn({
         script: "missing-worker.ts",
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -752,7 +785,6 @@ test("Bun adapter shutdown stays infallible when shutdown stages throw", async (
     const handle = await Effect.runPromise(
       fixture.service.spawn({
         script,
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -802,7 +834,6 @@ test("Bun adapter removes worker event listeners when closed", async () => {
     const handle = await Effect.runPromise(
       fixture.service.spawn({
         script,
-        ownerScope: "scope-main",
         inputSchema: EchoIn,
         outputSchema: EchoOut,
         context
@@ -829,7 +860,9 @@ const makeFixture = async (
   allowedCapabilities: readonly NormalizedCapability[] = [],
   options: {
     readonly gracefulShutdownMs?: number
+    readonly inspector?: ExecutionInspectorCollectorApi
     readonly maxConcurrent?: number
+    readonly now?: () => number
     readonly nowStart?: number
     readonly workerNowStart?: number
   } = {}
@@ -839,19 +872,24 @@ const makeFixture = async (
   const registry = await Effect.runPromise(
     makeResourceRegistry({
       now: () => resourceNow++,
-      nextId: (timestamp) => `resource-${timestamp}` as never
+      nextId: (timestamp) => id(`resource-${timestamp}`)
     })
   )
   const permissions = await Effect.runPromise(makePermissionRegistry({ traceId: () => "trace" }))
   for (const capability of allowedCapabilities) {
     await Effect.runPromise(
-      permissions.declare(capability, { actor, source: "worker-test", effect: "allow" })
+      permissions.declare(capability, {
+        actor: TEST_OWNER.actor,
+        source: "worker-test",
+        effect: "allow"
+      })
     )
   }
   const service = await Effect.runPromise(
-    makeWorker(registry, permissions, {
-      now: () => workerNow++,
+    makeWorker(registry, permissions, TEST_OWNER, {
+      now: options.now ?? (() => workerNow++),
       ...(adapter === undefined ? {} : { adapter }),
+      ...(options.inspector === undefined ? {} : { inspector: options.inspector }),
       ...(options.maxConcurrent === undefined
         ? {}
         : { budgets: { maxConcurrent: options.maxConcurrent } }),
@@ -919,14 +957,19 @@ const makeFakeRuntime = async (
   }
 }
 
-const waitUntil = async (predicate: () => Promise<boolean>): Promise<void> => {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if (await predicate()) {
-      return
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error("condition was not met")
+const waitUntil = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
+  await Effect.runPromise(
+    Effect.tryPromise({
+      try: async () => await predicate(),
+      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+    }).pipe(
+      Effect.flatMap((ready) =>
+        ready ? Effect.void : Effect.fail(new Error("condition was not met"))
+      ),
+      Effect.retry(Schedule.spaced("10 millis").pipe(Schedule.both(Schedule.recurs(50)))),
+      Effect.mapError(() => new Error("condition was not met"))
+    )
+  )
 }
 
 const replaceGlobalWorker = (worker: unknown): void => {
@@ -936,6 +979,14 @@ const replaceGlobalWorker = (worker: unknown): void => {
     writable: true
   })
 }
+
+const fixedClock = (timestamp: number): Clock.Clock => ({
+  currentTimeMillisUnsafe: () => timestamp,
+  currentTimeMillis: Effect.succeed(timestamp),
+  currentTimeNanosUnsafe: () => BigInt(timestamp) * 1_000_000n,
+  currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
+  sleep: () => Effect.void
+})
 
 const makeFakeAdapter = (runtime: WorkerRuntime): WorkerAdapter => ({
   spawn: () => Effect.succeed(runtime)

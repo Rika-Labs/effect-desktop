@@ -3,10 +3,9 @@ import { mkdtemp, readFile, rm, stat, mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { Effect, Exit, Option } from "effect"
+import { Deferred, Effect, Exit, Option } from "effect"
 
 import {
-  DevtoolsCleanupError,
   DevtoolsShellOpenError,
   DevtoolsTokenError,
   DevtoolsUnsafeProductionCaptureError,
@@ -99,30 +98,21 @@ test("DevtoolsShell rotates the token on every start", async () => {
 
 test("DevtoolsShell disable awaits loopback close completion", async () => {
   const stateDir = await tempStateDir()
-  let releaseClose: (() => void) | undefined
+  const closeReleased = Effect.runSync(Deferred.make<void>())
   let closed = false
-  const close = new Promise<void>((resolve) => {
-    releaseClose = resolve
-  })
   const shell = await Effect.runPromise(
     makeDevtoolsShell({
       transport: {
         listen: () =>
           Effect.succeed({
             url: "http://127.0.0.1:49152",
-            close: Effect.tryPromise({
-              try: () =>
-                close.then(() => {
+            close: Deferred.await(closeReleased).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
                   closed = true
-                  return undefined
-                }),
-              catch: (cause) =>
-                new DevtoolsCleanupError({
-                  operation: "Devtools.listen.close",
-                  path: "loopback",
-                  cause
                 })
-            })
+              )
+            )
           } satisfies DevtoolsListener)
       },
       shellWindow: fakeShellWindow([])
@@ -134,10 +124,10 @@ test("DevtoolsShell disable awaits loopback close completion", async () => {
   )
   const disable = Effect.runPromise(handle.disable)
 
-  await Promise.resolve()
+  await Effect.runPromise(Effect.yieldNow)
   expect(closed).toBe(false)
 
-  releaseClose?.()
+  Effect.runSync(Deferred.succeed(closeReleased, undefined).pipe(Effect.asVoid))
   await disable
   expect(closed).toBe(true)
 })

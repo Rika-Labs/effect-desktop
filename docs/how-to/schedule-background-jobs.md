@@ -72,14 +72,13 @@ const handle =
   yield *
   worker.spawn({
     script: "workers/indexer.ts",
-    ownerScope: "background-indexer",
     inputSchema: InMessage,
     outputSchema: OutMessage,
     capabilities: [{ kind: "filesystem.read", roots: ["/Users/me/Documents"] }]
   })
 ```
 
-See [How-to: spawn a worker](spawn-a-worker.md).
+The worker uses the `ResourceOwner` that built the `Worker` service. Build job-specific service layers under `ResourceOwner.job("background-indexer")` when the work should have its own cleanup and audit scope. See [How-to: spawn a worker](spawn-a-worker.md).
 
 ## Streaming progress to the renderer
 

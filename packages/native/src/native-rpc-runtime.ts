@@ -10,17 +10,18 @@ import {
   type BridgeCallState,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
+  type HostProtocolError,
   makeDesktopRpcHandlerRuntime,
   type Rpc,
   type RpcGroup
 } from "@effect-desktop/bridge"
-import { Effect, Layer } from "effect"
+import { Clock, Effect, Layer } from "effect"
 
 type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
   readonly requests: ReadonlyMap<string, Rpcs>
 }
 
-export const makeNativeHostRpcRuntime = <Rpcs extends Rpc.Any, E = never>(
+export const makeNativeHostRpcRuntime = <Rpcs extends Rpc.Any, E extends HostProtocolError = never>(
   group: NativeRpcGroup<Rpcs>,
   handlers: Layer.Layer<
     Rpc.ToHandler<Rpc.AddMiddleware<Rpcs, typeof PermissionInterceptor>>,
@@ -40,7 +41,7 @@ export const makeNativeHostRpcRuntime = <Rpcs extends Rpc.Any, E = never>(
       onState: (state) =>
         Effect.all(
           [
-            nativeHostInspectorState(options.nativeHostInspector, options.now ?? Date.now, state),
+            nativeHostInspectorState(options.nativeHostInspector, options.now, state),
             options.onState?.(state) ?? Effect.void
           ],
           { discard: true }
@@ -52,12 +53,23 @@ export const makeNativeHostRpcRuntime = <Rpcs extends Rpc.Any, E = never>(
 
 const nativeHostInspectorState = (
   inspector: NativeHostInspectorCollectorApi | undefined,
-  now: () => number,
+  now: (() => number) | undefined,
   state: BridgeCallState
-) =>
-  (inspector ?? disabledNativeHostInspectorCollector).publish(nativeHostEventFromState(state, now))
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const timestamp =
+      "completedAt" in state
+        ? state.completedAt
+        : now === undefined
+          ? yield* Clock.currentTimeMillis
+          : yield* Effect.sync(now)
 
-const nativeHostEventFromState = (state: BridgeCallState, now: () => number): NativeHostEvent =>
+    yield* (inspector ?? disabledNativeHostInspectorCollector).publish(
+      nativeHostEventFromState(state, timestamp)
+    )
+  })
+
+const nativeHostEventFromState = (state: BridgeCallState, timestamp: number): NativeHostEvent =>
   new NativeHostEvent({
     kind: "host",
     status: nativeHostEventStatus(state),
@@ -70,7 +82,7 @@ const nativeHostEventFromState = (state: BridgeCallState, now: () => number): Na
         : {}),
     ...(state.tag === "Failed" ? { errorTag: "HostProtocolError" } : {}),
     message: state.tag,
-    timestamp: "completedAt" in state ? state.completedAt : now()
+    timestamp
   })
 
 const nativeHostEventStatus = (state: BridgeCallState): NativeHostEvent["status"] => {

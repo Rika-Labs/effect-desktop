@@ -34,23 +34,26 @@ import { disposeRuntime } from "./provider.js"
 // Regression coverage may mention the old placeholder marker:
 // "phase 0 stub compiles and runs" without triggering the repo-shape gate.
 
-interface ReactPackageJson {
-  readonly exports: Record<string, ReactPackageExportTarget>
-}
+const ReactPackageExportTarget = Schema.Union([
+  Schema.String,
+  Schema.Struct({
+    types: Schema.optionalKey(Schema.String),
+    default: Schema.optionalKey(Schema.String)
+  })
+])
 
-type ReactPackageExportTarget =
-  | string
-  | {
-      readonly types?: string
-      readonly default?: string
-    }
+const ReactPackageJson = Schema.Struct({
+  exports: Schema.Record(Schema.String, ReactPackageExportTarget)
+})
+
+const decodeReactPackageJson = Schema.decodeUnknownSync(Schema.fromJsonString(ReactPackageJson))
 
 const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
 const reactPackageRootUrl = new URL("../", import.meta.url)
 const reactPackageIndexUrl = new URL("index.ts", import.meta.url)
 
 test("React package exports point at checked-in source files", () => {
-  const packageJson = JSON.parse(readFileSync(reactPackageJsonUrl, "utf8")) as ReactPackageJson
+  const packageJson = decodeReactPackageJson(readFileSync(reactPackageJsonUrl, "utf8"))
   const missing: string[] = []
 
   for (const [subpath, target] of Object.entries(packageJson.exports)) {
@@ -94,14 +97,14 @@ test("disposeRuntime reports cleanup defects through onCleanupError", async () =
   const failures: Array<{ context: string; error: unknown }> = []
   disposeRuntime(
     {
-      dispose: () => Promise.reject(new Error("dispose failed"))
+      disposeEffect: Effect.die(new Error("dispose failed"))
     },
     (error, context) => {
       failures.push({ context, error })
     }
   )
 
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Effect.runPromise(Effect.yieldNow)
   expect(failures).toEqual([{ context: "runtime cleanup", error: expect.anything() }])
 })
 
@@ -225,11 +228,15 @@ test("React adapter lifecycle paths use the shared scoped framework helper", () 
   const streamHookSource = readFileSync(new URL("./hooks/stream.ts", import.meta.url), "utf8")
 
   expect(desktopSource).toContain("makeFrameworkRuntime(runtime)")
+  expect(desktopSource).toContain("Effect.runCallback(runtime.disposeEffect)")
+  expect(desktopSource).not.toContain("void runtime.dispose()")
+  expect(desktopSource).not.toContain("await frameworkRuntime.dispose()")
   expect(mutationSource).toContain("makeFrameworkScopedOperation(runtime)")
   expect(mutationSource).not.toContain("runIdRef")
   expect(mutationSource).not.toContain("mountedRef")
   expect(mutationSource).not.toContain("runFrameworkPromiseExit")
   expect(desktopHookSource).toContain("makeFrameworkScopedOperation(defaultRuntime)")
+  expect(desktopHookSource).not.toContain("runFrameworkPromiseExit")
   expect(streamHookSource).toContain("makeFrameworkScopedOperation(runtime)")
   expect(streamHookSource).not.toContain("let active")
 })
@@ -289,7 +296,7 @@ test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", 
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const rpcs = NotesLayer
   const Probe = () => {
-    const notes = NotesReact.useDesktop(NotesRpcs) as unknown as Record<string, unknown>
+    const notes = NotesReact.useDesktop(NotesRpcs)
     const hasReserved = Object.prototype.hasOwnProperty.call(notes, "__proto__")
     return createElement("span", null, `${Object.getPrototypeOf(notes) === null}:${hasReserved}`)
   }

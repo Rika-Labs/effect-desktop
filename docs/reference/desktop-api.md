@@ -1,6 +1,6 @@
 ---
 title: Desktop API
-description: Desktop.make, Desktop.manifest, Desktop.app, runtime graph.
+description: Desktop.make, Desktop.manifest, Desktop.layer, runtime graph.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -26,16 +26,19 @@ function make<RIn = never, E = never>(
 ): DesktopAppDescriptor<RIn, E>
 ```
 
-| Field         | Type                       | Description                                                                                                                              |
-| ------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`          | `string`                   | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                           |
-| `windows`     | `DesktopWindowsLayer<RIn>` | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Layer.mergeAll`. |
-| `rpcs`        | `DesktopRpcsLayer<E, RIn>` | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Layer.mergeAll`.           |
-| `providers`   | `DesktopProviderSelection` | Optional provider selection (e.g. runtime engine).                                                                                       |
-| `permissions` | `NormalizedCapability[]`   | Default permission declarations.                                                                                                         |
-| `workflows`   | `DesktopWorkflowLayer[]`   | Optional workflow layers.                                                                                                                |
+| Field         | Type                           | Description                                                                                                                  |
+| ------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | `string`                       | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                               |
+| `windows`     | `DesktopWindowsLayer<RIn>`     | Immutable window declarations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Desktop.windows(...)`. |
+| `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | Immutable RPC declarations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Desktop.rpcs(...)`.              |
+| `native`      | `DesktopNativeLayer`           | Immutable native surface declarations. Build via `Desktop.native(Native.<Surface>)` or `Desktop.native(Native.all)`.         |
+| `providers`   | `DesktopProvidersLayer`        | Immutable provider declarations. Build via `Desktop.provider(...)`; compose multiple via `Desktop.providers(...)`.           |
+| `permissions` | `DesktopPermissionsLayer`      | Immutable permission declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                     |
+| `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | Immutable workflow layer declarations. Build via `Desktop.workflow(layer)`; compose multiple via `Desktop.workflows(...)`.   |
 
 `WindowSpec` is `{ title, width?, height?, renderer? }`. The window id is the first argument to `Desktop.window(id, spec)` — there is no `id` field on the spec itself.
+
+The `windows`, `rpcs`, `native`, `providers`, `permissions`, and `workflows` fields are plain declaration data. Runtime dependencies stay inside the declared window services, RPC handlers, workflow layers, or provider implementations and are applied when `Desktop.layer(app)` builds the runtime.
 
 ## `Desktop.manifest(app)`
 
@@ -47,34 +50,26 @@ function manifest<RIn, E>(app: DesktopAppDescriptor<RIn, E>): DesktopAppManifest
 
 The manifest is JSON-serializable. The renderer uses it to know which contracts to expose and how to dispatch.
 
-## `Desktop.app(...)`
+## `Desktop.layer(app)`
 
-Builds the runtime layer for the app. Three overloads:
+Builds the runtime layer for the app descriptor.
 
 ```ts
-// Empty — workflow engine only
-Desktop.app(): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>
-
-// With permissions
-Desktop.app({ permissions, workflows? }):
-  Layer.Layer<WorkflowEngine.WorkflowEngine, never, PermissionRegistry>
-
-// From a config descriptor
-Desktop.app(config): Layer.Layer<DesktopApp, DesktopConfigError | E, ...>
+Desktop.layer(app): Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, ...>
 ```
 
-Use `Desktop.app(config)` in your runtime entry to materialize the dependency graph.
+Use `Desktop.layer(App)` in your runtime entry to materialize the dependency graph. Use `Desktop.workflowEngine(...)` for standalone workflow-engine composition.
 
 ## `Desktop.window(id, spec, services?)`
 
-Registers a window with the surrounding `DesktopWindowRegistry`. Returns a `Layer` that self-registers when built; compose multiple windows with `Layer.mergeAll(...)` and pass the result as the `windows:` field of `Desktop.make`.
+Returns an immutable window declaration; compose multiple windows with `Desktop.windows(...)` and pass the result as the `windows:` field of `Desktop.make`.
 
 ```ts
 function window<RIn = never>(
   id: string,
   spec: WindowSpec,
   services?: Layer.Layer<never, never, RIn | Scope.Scope>
-): Layer.Layer<never, never, RIn | DesktopWindowRegistry>
+): DesktopWindowsLayer<RIn>
 
 interface WindowSpec {
   readonly title: string
@@ -87,13 +82,57 @@ interface WindowSpec {
 The optional `services` Layer is built **inside** the per-window scope at open time. Anything it acquires (a `Settings` store, a watcher, a stream subscription) is released when the window closes. This is the framework's typed answer to per-window resource lifetime.
 
 ```ts
-windows: Layer.mergeAll(
+windows: Desktop.windows(
   Desktop.window("main", { title: "App", width: 1024, height: 720 }),
   Desktop.window("preferences", { title: "Preferences", width: 480, height: 360 })
 )
 ```
 
 Reserved ids — `__proto__`, `constructor`, `prototype`, and the empty string — throw a `TypeError` synchronously from the call site. Duplicate ids surface as a `DesktopConfigError` at `Desktop.make` time.
+
+## `Desktop.native(...declarations)`
+
+Composes native availability declarations for `Desktop.make`. `Native.<Surface>` registers availability only. Grant authority separately through `Desktop.permission(Native.Permissions.<surface>.<method>)`.
+
+```ts
+import { Native } from "@effect-desktop/native"
+
+native: Desktop.native(Native.Clipboard, Native.Dialog),
+permissions: Desktop.permissions(
+  Desktop.permission(Native.Permissions.clipboard.readText),
+  Desktop.permission(Native.Permissions.dialog.openFile)
+)
+```
+
+Availability without authority stays explicit.
+
+```ts
+native: Desktop.native(Native.Clipboard)
+```
+
+Duplicate native surfaces and duplicate RPC method names fail as typed `DesktopConfigError` values during graph assembly.
+
+## `Desktop.permission(capability)`, `Desktop.permissions(...layers)`
+
+Returns one immutable permission declaration. Compose multiple declarations with `Desktop.permissions(...)` and pass the result as `permissions:`.
+
+```ts
+permissions: Desktop.permissions(
+  Desktop.permission(Permission.filesystemRead({ roots: ["/tmp/app"] })),
+  Desktop.permission(Permission.networkConnect({ hosts: ["api.example.com"] }))
+)
+```
+
+## `Desktop.workflow(layer)`
+
+Returns one immutable workflow declaration. Compose multiple workflow registrations with `Desktop.workflows(...)` and pass the result as `workflows:`.
+
+```ts
+workflows: Desktop.workflows(
+  Desktop.workflow(UserOnboardingWorkflow),
+  Desktop.workflow(SyncWorkflow)
+)
+```
 
 ## `Desktop.Rpc.surface(name, group, options)`
 
@@ -109,7 +148,7 @@ Returns the assembled runtime layer graph (nodes and edges) as data — useful f
 
 ```ts
 const snapshot = Desktop.runtimeGraphSnapshot()
-// LayerGraphSnapshot — { nodes: LayerGraphNodeSnapshot[], failures: LayerFailurePayload[] }
+// LayerGraphSnapshot — { providers: { runtime, webview }, nodes, providerFacts, failures }
 ```
 
 ## `Desktop.Rpcs`, `Desktop.describeRpcs()`
@@ -129,7 +168,30 @@ These come from `@effect-desktop/bridge` and are exposed here so a runtime entry
 
 ## Workflow engine
 
-`Desktop.WorkflowEngineMemory` and `Desktop.WorkflowEngineDurable` are the two workflow engine layers. Memory is the default for development; durable persists workflow state across restarts. Override via the `providers` field of `Desktop.make`.
+`Desktop.WorkflowEngineMemory` and `Desktop.WorkflowEngineDurable` are the two workflow engine layers. Memory is the default for development; durable persists workflow state across restarts. Compose the durable layer in `workflows` or around `Desktop.layer(...)`.
+
+## Providers
+
+Provider selection follows the same app-composition shape as windows, RPCs, permissions, and workflows:
+
+```ts
+providers: Desktop.providers(
+  Desktop.provider(Desktop.Provider.Runtime.node),
+  Desktop.provider(Desktop.Provider.WebView.chrome)
+)
+```
+
+Omitting `providers` is equivalent to registering `Desktop.Provider.Runtime.bun` and `Desktop.Provider.WebView.system`.
+
+Custom providers are descriptors:
+
+```ts
+const ChromeWebView = Desktop.Provider.webview({
+  id: "chrome",
+  hostEngine: "chrome",
+  capabilities: ["WindowWebView", "AppProtocol", "BundledChromium"]
+})
+```
 
 ## Example
 

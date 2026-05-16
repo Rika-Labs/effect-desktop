@@ -19,7 +19,7 @@ You built a notes app in [Tutorial 01](01-build-a-notes-app.md). Now you'll add 
 
 ## The mental model: windows are scoped resources
 
-Each window the app opens is a scoped resource. The scope is named (`"window-main"`, `"window-compose"`) and owns:
+Each window the app opens is a scoped resource. The scope is named from the host window id and owns:
 
 - The window's geometry (persisted by `WindowState`).
 - Any per-window services or watchers.
@@ -33,13 +33,12 @@ Update your `Desktop.make` call to declare two windows:
 
 ```ts
 import { Desktop } from "@effect-desktop/core"
-import { Layer } from "effect"
 import { NotesRpcs } from "./notes/contracts.js"
 import { NotesHandlersLive } from "./notes/handlers.js"
 
 export const App = Desktop.make({
   id: "dev.example.notes",
-  windows: Layer.mergeAll(
+  windows: Desktop.windows(
     Desktop.window("main", { title: "Notes", width: 720, height: 520 }),
     Desktop.window("compose", { title: "Compose Note", width: 480, height: 360 })
   ),
@@ -49,7 +48,7 @@ export const App = Desktop.make({
 export const Manifest = Desktop.manifest(App)
 ```
 
-Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Layer.mergeAll(...)`. The window ids (`"main"`, `"compose"`) are what the runtime uses to address them. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
+Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Desktop.windows(...)`. The window ids (`"main"`, `"compose"`) are what the runtime uses to address them. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
 
 ### Optional: bind window-scoped resources
 
@@ -59,14 +58,26 @@ Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window
 Desktop.window(
   "compose",
   { title: "Compose Note" },
-  Layer.effectDiscard(
-    Effect.gen(function* () {
-      const settings = yield* Settings
-      const draftStore = yield* settings.open({
-        path: "compose-drafts.sqlite",
-        schemaVersion: 1
-      })
-      yield* registerWindowStore("compose", draftStore)
+  Settings.window({
+    path: "compose-drafts.sqlite",
+    schemaVersion: 1
+  })
+)
+```
+
+Inside that window's scoped services, `yield* Settings` gives the compose window's store. The framework provides the current `WindowContext` and window `ResourceOwner` before building the layer, so `Settings.window(...)` can bind ownership to the actual host window scope.
+
+```ts
+const ComposeDraftsLive = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const drafts = yield* Settings
+    yield* registerDraftStore(drafts)
+  })
+).pipe(
+  Layer.provide(
+    Settings.window({
+      path: "compose-drafts.sqlite",
+      schemaVersion: 1
     })
   )
 )
@@ -176,12 +187,13 @@ export function App() {
 
 `WindowState` is the runtime service that saves window position and size when a window closes and restores them on next launch. Wire it into your app's runtime layer to opt in. The service exposes:
 
-- `WindowState.persist(windowId, state)` — write atomically when geometry changes.
-- `WindowState.restore(windowId)` — read on next open.
+- `WindowState.window(...)` — binds the service to the current `Desktop.window(...)` context.
+- `WindowState.persist(state)` — write atomically for the current window when geometry changes.
+- `WindowState.restore()` — read the current window's last state on next open.
 - Snap to the primary display if the stored rectangle is off every configured display.
 - Rename a corrupt state file to `window-state.corrupt.<timestamp>.json` and continue with defaults.
 
-A small handler wrapper around `Window.create` that calls `restore` before opening, then subscribes to size/position changes and calls `persist`, gives you the full feature. See [`WindowState` reference](../reference/services/window-state.md).
+A small handler wrapper around `Window.create` that builds `WindowState.window(...)` for the window, calls `restore` before opening, then subscribes to size/position changes and calls `persist`, gives you the full feature. See [`WindowState` reference](../reference/services/window-state.md).
 
 ## Step 6 — Test it
 

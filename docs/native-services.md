@@ -11,20 +11,66 @@ effect_version: 4
 > Full references: [`reference/native/`](reference/native/) — one page per service.
 
 Native services expose host-backed desktop capability through Effect services and RPC groups.
+Apps select native capabilities by passing generated `Native` selections to `Desktop.native(...)`.
 
-## Service pattern
+## App composition
 
-Most native modules follow the same public shape:
+Select only the native surfaces the app uses:
+
+```ts
+Desktop.make({
+  id: "com.acme.app",
+  windows: Desktop.window("main", { title: "Acme" }),
+  native: Desktop.native(Native.Clipboard),
+  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+})
+```
+
+`Native.all` registers every built-in native surface. Grant every native authority explicitly with `Native.Permissions.all`:
+
+```ts
+Desktop.make({
+  id: "com.acme.native",
+  windows: Desktop.window("main", { title: "Native" }),
+  native: Desktop.native(Native.all),
+  permissions: Desktop.permissions(...Native.Permissions.all.map(Desktop.permission))
+})
+```
+
+Each native surface exposes grouped permission data when an app intentionally grants an entire surface:
+
+```ts
+Desktop.make({
+  id: "com.acme.windows",
+  windows: Desktop.window("main", { title: "Windows" }),
+  native: Desktop.native(Native.Window),
+  permissions: Desktop.permissions(...Native.Permissions.window.all.map(Desktop.permission))
+})
+```
+
+Pass `Native.Clipboard` directly to `Desktop.native(...)` only when the app needs support metadata or unprivileged status methods without granting native authority.
+
+## Module shape
+
+Native modules keep one source of truth for service, RPC, client, host, support, and
+permission facts:
 
 - `<Name>Rpcs` — canonical RPC group.
 - `<Name>Surface` — generated surface metadata.
 - `<Name>` — runtime Effect service.
 - `<Name>Client` — client service.
-- `<Name>Live`, `<Name>HandlersLive` — live host-backed layers.
-- `make<Name>ClientLayer`, `make<Name>ServiceLayer`, `make<Name>BridgeClientLayer`, `makeHost<Name>RpcRuntime`.
+- `Native.Permissions.<name>.<method>` — permission declaration for one privileged native method.
+- `Native.Permissions.<name>.all` — permission declarations for one native surface.
+- `Desktop.native(Native.<Name>)` — availability-only selection with no authority grant.
+- `Native.available(...)` — lower-level helper that returns native availability declarations.
+- `<Name>Live`, `<Name>HandlersLive` — runtime layers behind the native capability selection.
+- `make<Name>ClientLayer`, `make<Name>ServiceLayer` — deterministic test seams, not
+  app-composition APIs.
 - `<Name>MethodNames`, `<Name>RpcEvents`, typed errors, handlers, and API types.
 
 This is the [layer-first contract](explanation/layer-first-design.md) applied uniformly.
+
+Native service authors should use the internal native surface authoring path, not ad hoc RPC construction. Each endpoint must carry schemas, endpoint kind, support metadata, and authority metadata together. `NativeCapabilities` reads the selected native registrations, so the public support manifest uses the same source of truth as handlers, clients, tests, and renderer descriptors.
 
 ## Current native modules
 
@@ -64,6 +110,8 @@ if (ClipboardRpcs === undefined || DialogRpcs === undefined || WindowRpcs === un
 ## Support checks
 
 Platform-limited operations must be guarded through support metadata or `isSupported` methods. Unsupported capability is a **typed result**, not an implicit no-op.
+
+`NativeCapabilities` exposes a manifest of native method facts. Each fact includes the method tag, its capability metadata, and its support metadata. Unknown tags fail with `NativeCapabilityLookupError`; unsupported methods fail `require(tag)` with `UnsupportedCapability`.
 
 ## Where to go next
 

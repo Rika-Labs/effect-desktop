@@ -30,15 +30,15 @@ Use `RpcGroup.toLayer(...)` to install handlers; use `Desktop.Rpc.surface(...)` 
 
 ## Desktop surface
 
-`Desktop.rpc(AppRpc, AppRpc.toLayer(...))` returns a Layer that registers the RPC group + handler pair. Compose multiple registrations with `Layer.mergeAll(...)` and pass the result as `rpcs:` to `Desktop.make`. `Desktop.manifest(App)` exposes the manifest the renderer adapter consumes.
+`Desktop.rpc(AppRpc, AppRpc.toLayer(...))` returns a Layer that registers the RPC group + handler pair. Compose multiple registrations with `Desktop.rpcs(...)` and pass the result as `rpcs:` to `Desktop.make`. `Desktop.manifest(App)` exposes the manifest the renderer adapter consumes.
 
 ## Verify RPC Exports
 
 ```ts run
-import { Handlers, RpcGroup } from "../packages/bridge/src/index.js"
+import { RpcGroup, makeDesktopRpcHandlerRuntime } from "../packages/bridge/src/index.js"
 
-if (RpcGroup === undefined || Handlers === undefined) {
-  throw new Error("RpcGroup or Handlers is unavailable")
+if (RpcGroup === undefined || makeDesktopRpcHandlerRuntime === undefined) {
+  throw new Error("RpcGroup or makeDesktopRpcHandlerRuntime is unavailable")
 }
 ```
 
