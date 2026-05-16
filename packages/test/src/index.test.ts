@@ -1416,7 +1416,7 @@ test("MockPTY layer emits output, records writes and resizes, and exits", async 
           args: ["-l"],
           pid: null,
           output: [bytes("prompt")],
-          exit: { code: 0 }
+          exit: false
         }
       ],
       permissions: { spawn: ["bash"] },
@@ -1431,6 +1431,7 @@ test("MockPTY layer emits output, records writes and resizes, and exits", async 
   await Effect.runPromise(handle.write(bytes("echo hi\n")))
   await Effect.runPromise(handle.resize({ rows: 40, cols: 120 }))
   const output = await Effect.runPromise(Stream.runCollect(handle.output))
+  await Effect.runPromise(handle.kill("SIGTERM"))
   const exit = await Effect.runPromise(handle.onExit)
   const calls = pty.calls()
   const afterExit = await Effect.runPromise(registry.list())
@@ -1438,6 +1439,7 @@ test("MockPTY layer emits output, records writes and resizes, and exits", async 
   expect(handle.pid._tag).toBe("None")
   expect(Array.from(output).map(text)).toEqual(["prompt"])
   expect(exit.code).toBe(0)
+  expect(exit.signal).toBe("SIGTERM")
   expect(calls[0]?.pid).toBeUndefined()
   expect(calls[0]?.writes.map(text)).toEqual(["echo hi\n"])
   expect(calls[0]?.resizes).toEqual([{ rows: 40, cols: 120 }])
