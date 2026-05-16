@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 
 const repoRoot = join(import.meta.dir, "../../..")
@@ -29,7 +29,7 @@ const nativeSurfaces = [
   "Window"
 ] as const
 
-const files = (): readonly string[] => {
+const files = (roots: readonly string[] = searchedRoots): readonly string[] => {
   const found: string[] = []
   const visit = (directory: string) => {
     for (const entry of readdirSync(directory)) {
@@ -49,8 +49,11 @@ const files = (): readonly string[] => {
     }
   }
 
-  for (const root of searchedRoots) {
-    visit(join(repoRoot, root))
+  for (const root of roots) {
+    const path = join(repoRoot, root)
+    if (existsSync(path)) {
+      visit(path)
+    }
   }
   return found
 }
@@ -67,6 +70,10 @@ test("feature declarations do not reintroduce declaration registries or snapshot
       /snapshotDeclarationLayerSync|Desktop(?:Rpc|Native|Permission|Workflow|Window|Provider)Registry/
     )
   ).toEqual([])
+})
+
+test("feature declaration guardrails tolerate optional roots absent from clean checkouts", () => {
+  expect(files(["missing-template-root"])).toEqual([])
 })
 
 test("native app composition does not reintroduce method-level selections", () => {
