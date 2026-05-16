@@ -3,14 +3,11 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidStateError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
   redactForJson,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -111,11 +108,7 @@ export const makeCrashReporterServiceLayer = (
 export const makeCrashReporterBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<CrashReporterClient> =>
-  Layer.provide(
-    CrashReporterSurface.clientLayer,
-    makeCrashReporterBridgeProtocolLayer(exchange, options)
-  )
+): Layer.Layer<CrashReporterClient> => CrashReporterSurface.bridgeClientLayer(exchange, options)
 
 export type CrashReporterRpc = RpcGroup.Rpcs<typeof CrashReporterRpcGroup>
 
@@ -227,16 +220,6 @@ const crashReporterClientFromRpcClient = (
       runCrashReporterRpc(client["CrashReporter.flush"](undefined), "CrashReporter.flush")
   } satisfies CrashReporterClientApi)
 }
-
-const makeCrashReporterBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 interface CrashReporterState {
   readonly breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>

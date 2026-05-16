@@ -3,11 +3,8 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -97,8 +94,7 @@ export const makePathServiceLayer = (client: PathClientApi): Layer.Layer<Path> =
 export const makePathBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<PathClient> =>
-  Layer.provide(PathSurface.clientLayer, makePathBridgeProtocolLayer(exchange, options))
+): Layer.Layer<PathClient> => PathSurface.bridgeClientLayer(exchange, options)
 
 export type PathRpc = RpcGroup.Rpcs<typeof PathRpcGroup>
 
@@ -183,16 +179,6 @@ const pathClientFromRpcClient = (client: DesktopRpcClient<PathRpc>): PathClientA
 
   return Object.freeze(pathClient)
 }
-
-const makePathBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 function pathRpc<const Method extends (typeof PathMethodNames)[number]>(
   method: Method,

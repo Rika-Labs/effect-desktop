@@ -3,9 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   RpcGroup,
   hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
@@ -155,6 +152,9 @@ export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
   service: ScreenClient,
   capabilities: ScreenCapabilityMethods,
   handlers: ScreenHandlersLive,
+  bridge: {
+    normalizeRequest: normalizeScreenBridgeRequest
+  },
   client: (client) => screenClientFromRpcClient(client)
 })
 
@@ -167,8 +167,7 @@ export const makeScreenServiceLayer = (client: ScreenClientApi): Layer.Layer<Scr
 export const makeScreenBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: ScreenBridgeClientOptions = {}
-): Layer.Layer<ScreenClient> =>
-  Layer.provide(ScreenSurface.clientLayer, makeScreenBridgeProtocolLayer(exchange, options))
+): Layer.Layer<ScreenClient> => ScreenSurface.bridgeClientLayer(exchange, options)
 
 export type ScreenRpcHandlers = RpcGroup.HandlersFrom<ScreenRpc>
 
@@ -177,20 +176,9 @@ export const makeHostScreenRpcRuntime = (
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
 ): BridgeHandlerRuntime<PermissionRegistry> => ScreenSurface.hostRuntime(handlers, runtimeOptions)
 
-const makeScreenBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: ScreenBridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, {
-      ...options,
-      normalizeRequest: normalizeScreenBridgeRequest
-    }).pipe(Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options)))
-  )
-
-const normalizeScreenBridgeRequest = (
+function normalizeScreenBridgeRequest(
   request: HostProtocolRequestEnvelope
-): HostProtocolRequestEnvelope => {
+): HostProtocolRequestEnvelope {
   if (
     request.payload !== null ||
     (request.method !== "Screen.getDisplays" &&

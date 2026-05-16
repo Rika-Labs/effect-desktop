@@ -4,14 +4,11 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeSecretBytes,
   type SecretBytes,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError,
@@ -143,11 +140,7 @@ export const makeSafeStorageServiceLayer = (
 export const makeSafeStorageBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<SafeStorageClient> =>
-  Layer.provide(
-    SafeStorageSurface.clientLayer,
-    makeSafeStorageBridgeProtocolLayer(exchange, options)
-  )
+): Layer.Layer<SafeStorageClient> => SafeStorageSurface.bridgeClientLayer(exchange, options)
 
 export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>
 
@@ -234,16 +227,6 @@ const safeStorageClientFromRpcClient = (
       ).pipe(Effect.map((result) => result.available))
   } satisfies SafeStorageClientApi)
 }
-
-const makeSafeStorageBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 export const makeLinuxSafeStorageClient = (): SafeStorageClientApi => {
   const unsupportedEffect = <A>(method: string): Effect.Effect<A, SafeStorageError, never> =>

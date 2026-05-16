@@ -3,6 +3,7 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
+  type HostProtocolRequestEnvelope,
   HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
@@ -72,6 +73,11 @@ export interface NativeRpcOptions<
 
 export interface NativeRpcSurfaceSelectionOptions<Method extends string = never> {
   readonly capabilities?: readonly Method[]
+  readonly bridge?: NativeBridgeProtocolOptions
+}
+
+export interface NativeBridgeProtocolOptions extends BridgeClientOptions {
+  readonly normalizeRequest?: (request: HostProtocolRequestEnvelope) => HostProtocolRequestEnvelope
 }
 
 export interface NativeRpcSurface<
@@ -190,7 +196,13 @@ function make<
   const surfaceWithoutSelection = Object.freeze({
     ...desktopSurface,
     bridgeClientLayer: (exchange: BridgeClientExchange, bridgeOptions: BridgeClientOptions = {}) =>
-      Layer.provide(desktopSurface.clientLayer, makeBridgeProtocolLayer(exchange, bridgeOptions)),
+      Layer.provide(
+        desktopSurface.clientLayer,
+        makeBridgeProtocolLayer(exchange, {
+          ...bridgeOptions,
+          ...options.bridge
+        })
+      ),
     hostRuntime: (
       handlers: NativeRpcHandlers<Group>,
       runtimeOptions: BridgeHandlerRuntimeOptions = {}
@@ -205,7 +217,7 @@ function make<
 
 const makeBridgeProtocolLayer = (
   exchange: BridgeClientExchange,
-  options: BridgeClientOptions
+  options: NativeBridgeProtocolOptions
 ): Layer.Layer<RpcClient.Protocol> =>
   Layer.effect(RpcClient.Protocol)(
     makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
