@@ -82,7 +82,7 @@ type ProviderDeclarationServicesContract = Assert<
   IsEqual<Layer.Services<DesktopProvidersLayer>, DesktopProviderRegistry>
 >
 type NativeDeclarationServicesContract = Assert<
-  IsEqual<Layer.Services<DesktopNativeLayer>, DesktopNativeRegistry>
+  IsEqual<Layer.Services<DesktopNativeLayer>, DesktopNativeRegistry | DesktopPermissionRegistry>
 >
 type WindowDeclarationServicesContract = Assert<
   IsEqual<Layer.Services<DesktopWindowsLayer<WindowDependency>>, DesktopWindowRegistry>
