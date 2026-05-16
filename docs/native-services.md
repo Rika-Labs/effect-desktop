@@ -11,7 +11,7 @@ effect_version: 4
 > Full references: [`reference/native/`](reference/native/) — one page per service.
 
 Native services expose host-backed desktop capability through Effect services and RPC groups.
-Apps select native capabilities through `Native.capabilities(...)`.
+Apps select native capabilities by passing generated `Native` selections to `Desktop.native(...)`.
 
 ## App composition
 
@@ -21,7 +21,7 @@ Select only the native surfaces the app uses:
 Desktop.make({
   id: "com.acme.app",
   windows: Desktop.window("main", { title: "Acme" }),
-  native: Native.capabilities(Native.Clipboard.readText)
+  native: Desktop.native(Native.Clipboard.readText)
 })
 ```
 
@@ -31,7 +31,7 @@ Desktop.make({
 Desktop.make({
   id: "com.acme.native",
   windows: Desktop.window("main", { title: "Native" }),
-  native: Native.capabilities(Native.all)
+  native: Desktop.native(Native.all)
 })
 ```
 
@@ -41,11 +41,11 @@ Each native surface exposes grouped capability data when an app intentionally gr
 Desktop.make({
   id: "com.acme.windows",
   windows: Desktop.window("main", { title: "Windows" }),
-  native: Native.capabilities(Native.Window.all)
+  native: Desktop.native(Native.Window.all)
 })
 ```
 
-Use `Native.available(Native.Clipboard)` only when the app needs support metadata or unprivileged status methods without granting native authority.
+Pass `Native.Clipboard` directly to `Desktop.native(...)` only when the app needs support metadata or unprivileged status methods without granting native authority.
 
 ## Module shape
 
@@ -58,7 +58,8 @@ permission facts:
 - `<Name>Client` — client service.
 - `Native.<Name>.<method>` — app-composition capability selection for one privileged native method.
 - `Native.<Name>.all` — app-composition capability selection for one native surface.
-- `Native.available(Native.<Name>)` — availability-only selection with no authority grant.
+- `Desktop.native(Native.<Name>)` — availability-only selection with no authority grant.
+- `Native.capabilities(...)`, `Native.available(...)` — lower-level helpers that return native declaration layers.
 - `<Name>Live`, `<Name>HandlersLive` — runtime layers behind the native capability selection.
 - `make<Name>ClientLayer`, `make<Name>ServiceLayer` — deterministic test seams, not
   app-composition APIs.

@@ -34,7 +34,7 @@ import { Clipboard, ClipboardError, ClipboardRpcs, Native } from "@effect-deskto
 Desktop.make({
   id: "com.acme.clipboard",
   windows: Desktop.window("main", { title: "Clipboard" }),
-  native: Native.capabilities(Native.Clipboard.readText)
+  native: Desktop.native(Native.Clipboard.readText)
 })
 ```
 

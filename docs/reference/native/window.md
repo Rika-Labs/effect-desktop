@@ -50,7 +50,7 @@ App code selects the capability through the native composition layer:
 Desktop.make({
   id: "com.acme.windows",
   windows: Desktop.window("main", { title: "Windows" }),
-  native: Native.capabilities(Native.Window.all)
+  native: Desktop.native(Native.Window.all)
 })
 ```
 

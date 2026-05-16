@@ -40,7 +40,7 @@ import { Menu, MenuError, MenuRpcs, Native } from "@effect-desktop/native"
 Desktop.make({
   id: "com.acme.menu",
   windows: Desktop.window("main", { title: "Menu" }),
-  native: Native.capabilities(Native.Menu.all)
+  native: Desktop.native(Native.Menu.all)
 })
 ```
 

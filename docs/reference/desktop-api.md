@@ -31,7 +31,7 @@ function make<RIn = never, E = never>(
 | `id`          | `string`                       | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                                                 |
 | `windows`     | `DesktopWindowsLayer<RIn>`     | A single composed Layer of window registrations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Desktop.windows(...)`. |
 | `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | A single composed Layer of RPC registrations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Desktop.rpcs(...)`.              |
-| `native`      | `DesktopNativeLayer`           | A single composed Layer of native selections. Build via `Native.capabilities(...)` or `Native.available(...)`.                                 |
+| `native`      | `DesktopNativeLayer`           | A single composed Layer of native selections. Build via `Desktop.native(Native.all)` or selected `Native.<Surface>.<method>` tokens.            |
 | `providers`   | `DesktopProvidersLayer`        | A single composed Layer of provider registrations. Build via `Desktop.provider(...)`; compose multiple via `Desktop.providers(...)`.           |
 | `permissions` | `DesktopPermissionsLayer`      | A single composed Layer of permission declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                      |
 | `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | A single composed Layer of workflow registrations. Build via `Desktop.workflow(layer)`; compose multiple via `Desktop.workflows(...)`.         |
@@ -98,20 +98,20 @@ windows: Desktop.windows(
 
 Reserved ids — `__proto__`, `constructor`, `prototype`, and the empty string — throw a `TypeError` synchronously from the call site. Duplicate ids surface as a `DesktopConfigError` at `Desktop.make` time.
 
-## `Desktop.native(...layers)`
+## `Desktop.native(...declarations)`
 
-Composes lower-level native declaration layers for `Desktop.make`. App code should prefer `Native.capabilities(...)`, which registers the required native surfaces and authority together.
+Composes native declaration layers and generated native selection tokens for `Desktop.make`. `Native.<Surface>.<method>` registers the required native surface and grants that method's authority. `Native.<Surface>` registers availability only.
 
 ```ts
 import { Native } from "@effect-desktop/native"
 
-native: Native.capabilities(Native.Clipboard.readText, Native.Dialog.openFile)
+native: Desktop.native(Native.Clipboard.readText, Native.Dialog.openFile)
 ```
 
 Availability without authority stays explicit.
 
 ```ts
-native: Native.available(Native.Clipboard)
+native: Desktop.native(Native.Clipboard)
 ```
 
 Duplicate native surfaces and duplicate RPC method names fail as typed `DesktopConfigError` values during graph assembly.

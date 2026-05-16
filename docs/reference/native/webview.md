@@ -38,7 +38,7 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 Desktop.make({
   id: "com.acme.webview",
   windows: Desktop.window("main", { title: "WebView" }),
-  native: Native.capabilities(Native.WebView.all)
+  native: Desktop.native(Native.WebView.all)
 })
 ```
 
