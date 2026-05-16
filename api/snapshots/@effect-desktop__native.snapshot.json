@@ -6,7 +6,7 @@
     {
       "name": "all",
       "kind": "value",
-      "signature": "const all: DesktopNativeLayer"
+      "signature": "const all: (options?: NativeAllSelectionOptions) => DesktopNativeLayer"
     },
     {
       "name": "App",
@@ -76,7 +76,7 @@
     {
       "name": "clipboard",
       "kind": "value",
-      "signature": "const clipboard: DesktopNativeLayer"
+      "signature": "const clipboard: (options?: NativeSelectionOptions<\"clear\" | \"readText\" | \"writeText\" | \"readImage\" | \"writeImage\" | \"isSupported\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Clipboard",
@@ -146,7 +146,7 @@
     {
       "name": "contextMenu",
       "kind": "value",
-      "signature": "const contextMenu: DesktopNativeLayer"
+      "signature": "const contextMenu: (options?: NativeSelectionOptions<\"show\" | \"buildFromTemplate\" | \"bindCommand\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "ContextMenu",
@@ -221,7 +221,7 @@
     {
       "name": "crashReporter",
       "kind": "value",
-      "signature": "const crashReporter: DesktopNativeLayer"
+      "signature": "const crashReporter: (options?: NativeSelectionOptions<\"start\" | \"flush\" | \"recordBreadcrumb\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "CrashReporter",
@@ -341,7 +341,7 @@
     {
       "name": "dialog",
       "kind": "value",
-      "signature": "const dialog: DesktopNativeLayer"
+      "signature": "const dialog: (options?: NativeSelectionOptions<\"message\" | \"openFile\" | \"openDirectory\" | \"saveFile\" | \"confirm\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Dialog",
@@ -411,7 +411,7 @@
     {
       "name": "dock",
       "kind": "value",
-      "signature": "const dock: DesktopNativeLayer"
+      "signature": "const dock: (options?: NativeSelectionOptions<\"isSupported\" | \"setBadgeCount\" | \"setBadgeText\" | \"setProgress\" | \"setMenu\" | \"setJumpList\" | \"requestAttention\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Dock",
@@ -481,7 +481,7 @@
     {
       "name": "globalShortcut",
       "kind": "value",
-      "signature": "const globalShortcut: DesktopNativeLayer"
+      "signature": "const globalShortcut: (options?: NativeSelectionOptions<\"register\" | \"unregister\" | \"isSupported\" | \"unregisterAll\" | \"isRegistered\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "GlobalShortcut",
@@ -816,7 +816,7 @@
     {
       "name": "menu",
       "kind": "value",
-      "signature": "const menu: DesktopNativeLayer"
+      "signature": "const menu: (options?: NativeSelectionOptions<\"capability\" | \"clear\" | \"bindCommand\" | \"setApplicationMenu\" | \"setWindowMenu\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Menu",
@@ -901,12 +901,17 @@
     {
       "name": "Native",
       "kind": "value",
-      "signature": "const Native: Readonly<{ surface: <RIn = never, E = never>(registration: DesktopNativeRegistration<E, RIn>) => DesktopNativeLayer; app: DesktopNativeLayer; clipboard: DesktopNativeLayer; contextMenu: DesktopNativeLayer; crashReporter: DesktopNativeLayer; dialog: DesktopNativeLayer; dock: DesktopNativeLayer; globalShortcut: DesktopNativeLayer; menu: DesktopNativeLayer; notification: DesktopNativeLayer; path: DesktopNativeLayer; powerMonitor: DesktopNativeLayer; protocol: DesktopNativeLayer; safeStorage: DesktopNativeLayer; screen: DesktopNativeLayer; shell: DesktopNativeLayer; systemAppearance: DesktopNativeLayer; tray: DesktopNativeLayer; updater: DesktopNativeLayer; webView: DesktopNativeLayer; window: DesktopNativeLayer; all: DesktopNativeLayer; Permissions: Readonly<{ app: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; clipboard: Readonly<{ readText: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; writeText: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; readImage: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; writeImage: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; clear: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; contextMenu: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; crashReporter: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; dialog: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; dock: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; globalShortcut: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; menu: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; notification: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; path: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; powerMonitor: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; protocol: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; safeStorage: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; screen: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; shell: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; systemAppearance: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; tray: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; updater: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; webView: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; window: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; }>"
+      "signature": "const Native: Readonly<{ surface: (registration: AnyDesktopNativeRegistration, options?: NativeSelectionOptions) => DesktopNativeLayer; app: (options?: NativeSelectionOptions<\"getInfo\" | \"getCommandLine\" | \"quit\" | \"restart\" | \"focus\" | \"requestSingleInstanceLock\" | \"setOpenAtLogin\" | \"registerProtocol\"> | undefined) => DesktopNativeLayer; clipboard: (options?: NativeSelectionOptions<\"clear\" | \"readText\" | \"writeText\" | \"readImage\" | \"writeImage\" | \"isSupported\"> | undefined) => DesktopNativeLayer; contextMenu: (options?: NativeSelectionOptions<\"show\" | \"buildFromTemplate\" | \"bindCommand\"> | undefined) => DesktopNativeLayer; crashReporter: (options?: NativeSelectionOptions<\"start\" | \"flush\" | \"recordBreadcrumb\"> | undefined) => DesktopNativeLayer; dialog: (options?: NativeSelectionOptions<\"message\" | \"openFile\" | \"openDirectory\" | \"saveFile\" | \"confirm\"> | undefined) => DesktopNativeLayer; dock: (options?: NativeSelectionOptions<\"isSupported\" | \"setBadgeCount\" | \"setBadgeText\" | \"setProgress\" | \"setMenu\" | \"setJumpList\" | \"requestAttention\"> | undefined) => DesktopNativeLayer; globalShortcut: (options?: NativeSelectionOptions<\"register\" | \"unregister\" | \"isSupported\" | \"unregisterAll\" | \"isRegistered\"> | undefined) => DesktopNativeLayer; menu: (options?: NativeSelectionOptions<\"capability\" | \"clear\" | \"bindCommand\" | \"setApplicationMenu\" | \"setWindowMenu\"> | undefined) => DesktopNativeLayer; notification: (options?: NativeSelectionOptions<\"close\" | \"isSupported\" | \"show\" | \"requestPermission\" | \"getPermissionStatus\"> | undefined) => DesktopNativeLayer; path: (options?: NativeSelectionOptions<\"cache\" | \"appData\" | \"logs\" | \"temp\" | \"home\" | \"downloads\"> | undefined) => DesktopNativeLayer; powerMonitor: (options?: NativeSelectionOptions<\"isSupported\"> | undefined) => DesktopNativeLayer; protocol: (options?: NativeSelectionOptions<\"deny\" | \"registerAppProtocol\" | \"serveAsset\" | \"serveRoute\"> | undefined) => DesktopNativeLayer; safeStorage: (options?: NativeSelectionOptions<\"list\" | \"get\" | \"delete\" | \"set\" | \"isAvailable\"> | undefined) => DesktopNativeLayer; screen: (options?: NativeSelectionOptions<\"isSupported\" | \"getDisplays\" | \"getPrimaryDisplay\" | \"getPointerPoint\"> | undefined) => DesktopNativeLayer; shell: (options?: NativeSelectionOptions<\"openExternal\" | \"showItemInFolder\" | \"openPath\" | \"trashItem\"> | undefined) => DesktopNativeLayer; systemAppearance: (options?: NativeSelectionOptions<\"isSupported\" | \"getAppearance\" | \"getAccentColor\" | \"getReducedMotion\" | \"getReducedTransparency\"> | undefined) => DesktopNativeLayer; tray: (options?: NativeSelectionOptions<\"create\" | \"isSupported\" | \"setMenu\" | \"setIcon\" | \"setTooltip\" | \"destroy\"> | undefined) => DesktopNativeLayer; updater: (options?: NativeSelectionOptions<\"check\" | \"download\" | \"install\" | \"installAndRestart\" | \"getStatus\" | \"readyForRestart\"> | undefined) => DesktopNativeLayer; webView: (options?: NativeSelectionOptions<\"capability\" | \"create\" | \"destroy\" | \"loadRoute\" | \"loadUrl\" | \"reload\" | \"goBack\" | \"goForward\" | \"captureScreenshot\" | \"setNavigationPolicy\"> | undefined) => DesktopNativeLayer; window: (options?: NativeSelectionOptions<\"close\" | \"create\"> | undefined) => DesktopNativeLayer; all: (options?: NativeAllSelectionOptions) => DesktopNativeLayer; }>"
+    },
+    {
+      "name": "NativeAllSelectionOptions",
+      "kind": "interface",
+      "signature": "export interface NativeAllSelectionOptions { readonly permissions?: \"all\" }"
     },
     {
       "name": "nativeApp",
       "kind": "value",
-      "signature": "const app: DesktopNativeLayer"
+      "signature": "const app: (options?: NativeSelectionOptions<\"getInfo\" | \"getCommandLine\" | \"quit\" | \"restart\" | \"focus\" | \"requestSingleInstanceLock\" | \"setOpenAtLogin\" | \"registerProtocol\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "NativeCapabilities",
@@ -954,14 +959,14 @@
       "signature": "export interface NativeCapabilitySurface { readonly schemaDocs: readonly DesktopRpcSchemaDoc[] }"
     },
     {
-      "name": "NativePermissions",
-      "kind": "value",
-      "signature": "const Permissions: Readonly<{ app: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; clipboard: Readonly<{ readText: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; writeText: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; readImage: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; writeImage: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; clear: { readonly kind: \"native.invoke\"; readonly audit: \"always\" | \"on-deny\" | \"never\"; readonly methods: readonly string[]; readonly primitive: string; }; all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; contextMenu: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; crashReporter: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; dialog: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; dock: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; globalShortcut: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; menu: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; notification: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; path: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; powerMonitor: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; protocol: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; safeStorage: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; screen: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; shell: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; systemAppearance: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; tray: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; updater: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; webView: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; window: Readonly<{ all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>; all: import(\"@effect-desktop/core\").DesktopPermissionsLayer; }>"
+      "name": "NativeSelectionOptions",
+      "kind": "interface",
+      "signature": "export interface NativeSelectionOptions<Method extends string = string> { readonly permissions?: \"all\" | readonly Method[] }"
     },
     {
       "name": "notification",
       "kind": "value",
-      "signature": "const notification: DesktopNativeLayer"
+      "signature": "const notification: (options?: NativeSelectionOptions<\"close\" | \"isSupported\" | \"show\" | \"requestPermission\" | \"getPermissionStatus\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Notification",
@@ -1031,7 +1036,7 @@
     {
       "name": "path",
       "kind": "value",
-      "signature": "const path: DesktopNativeLayer"
+      "signature": "const path: (options?: NativeSelectionOptions<\"cache\" | \"appData\" | \"logs\" | \"temp\" | \"home\" | \"downloads\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Path",
@@ -1101,7 +1106,7 @@
     {
       "name": "powerMonitor",
       "kind": "value",
-      "signature": "const powerMonitor: DesktopNativeLayer"
+      "signature": "const powerMonitor: (options?: NativeSelectionOptions<\"isSupported\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "PowerMonitor",
@@ -1171,7 +1176,7 @@
     {
       "name": "protocol",
       "kind": "value",
-      "signature": "const protocol: DesktopNativeLayer"
+      "signature": "const protocol: (options?: NativeSelectionOptions<\"deny\" | \"registerAppProtocol\" | \"serveAsset\" | \"serveRoute\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Protocol",
@@ -1241,7 +1246,7 @@
     {
       "name": "safeStorage",
       "kind": "value",
-      "signature": "const safeStorage: DesktopNativeLayer"
+      "signature": "const safeStorage: (options?: NativeSelectionOptions<\"list\" | \"get\" | \"delete\" | \"set\" | \"isAvailable\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "SafeStorage",
@@ -1311,7 +1316,7 @@
     {
       "name": "screen",
       "kind": "value",
-      "signature": "const screen: DesktopNativeLayer"
+      "signature": "const screen: (options?: NativeSelectionOptions<\"isSupported\" | \"getDisplays\" | \"getPrimaryDisplay\" | \"getPointerPoint\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Screen",
@@ -1386,7 +1391,7 @@
     {
       "name": "shell",
       "kind": "value",
-      "signature": "const shell: DesktopNativeLayer"
+      "signature": "const shell: (options?: NativeSelectionOptions<\"openExternal\" | \"showItemInFolder\" | \"openPath\" | \"trashItem\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Shell",
@@ -1456,12 +1461,12 @@
     {
       "name": "surface",
       "kind": "value",
-      "signature": "const surface: <RIn = never, E = never>(registration: DesktopNativeRegistration<E, RIn>) => DesktopNativeLayer"
+      "signature": "const surface: (registration: AnyDesktopNativeRegistration, options?: NativeSelectionOptions) => DesktopNativeLayer"
     },
     {
       "name": "systemAppearance",
       "kind": "value",
-      "signature": "const systemAppearance: DesktopNativeLayer"
+      "signature": "const systemAppearance: (options?: NativeSelectionOptions<\"isSupported\" | \"getAppearance\" | \"getAccentColor\" | \"getReducedMotion\" | \"getReducedTransparency\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "SystemAppearance",
@@ -1531,7 +1536,7 @@
     {
       "name": "tray",
       "kind": "value",
-      "signature": "const tray: DesktopNativeLayer"
+      "signature": "const tray: (options?: NativeSelectionOptions<\"create\" | \"isSupported\" | \"setMenu\" | \"setIcon\" | \"setTooltip\" | \"destroy\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Tray",
@@ -1611,7 +1616,7 @@
     {
       "name": "updater",
       "kind": "value",
-      "signature": "const updater: DesktopNativeLayer"
+      "signature": "const updater: (options?: NativeSelectionOptions<\"check\" | \"download\" | \"install\" | \"installAndRestart\" | \"getStatus\" | \"readyForRestart\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Updater",
@@ -1696,7 +1701,7 @@
     {
       "name": "webView",
       "kind": "value",
-      "signature": "const webView: DesktopNativeLayer"
+      "signature": "const webView: (options?: NativeSelectionOptions<\"capability\" | \"create\" | \"destroy\" | \"loadRoute\" | \"loadUrl\" | \"reload\" | \"goBack\" | \"goForward\" | \"captureScreenshot\" | \"setNavigationPolicy\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "WebView",
@@ -1766,7 +1771,7 @@
     {
       "name": "window",
       "kind": "value",
-      "signature": "const window: DesktopNativeLayer"
+      "signature": "const window: (options?: NativeSelectionOptions<\"close\" | \"create\"> | undefined) => DesktopNativeLayer"
     },
     {
       "name": "Window",

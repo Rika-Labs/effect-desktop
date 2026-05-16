@@ -2,6 +2,7 @@ import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/
 import {
   DesktopNativeRegistry,
   DesktopNativeRegistryLive,
+  DesktopPermissionRegistryLive,
   type DesktopNativeLayer,
   type DesktopRpcSchemaDoc
 } from "@effect-desktop/core"
@@ -115,7 +116,7 @@ export const makeNativeCapabilities = (
   makeNativeCapabilityManifest(surfaces).pipe(Effect.map(capabilitiesFromManifest))
 
 export const makeNativeCapabilitiesLayer = (
-  nativeLayer: DesktopNativeLayer = NativeAll
+  nativeLayer: DesktopNativeLayer = NativeAll()
 ): Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never> =>
   Layer.effect(
     NativeCapabilities,
@@ -181,7 +182,10 @@ const unsupportedCapability = (
 function snapshotNativeCapabilitySurfacesSync(
   nativeLayer: DesktopNativeLayer
 ): readonly NativeCapabilitySurface[] {
-  const composed = Layer.provideMerge(nativeLayer, DesktopNativeRegistryLive)
+  const composed = Layer.provideMerge(
+    nativeLayer,
+    Layer.mergeAll(DesktopNativeRegistryLive, DesktopPermissionRegistryLive)
+  )
   try {
     return Effect.runSync(
       Effect.scoped(

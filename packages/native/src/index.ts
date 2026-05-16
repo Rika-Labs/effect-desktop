@@ -32,7 +32,6 @@ export {
 } from "./capabilities.js"
 export {
   Native,
-  Permissions as NativePermissions,
   all,
   app as nativeApp,
   clipboard,
@@ -54,7 +53,9 @@ export {
   tray,
   updater,
   webView,
-  window
+  window,
+  type NativeAllSelectionOptions,
+  type NativeSelectionOptions
 } from "./native.js"
 export {
   Clipboard,

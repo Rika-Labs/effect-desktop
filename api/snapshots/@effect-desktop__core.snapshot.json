@@ -436,7 +436,7 @@
     {
       "name": "DesktopNativeLayer",
       "kind": "type",
-      "signature": "export type DesktopNativeLayer = DesktopDeclarationLayer<DesktopNativeRegistry>"
+      "signature": "export type DesktopNativeLayer = DesktopDeclarationLayer< DesktopNativeRegistry | DesktopPermissionRegistry >"
     },
     {
       "name": "DesktopNativeRegistration",

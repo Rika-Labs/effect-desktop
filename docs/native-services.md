@@ -33,31 +33,28 @@ Native service authors should use the internal native surface authoring path, no
 Desktop.make({
   id: "com.acme.app",
   windows: Desktop.window("main", { title: "Acme" }),
-  native: Desktop.native(Native.all),
-  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+  native: Desktop.native(Native.clipboard({ permissions: ["readText"] }))
 })
 ```
 
-`Native.all` registers every built-in native surface, but it does not grant authority. Use
-`Native.Permissions.all` when an app intentionally wants every non-public native invoke permission:
+`Native.all()` registers every built-in native surface, but it does not grant authority. Use
+`Native.all({ permissions: "all" })` when an app intentionally wants every non-public native invoke permission:
 
 ```ts
 Desktop.make({
   id: "com.acme.native",
   windows: Desktop.window("main", { title: "Native" }),
-  native: Desktop.native(Native.all),
-  permissions: Desktop.permissions(Native.Permissions.all)
+  native: Desktop.native(Native.all({ permissions: "all" }))
 })
 ```
 
-Each native surface also exposes an explicit all-permissions declaration layer:
+Each native surface also accepts explicit permission options:
 
 ```ts
 Desktop.make({
   id: "com.acme.windows",
   windows: Desktop.window("main", { title: "Windows" }),
-  native: Desktop.native(Native.window),
-  permissions: Desktop.permissions(Native.Permissions.window.all)
+  native: Desktop.native(Native.window({ permissions: "all" }))
 })
 ```
 

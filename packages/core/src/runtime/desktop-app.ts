@@ -94,7 +94,9 @@ export type DesktopPermissionsLayer = DesktopDeclarationLayer<DesktopPermissionR
 
 export type DesktopProvidersLayer = DesktopDeclarationLayer<DesktopProviderRegistry>
 
-export type DesktopNativeLayer = DesktopDeclarationLayer<DesktopNativeRegistry>
+export type DesktopNativeLayer = DesktopDeclarationLayer<
+  DesktopNativeRegistry | DesktopPermissionRegistry
+>
 
 export type DesktopWorkflowsLayer<RIn = never, E = never> = DesktopDeclarationLayer<
   DesktopWorkflowRegistry,
@@ -149,6 +151,11 @@ export interface DesktopAppManifest {
   readonly id: string
   readonly windows: Readonly<Record<string, WindowSpec>>
   readonly rpcGroups: ReadonlyArray<DesktopRpcGroupDescriptor>
+}
+
+interface DesktopNativeSelectionSnapshot {
+  readonly registrations: ReadonlyArray<AnyDesktopNativeRegistration>
+  readonly permissions: ReadonlyArray<NormalizedCapability>
 }
 
 export type DesktopManifestSource<RIn = never, E = never> = Pick<
@@ -623,7 +630,8 @@ export const make = <RIn = never, E = never>(
     id: config.id ?? "app",
     windows: config.windows,
     windowRegistrations,
-    native: config.native ?? emptyDeclarationLayer<DesktopNativeRegistry>(),
+    native:
+      config.native ?? emptyDeclarationLayer<DesktopNativeRegistry | DesktopPermissionRegistry>(),
     rpcs: config.rpcs ?? emptyDeclarationLayer<DesktopRpcRegistry, RIn, E>(),
     permissions: config.permissions ?? emptyDeclarationLayer<DesktopPermissionRegistry>(),
     workflows: config.workflows ?? emptyDeclarationLayer<DesktopWorkflowRegistry, RIn, E>(),
@@ -634,9 +642,10 @@ export const make = <RIn = never, E = never>(
 export const manifest = <RIn = never, E = never>(
   config: DesktopManifestSource<RIn, E>
 ): DesktopAppManifest => {
+  const nativeSelection = snapshotNativeSelectionSync(config.native)
   const registrations = [
     ...snapshotRegistrationsSync(config.rpcs),
-    ...nativeRpcRegistrationsSync(snapshotNativeRegistrationsSync(config.native))
+    ...nativeRpcRegistrationsSync(nativeSelection.registrations)
   ]
   const windowRegistrations = snapshotWindowRegistrationsSync(config.windows)
   return Object.freeze({
@@ -875,10 +884,10 @@ const buildRegistrations = <RIn, E>(
 ): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>, never, never> =>
   Effect.sync(() => snapshotRegistrationsSync(rpcs))
 
-const buildNativeRegistrations = <RIn, E>(
+const buildNativeSelection = <RIn, E>(
   nativeLayer: DesktopConfig<RIn, E>["native"]
-): Effect.Effect<ReadonlyArray<AnyDesktopNativeRegistration>, never, never> =>
-  Effect.sync(() => snapshotNativeRegistrationsSync(nativeLayer))
+): Effect.Effect<DesktopNativeSelectionSnapshot, never, never> =>
+  Effect.sync(() => snapshotNativeSelectionSync(nativeLayer))
 
 const buildPermissions = <RIn>(
   permissions: DesktopConfig<RIn, never>["permissions"]
@@ -925,14 +934,29 @@ const snapshotRegistrationsSync = <RIn, E>(
   })
 }
 
-const snapshotNativeRegistrationsSync = (
+const snapshotNativeSelectionSync = (
   nativeLayer: DesktopNativeLayer | undefined
-): ReadonlyArray<AnyDesktopNativeRegistration> => {
-  if (nativeLayer === undefined) return []
+): DesktopNativeSelectionSnapshot => {
+  if (nativeLayer === undefined) {
+    return Object.freeze({
+      registrations: Object.freeze([]),
+      permissions: Object.freeze([])
+    })
+  }
   return snapshotDeclarationLayerSync({
     layer: nativeLayer,
-    live: DesktopNativeRegistryLive,
-    snapshot: (context) => Context.get(context, DesktopNativeRegistry).snapshot,
+    live: Layer.mergeAll(DesktopNativeRegistryLive, DesktopPermissionRegistryLive),
+    snapshot: (context) =>
+      Effect.gen(function* () {
+        const nativeRegistry = Context.get(context, DesktopNativeRegistry)
+        const permissionRegistry = Context.get(context, DesktopPermissionRegistry)
+        const registrations = yield* nativeRegistry.snapshot
+        const permissions = yield* permissionRegistry.snapshot
+        return Object.freeze({
+          registrations,
+          permissions
+        })
+      }),
     onAsyncBuild: (cause) =>
       new DesktopNativeRegistryAsyncBuildError({
         message:
@@ -1044,7 +1068,8 @@ export const runtimeGraph = <RIn, E>(
   Effect.gen(function* () {
     const providers = yield* buildProviders(config)
     const appRegistrations = yield* buildRegistrations(config.rpcs)
-    const nativeRegistrations = yield* buildNativeRegistrations(config.native)
+    const nativeSelection = yield* buildNativeSelection(config.native)
+    const nativeRegistrations = nativeSelection.registrations
     const registrations = [
       ...appRegistrations,
       ...nativeRpcRegistrationsSync(nativeRegistrations)
@@ -1312,10 +1337,12 @@ const buildSpine = <RIn, E>(
     Effect.gen(function* () {
       const providers = yield* buildProviders(config)
       const appRegistrations = yield* buildRegistrations(config.rpcs)
-      const nativeRegistrations = yield* buildNativeRegistrations(config.native)
+      const nativeSelection = yield* buildNativeSelection(config.native)
+      const nativeRegistrations = nativeSelection.registrations
       const nativeRpcRegistrations = nativeRpcRegistrationsSync(nativeRegistrations)
       const registrations = [...appRegistrations, ...nativeRpcRegistrations]
-      const permissions = yield* buildPermissions(config.permissions)
+      const explicitPermissions = yield* buildPermissions(config.permissions)
+      const permissions = [...nativeSelection.permissions, ...explicitPermissions]
       const workflowLayers = yield* buildWorkflows(config.workflows)
       const windowRegistrations = snapshotWindowRegistrationsSync(config.windows)
       yield* checkWindowRegistrations(config.id, windowRegistrations)

@@ -40,7 +40,7 @@ test("NativeCapabilities derives support metadata from selected native layers on
         missingWindow,
         tags: capabilities.manifest.map((fact) => fact.tag)
       }
-    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(clipboard)))
+    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(clipboard())))
   )
 
   expect(result.readText).toEqual({ status: "supported" })

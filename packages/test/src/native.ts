@@ -5,6 +5,7 @@ import {
   NormalizedCapability,
   DesktopNativeRegistry,
   DesktopNativeRegistryLive,
+  DesktopPermissionRegistryLive,
   PermissionRegistry,
   ResourceRegistry,
   ResourceRegistryLive,
@@ -369,7 +370,10 @@ function testNativeSurface(surface: {
 }
 
 function snapshotTestNativeSurfaces(): readonly TestNativeSurface[] {
-  const nativeLayer = Layer.provideMerge(Native.all, DesktopNativeRegistryLive)
+  const nativeLayer = Layer.provideMerge(
+    Native.all(),
+    Layer.mergeAll(DesktopNativeRegistryLive, DesktopPermissionRegistryLive)
+  )
   const registrations = Effect.runSync(
     Effect.scoped(
       Effect.gen(function* () {

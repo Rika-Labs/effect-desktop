@@ -8,7 +8,7 @@ TypeScript-facing native services backed by the Rust host: `App`, `Window`, `Web
 
 ## Public API
 
-Each native module exposes a canonical Effect `RpcGroup`, a generated `*Surface`, an Effect service, a client service, live handlers, support metadata, and deterministic test seams. The `Native.*` layer values are the public app-composition API; `Native.all` selects every built-in surface, while selective composition uses `Desktop.native(Native.clipboard, Native.dialog, ...)`. The `*Surface` value remains the internal source for server, client, test-client, schema-doc, contract-law, host-runtime, and default bridge-client artifacts.
+Each native module exposes a canonical Effect `RpcGroup`, a generated `*Surface`, an Effect service, a client service, live handlers, support metadata, and deterministic test seams. The `Native.*(...)` selector functions are the public app-composition API; `Native.all()` selects every built-in surface, while selective composition uses `Desktop.native(Native.clipboard(), Native.dialog(), ...)`. Permission options such as `Native.clipboard({ permissions: ["readText"] })` derive authority from the same surface metadata. The `*Surface` value remains the internal source for server, client, test-client, schema-doc, contract-law, host-runtime, and default bridge-client artifacts.
 
 Native RPC endpoints are authored through the package-internal `NativeSurface` helper. New native endpoints must declare payload and success schemas, endpoint kind, support status, and authority in one place. Authority is explicit: either a native invoke capability, an explicit no-permission endpoint, or a custom capability for desktop-specific policy. Native service files should not call `Rpc.make(...)` directly.
 
