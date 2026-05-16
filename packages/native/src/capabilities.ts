@@ -4,7 +4,9 @@ import { Context, Effect, Layer, Option, Schema } from "effect"
 
 import { all as NativeAll, available as nativeAvailable } from "./native.js"
 
-export const NativeCapabilityPlatformSchema = Schema.Literals(["macos", "windows", "linux"])
+const NativeCapabilityPlatforms = ["macos", "windows", "linux"] as const
+
+export const NativeCapabilityPlatformSchema = Schema.Literals(NativeCapabilityPlatforms)
 
 export type NativeCapabilityPlatform = Schema.Schema.Type<typeof NativeCapabilityPlatformSchema>
 
@@ -251,6 +253,17 @@ const supportReasonError = (support: NativeCapabilitySupport): string | undefine
   if (support.status !== "supported" && support.reason.trim().length === 0) {
     return "partial and unsupported native capabilities must include a reason"
   }
+  if (support.status === "partial" && support.platforms === undefined) {
+    return "partial native capabilities must include macos, windows, and linux platform entries"
+  }
+  const coverageError = supportPlatformCoverageError(support.platforms)
+  if (coverageError !== undefined) {
+    return coverageError
+  }
+  const consistencyError = supportPlatformConsistencyError(support)
+  if (consistencyError !== undefined) {
+    return consistencyError
+  }
   for (const platform of support.platforms ?? []) {
     if (platform.status === "supported") {
       if ("reason" in platform && platform.reason !== undefined) {
@@ -260,6 +273,49 @@ const supportReasonError = (support: NativeCapabilitySupport): string | undefine
     }
     if (platform.reason.trim().length === 0) {
       return "partial and unsupported platform entries must include a reason"
+    }
+  }
+  return undefined
+}
+
+const supportPlatformConsistencyError = (support: NativeCapabilitySupport): string | undefined => {
+  const platforms = support.platforms
+  if (platforms === undefined) {
+    return undefined
+  }
+  const everyPlatformSupported = platforms.every((platform) => platform.status === "supported")
+  const everyPlatformUnsupported = platforms.every((platform) => platform.status === "unsupported")
+  if (support.status === "supported" && !everyPlatformSupported) {
+    return "supported native capabilities cannot include partial or unsupported platform entries"
+  }
+  if (support.status === "unsupported" && !everyPlatformUnsupported) {
+    return "unsupported native capabilities cannot include supported or partial platform entries"
+  }
+  if (support.status === "partial" && everyPlatformSupported) {
+    return "partial native capabilities must not mark every platform supported"
+  }
+  if (support.status === "partial" && everyPlatformUnsupported) {
+    return "partial native capabilities must not mark every platform unsupported"
+  }
+  return undefined
+}
+
+const supportPlatformCoverageError = (
+  platforms: readonly NativeCapabilityPlatformSupport[] | undefined
+): string | undefined => {
+  if (platforms === undefined) {
+    return undefined
+  }
+  const seen = new Set<NativeCapabilityPlatform>()
+  for (const platform of platforms) {
+    if (seen.has(platform.platform)) {
+      return `native capability platform support has duplicate platform ${platform.platform}`
+    }
+    seen.add(platform.platform)
+  }
+  for (const platform of NativeCapabilityPlatforms) {
+    if (!seen.has(platform)) {
+      return "native capability platform support must include macos, windows, and linux"
     }
   }
   return undefined

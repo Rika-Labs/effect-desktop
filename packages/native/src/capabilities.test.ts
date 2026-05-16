@@ -33,7 +33,11 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     reason: "dock behavior is platform-specific",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "linux", status: "supported" },
+      {
+        platform: "linux",
+        status: "unsupported",
+        reason: "Linux launcher badge labels are not wired in the host adapter"
+      },
       {
         platform: "windows",
         status: "unsupported",
@@ -99,7 +103,8 @@ test("NativeCapabilities exposes partial support with platform-specific reasons"
     reason: "platform implementations differ",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+      { platform: "windows", status: "partial", reason: "requires shell integration" }
     ]
   })
 
@@ -118,7 +123,8 @@ test("NativeCapabilities exposes partial support with platform-specific reasons"
     reason: "platform implementations differ",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+      { platform: "windows", status: "partial", reason: "requires shell integration" }
     ]
   })
   expect(Object.isFrozen(result)).toBe(true)
@@ -131,7 +137,8 @@ test("NativeCapabilities fails platform-specific unsupported entries as typed er
     reason: "platform implementations differ",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+      { platform: "windows", status: "partial", reason: "requires shell integration" }
     ]
   })
 
@@ -243,6 +250,57 @@ test("NativeCapabilities rejects malformed support metadata", async () => {
     expect(failure?.error).toMatchObject({
       tag: "Example.malformed",
       message: "partial and unsupported native capabilities must include a reason"
+    })
+  }
+})
+
+test("NativeCapabilities rejects partial support without complete platform coverage", async () => {
+  const incomplete = testSurface("Example.incomplete", {
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+    ]
+  })
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(incomplete))))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
+    expect(failure?.error).toMatchObject({
+      tag: "Example.incomplete",
+      message: "native capability platform support must include macos, windows, and linux"
+    })
+  }
+})
+
+test("NativeCapabilities rejects contradictory top-level and platform support", async () => {
+  const contradictory = testSurface("Example.contradictory", {
+    status: "supported",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+      { platform: "windows", status: "supported" }
+    ]
+  })
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(contradictory))))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
+    expect(failure?.error).toMatchObject({
+      tag: "Example.contradictory",
+      message:
+        "supported native capabilities cannot include partial or unsupported platform entries"
     })
   }
 })

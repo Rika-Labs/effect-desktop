@@ -189,7 +189,7 @@ fn platform_dock_method_supported(method: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn platform_dock_method_supported(method: &str) -> bool {
-    matches!(method, "setBadgeCount" | "setProgress" | "requestAttention")
+    matches!(method, "requestAttention")
 }
 
 #[cfg(test)]
@@ -244,10 +244,10 @@ mod tests {
 
         #[cfg(target_os = "linux")]
         {
-            assert!(dock_method_supported("setBadgeCount"));
-            assert!(dock_method_supported("setProgress"));
             assert!(dock_method_supported("requestAttention"));
+            assert!(!dock_method_supported("setBadgeCount"));
             assert!(!dock_method_supported("setBadgeText"));
+            assert!(!dock_method_supported("setProgress"));
             assert!(!dock_method_supported("setMenu"));
             assert!(!dock_method_supported("setJumpList"));
         }

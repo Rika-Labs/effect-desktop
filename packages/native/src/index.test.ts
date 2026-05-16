@@ -5059,12 +5059,12 @@ test("Linux Dock client reports unimplemented partial methods as unsupported", a
 
   expect(result.badgeCountSupported).toBe(false)
   expect(result.progressSupported).toBe(false)
-  expect(result.attentionSupported).toBe(false)
+  expect(result.attentionSupported).toBe(true)
   expect(result.badgeTextSupported).toBe(false)
   expect(result.menuSupported).toBe(false)
   expectExitFailure(result.badgeCountExit, (error) => hasErrorTag(error, "Unsupported"))
   expectExitFailure(result.progressExit, (error) => hasErrorTag(error, "Unsupported"))
-  expectExitFailure(result.attentionExit, (error) => hasErrorTag(error, "Unsupported"))
+  expect(Exit.isSuccess(result.attentionExit)).toBe(true)
   expectExitFailure(
     result.textExit,
     (error) =>

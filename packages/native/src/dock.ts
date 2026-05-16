@@ -45,15 +45,17 @@ type DockMethodName =
 const DOCK_PLATFORM_VARIANCE_REASON = "dock behavior is platform-specific"
 const DOCK_UNSUPPORTED_REASON = "host adapter does not implement this Dock method on any platform"
 const DOCK_WINDOWS_BADGE_REASON = "Windows taskbar badges require jump-list/taskbar integration"
+const DOCK_LINUX_BADGE_REASON = "Linux launcher badge labels are not wired in the host adapter"
 const DOCK_LINUX_BADGE_TEXT_REASON = "Linux host only exposes numeric launcher badge labels"
 const DOCK_MACOS_PROGRESS_REASON = "macOS Dock does not expose taskbar progress"
 const DOCK_WINDOWS_PROGRESS_REASON = "Windows taskbar progress is not wired yet"
+const DOCK_LINUX_PROGRESS_REASON = "Linux launcher progress is not wired in the host adapter"
 
 const DockSupportByMethod = Object.freeze({
   setBadgeCount: NativeSurface.support.partial(DOCK_PLATFORM_VARIANCE_REASON, {
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "linux", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: DOCK_LINUX_BADGE_REASON },
       { platform: "windows", status: "unsupported", reason: DOCK_WINDOWS_BADGE_REASON }
     ]
   }),
@@ -64,10 +66,10 @@ const DockSupportByMethod = Object.freeze({
       { platform: "windows", status: "unsupported", reason: DOCK_WINDOWS_BADGE_REASON }
     ]
   }),
-  setProgress: NativeSurface.support.partial(DOCK_PLATFORM_VARIANCE_REASON, {
+  setProgress: NativeSurface.support.unsupported(DOCK_UNSUPPORTED_REASON, {
     platforms: [
-      { platform: "linux", status: "supported" },
       { platform: "macos", status: "unsupported", reason: DOCK_MACOS_PROGRESS_REASON },
+      { platform: "linux", status: "unsupported", reason: DOCK_LINUX_PROGRESS_REASON },
       { platform: "windows", status: "unsupported", reason: DOCK_WINDOWS_PROGRESS_REASON }
     ]
   }),
@@ -341,12 +343,9 @@ export const makeLinuxDockClient = (): DockClientApi => {
       unsupportedEffect<void>("Dock.setProgress", "launcher progress API is not connected yet"),
     setMenu: () => unsupportedEffect<void>("Dock.setMenu", "no portable dock menu on Linux"),
     setJumpList: () => unsupportedEffect<void>("Dock.setJumpList", "jump lists are Windows-only"),
-    requestAttention: () =>
-      unsupportedEffect<void>(
-        "Dock.requestAttention",
-        "window-manager attention API is not connected yet"
-      ),
-    isSupported: () => Effect.succeed(new DockSupportedResult({ supported: false }))
+    requestAttention: () => Effect.void,
+    isSupported: (method) =>
+      Effect.succeed(new DockSupportedResult({ supported: method === "requestAttention" }))
   } satisfies DockClientApi)
 }
 
