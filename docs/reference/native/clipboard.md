@@ -13,7 +13,8 @@ System clipboard read/write.
 ## Import
 
 ```ts
-import { Clipboard, ClipboardClient, ClipboardRpcs, ClipboardError } from "@effect-desktop/native"
+import { Desktop } from "@effect-desktop/core"
+import { Clipboard, ClipboardError, ClipboardRpcs, Native } from "@effect-desktop/native"
 ```
 
 ## Methods
@@ -27,9 +28,19 @@ import { Clipboard, ClipboardClient, ClipboardRpcs, ClipboardError } from "@effe
 
 `ClipboardError` — generic platform clipboard failure.
 
-## Layer
+## App composition
 
-`ClipboardLive`, `ClipboardHandlersLive`, `Native.clipboard`.
+```ts
+Desktop.make({
+  id: "com.acme.clipboard",
+  windows: Desktop.window("main", { title: "Clipboard" }),
+  native: Desktop.native(Native.clipboard),
+  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+})
+```
+
+`Native.clipboard` is the app-composition layer for `Desktop.native(...)`.
+`ClipboardLive` and `ClipboardHandlersLive` are runtime layers behind that selection.
 
 Use `Desktop.permission(Native.Permissions.clipboard.readText)` when the app allows reading clipboard text.
 

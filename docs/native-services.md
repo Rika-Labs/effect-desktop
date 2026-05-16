@@ -11,24 +11,12 @@ effect_version: 4
 > Full references: [`reference/native/`](reference/native/) — one page per service.
 
 Native services expose host-backed desktop capability through Effect services and RPC groups.
+Apps select native availability through `Desktop.native(...)` and grant authority through
+`Desktop.permissions(...)`.
 
-## Service pattern
+## App composition
 
-Most native modules follow the same public shape:
-
-- `<Name>Rpcs` — canonical RPC group.
-- `<Name>Surface` — generated surface metadata.
-- `<Name>` — runtime Effect service.
-- `<Name>Client` — client service.
-- `<Name>Live`, `<Name>HandlersLive` — live host-backed layers.
-- `Native.<name>` — app-composition layer for `Desktop.native(...)`.
-- `Native.Permissions.<name>.<method>` — native invoke permission capability data.
-- `make<Name>ClientLayer`, `make<Name>ServiceLayer` — deterministic substitution helpers.
-- `<Name>MethodNames`, `<Name>RpcEvents`, typed errors, handlers, and API types.
-
-This is the [layer-first contract](explanation/layer-first-design.md) applied uniformly.
-
-Native service authors should use the internal native surface authoring path, not ad hoc RPC construction. Each endpoint must carry schemas, endpoint kind, support metadata, and authority metadata together. `NativeCapabilities` reads the selected native registrations, so the public support manifest uses the same source of truth as handlers, clients, tests, and renderer descriptors.
+Select only the native surfaces the app uses:
 
 ```ts
 Desktop.make({
@@ -39,19 +27,21 @@ Desktop.make({
 })
 ```
 
-`Native.all` registers every built-in native surface, but it does not grant authority. Use
-`Native.permissions(...Native.Permissions.all)` when an app intentionally wants every non-public native invoke permission:
+`Native.all` registers every built-in native surface, but it does not grant authority:
 
 ```ts
 Desktop.make({
   id: "com.acme.native",
   windows: Desktop.window("main", { title: "Native" }),
   native: Desktop.native(Native.all),
-  permissions: Native.permissions(...Native.Permissions.all)
+  permissions: Desktop.permissions(
+    ...Native.Permissions.all.map((capability) => Desktop.permission(capability))
+  )
 })
 ```
 
-Each native surface exposes its own grouped permission data:
+Each native surface exposes grouped permission data when an app intentionally grants an
+entire surface:
 
 ```ts
 Desktop.make({
@@ -61,6 +51,26 @@ Desktop.make({
   permissions: Native.permissions(...Native.Permissions.window.all)
 })
 ```
+
+## Module shape
+
+Native modules keep one source of truth for service, RPC, client, host, support, and
+permission facts:
+
+- `<Name>Rpcs` — canonical RPC group.
+- `<Name>Surface` — generated surface metadata.
+- `<Name>` — runtime Effect service.
+- `<Name>Client` — client service.
+- `Native.<name>` — app-composition layer for `Desktop.native(...)`.
+- `Native.Permissions.<name>.<method>` — native invoke permission capability data.
+- `<Name>Live`, `<Name>HandlersLive` — runtime layers behind `Native.<name>`.
+- `make<Name>ClientLayer`, `make<Name>ServiceLayer` — deterministic test seams, not
+  app-composition APIs.
+- `<Name>MethodNames`, `<Name>RpcEvents`, typed errors, handlers, and API types.
+
+This is the [layer-first contract](explanation/layer-first-design.md) applied uniformly.
+
+Native service authors should use the internal native surface authoring path, not ad hoc RPC construction. Each endpoint must carry schemas, endpoint kind, support metadata, and authority metadata together. `NativeCapabilities` reads the selected native registrations, so the public support manifest uses the same source of truth as handlers, clients, tests, and renderer descriptors.
 
 ## Current native modules
 
