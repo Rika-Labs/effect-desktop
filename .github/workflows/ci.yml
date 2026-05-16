@@ -1,8 +1,3 @@
-# Depot CI Migration
-# Source: .github/workflows/ci.yml
-#
-# No changes were necessary.
-
 name: ci
 on:
   push:
@@ -22,11 +17,11 @@ jobs:
       matrix:
         include:
           - cell: linux-x64
-            os: ubuntu-latest
+            os: depot-ubuntu-24.04
           - cell: macos-arm64
-            os: macos-latest
+            os: depot-macos-15
           - cell: windows-x64
-            os: windows-latest
+            os: depot-windows-2025
     env:
       EFFECT_DESKTOP_MATRIX_CELL: ${{ matrix.cell }}
     steps:
