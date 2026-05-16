@@ -24,8 +24,8 @@ By the end, you'll understand how every Effect Desktop app is shaped — contrac
 ```mermaid
 flowchart LR
   UI[NotesPanel.tsx] -- useDesktop(NotesRpcs) --> Bridge
-  Bridge -- HostProtocolEnvelope --> Handlers[NotesHandlersLive]
-  Handlers --> SQLite[(SqlClient)]
+  Bridge -- HostProtocolEnvelope --> Runtime[RpcGroup.toLayer]
+  Runtime --> SQLite[(SqlClient)]
 ```
 
 Three new files in `apps/inspector/src/`:
