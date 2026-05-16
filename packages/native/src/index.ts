@@ -238,6 +238,29 @@ export {
   type ProtocolServiceApi
 } from "./protocol.js"
 export {
+  RealtimeMediaSession,
+  RealtimeMediaSessionClient,
+  RealtimeMediaSessionHandlersLive,
+  RealtimeMediaSessionLive,
+  RealtimeMediaSessionMethodNames,
+  RealtimeMediaSessionRpcEvents,
+  RealtimeMediaSessionRpcs,
+  RealtimeMediaSessionSurface,
+  makeHostRealtimeMediaSessionRpcRuntime,
+  makeRealtimeMediaSessionBridgeClientLayer,
+  makeRealtimeMediaSessionClientLayer,
+  makeRealtimeMediaSessionMemoryClient,
+  makeRealtimeMediaSessionPermissionDeniedError,
+  makeRealtimeMediaSessionServiceLayer,
+  makeRealtimeMediaSessionUnsupportedClient,
+  type RealtimeMediaSessionClientApi,
+  type RealtimeMediaSessionError,
+  type RealtimeMediaSessionMemoryClientOptions,
+  type RealtimeMediaSessionRpc,
+  type RealtimeMediaSessionRpcHandlers,
+  type RealtimeMediaSessionServiceApi
+} from "./realtime-media-session.js"
+export {
   PowerMonitor,
   PowerMonitorClient,
   PowerMonitorHandlersLive,

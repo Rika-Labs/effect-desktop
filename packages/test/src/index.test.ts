@@ -1948,6 +1948,7 @@ test("native test layers are derived from DesktopRpc surfaces", async () => {
     "Path",
     "PowerMonitor",
     "Protocol",
+    "RealtimeMediaSession",
     "SafeStorage",
     "Screen",
     "Shell",

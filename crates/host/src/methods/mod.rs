@@ -1,6 +1,7 @@
 mod dock;
 pub(crate) mod handshake;
 mod menu;
+mod realtime_media_session;
 mod window;
 
 use crate::{linux, window::WindowMethodHandler};
@@ -74,6 +75,21 @@ impl HostMethodRouter {
                 linux::global_shortcut_is_supported()
             }
             host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD => linux::safe_storage_is_available(),
+            host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD => {
+                realtime_media_session::open(payload)
+            }
+            host_protocol::REALTIME_MEDIA_SESSION_CLOSE_METHOD => {
+                realtime_media_session::close(payload)
+            }
+            host_protocol::REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD => {
+                realtime_media_session::select_device(payload)
+            }
+            host_protocol::REALTIME_MEDIA_SESSION_INTERRUPT_METHOD => {
+                realtime_media_session::interrupt(payload)
+            }
+            host_protocol::REALTIME_MEDIA_SESSION_IS_SUPPORTED_METHOD => {
+                realtime_media_session::is_supported()
+            }
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
                 menu::set_application_menu(&*self.window, payload)
             }
@@ -446,6 +462,88 @@ mod tests {
             }
             other => panic!("unexpected safe storage response: {other:?}"),
         }
+    }
+
+    #[test]
+    fn realtime_media_session_known_methods_return_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-realtime-media-open",
+                    host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
+                    serde_json::json!({
+                        "profileId": "profile-1",
+                        "sessionId": "session-1"
+                    }),
+                ),
+                1710000000113,
+            )
+            .expect("realtime media request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-realtime-media-open".to_string(),
+                timestamp: 1710000000113,
+                trace_id: "trace-request-realtime-media-open".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
+                    host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn realtime_media_session_rejects_invalid_payload_before_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-realtime-media-invalid",
+                    host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
+                    serde_json::json!({
+                        "profileId": "",
+                        "sessionId": "session-1"
+                    }),
+                ),
+                1710000000114,
+            )
+            .expect("realtime media request should return response");
+
+        match response {
+            HostProtocolEnvelope::Response {
+                error: Some(error), ..
+            } => assert_eq!(error.tag(), "InvalidArgument"),
+            other => panic!("unexpected realtime media invalid response: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn realtime_media_session_is_supported_reports_unimplemented_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-realtime-media-supported",
+                    host_protocol::REALTIME_MEDIA_SESSION_IS_SUPPORTED_METHOD,
+                ),
+                1710000000115,
+            )
+            .expect("realtime media support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-realtime-media-supported".to_string(),
+                timestamp: 1710000000115,
+                trace_id: "trace-request-realtime-media-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
     }
 
     fn request(id: &str, method: &str) -> HostProtocolEnvelope {

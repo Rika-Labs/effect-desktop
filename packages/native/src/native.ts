@@ -16,6 +16,7 @@ import { NotificationSurface } from "./notification.js"
 import { PathSurface } from "./path.js"
 import { PowerMonitorSurface } from "./power-monitor.js"
 import { ProtocolSurface } from "./protocol.js"
+import { RealtimeMediaSessionSurface } from "./realtime-media-session.js"
 import { SafeStorageSurface } from "./safe-storage.js"
 import { ScreenSurface } from "./screen.js"
 import { ShellSurface } from "./shell.js"
@@ -39,6 +40,7 @@ const BuiltInSurfaces = Object.freeze([
   PathSurface,
   PowerMonitorSurface,
   ProtocolSurface,
+  RealtimeMediaSessionSurface,
   SafeStorageSurface,
   ScreenSurface,
   ShellSurface,
@@ -68,6 +70,7 @@ const Notification = NotificationSurface.selection
 const Path = PathSurface.selection
 const PowerMonitor = PowerMonitorSurface.selection
 const Protocol = ProtocolSurface.selection
+const RealtimeMediaSession = RealtimeMediaSessionSurface.selection
 const SafeStorage = SafeStorageSurface.selection
 const Screen = ScreenSurface.selection
 const Shell = ShellSurface.selection
@@ -97,6 +100,7 @@ export const Permissions = Object.freeze({
   path: PathSurface.permissions,
   powerMonitor: PowerMonitorSurface.permissions,
   protocol: ProtocolSurface.permissions,
+  realtimeMediaSession: RealtimeMediaSessionSurface.permissions,
   safeStorage: SafeStorageSurface.permissions,
   screen: ScreenSurface.permissions,
   shell: ShellSurface.permissions,
@@ -121,6 +125,7 @@ export const Native = Object.freeze({
   Path,
   PowerMonitor,
   Protocol,
+  RealtimeMediaSession,
   SafeStorage,
   Screen,
   Shell,

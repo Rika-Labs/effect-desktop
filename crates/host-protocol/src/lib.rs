@@ -27,6 +27,16 @@ pub const GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD: &str = "GlobalShortcut.unregist
 pub const GLOBAL_SHORTCUT_IS_REGISTERED_METHOD: &str = "GlobalShortcut.isRegistered";
 pub const GLOBAL_SHORTCUT_IS_SUPPORTED_METHOD: &str = "GlobalShortcut.isSupported";
 pub const SAFE_STORAGE_IS_AVAILABLE_METHOD: &str = "SafeStorage.isAvailable";
+pub const REALTIME_MEDIA_SESSION_OPEN_METHOD: &str = "RealtimeMediaSession.open";
+pub const REALTIME_MEDIA_SESSION_CLOSE_METHOD: &str = "RealtimeMediaSession.close";
+pub const REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD: &str = "RealtimeMediaSession.selectDevice";
+pub const REALTIME_MEDIA_SESSION_INTERRUPT_METHOD: &str = "RealtimeMediaSession.interrupt";
+pub const REALTIME_MEDIA_SESSION_IS_SUPPORTED_METHOD: &str = "RealtimeMediaSession.isSupported";
+pub const REALTIME_MEDIA_SESSION_DEVICE_STATE_EVENT: &str = "RealtimeMediaSession.DeviceState";
+pub const REALTIME_MEDIA_SESSION_PERMISSION_STATE_EVENT: &str =
+    "RealtimeMediaSession.PermissionState";
+pub const REALTIME_MEDIA_SESSION_INTERRUPTION_EVENT: &str = "RealtimeMediaSession.Interruption";
+pub const REALTIME_MEDIA_SESSION_SESSION_STATE_EVENT: &str = "RealtimeMediaSession.SessionState";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
@@ -35,6 +45,7 @@ pub const RENDERER_RESUMED_EVENT: &str = "renderer.resumed";
 pub const RENDERER_RESUME_DENIED_EVENT: &str = "renderer.resume.denied";
 pub const DEFAULT_RECONNECT_WINDOW_MS: u64 = 30_000;
 pub const DEFAULT_MAX_BACKFILL_EVENTS: u64 = 1_024;
+pub const REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -160,6 +171,298 @@ impl WindowCreateResponse {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowDestroyPayload {
     window_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RealtimeMediaSessionIdentityPayload {
+    profile_id: String,
+    session_id: String,
+}
+
+impl RealtimeMediaSessionIdentityPayload {
+    pub fn new(profile_id: impl Into<String>, session_id: impl Into<String>) -> Self {
+        Self {
+            profile_id: profile_id.into(),
+            session_id: session_id.into(),
+        }
+    }
+
+    pub fn profile_id(&self) -> &str {
+        &self.profile_id
+    }
+
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RealtimeMediaDeviceKind {
+    Microphone,
+    Speaker,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RealtimeMediaInterruptionReason {
+    System,
+    User,
+    Background,
+    DeviceLost,
+    HostFailed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RealtimeMediaPermissionState {
+    Unknown,
+    PromptRequired,
+    Granted,
+    Denied,
+    Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RealtimeMediaSessionState {
+    Idle,
+    Opening,
+    Active,
+    Interrupted,
+    Closed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RealtimeMediaSessionSelectDevicePayload {
+    profile_id: String,
+    session_id: String,
+    kind: RealtimeMediaDeviceKind,
+    device_id: String,
+}
+
+impl RealtimeMediaSessionSelectDevicePayload {
+    pub fn new(
+        profile_id: impl Into<String>,
+        session_id: impl Into<String>,
+        kind: RealtimeMediaDeviceKind,
+        device_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            profile_id: profile_id.into(),
+            session_id: session_id.into(),
+            kind,
+            device_id: device_id.into(),
+        }
+    }
+
+    pub fn profile_id(&self) -> &str {
+        &self.profile_id
+    }
+
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    pub fn kind(&self) -> RealtimeMediaDeviceKind {
+        self.kind
+    }
+
+    pub fn device_id(&self) -> &str {
+        &self.device_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RealtimeMediaSessionInterruptPayload {
+    profile_id: String,
+    session_id: String,
+    reason: RealtimeMediaInterruptionReason,
+}
+
+impl RealtimeMediaSessionInterruptPayload {
+    pub fn new(
+        profile_id: impl Into<String>,
+        session_id: impl Into<String>,
+        reason: RealtimeMediaInterruptionReason,
+    ) -> Self {
+        Self {
+            profile_id: profile_id.into(),
+            session_id: session_id.into(),
+            reason,
+        }
+    }
+
+    pub fn profile_id(&self) -> &str {
+        &self.profile_id
+    }
+
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    pub fn reason(&self) -> RealtimeMediaInterruptionReason {
+        self.reason
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RealtimeMediaSessionSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl RealtimeMediaSessionSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RealtimeMediaDeviceStatePayload {
+    kind: RealtimeMediaDeviceKind,
+    device_id: String,
+    label: String,
+    selected: bool,
+    available: bool,
+}
+
+impl RealtimeMediaDeviceStatePayload {
+    pub fn new(
+        kind: RealtimeMediaDeviceKind,
+        device_id: impl Into<String>,
+        label: impl Into<String>,
+        selected: bool,
+        available: bool,
+    ) -> Self {
+        Self {
+            kind,
+            device_id: device_id.into(),
+            label: label.into(),
+            selected,
+            available,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RealtimeMediaDeviceStateEventPayload {
+    #[serde(rename = "type")]
+    event_type: String,
+    profile_id: String,
+    session_id: String,
+    devices: Vec<RealtimeMediaDeviceStatePayload>,
+}
+
+impl RealtimeMediaDeviceStateEventPayload {
+    pub fn new(
+        profile_id: impl Into<String>,
+        session_id: impl Into<String>,
+        devices: Vec<RealtimeMediaDeviceStatePayload>,
+    ) -> Self {
+        Self {
+            event_type: "device-state".to_string(),
+            profile_id: profile_id.into(),
+            session_id: session_id.into(),
+            devices,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RealtimeMediaPermissionStateEventPayload {
+    #[serde(rename = "type")]
+    event_type: String,
+    profile_id: String,
+    session_id: String,
+    microphone: RealtimeMediaPermissionState,
+    speaker: RealtimeMediaPermissionState,
+}
+
+impl RealtimeMediaPermissionStateEventPayload {
+    pub fn new(
+        profile_id: impl Into<String>,
+        session_id: impl Into<String>,
+        microphone: RealtimeMediaPermissionState,
+        speaker: RealtimeMediaPermissionState,
+    ) -> Self {
+        Self {
+            event_type: "permission-state".to_string(),
+            profile_id: profile_id.into(),
+            session_id: session_id.into(),
+            microphone,
+            speaker,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RealtimeMediaInterruptionEventPayload {
+    #[serde(rename = "type")]
+    event_type: String,
+    profile_id: String,
+    session_id: String,
+    reason: RealtimeMediaInterruptionReason,
+}
+
+impl RealtimeMediaInterruptionEventPayload {
+    pub fn new(
+        profile_id: impl Into<String>,
+        session_id: impl Into<String>,
+        reason: RealtimeMediaInterruptionReason,
+    ) -> Self {
+        Self {
+            event_type: "interruption".to_string(),
+            profile_id: profile_id.into(),
+            session_id: session_id.into(),
+            reason,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RealtimeMediaSessionStateEventPayload {
+    #[serde(rename = "type")]
+    event_type: String,
+    profile_id: String,
+    session_id: String,
+    state: RealtimeMediaSessionState,
+}
+
+impl RealtimeMediaSessionStateEventPayload {
+    pub fn new(
+        profile_id: impl Into<String>,
+        session_id: impl Into<String>,
+        state: RealtimeMediaSessionState,
+    ) -> Self {
+        Self {
+            event_type: "session-state".to_string(),
+            profile_id: profile_id.into(),
+            session_id: session_id.into(),
+            state,
+        }
+    }
 }
 
 impl WindowDestroyPayload {
@@ -715,11 +1018,18 @@ fn validate_optional_host_identity(value: Option<String>) -> Result<Option<Strin
 #[cfg(test)]
 mod tests {
     use super::{
-        HostProtocolEnvelope, HostProtocolError, HostVersionPayload, RendererResumeDeniedPayload,
-        RendererResumeDeniedReason, RendererResumePayload, RendererResumedPayload, ResumeTicket,
-        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowTitleBarStyle,
-        WindowTrafficLights, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
-        HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
+        HostProtocolEnvelope, HostProtocolError, HostVersionPayload, RealtimeMediaDeviceKind,
+        RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
+        RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
+        RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
+        RealtimeMediaSessionIdentityPayload, RealtimeMediaSessionInterruptPayload,
+        RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
+        RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
+        RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
+        RendererResumedPayload, ResumeTicket, WindowCreatePayload, WindowCreateResponse,
+        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights,
+        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS, HOST_PROTOCOL_ERROR_SPECS,
+        PROTOCOL_VERSION, REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -1012,6 +1322,105 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&payload).expect("window destroy payload should encode"),
             r#"{"windowId":"window-1"}"#
+        );
+    }
+
+    #[test]
+    fn realtime_media_session_payloads_serialize_canonically() {
+        let identity = RealtimeMediaSessionIdentityPayload::new("profile-1", "session-1");
+        assert_eq!(identity.profile_id(), "profile-1");
+        assert_eq!(identity.session_id(), "session-1");
+        assert_eq!(
+            serde_json::to_string(&identity).expect("identity should encode"),
+            r#"{"profileId":"profile-1","sessionId":"session-1"}"#
+        );
+
+        let select_device = RealtimeMediaSessionSelectDevicePayload::new(
+            "profile-1",
+            "session-1",
+            RealtimeMediaDeviceKind::Microphone,
+            "input-1",
+        );
+        assert_eq!(select_device.kind(), RealtimeMediaDeviceKind::Microphone);
+        assert_eq!(select_device.device_id(), "input-1");
+        assert_eq!(
+            serde_json::to_string(&select_device).expect("select device should encode"),
+            r#"{"profileId":"profile-1","sessionId":"session-1","kind":"microphone","deviceId":"input-1"}"#
+        );
+
+        let interrupt = RealtimeMediaSessionInterruptPayload::new(
+            "profile-1",
+            "session-1",
+            RealtimeMediaInterruptionReason::DeviceLost,
+        );
+        assert_eq!(
+            interrupt.reason(),
+            RealtimeMediaInterruptionReason::DeviceLost
+        );
+        assert_eq!(
+            serde_json::to_string(&interrupt).expect("interrupt should encode"),
+            r#"{"profileId":"profile-1","sessionId":"session-1","reason":"device-lost"}"#
+        );
+
+        let supported = RealtimeMediaSessionSupportedPayload::unsupported(
+            REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
+        );
+        assert!(!supported.supported());
+        assert_eq!(
+            supported.reason(),
+            Some(REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON)
+        );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("support result should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn realtime_media_session_events_serialize_canonically() {
+        let device = RealtimeMediaDeviceStatePayload::new(
+            RealtimeMediaDeviceKind::Speaker,
+            "speaker-1",
+            "Speakers",
+            true,
+            true,
+        );
+        let device_event =
+            RealtimeMediaDeviceStateEventPayload::new("profile-1", "session-1", vec![device]);
+        assert_eq!(
+            serde_json::to_string(&device_event).expect("device event should encode"),
+            r#"{"type":"device-state","profileId":"profile-1","sessionId":"session-1","devices":[{"kind":"speaker","deviceId":"speaker-1","label":"Speakers","selected":true,"available":true}]}"#
+        );
+
+        let permission_event = RealtimeMediaPermissionStateEventPayload::new(
+            "profile-1",
+            "session-1",
+            RealtimeMediaPermissionState::Granted,
+            RealtimeMediaPermissionState::PromptRequired,
+        );
+        assert_eq!(
+            serde_json::to_string(&permission_event).expect("permission event should encode"),
+            r#"{"type":"permission-state","profileId":"profile-1","sessionId":"session-1","microphone":"granted","speaker":"prompt-required"}"#
+        );
+
+        let interruption_event = RealtimeMediaInterruptionEventPayload::new(
+            "profile-1",
+            "session-1",
+            RealtimeMediaInterruptionReason::Background,
+        );
+        assert_eq!(
+            serde_json::to_string(&interruption_event).expect("interruption event should encode"),
+            r#"{"type":"interruption","profileId":"profile-1","sessionId":"session-1","reason":"background"}"#
+        );
+
+        let session_event = RealtimeMediaSessionStateEventPayload::new(
+            "profile-1",
+            "session-1",
+            RealtimeMediaSessionState::Interrupted,
+        );
+        assert_eq!(
+            serde_json::to_string(&session_event).expect("session event should encode"),
+            r#"{"type":"session-state","profileId":"profile-1","sessionId":"session-1","state":"interrupted"}"#
         );
     }
 

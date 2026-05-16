@@ -1086,6 +1086,7 @@ dependencies = [
  "libc",
  "lol_html",
  "muda",
+ "serde",
  "serde_json",
  "tao",
  "tracing",

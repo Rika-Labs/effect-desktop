@@ -710,6 +710,32 @@ test("ProductionChecker flags unguarded unsupported Dock progress usage", async 
   ])
 })
 
+test("ProductionChecker flags unguarded realtime media session usage", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/media.ts",
+          content: 'RealtimeMediaSession.open({ profileId: "p1", sessionId: "s1" })'
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures).toMatchObject([
+    {
+      rule: "unsupported-capability-without-guard",
+      location: {
+        path: "src/renderer/media.ts",
+        line: 1,
+        column: 1
+      }
+    }
+  ])
+})
+
 test("ProductionChecker accepts supported Dock requestAttention without a guard", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({
