@@ -11,8 +11,7 @@ effect_version: 4
 > Full references: [`reference/native/`](reference/native/) — one page per service.
 
 Native services expose host-backed desktop capability through Effect services and RPC groups.
-Apps select native availability through `Desktop.native(...)` and grant authority through
-`Desktop.permissions(...)`.
+Apps select native capabilities through `Native.capabilities(...)`.
 
 ## App composition
 
@@ -22,35 +21,31 @@ Select only the native surfaces the app uses:
 Desktop.make({
   id: "com.acme.app",
   windows: Desktop.window("main", { title: "Acme" }),
-  native: Desktop.native(Native.clipboard),
-  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+  native: Native.capabilities(Native.Clipboard.readText)
 })
 ```
 
-`Native.all` registers every built-in native surface, but it does not grant authority:
+`Native.all` registers every built-in native surface and grants every privileged native method:
 
 ```ts
 Desktop.make({
   id: "com.acme.native",
   windows: Desktop.window("main", { title: "Native" }),
-  native: Desktop.native(Native.all),
-  permissions: Desktop.permissions(
-    ...Native.Permissions.all.map((capability) => Desktop.permission(capability))
-  )
+  native: Native.capabilities(Native.all)
 })
 ```
 
-Each native surface exposes grouped permission data when an app intentionally grants an
-entire surface:
+Each native surface exposes grouped capability data when an app intentionally grants an entire surface:
 
 ```ts
 Desktop.make({
   id: "com.acme.windows",
   windows: Desktop.window("main", { title: "Windows" }),
-  native: Desktop.native(Native.window),
-  permissions: Native.permissions(...Native.Permissions.window.all)
+  native: Native.capabilities(Native.Window.all)
 })
 ```
+
+Use `Native.available(Native.Clipboard)` only when the app needs support metadata or unprivileged status methods without granting native authority.
 
 ## Module shape
 
@@ -61,9 +56,10 @@ permission facts:
 - `<Name>Surface` — generated surface metadata.
 - `<Name>` — runtime Effect service.
 - `<Name>Client` — client service.
-- `Native.<name>` — app-composition layer for `Desktop.native(...)`.
-- `Native.Permissions.<name>.<method>` — native invoke permission capability data.
-- `<Name>Live`, `<Name>HandlersLive` — runtime layers behind `Native.<name>`.
+- `Native.<Name>.<method>` — app-composition capability selection for one privileged native method.
+- `Native.<Name>.all` — app-composition capability selection for one native surface.
+- `Native.available(Native.<Name>)` — availability-only selection with no authority grant.
+- `<Name>Live`, `<Name>HandlersLive` — runtime layers behind the native capability selection.
 - `make<Name>ClientLayer`, `make<Name>ServiceLayer` — deterministic test seams, not
   app-composition APIs.
 - `<Name>MethodNames`, `<Name>RpcEvents`, typed errors, handlers, and API types.

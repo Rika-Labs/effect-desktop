@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test"
 import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
-import { Desktop, type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
+import {
+  DesktopNativeRegistry,
+  type DesktopNativeLayer,
+  type DesktopRpcSchemaDoc
+} from "@effect-desktop/core"
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect"
 
 import {
@@ -11,7 +15,7 @@ import {
   UnsupportedCapability,
   makeNativeCapabilitiesLayer
 } from "./capabilities.js"
-import { clipboard, surface } from "./native.js"
+import { Native } from "./native.js"
 
 test("NativeCapabilities exposes support metadata from native surfaces", async () => {
   const result = await Effect.runPromise(
@@ -40,7 +44,7 @@ test("NativeCapabilities derives support metadata from selected native layers on
         missingWindow,
         tags: capabilities.manifest.map((fact) => fact.tag)
       }
-    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(clipboard)))
+    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(Native.available(Native.Clipboard))))
   )
 
   expect(result.readText).toEqual({ status: "supported" })
@@ -189,13 +193,16 @@ const testSurfaceWithoutCapability = () =>
 const testNativeLayer = (
   ...surfaces: readonly { readonly schemaDocs: readonly DesktopRpcSchemaDoc[] }[]
 ): DesktopNativeLayer =>
-  Desktop.native(
-    ...surfaces.map((capabilitySurface, index) =>
-      surface({
-        tag: `TestSurface${index}`,
-        serverLayer: Layer.empty,
-        schemaDocs: capabilitySurface.schemaDocs,
-        contractLaws: []
-      })
-    )
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const registry = yield* DesktopNativeRegistry
+      for (const [index, capabilitySurface] of surfaces.entries()) {
+        yield* registry.register({
+          tag: `TestSurface${index}`,
+          serverLayer: Layer.empty,
+          schemaDocs: capabilitySurface.schemaDocs,
+          contractLaws: []
+        })
+      }
+    })
   )

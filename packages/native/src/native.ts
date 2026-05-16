@@ -1,9 +1,9 @@
 import {
   Desktop,
   DesktopNativeRegistry,
+  DesktopPermissionRegistry,
   NormalizedCapability as NormalizedCapabilitySchema,
   type DesktopNativeLayer,
-  type DesktopPermissionsLayer,
   type AnyDesktopNativeRegistration,
   type DesktopRpcSchemaDoc,
   type NormalizedCapability
@@ -31,30 +31,41 @@ import { UpdaterSurface } from "./updater.js"
 import { WebViewSurface } from "./webview.js"
 import { WindowSurface } from "./window.js"
 
-interface NativePermissionSource {
+interface NativeSurfaceSource {
   readonly tag: string
   readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
 }
 
-export type NativePermissionGroup<Method extends string = string> = Readonly<
-  Record<Method, NormalizedCapability> & {
-    readonly all: readonly NormalizedCapability[]
-  }
+export interface NativeSurfaceSelection {
+  readonly _tag: "NativeSurfaceSelection" | "NativeCapabilitySelection"
+  readonly surfaces: readonly AnyDesktopNativeRegistration[]
+}
+
+export interface NativeCapabilitySelection extends NativeSurfaceSelection {
+  readonly _tag: "NativeCapabilitySelection"
+  readonly permissions: readonly NormalizedCapability[]
+}
+
+type NativeSurfaceApi<Method extends string = string> = Readonly<
+  NativeSurfaceSelection &
+    Record<Method, NativeCapabilitySelection> & {
+      readonly all: NativeCapabilitySelection
+    }
 >
 
-export interface NativePermissionsApi {
-  readonly app: NativePermissionGroup<
+export interface NativeApi {
+  readonly App: NativeSurfaceApi<
     "quit" | "restart" | "focus" | "setOpenAtLogin" | "registerProtocol"
   >
-  readonly clipboard: NativePermissionGroup<
+  readonly Clipboard: NativeSurfaceApi<
     "readText" | "writeText" | "readImage" | "writeImage" | "clear"
   >
-  readonly contextMenu: NativePermissionGroup<"show" | "buildFromTemplate" | "bindCommand">
-  readonly crashReporter: NativePermissionGroup<"start" | "recordBreadcrumb" | "flush">
-  readonly dialog: NativePermissionGroup<
+  readonly ContextMenu: NativeSurfaceApi<"show" | "buildFromTemplate" | "bindCommand">
+  readonly CrashReporter: NativeSurfaceApi<"start" | "recordBreadcrumb" | "flush">
+  readonly Dialog: NativeSurfaceApi<
     "openFile" | "openDirectory" | "saveFile" | "message" | "confirm"
   >
-  readonly dock: NativePermissionGroup<
+  readonly Dock: NativeSurfaceApi<
     | "setBadgeCount"
     | "setBadgeText"
     | "setProgress"
@@ -62,29 +73,23 @@ export interface NativePermissionsApi {
     | "setJumpList"
     | "requestAttention"
   >
-  readonly globalShortcut: NativePermissionGroup<"register" | "unregister" | "unregisterAll">
-  readonly menu: NativePermissionGroup<
-    "setApplicationMenu" | "setWindowMenu" | "clear" | "bindCommand"
-  >
-  readonly notification: NativePermissionGroup<"show" | "close" | "requestPermission">
-  readonly path: NativePermissionGroup<"appData" | "cache" | "logs" | "temp" | "home" | "downloads">
-  readonly powerMonitor: NativePermissionGroup<never>
-  readonly protocol: NativePermissionGroup<
-    "registerAppProtocol" | "serveAsset" | "serveRoute" | "deny"
-  >
-  readonly safeStorage: NativePermissionGroup<"set" | "get" | "delete" | "list">
-  readonly screen: NativePermissionGroup<"getDisplays" | "getPrimaryDisplay" | "getPointerPoint">
-  readonly shell: NativePermissionGroup<
-    "openExternal" | "showItemInFolder" | "openPath" | "trashItem"
-  >
-  readonly systemAppearance: NativePermissionGroup<
+  readonly GlobalShortcut: NativeSurfaceApi<"register" | "unregister" | "unregisterAll">
+  readonly Menu: NativeSurfaceApi<"setApplicationMenu" | "setWindowMenu" | "clear" | "bindCommand">
+  readonly Notification: NativeSurfaceApi<"show" | "close" | "requestPermission">
+  readonly Path: NativeSurfaceApi<"appData" | "cache" | "logs" | "temp" | "home" | "downloads">
+  readonly PowerMonitor: NativeSurfaceApi<never>
+  readonly Protocol: NativeSurfaceApi<"registerAppProtocol" | "serveAsset" | "serveRoute" | "deny">
+  readonly SafeStorage: NativeSurfaceApi<"set" | "get" | "delete" | "list">
+  readonly Screen: NativeSurfaceApi<"getDisplays" | "getPrimaryDisplay" | "getPointerPoint">
+  readonly Shell: NativeSurfaceApi<"openExternal" | "showItemInFolder" | "openPath" | "trashItem">
+  readonly SystemAppearance: NativeSurfaceApi<
     "getAppearance" | "getAccentColor" | "getReducedMotion" | "getReducedTransparency"
   >
-  readonly tray: NativePermissionGroup<"create" | "setIcon" | "setTooltip" | "setMenu" | "destroy">
-  readonly updater: NativePermissionGroup<
+  readonly Tray: NativeSurfaceApi<"create" | "setIcon" | "setTooltip" | "setMenu" | "destroy">
+  readonly Updater: NativeSurfaceApi<
     "check" | "download" | "install" | "installAndRestart" | "getStatus" | "readyForRestart"
   >
-  readonly webView: NativePermissionGroup<
+  readonly WebView: NativeSurfaceApi<
     | "create"
     | "loadRoute"
     | "loadUrl"
@@ -95,37 +100,10 @@ export interface NativePermissionsApi {
     | "setNavigationPolicy"
     | "destroy"
   >
-  readonly window: NativePermissionGroup<"create" | "close">
-  readonly all: readonly NormalizedCapability[]
-}
-
-export interface NativeApi {
-  readonly surface: (registration: AnyDesktopNativeRegistration) => DesktopNativeLayer
-  readonly app: DesktopNativeLayer
-  readonly clipboard: DesktopNativeLayer
-  readonly contextMenu: DesktopNativeLayer
-  readonly crashReporter: DesktopNativeLayer
-  readonly dialog: DesktopNativeLayer
-  readonly dock: DesktopNativeLayer
-  readonly globalShortcut: DesktopNativeLayer
-  readonly menu: DesktopNativeLayer
-  readonly notification: DesktopNativeLayer
-  readonly path: DesktopNativeLayer
-  readonly powerMonitor: DesktopNativeLayer
-  readonly protocol: DesktopNativeLayer
-  readonly safeStorage: DesktopNativeLayer
-  readonly screen: DesktopNativeLayer
-  readonly shell: DesktopNativeLayer
-  readonly systemAppearance: DesktopNativeLayer
-  readonly tray: DesktopNativeLayer
-  readonly updater: DesktopNativeLayer
-  readonly webView: DesktopNativeLayer
-  readonly window: DesktopNativeLayer
-  readonly all: DesktopNativeLayer
-  readonly Permissions: NativePermissionsApi
-  readonly permissions: (
-    ...capabilities: readonly NormalizedCapability[]
-  ) => DesktopPermissionsLayer
+  readonly Window: NativeSurfaceApi<"create" | "close">
+  readonly all: NativeCapabilitySelection
+  readonly capabilities: (...tokens: readonly NativeCapabilitySelection[]) => DesktopNativeLayer
+  readonly available: (...surfaces: readonly NativeSurfaceSelection[]) => DesktopNativeLayer
 }
 
 const BuiltInSurfaces = Object.freeze([
@@ -151,7 +129,7 @@ const BuiltInSurfaces = Object.freeze([
   WindowSurface
 ]) satisfies readonly AnyDesktopNativeRegistration[]
 
-export const surface = (registration: AnyDesktopNativeRegistration): DesktopNativeLayer =>
+const registerSurface = (registration: AnyDesktopNativeRegistration): DesktopNativeLayer =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const nativeRegistry = yield* DesktopNativeRegistry
@@ -159,60 +137,72 @@ export const surface = (registration: AnyDesktopNativeRegistration): DesktopNati
     })
   )
 
-const defineSurface = (registration: AnyDesktopNativeRegistration): DesktopNativeLayer =>
-  surface(registration)
-
-export const app = defineSurface(AppSurface)
-export const clipboard = defineSurface(ClipboardSurface)
-export const contextMenu = defineSurface(ContextMenuSurface)
-export const crashReporter = defineSurface(CrashReporterSurface)
-export const dialog = defineSurface(DialogSurface)
-export const dock = defineSurface(DockSurface)
-export const globalShortcut = defineSurface(GlobalShortcutSurface)
-export const menu = defineSurface(MenuSurface)
-export const notification = defineSurface(NotificationSurface)
-export const path = defineSurface(PathSurface)
-export const powerMonitor = defineSurface(PowerMonitorSurface)
-export const protocol = defineSurface(ProtocolSurface)
-export const safeStorage = defineSurface(SafeStorageSurface)
-export const screen = defineSurface(ScreenSurface)
-export const shell = defineSurface(ShellSurface)
-export const systemAppearance = defineSurface(SystemAppearanceSurface)
-export const tray = defineSurface(TraySurface)
-export const updater = defineSurface(UpdaterSurface)
-export const webView = defineSurface(WebViewSurface)
-export const window = defineSurface(WindowSurface)
-
-export const all: DesktopNativeLayer = Desktop.native(...BuiltInSurfaces.map(surface))
+const registerPermissions = (permissions: readonly NormalizedCapability[]): DesktopNativeLayer =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const permissionRegistry = yield* DesktopPermissionRegistry
+      for (const permission of permissions) {
+        yield* permissionRegistry.register(permission)
+      }
+    })
+  )
 
 const permissionCapability = (
-  registration: NativePermissionSource,
+  registration: NativeSurfaceSource,
   method: string
 ): NormalizedCapability => {
   const capability = permissionCapabilitiesByMethod(registration).get(method)
   if (capability === undefined) {
     throw new TypeError(
-      `Native.Permissions.${registration.tag} cannot expose permission for unprivileged or unknown method ${JSON.stringify(method)}`
+      `Native.${registration.tag} cannot expose capability for unprivileged or unknown method ${JSON.stringify(method)}`
     )
   }
   return capability
 }
 
-export const permissions = (
-  ...capabilities: readonly NormalizedCapability[]
-): DesktopPermissionsLayer => Desktop.permissions(...capabilities.map(Desktop.permission))
-
-const permissionGroup = <const Method extends string>(
-  registration: NativePermissionSource,
-  capabilities: Record<Method, NormalizedCapability>
-): NativePermissionGroup<Method> =>
+const surfaceSelection = (registration: AnyDesktopNativeRegistration): NativeSurfaceSelection =>
   Object.freeze({
+    _tag: "NativeSurfaceSelection" as const,
+    surfaces: Object.freeze([registration])
+  })
+
+const capabilitySelection = (
+  registration: AnyDesktopNativeRegistration,
+  permissions: readonly NormalizedCapability[]
+): NativeCapabilitySelection =>
+  Object.freeze({
+    _tag: "NativeCapabilitySelection" as const,
+    surfaces: Object.freeze([registration]),
+    permissions: Object.freeze([...permissions])
+  })
+
+const surfaceCapability = (
+  registration: AnyDesktopNativeRegistration,
+  method: string
+): NativeCapabilitySelection =>
+  capabilitySelection(registration, [permissionCapability(registration, method)])
+
+const nativeSurface = <const Method extends string>(
+  registration: AnyDesktopNativeRegistration,
+  capabilities: Record<Method, NativeCapabilitySelection>
+): NativeSurfaceApi<Method> =>
+  Object.freeze({
+    ...surfaceSelection(registration),
     ...capabilities,
-    all: allPermissionCapabilities([registration])
+    all: capabilitySelection(registration, allPermissionCapabilities([registration]))
+  })
+
+const allCapabilitySelection = (
+  surfaces: readonly AnyDesktopNativeRegistration[]
+): NativeCapabilitySelection =>
+  Object.freeze({
+    _tag: "NativeCapabilitySelection" as const,
+    surfaces: Object.freeze([...surfaces]),
+    permissions: allPermissionCapabilities(surfaces)
   })
 
 const allPermissionCapabilities = (
-  surfaces: readonly NativePermissionSource[]
+  surfaces: readonly NativeSurfaceSource[]
 ): readonly NormalizedCapability[] => {
   const permissions: NormalizedCapability[] = []
   const seen = new Set<string>()
@@ -244,7 +234,7 @@ const allPermissionCapabilities = (
 }
 
 const permissionCapabilitiesByMethod = (
-  surfaceRegistration: NativePermissionSource
+  surfaceRegistration: NativeSurfaceSource
 ): ReadonlyMap<string, NormalizedCapability> => {
   const capabilities = new Map<string, NormalizedCapability>()
 
@@ -273,196 +263,223 @@ const methodNameFromTag = (surfaceTag: string, tag: string): string => {
   return tag.startsWith(prefix) ? tag.slice(prefix.length) : tag
 }
 
-const AppPermissions = permissionGroup(AppSurface, {
-  quit: permissionCapability(AppSurface, "quit"),
-  restart: permissionCapability(AppSurface, "restart"),
-  focus: permissionCapability(AppSurface, "focus"),
-  setOpenAtLogin: permissionCapability(AppSurface, "setOpenAtLogin"),
-  registerProtocol: permissionCapability(AppSurface, "registerProtocol")
+const dedupeSurfaces = (
+  selections: readonly NativeSurfaceSelection[]
+): readonly AnyDesktopNativeRegistration[] => {
+  const surfaces: AnyDesktopNativeRegistration[] = []
+  const seen = new Set<string>()
+
+  for (const selection of selections) {
+    for (const nativeSurface of selection.surfaces) {
+      if (seen.has(nativeSurface.tag)) {
+        continue
+      }
+      seen.add(nativeSurface.tag)
+      surfaces.push(nativeSurface)
+    }
+  }
+
+  return Object.freeze(surfaces)
+}
+
+const dedupePermissions = (
+  selections: readonly NativeCapabilitySelection[]
+): readonly NormalizedCapability[] => {
+  const permissions: NormalizedCapability[] = []
+  const seen = new Set<string>()
+
+  for (const selection of selections) {
+    for (const permission of selection.permissions) {
+      const key = JSON.stringify(permission)
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      permissions.push(permission)
+    }
+  }
+
+  return Object.freeze(permissions)
+}
+
+export const available = (...selections: readonly NativeSurfaceSelection[]): DesktopNativeLayer =>
+  Desktop.native(...dedupeSurfaces(selections).map(registerSurface))
+
+export const capabilities = (
+  ...selections: readonly NativeCapabilitySelection[]
+): DesktopNativeLayer =>
+  Desktop.native(
+    ...dedupeSurfaces(selections).map(registerSurface),
+    registerPermissions(dedupePermissions(selections))
+  )
+
+const App = nativeSurface(AppSurface, {
+  quit: surfaceCapability(AppSurface, "quit"),
+  restart: surfaceCapability(AppSurface, "restart"),
+  focus: surfaceCapability(AppSurface, "focus"),
+  setOpenAtLogin: surfaceCapability(AppSurface, "setOpenAtLogin"),
+  registerProtocol: surfaceCapability(AppSurface, "registerProtocol")
 })
 
-const ClipboardPermissions = permissionGroup(ClipboardSurface, {
-  readText: permissionCapability(ClipboardSurface, "readText"),
-  writeText: permissionCapability(ClipboardSurface, "writeText"),
-  readImage: permissionCapability(ClipboardSurface, "readImage"),
-  writeImage: permissionCapability(ClipboardSurface, "writeImage"),
-  clear: permissionCapability(ClipboardSurface, "clear")
+const Clipboard = nativeSurface(ClipboardSurface, {
+  readText: surfaceCapability(ClipboardSurface, "readText"),
+  writeText: surfaceCapability(ClipboardSurface, "writeText"),
+  readImage: surfaceCapability(ClipboardSurface, "readImage"),
+  writeImage: surfaceCapability(ClipboardSurface, "writeImage"),
+  clear: surfaceCapability(ClipboardSurface, "clear")
 })
 
-const ContextMenuPermissions = permissionGroup(ContextMenuSurface, {
-  show: permissionCapability(ContextMenuSurface, "show"),
-  buildFromTemplate: permissionCapability(ContextMenuSurface, "buildFromTemplate"),
-  bindCommand: permissionCapability(ContextMenuSurface, "bindCommand")
+const ContextMenu = nativeSurface(ContextMenuSurface, {
+  show: surfaceCapability(ContextMenuSurface, "show"),
+  buildFromTemplate: surfaceCapability(ContextMenuSurface, "buildFromTemplate"),
+  bindCommand: surfaceCapability(ContextMenuSurface, "bindCommand")
 })
 
-const CrashReporterPermissions = permissionGroup(CrashReporterSurface, {
-  start: permissionCapability(CrashReporterSurface, "start"),
-  recordBreadcrumb: permissionCapability(CrashReporterSurface, "recordBreadcrumb"),
-  flush: permissionCapability(CrashReporterSurface, "flush")
+const CrashReporter = nativeSurface(CrashReporterSurface, {
+  start: surfaceCapability(CrashReporterSurface, "start"),
+  recordBreadcrumb: surfaceCapability(CrashReporterSurface, "recordBreadcrumb"),
+  flush: surfaceCapability(CrashReporterSurface, "flush")
 })
 
-const DialogPermissions = permissionGroup(DialogSurface, {
-  openFile: permissionCapability(DialogSurface, "openFile"),
-  openDirectory: permissionCapability(DialogSurface, "openDirectory"),
-  saveFile: permissionCapability(DialogSurface, "saveFile"),
-  message: permissionCapability(DialogSurface, "message"),
-  confirm: permissionCapability(DialogSurface, "confirm")
+const Dialog = nativeSurface(DialogSurface, {
+  openFile: surfaceCapability(DialogSurface, "openFile"),
+  openDirectory: surfaceCapability(DialogSurface, "openDirectory"),
+  saveFile: surfaceCapability(DialogSurface, "saveFile"),
+  message: surfaceCapability(DialogSurface, "message"),
+  confirm: surfaceCapability(DialogSurface, "confirm")
 })
 
-const DockPermissions = permissionGroup(DockSurface, {
-  setBadgeCount: permissionCapability(DockSurface, "setBadgeCount"),
-  setBadgeText: permissionCapability(DockSurface, "setBadgeText"),
-  setProgress: permissionCapability(DockSurface, "setProgress"),
-  setMenu: permissionCapability(DockSurface, "setMenu"),
-  setJumpList: permissionCapability(DockSurface, "setJumpList"),
-  requestAttention: permissionCapability(DockSurface, "requestAttention")
+const Dock = nativeSurface(DockSurface, {
+  setBadgeCount: surfaceCapability(DockSurface, "setBadgeCount"),
+  setBadgeText: surfaceCapability(DockSurface, "setBadgeText"),
+  setProgress: surfaceCapability(DockSurface, "setProgress"),
+  setMenu: surfaceCapability(DockSurface, "setMenu"),
+  setJumpList: surfaceCapability(DockSurface, "setJumpList"),
+  requestAttention: surfaceCapability(DockSurface, "requestAttention")
 })
 
-const GlobalShortcutPermissions = permissionGroup(GlobalShortcutSurface, {
-  register: permissionCapability(GlobalShortcutSurface, "register"),
-  unregister: permissionCapability(GlobalShortcutSurface, "unregister"),
-  unregisterAll: permissionCapability(GlobalShortcutSurface, "unregisterAll")
+const GlobalShortcut = nativeSurface(GlobalShortcutSurface, {
+  register: surfaceCapability(GlobalShortcutSurface, "register"),
+  unregister: surfaceCapability(GlobalShortcutSurface, "unregister"),
+  unregisterAll: surfaceCapability(GlobalShortcutSurface, "unregisterAll")
 })
 
-const MenuPermissions = permissionGroup(MenuSurface, {
-  setApplicationMenu: permissionCapability(MenuSurface, "setApplicationMenu"),
-  setWindowMenu: permissionCapability(MenuSurface, "setWindowMenu"),
-  clear: permissionCapability(MenuSurface, "clear"),
-  bindCommand: permissionCapability(MenuSurface, "bindCommand")
+const Menu = nativeSurface(MenuSurface, {
+  setApplicationMenu: surfaceCapability(MenuSurface, "setApplicationMenu"),
+  setWindowMenu: surfaceCapability(MenuSurface, "setWindowMenu"),
+  clear: surfaceCapability(MenuSurface, "clear"),
+  bindCommand: surfaceCapability(MenuSurface, "bindCommand")
 })
 
-const NotificationPermissions = permissionGroup(NotificationSurface, {
-  show: permissionCapability(NotificationSurface, "show"),
-  close: permissionCapability(NotificationSurface, "close"),
-  requestPermission: permissionCapability(NotificationSurface, "requestPermission")
+const Notification = nativeSurface(NotificationSurface, {
+  show: surfaceCapability(NotificationSurface, "show"),
+  close: surfaceCapability(NotificationSurface, "close"),
+  requestPermission: surfaceCapability(NotificationSurface, "requestPermission")
 })
 
-const PathPermissions = permissionGroup(PathSurface, {
-  appData: permissionCapability(PathSurface, "appData"),
-  cache: permissionCapability(PathSurface, "cache"),
-  logs: permissionCapability(PathSurface, "logs"),
-  temp: permissionCapability(PathSurface, "temp"),
-  home: permissionCapability(PathSurface, "home"),
-  downloads: permissionCapability(PathSurface, "downloads")
+const Path = nativeSurface(PathSurface, {
+  appData: surfaceCapability(PathSurface, "appData"),
+  cache: surfaceCapability(PathSurface, "cache"),
+  logs: surfaceCapability(PathSurface, "logs"),
+  temp: surfaceCapability(PathSurface, "temp"),
+  home: surfaceCapability(PathSurface, "home"),
+  downloads: surfaceCapability(PathSurface, "downloads")
 })
 
-const PowerMonitorPermissions = permissionGroup(PowerMonitorSurface, {})
+const PowerMonitor = nativeSurface(PowerMonitorSurface, {})
 
-const ProtocolPermissions = permissionGroup(ProtocolSurface, {
-  registerAppProtocol: permissionCapability(ProtocolSurface, "registerAppProtocol"),
-  serveAsset: permissionCapability(ProtocolSurface, "serveAsset"),
-  serveRoute: permissionCapability(ProtocolSurface, "serveRoute"),
-  deny: permissionCapability(ProtocolSurface, "deny")
+const Protocol = nativeSurface(ProtocolSurface, {
+  registerAppProtocol: surfaceCapability(ProtocolSurface, "registerAppProtocol"),
+  serveAsset: surfaceCapability(ProtocolSurface, "serveAsset"),
+  serveRoute: surfaceCapability(ProtocolSurface, "serveRoute"),
+  deny: surfaceCapability(ProtocolSurface, "deny")
 })
 
-const SafeStoragePermissions = permissionGroup(SafeStorageSurface, {
-  set: permissionCapability(SafeStorageSurface, "set"),
-  get: permissionCapability(SafeStorageSurface, "get"),
-  delete: permissionCapability(SafeStorageSurface, "delete"),
-  list: permissionCapability(SafeStorageSurface, "list")
+const SafeStorage = nativeSurface(SafeStorageSurface, {
+  set: surfaceCapability(SafeStorageSurface, "set"),
+  get: surfaceCapability(SafeStorageSurface, "get"),
+  delete: surfaceCapability(SafeStorageSurface, "delete"),
+  list: surfaceCapability(SafeStorageSurface, "list")
 })
 
-const ScreenPermissions = permissionGroup(ScreenSurface, {
-  getDisplays: permissionCapability(ScreenSurface, "getDisplays"),
-  getPrimaryDisplay: permissionCapability(ScreenSurface, "getPrimaryDisplay"),
-  getPointerPoint: permissionCapability(ScreenSurface, "getPointerPoint")
+const Screen = nativeSurface(ScreenSurface, {
+  getDisplays: surfaceCapability(ScreenSurface, "getDisplays"),
+  getPrimaryDisplay: surfaceCapability(ScreenSurface, "getPrimaryDisplay"),
+  getPointerPoint: surfaceCapability(ScreenSurface, "getPointerPoint")
 })
 
-const ShellPermissions = permissionGroup(ShellSurface, {
-  openExternal: permissionCapability(ShellSurface, "openExternal"),
-  showItemInFolder: permissionCapability(ShellSurface, "showItemInFolder"),
-  openPath: permissionCapability(ShellSurface, "openPath"),
-  trashItem: permissionCapability(ShellSurface, "trashItem")
+const Shell = nativeSurface(ShellSurface, {
+  openExternal: surfaceCapability(ShellSurface, "openExternal"),
+  showItemInFolder: surfaceCapability(ShellSurface, "showItemInFolder"),
+  openPath: surfaceCapability(ShellSurface, "openPath"),
+  trashItem: surfaceCapability(ShellSurface, "trashItem")
 })
 
-const SystemAppearancePermissions = permissionGroup(SystemAppearanceSurface, {
-  getAppearance: permissionCapability(SystemAppearanceSurface, "getAppearance"),
-  getAccentColor: permissionCapability(SystemAppearanceSurface, "getAccentColor"),
-  getReducedMotion: permissionCapability(SystemAppearanceSurface, "getReducedMotion"),
-  getReducedTransparency: permissionCapability(SystemAppearanceSurface, "getReducedTransparency")
+const SystemAppearance = nativeSurface(SystemAppearanceSurface, {
+  getAppearance: surfaceCapability(SystemAppearanceSurface, "getAppearance"),
+  getAccentColor: surfaceCapability(SystemAppearanceSurface, "getAccentColor"),
+  getReducedMotion: surfaceCapability(SystemAppearanceSurface, "getReducedMotion"),
+  getReducedTransparency: surfaceCapability(SystemAppearanceSurface, "getReducedTransparency")
 })
 
-const TrayPermissions = permissionGroup(TraySurface, {
-  create: permissionCapability(TraySurface, "create"),
-  setIcon: permissionCapability(TraySurface, "setIcon"),
-  setTooltip: permissionCapability(TraySurface, "setTooltip"),
-  setMenu: permissionCapability(TraySurface, "setMenu"),
-  destroy: permissionCapability(TraySurface, "destroy")
+const Tray = nativeSurface(TraySurface, {
+  create: surfaceCapability(TraySurface, "create"),
+  setIcon: surfaceCapability(TraySurface, "setIcon"),
+  setTooltip: surfaceCapability(TraySurface, "setTooltip"),
+  setMenu: surfaceCapability(TraySurface, "setMenu"),
+  destroy: surfaceCapability(TraySurface, "destroy")
 })
 
-const UpdaterPermissions = permissionGroup(UpdaterSurface, {
-  check: permissionCapability(UpdaterSurface, "check"),
-  download: permissionCapability(UpdaterSurface, "download"),
-  install: permissionCapability(UpdaterSurface, "install"),
-  installAndRestart: permissionCapability(UpdaterSurface, "installAndRestart"),
-  getStatus: permissionCapability(UpdaterSurface, "getStatus"),
-  readyForRestart: permissionCapability(UpdaterSurface, "readyForRestart")
+const Updater = nativeSurface(UpdaterSurface, {
+  check: surfaceCapability(UpdaterSurface, "check"),
+  download: surfaceCapability(UpdaterSurface, "download"),
+  install: surfaceCapability(UpdaterSurface, "install"),
+  installAndRestart: surfaceCapability(UpdaterSurface, "installAndRestart"),
+  getStatus: surfaceCapability(UpdaterSurface, "getStatus"),
+  readyForRestart: surfaceCapability(UpdaterSurface, "readyForRestart")
 })
 
-const WebViewPermissions = permissionGroup(WebViewSurface, {
-  create: permissionCapability(WebViewSurface, "create"),
-  loadRoute: permissionCapability(WebViewSurface, "loadRoute"),
-  loadUrl: permissionCapability(WebViewSurface, "loadUrl"),
-  reload: permissionCapability(WebViewSurface, "reload"),
-  goBack: permissionCapability(WebViewSurface, "goBack"),
-  goForward: permissionCapability(WebViewSurface, "goForward"),
-  captureScreenshot: permissionCapability(WebViewSurface, "captureScreenshot"),
-  setNavigationPolicy: permissionCapability(WebViewSurface, "setNavigationPolicy"),
-  destroy: permissionCapability(WebViewSurface, "destroy")
+const WebView = nativeSurface(WebViewSurface, {
+  create: surfaceCapability(WebViewSurface, "create"),
+  loadRoute: surfaceCapability(WebViewSurface, "loadRoute"),
+  loadUrl: surfaceCapability(WebViewSurface, "loadUrl"),
+  reload: surfaceCapability(WebViewSurface, "reload"),
+  goBack: surfaceCapability(WebViewSurface, "goBack"),
+  goForward: surfaceCapability(WebViewSurface, "goForward"),
+  captureScreenshot: surfaceCapability(WebViewSurface, "captureScreenshot"),
+  setNavigationPolicy: surfaceCapability(WebViewSurface, "setNavigationPolicy"),
+  destroy: surfaceCapability(WebViewSurface, "destroy")
 })
 
-const WindowPermissions = permissionGroup(WindowSurface, {
-  create: permissionCapability(WindowSurface, "create"),
-  close: permissionCapability(WindowSurface, "close")
+const Window = nativeSurface(WindowSurface, {
+  create: surfaceCapability(WindowSurface, "create"),
+  close: surfaceCapability(WindowSurface, "close")
 })
 
-export const Permissions: NativePermissionsApi = Object.freeze({
-  app: AppPermissions,
-  clipboard: ClipboardPermissions,
-  contextMenu: ContextMenuPermissions,
-  crashReporter: CrashReporterPermissions,
-  dialog: DialogPermissions,
-  dock: DockPermissions,
-  globalShortcut: GlobalShortcutPermissions,
-  menu: MenuPermissions,
-  notification: NotificationPermissions,
-  path: PathPermissions,
-  powerMonitor: PowerMonitorPermissions,
-  protocol: ProtocolPermissions,
-  safeStorage: SafeStoragePermissions,
-  screen: ScreenPermissions,
-  shell: ShellPermissions,
-  systemAppearance: SystemAppearancePermissions,
-  tray: TrayPermissions,
-  updater: UpdaterPermissions,
-  webView: WebViewPermissions,
-  window: WindowPermissions,
-  all: allPermissionCapabilities(BuiltInSurfaces)
-})
+export const all: NativeCapabilitySelection = allCapabilitySelection(BuiltInSurfaces)
 
 export const Native: NativeApi = Object.freeze({
-  surface,
-  app,
-  clipboard,
-  contextMenu,
-  crashReporter,
-  dialog,
-  dock,
-  globalShortcut,
-  menu,
-  notification,
-  path,
-  powerMonitor,
-  protocol,
-  safeStorage,
-  screen,
-  shell,
-  systemAppearance,
-  tray,
-  updater,
-  webView,
-  window,
+  App,
+  Clipboard,
+  ContextMenu,
+  CrashReporter,
+  Dialog,
+  Dock,
+  GlobalShortcut,
+  Menu,
+  Notification,
+  Path,
+  PowerMonitor,
+  Protocol,
+  SafeStorage,
+  Screen,
+  Shell,
+  SystemAppearance,
+  Tray,
+  Updater,
+  WebView,
+  Window,
   all,
-  Permissions,
-  permissions
+  capabilities,
+  available
 })

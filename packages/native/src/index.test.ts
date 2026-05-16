@@ -377,9 +377,10 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect(native.ClipboardSurface).toBeDefined()
   expect(native.DialogSurface).toBeDefined()
   expect(native.Native.all).toBeDefined()
-  expect(Layer.isLayer(native.Native.clipboard)).toBe(true)
-  expect(Layer.isLayer(native.Native.all)).toBe(true)
-  expect(native.Native.Permissions.clipboard.readText).toBeDefined()
+  expect(native.Native.Clipboard.readText).toBeDefined()
+  expect(Layer.isLayer(native.Native.available(native.Native.Clipboard))).toBe(true)
+  expect(Layer.isLayer(native.Native.capabilities(native.Native.all))).toBe(true)
+  expect("Permissions" in native.Native).toBe(false)
   expect(native.NativeCapabilities).toBeFunction()
   expect(native.NativeCapabilitiesLive).toBeDefined()
   expect(native.UnsupportedCapability).toBeFunction()
@@ -398,8 +399,8 @@ test("native package root keeps contracts and implementation helpers behind subp
   expect("makeHostClipboardRpcRuntime" in native).toBe(false)
 })
 
-test("Native.Permissions.all declares every non-public native capability", async () => {
-  const declared = await nativePermissionTags(Native.permissions(...Native.Permissions.all))
+test("Native.capabilities Native.all declares every public native capability", async () => {
+  const declared = await nativePermissionTags(Native.capabilities(Native.all))
 
   expect(declared).toContain("App.quit")
   expect(declared).toContain("Clipboard.readText")
@@ -407,16 +408,10 @@ test("Native.Permissions.all declares every non-public native capability", async
   expect(declared).not.toContain("Clipboard.isSupported")
 })
 
-test("native permission groups declare only their native surface", async () => {
-  const windowPermissions = await nativePermissionTags(
-    Native.permissions(...Native.Permissions.window.all)
-  )
-  const dialogPermissions = await nativePermissionTags(
-    Native.permissions(...Native.Permissions.dialog.all)
-  )
-  const clipboardPermissions = await nativePermissionTags(
-    Native.permissions(...Native.Permissions.clipboard.all)
-  )
+test("native capability groups declare only their native surface", async () => {
+  const windowPermissions = await nativePermissionTags(Native.capabilities(Native.Window.all))
+  const dialogPermissions = await nativePermissionTags(Native.capabilities(Native.Dialog.all))
+  const clipboardPermissions = await nativePermissionTags(Native.capabilities(Native.Clipboard.all))
 
   expect(windowPermissions).toContain("Window.create")
   expect(windowPermissions).toContain("Window.close")
@@ -427,17 +422,15 @@ test("native permission groups declare only their native surface", async () => {
   expect(clipboardPermissions).not.toContain("Clipboard.isSupported")
 })
 
-test("native permission constants can declare a selected method", async () => {
-  const declared = await nativePermissionTags(
-    Desktop.permission(Native.Permissions.clipboard.readText)
-  )
+test("native capability constants can declare a selected method", async () => {
+  const declared = await nativePermissionTags(Native.capabilities(Native.Clipboard.readText))
 
   expect(declared).toContain("Clipboard.readText")
   expect(declared).not.toContain("Clipboard.writeText")
 })
 
-test("bare native surface selection does not grant authority", async () => {
-  const declared = await nativePermissionTags(Native.clipboard)
+test("native availability selection does not grant authority", async () => {
+  const declared = await nativePermissionTags(Native.available(Native.Clipboard))
 
   expect(declared.size).toBe(0)
 })
@@ -450,12 +443,11 @@ test("native contracts subpath exposes schema-coded payload contracts", async ()
   expect(contracts.DialogOpenResult).toBeFunction()
 })
 
-test("Desktop.native registers selected native surfaces into app manifests", () => {
+test("Native.capabilities registers selected native surfaces into app manifests", () => {
   const app = Desktop.make({
     id: "native-selected",
     windows: Desktop.window("main", { title: "Native Selected" }),
-    native: Desktop.native(Native.clipboard, Native.dialog),
-    permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+    native: Native.capabilities(Native.Clipboard.readText, Native.Dialog.all)
   })
   const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
     Array.from(group.group.requests.keys())
@@ -471,7 +463,7 @@ test("Desktop.native availability does not require matching permissions during g
     Desktop.runtimeGraph({
       id: "native-no-permissions",
       windows: Desktop.window("main", { title: "Native No Permissions" }),
-      native: Desktop.native(Native.clipboard)
+      native: Native.available(Native.Clipboard)
     })
   )
 
@@ -484,7 +476,7 @@ test("Desktop.native rejects duplicate native surfaces as typed config errors", 
     Desktop.runtimeGraph({
       id: "native-duplicate",
       windows: Desktop.window("main", { title: "Native Duplicate" }),
-      native: Desktop.native(Native.clipboard, Native.clipboard)
+      native: Desktop.native(Native.available(Native.Clipboard), Native.available(Native.Clipboard))
     })
   )
 
@@ -505,7 +497,7 @@ test("Desktop.native rejects duplicate RPC methods across native and app RPC lay
     Desktop.runtimeGraph({
       id: "native-rpc-duplicate",
       windows: Desktop.window("main", { title: "Native RPC Duplicate" }),
-      native: Desktop.native(Native.clipboard),
+      native: Native.available(Native.Clipboard),
       rpcs: ClipboardSurface.serverLayer
     })
   )
@@ -522,11 +514,11 @@ test("Desktop.native rejects duplicate RPC methods across native and app RPC lay
   }
 })
 
-test("Desktop.native Native.all registers every built-in native surface", () => {
+test("Native.capabilities Native.all registers every built-in native surface", () => {
   const app = Desktop.make({
     id: "native-all",
     windows: Desktop.window("main", { title: "Native All" }),
-    native: Desktop.native(Native.all)
+    native: Native.capabilities(Native.all)
   })
   const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
     Array.from(group.group.requests.keys())

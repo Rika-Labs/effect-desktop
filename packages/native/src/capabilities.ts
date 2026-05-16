@@ -8,7 +8,7 @@ import {
 } from "@effect-desktop/core"
 import { Context, Data, Effect, Layer, Option } from "effect"
 
-import { all as NativeAll } from "./native.js"
+import { all as NativeAll, capabilities as nativeCapabilities } from "./native.js"
 
 export type NativeCapabilitySupport = RpcSupportMetadata
 
@@ -116,7 +116,7 @@ export const makeNativeCapabilities = (
   makeNativeCapabilityManifest(surfaces).pipe(Effect.map(capabilitiesFromManifest))
 
 export const makeNativeCapabilitiesLayer = (
-  nativeLayer: DesktopNativeLayer = NativeAll
+  nativeLayer: DesktopNativeLayer = nativeCapabilities(NativeAll)
 ): Layer.Layer<NativeCapabilities, NativeCapabilityManifestError, never> =>
   Layer.effect(
     NativeCapabilities,

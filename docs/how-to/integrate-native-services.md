@@ -12,7 +12,7 @@ Native services live under `@effect-desktop/native`. Each one ships with an `Rpc
 
 ## Runtime setup
 
-Select native availability in `Desktop.make`. Use `Native.all` for the broad built-in set or list only the services the app uses.
+Select native capabilities in `Desktop.make`. Use `Native.all` for the broad built-in set or list only the methods the app uses.
 
 ```ts
 import { Desktop } from "@effect-desktop/core"
@@ -21,12 +21,11 @@ import { Native } from "@effect-desktop/native"
 export const App = Desktop.make({
   id: "com.acme.app",
   windows: Desktop.window("main", { title: "Acme" }),
-  native: Desktop.native(Native.clipboard, Native.dialog),
-  permissions: Desktop.permissions(Desktop.permission(Native.Permissions.clipboard.readText))
+  native: Native.capabilities(Native.Clipboard.readText, Native.Dialog.openFile)
 })
 ```
 
-`native` declares what the app wires into the runtime. `permissions` declares which selected calls are allowed.
+`Native.capabilities(...)` registers the required native surfaces and grants only the selected privileged calls.
 
 ## The pattern
 
@@ -128,7 +127,7 @@ Don't assume support — check it and degrade gracefully.
 
 ## Permissions
 
-`native.invoke` capabilities cover native services. Native availability by itself does not grant authority; declare allowed native calls with `Native.Permissions`, such as `Native.Permissions.clipboard.readText`. Privileged calls such as `SafeStorage`, `Updater.install`, and `Protocol.register` should stay explicit and reviewable.
+`native.invoke` capabilities cover native services. Declare allowed native calls with method selections such as `Native.Clipboard.readText`. Use `Native.available(Native.Clipboard)` only for support checks that need the surface without granting authority. Privileged calls such as `SafeStorage`, `Updater.install`, and `Protocol.register` should stay explicit and reviewable.
 
 ## Related
 

@@ -32,33 +32,12 @@ export {
 } from "./capabilities.js"
 export {
   Native,
-  Permissions,
   all,
-  app as nativeApp,
-  clipboard,
-  contextMenu,
-  crashReporter,
-  dialog,
-  dock,
-  globalShortcut,
-  menu,
-  notification,
-  path,
-  powerMonitor,
-  protocol,
-  safeStorage,
-  screen,
-  shell,
-  permissions,
-  surface,
-  systemAppearance,
-  tray,
-  updater,
-  webView,
-  window,
+  available,
+  capabilities,
   type NativeApi,
-  type NativePermissionGroup,
-  type NativePermissionsApi
+  type NativeCapabilitySelection,
+  type NativeSurfaceSelection
 } from "./native.js"
 export {
   Clipboard,

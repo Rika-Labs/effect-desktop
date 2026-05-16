@@ -371,7 +371,7 @@ function testNativeSurface(surface: {
 
 function snapshotTestNativeSurfaces(): readonly TestNativeSurface[] {
   const nativeLayer = Layer.provideMerge(
-    Native.all,
+    Native.capabilities(Native.all),
     Layer.mergeAll(DesktopNativeRegistryLive, DesktopPermissionRegistryLive)
   )
   const registrations = Effect.runSync(

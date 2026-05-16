@@ -40,14 +40,12 @@ import { Menu, MenuError, MenuRpcs, Native } from "@effect-desktop/native"
 Desktop.make({
   id: "com.acme.menu",
   windows: Desktop.window("main", { title: "Menu" }),
-  native: Desktop.native(Native.menu),
-  permissions: Native.permissions(...Native.Permissions.menu.all)
+  native: Native.capabilities(Native.Menu.all)
 })
 ```
 
-`Native.menu` is the app-composition layer for `Desktop.native(...)`.
-`Native.Permissions.menu.*` grants menu authority. `menuCapability(...)` is a
-platform support helper; it does not grant permission.
+`Native.Menu.all` registers the menu surface and grants menu authority.
+`menuCapability(...)` is a platform support helper; it does not grant permission.
 
 ## Related
 
