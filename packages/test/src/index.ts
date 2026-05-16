@@ -1232,19 +1232,19 @@ const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRec
     output: readableBytes(fixture.output ?? []),
     exited,
     write: async (chunk: Uint8Array) => {
-      await yieldMockHostTurn()
       if (!running) {
         throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
       }
 
+      await yieldMockHostTurn()
       record.writes.push(copyBytes(chunk))
     },
     resize: async (size: PtyResizeInput) => {
-      await yieldMockHostTurn()
       if (!running) {
         throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
       }
 
+      await yieldMockHostTurn()
       record.resizes.push({ rows: size.rows, cols: size.cols })
     },
     isRunning: () => running,

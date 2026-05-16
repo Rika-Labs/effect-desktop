@@ -316,23 +316,25 @@ test("Filesystem maps Effect FileSystem unknown EPERM failures to PermissionDeni
 })
 
 test("Filesystem stat treats readLink EINVAL as a non-symlink", async () => {
+  const root = mockWorkspaceRoot()
   const service = await makeTestFilesystem(
-    { permissions: allowFilesystemRoot("/workspace") },
+    { permissions: allowFilesystemRoot(root) },
     readLinkFailureFileSystem("EINVAL")
   )
 
-  const result = await Effect.runPromise(service.stat("/workspace/file.txt"))
+  const result = await Effect.runPromise(service.stat(join(root, "file.txt")))
 
   expect(result.kind).toBe("file")
 })
 
 test("Filesystem stat maps readLink permission failures", async () => {
+  const root = mockWorkspaceRoot()
   const service = await makeTestFilesystem(
-    { permissions: allowFilesystemRoot("/workspace") },
+    { permissions: allowFilesystemRoot(root) },
     readLinkFailureFileSystem("EACCES")
   )
 
-  const exit = await Effect.runPromiseExit(service.stat("/workspace/file.txt"))
+  const exit = await Effect.runPromiseExit(service.stat(join(root, "file.txt")))
 
   expectFailureTag(exit, "PermissionDenied")
 })
