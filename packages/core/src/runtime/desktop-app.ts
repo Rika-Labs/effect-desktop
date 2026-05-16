@@ -99,11 +99,7 @@ export type DesktopProvidersLayer<RIn = never> = Layer.Layer<
   RIn | DesktopProviderRegistry
 >
 
-export type DesktopNativeLayer<RIn = never, E = never> = Layer.Layer<
-  never,
-  E,
-  RIn | DesktopNativeRegistry
->
+export type DesktopNativeLayer = Layer.Layer<never, never, DesktopNativeRegistry>
 
 export type DesktopWorkflowsLayer<RIn = never, E = never> = Layer.Layer<
   never,
@@ -115,7 +111,7 @@ export interface DesktopConfig<RIn = never, E = never> {
   readonly id: string
   readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProvidersLayer<RIn>
-  readonly native?: DesktopNativeLayer<RIn, E>
+  readonly native?: DesktopNativeLayer
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
   readonly permissions?: DesktopPermissionsLayer<RIn>
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
@@ -125,7 +121,7 @@ export interface DesktopMakeConfig<RIn = never, E = never> {
   readonly id?: string
   readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProvidersLayer<RIn>
-  readonly native?: DesktopNativeLayer<RIn, E>
+  readonly native?: DesktopNativeLayer
   readonly rpcs?: DesktopRpcsLayer<E, RIn>
   readonly permissions?: DesktopPermissionsLayer<RIn>
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
@@ -141,7 +137,7 @@ export type DesktopWorkflowEngineLayer<RIn = never, E = never> = Layer.Layer<
 
 export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopConfig<RIn, E> {
   readonly _tag: "DesktopAppDescriptor"
-  readonly native: DesktopNativeLayer<RIn, E>
+  readonly native: DesktopNativeLayer
   readonly rpcs: DesktopRpcsLayer<E, RIn>
   readonly permissions: DesktopPermissionsLayer<RIn>
   readonly workflows: DesktopWorkflowsLayer<RIn, E>
@@ -612,9 +608,8 @@ export const provider = <RIn = never>(
     })
   )
 
-export const native = <RIn = never, E = never>(
-  ...layers: readonly DesktopNativeLayer<RIn, E>[]
-): DesktopNativeLayer<RIn, E> => mergeLayerArray(layers.map((layer) => Layer.fresh(layer)))
+export const native = (...layers: readonly DesktopNativeLayer[]): DesktopNativeLayer =>
+  mergeLayerArray(layers.map((layer) => Layer.fresh(layer)))
 
 const DefaultProviders = Object.freeze({
   runtime: Provider.Runtime.bun,
@@ -633,7 +628,7 @@ export const make = <RIn = never, E = never>(
     id: config.id ?? "app",
     windows: config.windows,
     windowRegistrations,
-    native: config.native ?? (Layer.empty as DesktopNativeLayer<RIn, E>),
+    native: config.native ?? (Layer.empty as DesktopNativeLayer),
     rpcs: config.rpcs ?? (Layer.empty as DesktopRpcsLayer<E, RIn>),
     permissions: config.permissions ?? (Layer.empty as DesktopPermissionsLayer<RIn>),
     workflows: config.workflows ?? (Layer.empty as DesktopWorkflowsLayer<RIn, E>),
@@ -958,14 +953,11 @@ const snapshotRegistrationsSync = <RIn, E>(
   }
 }
 
-const snapshotNativeRegistrationsSync = <RIn, E>(
-  nativeLayer: DesktopConfig<RIn, E>["native"]
+const snapshotNativeRegistrationsSync = (
+  nativeLayer: DesktopNativeLayer | undefined
 ): ReadonlyArray<AnyDesktopNativeRegistration> => {
   if (nativeLayer === undefined) return []
-  const composed = Layer.provideMerge(
-    nativeLayer as unknown as Layer.Layer<never, never, DesktopNativeRegistry>,
-    DesktopNativeRegistryLive
-  )
+  const composed = Layer.provideMerge(nativeLayer, DesktopNativeRegistryLive)
   try {
     return Effect.runSync(
       Effect.scoped(
