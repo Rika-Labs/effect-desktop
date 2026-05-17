@@ -103,10 +103,6 @@ pub const LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON: &str = "host-adapter-unimplemen
 pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
-fn default_true() -> bool {
-    true
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostVersionPayload {
@@ -2579,7 +2575,7 @@ pub struct WorkspaceIndexScopePayload {
     ignore_rules: Vec<WorkspaceIndexIgnoreRulePayload>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     grants: Vec<serde_json::Value>,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     watch: bool,
 }
 
@@ -2608,6 +2604,10 @@ impl WorkspaceIndexScopePayload {
 
     pub fn grants(&self) -> &[serde_json::Value] {
         &self.grants
+    }
+
+    pub fn watch(&self) -> bool {
+        self.watch
     }
 }
 
@@ -2786,6 +2786,13 @@ pub struct WorkspaceIndexSupportedPayload {
 }
 
 impl WorkspaceIndexSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -2838,6 +2845,18 @@ impl WorkspaceIndexEventPayload {
     pub fn with_root(mut self, root: impl Into<String>, state: WorkspaceIndexState) -> Self {
         self.root = Some(root.into());
         self.state = Some(state);
+        self
+    }
+
+    pub fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(path.into());
+        self
+    }
+
+    pub fn with_counts(mut self, indexed: u64, invalidated: u64, ignored: u64) -> Self {
+        self.indexed = Some(indexed);
+        self.invalidated = Some(invalidated);
+        self.ignored = Some(ignored);
         self
     }
 }

@@ -500,50 +500,33 @@ fn read_source_hash(path: &str, operation: &'static str) -> Result<String, HostP
 }
 
 #[cfg(test)]
-type FileReplacementTestHook = Box<dyn FnOnce() + Send + 'static>;
+type FileReplacementTestHook = Box<dyn FnOnce() + 'static>;
 
 #[cfg(test)]
-static BEFORE_SOURCE_CAPTURE_HOOK: OnceLock<Mutex<Option<FileReplacementTestHook>>> =
-    OnceLock::new();
-
-#[cfg(test)]
-static BEFORE_REPLACEMENT_CREATE_HOOK: OnceLock<Mutex<Option<FileReplacementTestHook>>> =
-    OnceLock::new();
-
-#[cfg(test)]
-fn before_source_capture_hook() -> &'static Mutex<Option<FileReplacementTestHook>> {
-    BEFORE_SOURCE_CAPTURE_HOOK.get_or_init(|| Mutex::new(None))
+thread_local! {
+    static BEFORE_SOURCE_CAPTURE_HOOK: std::cell::RefCell<Option<FileReplacementTestHook>> =
+        std::cell::RefCell::new(None);
+    static BEFORE_REPLACEMENT_CREATE_HOOK: std::cell::RefCell<Option<FileReplacementTestHook>> =
+        std::cell::RefCell::new(None);
 }
 
 #[cfg(test)]
-fn before_replacement_create_hook() -> &'static Mutex<Option<FileReplacementTestHook>> {
-    BEFORE_REPLACEMENT_CREATE_HOOK.get_or_init(|| Mutex::new(None))
+fn install_before_source_capture_test_hook(hook: impl FnOnce() + 'static) {
+    BEFORE_SOURCE_CAPTURE_HOOK.with(|slot| {
+        *slot.borrow_mut() = Some(Box::new(hook));
+    });
 }
 
 #[cfg(test)]
-fn install_before_source_capture_test_hook(hook: impl FnOnce() + Send + 'static) {
-    let mut slot = before_source_capture_hook()
-        .lock()
-        .expect("test hook lock should be available");
-    *slot = Some(Box::new(hook));
-}
-
-#[cfg(test)]
-fn install_before_replacement_create_test_hook(hook: impl FnOnce() + Send + 'static) {
-    let mut slot = before_replacement_create_hook()
-        .lock()
-        .expect("test hook lock should be available");
-    *slot = Some(Box::new(hook));
+fn install_before_replacement_create_test_hook(hook: impl FnOnce() + 'static) {
+    BEFORE_REPLACEMENT_CREATE_HOOK.with(|slot| {
+        *slot.borrow_mut() = Some(Box::new(hook));
+    });
 }
 
 #[cfg(test)]
 fn run_before_source_capture_test_hook() {
-    let hook = {
-        let mut slot = before_source_capture_hook()
-            .lock()
-            .expect("test hook lock should be available");
-        slot.take()
-    };
+    let hook = BEFORE_SOURCE_CAPTURE_HOOK.with(|slot| slot.borrow_mut().take());
     if let Some(hook) = hook {
         hook();
     }
@@ -554,12 +537,7 @@ fn run_before_source_capture_test_hook() {}
 
 #[cfg(test)]
 fn run_before_replacement_create_test_hook() {
-    let hook = {
-        let mut slot = before_replacement_create_hook()
-            .lock()
-            .expect("test hook lock should be available");
-        slot.take()
-    };
+    let hook = BEFORE_REPLACEMENT_CREATE_HOOK.with(|slot| slot.borrow_mut().take());
     if let Some(hook) = hook {
         hook();
     }
