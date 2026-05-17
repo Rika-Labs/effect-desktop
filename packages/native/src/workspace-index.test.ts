@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  type HostProtocolEventEnvelope,
   type HostProtocolError,
-  type HostProtocolRequestEnvelope
+  type HostProtocolRequestEnvelope,
+  makeHostProtocolInternalError
 } from "@effect-desktop/bridge"
 import {
   type AuditEvent,
@@ -19,6 +21,7 @@ import {
   makeWorkspaceIndexUnsupportedClient,
   WorkspaceIndex,
   WorkspaceIndexClient,
+  WorkspaceIndexSurface,
   type WorkspaceIndexClientApi
 } from "./workspace-index.js"
 import {
@@ -324,6 +327,52 @@ test("WorkspaceIndex accepts root read grants and rejects noncanonical scope pat
   })
 })
 
+test("WorkspaceIndex bridge client decodes native index events", async () => {
+  const nativeEvent: HostProtocolEventEnvelope = {
+    kind: "event",
+    method: "WorkspaceIndex.Event",
+    timestamp: 1_710_000_000_000,
+    traceId: "trace-workspace-index-event",
+    payload: {
+      type: "workspace-index-event",
+      timestamp: 1_710_000_000_000,
+      indexId: "workspace-index-1",
+      root: "/workspace/app",
+      path: "/workspace/app/src/main.ts",
+      phase: "entry-indexed",
+      state: "opened",
+      indexed: 1,
+      invalidated: 0,
+      ignored: 0
+    }
+  }
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+    subscribe: (method) => {
+      expect(method).toBe("WorkspaceIndex.Event")
+      return Stream.make(nativeEvent)
+    }
+  }
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* WorkspaceIndexClient
+    }).pipe(Effect.provide(makeWorkspaceIndexBridgeClientLayer(exchange)))
+  )
+
+  const event = await Effect.runPromise(client.events().pipe(Stream.runHead))
+
+  expect(event._tag).toBe("Some")
+  if (event._tag === "Some") {
+    expect(event.value).toMatchObject({
+      indexId: "workspace-index-1",
+      path: "/workspace/app/src/main.ts",
+      phase: "entry-indexed",
+      state: "opened",
+      indexed: 1
+    })
+  }
+})
+
 test("WorkspaceIndex rejects changed paths outside the indexed root before refresh side effects", async () => {
   const permissions = await configuredPermissions([])
   let refreshes = 0
@@ -517,6 +566,20 @@ test("WorkspaceIndex unsupported client exposes typed unsupported failures", asy
   expect(supported.supported).toBe(false)
 })
 
+test("WorkspaceIndex RPC metadata reports host methods as supported", () => {
+  expect(
+    WorkspaceIndexSurface.schemaDocs.map((doc) => ({
+      support: doc.support,
+      tag: doc.tag
+    }))
+  ).toEqual([
+    { tag: "WorkspaceIndex.open", support: { status: "supported" } },
+    { tag: "WorkspaceIndex.refresh", support: { status: "supported" } },
+    { tag: "WorkspaceIndex.close", support: { status: "supported" } },
+    { tag: "WorkspaceIndex.isSupported", support: { status: "supported" } }
+  ])
+})
+
 const configuredPermissions = async (rows: AuditEvent[]) => {
   const permissions = await Effect.runPromise(
     makePermissionRegistry({
@@ -549,7 +612,7 @@ const scope = (
       new WorkspaceIndexIgnoreRule({ pattern: "dist/**", reason: "build output" })
     ],
     grants: [P.filesystemRead({ roots: ["/workspace/app"] })],
-    watch: true,
+    watch: false,
     ...options
   })
 

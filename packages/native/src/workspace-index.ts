@@ -50,13 +50,6 @@ import {
 const Surface = "WorkspaceIndex"
 const UnsupportedReason = "host-adapter-unimplemented"
 const WorkspaceIndexEventMethod = "WorkspaceIndex.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
 
 const IdentifierPattern = /^[A-Za-z0-9._-]+$/
 const WindowsAbsolutePath = /^[A-Za-z]:[\\/]/u
@@ -366,7 +359,6 @@ const makeWorkspaceIndexService = (
 ): Effect.Effect<WorkspaceIndexServiceApi, never, never> =>
   Effect.gen(function* () {
     const indexes = yield* Ref.make<ReadonlyMap<string, WorkspaceIndexState>>(new Map())
-    const events = yield* PubSub.bounded<WorkspaceIndexEvent>({ capacity: 256, replay: 64 })
     const nextIndexId = yield* makeIdGenerator(options.nextIndexId, "workspace-index")
 
     return Object.freeze({
@@ -397,10 +389,6 @@ const makeWorkspaceIndexService = (
           yield* Ref.update(indexes, (current) =>
             new Map(current).set(result.indexId, { actor: request.actor, scope })
           )
-          yield* publishEvent(events, result.indexId, "opened", {
-            root: result.root,
-            state: "opened"
-          })
           return result
         }),
       refresh: (input) =>
@@ -454,10 +442,6 @@ const makeWorkspaceIndexService = (
             "WorkspaceIndex.refresh",
             { changedPaths: filtered.changedPaths?.length ?? "all", ignored: filtered.ignored }
           )
-          yield* publishEvent(events, request.indexId, "refresh-started", {
-            root: state.scope.root,
-            state: "refreshing"
-          })
           const result =
             filtered.changedPaths?.length === 0
               ? new WorkspaceIndexRefreshResult({
@@ -482,13 +466,6 @@ const makeWorkspaceIndexService = (
             indexed: result.indexed,
             invalidated: result.invalidated,
             ignored: result.ignored + filtered.ignored
-          })
-          yield* publishEvent(events, request.indexId, "refresh-completed", {
-            root: state.scope.root,
-            state: merged.state,
-            indexed: merged.indexed,
-            invalidated: merged.invalidated,
-            ignored: merged.ignored
           })
           return merged
         }),
@@ -534,11 +511,10 @@ const makeWorkspaceIndexService = (
             next.delete(request.indexId)
             return next
           })
-          yield* publishEvent(events, request.indexId, "closed", { state: "closed" })
           return result
         }),
       isSupported: () => client.isSupported(),
-      events: () => Stream.fromPubSub(events)
+      events: () => client.events()
     } satisfies WorkspaceIndexServiceApi)
   })
 
@@ -583,7 +559,7 @@ function workspaceIndexRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: NativeSurface.support.supported
   })
 }
 
@@ -793,7 +769,7 @@ const normalizeScope = (scope: WorkspaceIndexScope): WorkspaceIndexScope =>
     root: normalizeRoot(scope.root),
     ignoreRules: scope.ignoreRules,
     grants: scope.grants,
-    watch: scope.watch ?? true
+    watch: scope.watch ?? false
   })
 
 const filesystemReadCapability = (root: string): NormalizedCapability =>

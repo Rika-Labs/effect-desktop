@@ -35,6 +35,8 @@ type ExtensionConfigHandler =
     fn(Option<serde_json::Value>, u64) -> extension_config::EventfulResponse;
 type ExtensionPackageHandler =
     fn(Option<serde_json::Value>, u64) -> extension_package::EventfulResponse;
+type WorkspaceIndexHandler =
+    fn(Option<serde_json::Value>, u64) -> workspace_index::EventfulResponse;
 
 struct RealtimeMediaDispatch {
     id: String,
@@ -53,6 +55,14 @@ struct ExtensionConfigDispatch {
 }
 
 struct ExtensionPackageDispatch {
+    id: String,
+    trace_id: String,
+    window_id: Option<String>,
+    payload: Option<serde_json::Value>,
+    timestamp: u64,
+}
+
+struct WorkspaceIndexDispatch {
     id: String,
     trace_id: String,
     window_id: Option<String>,
@@ -420,6 +430,42 @@ impl HostMethodRouter {
                     extension_package::remove_with_event,
                 );
             }
+            host_protocol::WORKSPACE_INDEX_OPEN_METHOD => {
+                return self.dispatch_workspace_index(
+                    WorkspaceIndexDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    workspace_index::open_with_event,
+                );
+            }
+            host_protocol::WORKSPACE_INDEX_REFRESH_METHOD => {
+                return self.dispatch_workspace_index(
+                    WorkspaceIndexDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    workspace_index::refresh_with_event,
+                );
+            }
+            host_protocol::WORKSPACE_INDEX_CLOSE_METHOD => {
+                return self.dispatch_workspace_index(
+                    WorkspaceIndexDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    workspace_index::close_with_event,
+                );
+            }
             host_protocol::EXTENSION_PACKAGE_LIST_METHOD => extension_package::list(),
             host_protocol::EXTENSION_PACKAGE_IS_SUPPORTED_METHOD => {
                 extension_package::is_supported()
@@ -433,9 +479,6 @@ impl HostMethodRouter {
             host_protocol::LOCAL_TOOL_RUNTIME_IS_SUPPORTED_METHOD => {
                 local_tool_runtime::is_supported()
             }
-            host_protocol::WORKSPACE_INDEX_OPEN_METHOD => workspace_index::open(payload),
-            host_protocol::WORKSPACE_INDEX_REFRESH_METHOD => workspace_index::refresh(payload),
-            host_protocol::WORKSPACE_INDEX_CLOSE_METHOD => workspace_index::close(payload),
             host_protocol::WORKSPACE_INDEX_IS_SUPPORTED_METHOD => workspace_index::is_supported(),
             host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD => {
                 transactional_file_mutation::prepare(payload)
@@ -579,6 +622,36 @@ impl HostMethodRouter {
             ],
             None => vec![response],
         }
+    }
+
+    fn dispatch_workspace_index(
+        &self,
+        request: WorkspaceIndexDispatch,
+        handler: WorkspaceIndexHandler,
+    ) -> Vec<HostProtocolEnvelope> {
+        let (payload, events, error) = match handler(request.payload, request.timestamp) {
+            Ok((payload, events)) => (payload, events, None),
+            Err(error) => (None, Vec::new(), Some(error)),
+        };
+
+        let mut frames = events
+            .into_iter()
+            .map(|(event_method, payload)| HostProtocolEnvelope::Event {
+                method: event_method.to_string(),
+                timestamp: request.timestamp,
+                trace_id: request.trace_id.clone(),
+                window_id: request.window_id.clone(),
+                payload: Some(payload),
+            })
+            .collect::<Vec<_>>();
+        frames.push(HostProtocolEnvelope::Response {
+            id: request.id,
+            timestamp: request.timestamp,
+            trace_id: request.trace_id,
+            payload,
+            error,
+        });
+        frames
     }
 }
 
@@ -1922,36 +1995,45 @@ mod tests {
     }
 
     #[test]
-    fn workspace_index_open_routes_to_typed_unsupported() {
-        let response = test_router()
-            .dispatch_at(
-                request_with_payload(
-                    "request-workspace-index-open",
-                    host_protocol::WORKSPACE_INDEX_OPEN_METHOD,
-                    workspace_index_open_payload(),
-                ),
-                1710000000133,
-            )
-            .expect("workspace index request should return response");
+    fn workspace_index_open_routes_to_supported_adapter_with_events() {
+        let workspace = temp_dir("workspace-index-route");
+        fs::create_dir_all(workspace.join("src")).expect("src dir");
+        fs::write(workspace.join("src/main.ts"), b"export {}\n").expect("source file");
 
+        let frames = test_router().dispatch_frames_at(
+            request_with_payload(
+                "request-workspace-index-open",
+                host_protocol::WORKSPACE_INDEX_OPEN_METHOD,
+                workspace_index_open_payload(&workspace),
+            ),
+            1710000000133,
+        );
+
+        assert!(matches!(
+            frames.first(),
+            Some(HostProtocolEnvelope::Event { method, payload, .. })
+                if method == host_protocol::WORKSPACE_INDEX_EVENT
+                    && payload.as_ref().is_some_and(|payload| payload["phase"] == "opened")
+        ));
         assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
+            frames.last(),
+            Some(&HostProtocolEnvelope::Response {
                 id: "request-workspace-index-open".to_string(),
                 timestamp: 1710000000133,
                 trace_id: "trace-request-workspace-index-open".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::WORKSPACE_INDEX_UNSUPPORTED_REASON,
-                    host_protocol::WORKSPACE_INDEX_OPEN_METHOD,
-                )),
-            }
+                payload: Some(serde_json::json!({
+                    "indexId": "workspace-index-1",
+                    "root": workspace.display().to_string(),
+                    "state": "opened"
+                })),
+                error: None,
+            })
         );
     }
 
     #[test]
     fn workspace_index_invalid_payload_returns_invalid_argument_before_unsupported() {
-        let mut payload = workspace_index_open_payload();
+        let mut payload = workspace_index_open_payload(&temp_dir("workspace-index-invalid"));
         payload["scope"]["root"] = serde_json::json!("workspace/app");
         let response = test_router()
             .dispatch_at(
@@ -1981,7 +2063,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_index_is_supported_reports_unimplemented_adapter() {
+    fn workspace_index_is_supported_reports_supported_adapter() {
         let response = test_router()
             .dispatch_at(
                 request(
@@ -1998,10 +2080,7 @@ mod tests {
                 id: "request-workspace-index-supported".to_string(),
                 timestamp: 1710000000135,
                 trace_id: "trace-request-workspace-index-supported".to_string(),
-                payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::WORKSPACE_INDEX_UNSUPPORTED_REASON
-                })),
+                payload: Some(serde_json::json!({ "supported": true })),
                 error: None,
             }
         );
@@ -2381,22 +2460,22 @@ mod tests {
         })
     }
 
-    fn workspace_index_open_payload() -> serde_json::Value {
+    fn workspace_index_open_payload(workspace: &Path) -> serde_json::Value {
         serde_json::json!({
             "actor": { "kind": "workspace", "id": "workspace-1" },
             "scope": {
-                "root": "/workspace/app",
+                "root": workspace.display().to_string(),
                 "ignoreRules": [
                     { "pattern": "node_modules/**", "reason": "dependencies" }
                 ],
                 "grants": [
                     {
                         "kind": "filesystem.read",
-                        "roots": ["/workspace"],
+                        "roots": [workspace.display().to_string()],
                         "audit": "always"
                     }
                 ],
-                "watch": true
+                "watch": false
             },
             "indexId": "workspace-index-1",
             "traceId": "trace-workspace-index"
@@ -2424,6 +2503,16 @@ mod tests {
         let path = dir.join(format!("{name}.txt"));
         fs::write(&path, bytes).expect("temp file should be written");
         path
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after Unix epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("effect-desktop-methods-{name}-{nanos}"));
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        dir
     }
 
     fn cleanup_path(path: PathBuf) {
