@@ -2307,20 +2307,26 @@ mod tests {
                 id: "request-local-tool-runtime-supported".to_string(),
                 timestamp: 1710000000132,
                 trace_id: "trace-request-local-tool-runtime-supported".to_string(),
-                payload: Some(if cfg!(unix) {
-                    serde_json::json!({ "supported": true })
-                } else {
-                    serde_json::json!({
-                        "supported": false,
-                        "reason": "local-tool-runtime-platform-unsupported"
-                    })
-                }),
+                payload: Some(
+                    if cfg!(any(
+                        target_os = "macos",
+                        target_os = "linux",
+                        target_os = "windows"
+                    )) {
+                        serde_json::json!({ "supported": true })
+                    } else {
+                        serde_json::json!({
+                            "supported": false,
+                            "reason": "local-tool-runtime-platform-unsupported"
+                        })
+                    }
+                ),
                 error: None,
             }
         );
     }
 
-    #[cfg(not(unix))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     #[test]
     fn local_tool_runtime_unsupported_platform_operations_return_typed_failures() {
         let root = temp_dir("local-tool-runtime-route-unsupported");

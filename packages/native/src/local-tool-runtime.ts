@@ -9,7 +9,6 @@ import {
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError,
   type RpcCapabilityMetadata,
-  type RpcSupportMetadata,
   RpcGroup
 } from "@effect-desktop/bridge"
 import {
@@ -64,15 +63,7 @@ import {
 
 const Surface = "LocalToolRuntime"
 const UnsupportedReason = "host-adapter-unimplemented"
-const PlatformSupportReason = "local-tool-runtime-platform-specific"
-const WindowsUnsupportedReason = "local-tool-runtime-platform-unsupported"
-const LocalToolRuntimeSupport = NativeSurface.support.partial(PlatformSupportReason, {
-  platforms: [
-    { platform: "macos", status: "supported" },
-    { platform: "linux", status: "supported" },
-    { platform: "windows", status: "unsupported", reason: WindowsUnsupportedReason }
-  ]
-}) satisfies RpcSupportMetadata
+const LocalToolRuntimeSupport = NativeSurface.support.supported
 const LocalToolRuntimeEventMethod = "LocalToolRuntime.Event"
 
 const IdentifierPattern = /^[A-Za-z0-9._-]+$/

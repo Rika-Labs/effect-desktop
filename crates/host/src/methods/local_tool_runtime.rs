@@ -16,11 +16,11 @@ use host_protocol::{
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
-    process::{Child, Command, ExitStatus, Stdio},
+    process::{Command, ExitStatus, Stdio},
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc, Mutex, OnceLock,
@@ -75,6 +75,150 @@ struct CapturedProcess {
     stderr: String,
 }
 
+#[cfg(not(windows))]
+struct LocalToolChild {
+    child: std::process::Child,
+}
+
+#[cfg(not(windows))]
+impl LocalToolChild {
+    fn new(child: std::process::Child) -> Self {
+        Self { child }
+    }
+
+    fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        self.child.try_wait()
+    }
+
+    fn kill(&mut self) -> io::Result<()> {
+        self.child.kill()
+    }
+}
+
+#[cfg(windows)]
+struct LocalToolChild {
+    process: windows_sys::Win32::Foundation::HANDLE,
+    thread: windows_sys::Win32::Foundation::HANDLE,
+    job: windows_sys::Win32::Foundation::HANDLE,
+}
+
+#[cfg(windows)]
+type WindowsHandle = windows_sys::Win32::Foundation::HANDLE;
+
+#[cfg(windows)]
+unsafe impl Send for LocalToolChild {}
+
+#[cfg(windows)]
+impl LocalToolChild {
+    fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        use std::os::windows::process::ExitStatusExt;
+        use windows_sys::Win32::{
+            Foundation::{STILL_ACTIVE, WAIT_TIMEOUT},
+            System::Threading::{GetExitCodeProcess, WaitForSingleObject},
+        };
+
+        let waited = unsafe { WaitForSingleObject(self.process, 0) };
+        if waited == WAIT_TIMEOUT {
+            return Ok(None);
+        }
+
+        let mut exit_code = 0_u32;
+        let code_read = unsafe { GetExitCodeProcess(self.process, &mut exit_code) };
+        if code_read == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if exit_code == STILL_ACTIVE as u32 {
+            return Ok(None);
+        }
+        Ok(Some(ExitStatus::from_raw(exit_code)))
+    }
+
+    fn kill(&mut self) -> io::Result<()> {
+        use windows_sys::Win32::System::Threading::TerminateProcess;
+
+        let terminated = unsafe { TerminateProcess(self.process, 1) };
+        if terminated == 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::InvalidInput {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    fn terminate_tree(&mut self) -> io::Result<()> {
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+
+        let terminated = unsafe { TerminateJobObject(self.job, 15) };
+        if terminated == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn force_terminate_tree(&mut self) -> io::Result<()> {
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+
+        let terminated = unsafe { TerminateJobObject(self.job, 9) };
+        if terminated == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn cleanup_process_tree_after_exit(&self) -> io::Result<()> {
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+
+        let terminated = unsafe { TerminateJobObject(self.job, 0) };
+        if terminated == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for LocalToolChild {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::CloseHandle;
+
+        unsafe {
+            CloseHandle(self.job);
+            CloseHandle(self.thread);
+            CloseHandle(self.process);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+enum LocalToolChildGuard {
+    Platform(platform::ChildGuard),
+}
+
+#[cfg(windows)]
+struct LocalToolChildGuard;
+
+struct SpawnedLocalToolChild {
+    child: LocalToolChild,
+    guard: LocalToolChildGuard,
+    stdout: Option<Box<dyn Read + Send>>,
+    stderr: Option<Box<dyn Read + Send>>,
+}
+
+struct LocalToolSpawn<'a> {
+    executable: PathBuf,
+    args: Vec<String>,
+    cwd: PathBuf,
+    env: Vec<(String, String)>,
+    stdio: &'a host_protocol::LocalToolRuntimeStdioPolicyPayload,
+}
+
 #[derive(Clone)]
 struct ActiveRun {
     state: Arc<Mutex<ActiveRunState>>,
@@ -86,7 +230,7 @@ enum ActiveRunState {
         stopped: bool,
     },
     Running {
-        child: Arc<Mutex<Child>>,
+        child: Arc<Mutex<LocalToolChild>>,
         stopped: bool,
     },
 }
@@ -113,7 +257,7 @@ impl ActiveRun {
     fn mark_stopped(
         &self,
         operation: &'static str,
-    ) -> Result<Option<Arc<Mutex<Child>>>, HostProtocolError> {
+    ) -> Result<Option<Arc<Mutex<LocalToolChild>>>, HostProtocolError> {
         let mut state = self.state.lock().map_err(|_| {
             HostProtocolError::internal("local tool active run state lock poisoned", operation)
         })?;
@@ -475,7 +619,7 @@ pub(crate) fn health_with_event(payload: Option<Value>, timestamp: u64) -> Event
 }
 
 pub(crate) fn is_supported() -> Result<Option<Value>, HostProtocolError> {
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         return encode_payload(
             LocalToolRuntimeSupportedPayload::unsupported(
@@ -485,7 +629,7 @@ pub(crate) fn is_supported() -> Result<Option<Value>, HostProtocolError> {
         );
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     encode_payload(
         LocalToolRuntimeSupportedPayload::supported(),
         host_protocol::LOCAL_TOOL_RUNTIME_IS_SUPPORTED_METHOD,
@@ -536,13 +680,13 @@ pub(crate) fn clear_run_request_tracking(request_id: &str) {
 }
 
 fn ensure_supported_platform(operation: &'static str) -> Result<(), HostProtocolError> {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     {
         let _ = operation;
         Ok(())
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         Err(HostProtocolError::unsupported(
             "local-tool-runtime-platform-unsupported",
@@ -586,19 +730,21 @@ fn run_command(
             });
         }
     }
-    let mut child = Command::new(executable);
-    child
-        .args(command.default_args())
-        .args(args)
-        .current_dir(cwd)
-        .env_clear();
-    apply_environment(
-        &mut child,
-        session.manifest.policy().environment().variables(),
-    );
-    apply_environment(&mut child, command.environment());
-    apply_stdio(&mut child, session.manifest.policy().stdio());
-    platform::configure_command(&mut child);
+    let spawn = LocalToolSpawn {
+        executable: executable.clone(),
+        args: command
+            .default_args()
+            .iter()
+            .chain(args.iter())
+            .cloned()
+            .collect(),
+        cwd,
+        env: merged_environment(
+            session.manifest.policy().environment().variables(),
+            command.environment(),
+        ),
+        stdio: session.manifest.policy().stdio(),
+    };
 
     let (child, guard, stdout, stderr) = {
         let mut state = active_run.state.lock().map_err(|_| {
@@ -627,8 +773,8 @@ fn run_command(
             }
         }
 
-        let mut child = match child.spawn() {
-            Ok(child) => child,
+        let spawned = match spawn_local_tool_child(spawn) {
+            Ok(spawned) => spawned,
             Err(error) => {
                 remove_active_run(runtime_id, &run_id);
                 if let Some(request_id) = request_id {
@@ -643,30 +789,16 @@ fn run_command(
                 ));
             }
         };
-        let guard = match platform::ChildGuard::attach(&child) {
-            Ok(guard) => guard,
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                remove_active_run(runtime_id, &run_id);
-                if let Some(request_id) = request_id {
-                    clear_active_run_request(request_id);
-                }
-                return Err(HostProtocolError::internal(
-                    format!("failed to attach local tool process cleanup guard: {error}"),
-                    operation,
-                ));
-            }
-        };
         let stdout = capture_stream(
-            child.stdout.take(),
+            spawned.stdout,
             session.manifest.policy().budgets().stdout_bytes(),
         );
         let stderr = capture_stream(
-            child.stderr.take(),
+            spawned.stderr,
             session.manifest.policy().budgets().stderr_bytes(),
         );
-        let child = Arc::new(Mutex::new(child));
+        let guard = spawned.guard;
+        let child = Arc::new(Mutex::new(spawned.child));
         *state = ActiveRunState::Running {
             child: child.clone(),
             stopped: false,
@@ -679,7 +811,7 @@ fn run_command(
             session.manifest.policy().cleanup().kill_process_tree(),
             operation,
         );
-        platform::release_child_guard(guard);
+        release_local_tool_guard(guard);
         remove_active_run(runtime_id, &run_id);
         if let Some(request_id) = request_id {
             clear_active_run_request(request_id);
@@ -708,7 +840,7 @@ fn run_command(
             if let Some(request_id) = request_id {
                 clear_active_run_request(request_id);
             }
-            platform::release_child_guard(guard);
+            release_local_tool_guard(guard);
             return Err(error);
         }
     }
@@ -737,15 +869,14 @@ fn run_command(
         }
     })?;
     if session.manifest.policy().cleanup().kill_process_tree() {
-        let child = lock_child(&child, operation)?;
-        platform::cleanup_process_tree_after_exit(&child).map_err(|error| {
+        cleanup_process_tree_after_exit(&child).map_err(|error| {
             HostProtocolError::internal(
                 format!("failed to clean local tool process tree: {error}"),
                 operation,
             )
         })?;
     }
-    platform::release_child_guard(guard);
+    release_local_tool_guard(guard);
     let output_deadline = if timed_out || Instant::now() >= deadline {
         Instant::now()
             .checked_add(OUTPUT_DRAIN_GRACE)
@@ -1188,13 +1319,15 @@ fn path_contains_path(root: &Path, path: &Path) -> bool {
     path == root || path.starts_with(root)
 }
 
-fn apply_environment(
-    command: &mut Command,
-    entries: &[host_protocol::LocalToolRuntimeEnvironmentEntryPayload],
-) {
-    for entry in entries {
-        command.env(entry.name(), entry.value());
+fn merged_environment(
+    policy_entries: &[host_protocol::LocalToolRuntimeEnvironmentEntryPayload],
+    command_entries: &[host_protocol::LocalToolRuntimeEnvironmentEntryPayload],
+) -> Vec<(String, String)> {
+    let mut env = BTreeMap::new();
+    for entry in policy_entries.iter().chain(command_entries.iter()) {
+        env.insert(entry.name().to_string(), entry.value().to_string());
     }
+    env.into_iter().collect()
 }
 
 fn apply_stdio(command: &mut Command, stdio: &host_protocol::LocalToolRuntimeStdioPolicyPayload) {
@@ -1211,8 +1344,553 @@ fn stdio_for_mode(mode: LocalToolRuntimeStdioMode) -> Stdio {
     }
 }
 
+#[cfg(not(windows))]
+fn spawn_local_tool_child(mut spawn: LocalToolSpawn<'_>) -> io::Result<SpawnedLocalToolChild> {
+    let mut command = Command::new(spawn.executable);
+    command
+        .args(spawn.args)
+        .current_dir(spawn.cwd)
+        .env_clear()
+        .envs(spawn.env.drain(..));
+    apply_stdio(&mut command, spawn.stdio);
+    platform::configure_command(&mut command);
+
+    let mut child = command.spawn()?;
+    let guard = platform::ChildGuard::attach(&child).inspect_err(|_| {
+        let _ = child.kill();
+        let _ = child.wait();
+    })?;
+    let stdout = child
+        .stdout
+        .take()
+        .map(|stream| Box::new(stream) as Box<dyn Read + Send>);
+    let stderr = child
+        .stderr
+        .take()
+        .map(|stream| Box::new(stream) as Box<dyn Read + Send>);
+
+    Ok(SpawnedLocalToolChild {
+        child: LocalToolChild::new(child),
+        guard: LocalToolChildGuard::Platform(guard),
+        stdout,
+        stderr,
+    })
+}
+
+#[cfg(not(windows))]
+fn release_local_tool_guard(guard: LocalToolChildGuard) {
+    match guard {
+        LocalToolChildGuard::Platform(guard) => platform::release_child_guard(guard),
+    }
+}
+
+#[cfg(not(windows))]
+fn request_child_tree_termination(child: &mut LocalToolChild) -> io::Result<()> {
+    platform::request_termination(&mut child.child)
+}
+
+#[cfg(not(windows))]
+fn force_child_tree_termination(child: &mut LocalToolChild) -> io::Result<()> {
+    platform::force_termination(&mut child.child)
+}
+
+#[cfg(not(windows))]
+fn cleanup_process_tree_after_exit(child: &Arc<Mutex<LocalToolChild>>) -> io::Result<()> {
+    let child = child
+        .lock()
+        .map_err(|_| io::Error::other("local tool child lock poisoned"))?;
+    platform::cleanup_process_tree_after_exit(&child.child)
+}
+
+#[cfg(windows)]
+fn release_local_tool_guard(_guard: LocalToolChildGuard) {}
+
+#[cfg(windows)]
+fn request_child_tree_termination(child: &mut LocalToolChild) -> io::Result<()> {
+    child.terminate_tree()
+}
+
+#[cfg(windows)]
+fn force_child_tree_termination(child: &mut LocalToolChild) -> io::Result<()> {
+    child.force_terminate_tree()
+}
+
+#[cfg(windows)]
+fn cleanup_process_tree_after_exit(child: &Arc<Mutex<LocalToolChild>>) -> io::Result<()> {
+    let child = child
+        .lock()
+        .map_err(|_| io::Error::other("local tool child lock poisoned"))?;
+    child.cleanup_process_tree_after_exit()
+}
+
+#[cfg(windows)]
+fn spawn_local_tool_child(spawn: LocalToolSpawn<'_>) -> io::Result<SpawnedLocalToolChild> {
+    use std::{mem::size_of, ptr::null};
+    use windows_sys::Win32::{
+        Foundation::CloseHandle,
+        System::Threading::{
+            CreateProcessW, ResumeThread, CREATE_NO_WINDOW, CREATE_SUSPENDED,
+            CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
+            STARTF_USESTDHANDLES, STARTUPINFOEXW,
+        },
+    };
+
+    let job = create_kill_on_close_job()?;
+    let mut handles = WindowsSpawnHandles::new();
+    let stdout = handles.stdout_for_mode(spawn.stdio.stdout())?;
+    let stderr = handles.stderr_for_mode(spawn.stdio.stderr())?;
+    let stdin = handles.stdin_null()?;
+
+    let mut inherit_handles = handles.inheritable_handles();
+    let mut attribute_list =
+        WindowsProcThreadAttributeList::for_job_and_handles(job, inherit_handles.as_mut_slice())?;
+    let mut startup = STARTUPINFOEXW::default();
+    startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = stdin;
+    startup.StartupInfo.hStdOutput = handles.child_stdout;
+    startup.StartupInfo.hStdError = handles.child_stderr;
+    startup.lpAttributeList = attribute_list.as_mut_ptr();
+
+    let application = encode_wide(spawn.executable.as_os_str());
+    let mut command_line =
+        encode_wide_string(&windows_command_line(&spawn.executable, &spawn.args));
+    let current_dir = encode_wide(spawn.cwd.as_os_str());
+    let environment = windows_environment_block(spawn.env);
+    let mut process = PROCESS_INFORMATION::default();
+    let creation_flags = EXTENDED_STARTUPINFO_PRESENT
+        | CREATE_SUSPENDED
+        | CREATE_UNICODE_ENVIRONMENT
+        | CREATE_NO_WINDOW;
+
+    let created = unsafe {
+        CreateProcessW(
+            application.as_ptr(),
+            command_line.as_mut_ptr(),
+            null(),
+            null(),
+            1,
+            creation_flags,
+            environment.as_ptr().cast(),
+            current_dir.as_ptr(),
+            &startup.StartupInfo,
+            &mut process,
+        )
+    };
+    if created == 0 {
+        unsafe {
+            CloseHandle(job);
+        }
+        return Err(io::Error::last_os_error());
+    }
+
+    handles.close_child_side();
+    let resumed = unsafe { ResumeThread(process.hThread) };
+    if resumed == u32::MAX {
+        unsafe {
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
+            CloseHandle(job);
+        }
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(SpawnedLocalToolChild {
+        child: LocalToolChild {
+            process: process.hProcess,
+            thread: process.hThread,
+            job,
+        },
+        guard: LocalToolChildGuard,
+        stdout,
+        stderr,
+    })
+}
+
+#[cfg(windows)]
+struct WindowsSpawnHandles {
+    child_stdout: WindowsHandle,
+    child_stderr: WindowsHandle,
+    parent_stdout: Option<WindowsHandle>,
+    parent_stderr: Option<WindowsHandle>,
+    child_stdin: WindowsHandle,
+    parent_stdin: WindowsHandle,
+}
+
+#[cfg(windows)]
+impl WindowsSpawnHandles {
+    fn new() -> Self {
+        Self {
+            child_stdout: std::ptr::null_mut(),
+            child_stderr: std::ptr::null_mut(),
+            parent_stdout: None,
+            parent_stderr: None,
+            child_stdin: std::ptr::null_mut(),
+            parent_stdin: std::ptr::null_mut(),
+        }
+    }
+
+    fn stdout_for_mode(
+        &mut self,
+        mode: LocalToolRuntimeStdioMode,
+    ) -> io::Result<Option<Box<dyn Read + Send>>> {
+        let (child, parent) = output_handle_for_mode(mode)?;
+        self.child_stdout = child;
+        self.parent_stdout = parent;
+        Ok(parent.map(handle_to_reader))
+    }
+
+    fn stderr_for_mode(
+        &mut self,
+        mode: LocalToolRuntimeStdioMode,
+    ) -> io::Result<Option<Box<dyn Read + Send>>> {
+        let (child, parent) = output_handle_for_mode(mode)?;
+        self.child_stderr = child;
+        self.parent_stderr = parent;
+        Ok(parent.map(handle_to_reader))
+    }
+
+    fn stdin_null(&mut self) -> io::Result<WindowsHandle> {
+        let (read, write) = inheritable_pipe()?;
+        clear_handle_inherit(write)?;
+        self.child_stdin = read;
+        self.parent_stdin = write;
+        Ok(read)
+    }
+
+    fn inheritable_handles(&self) -> Vec<WindowsHandle> {
+        vec![self.child_stdin, self.child_stdout, self.child_stderr]
+    }
+
+    fn close_child_side(&mut self) {
+        unsafe {
+            close_if_live(self.child_stdout);
+            close_if_live(self.child_stderr);
+            close_if_live(self.child_stdin);
+            close_if_live(self.parent_stdin);
+        }
+        self.child_stdout = std::ptr::null_mut();
+        self.child_stderr = std::ptr::null_mut();
+        self.child_stdin = std::ptr::null_mut();
+        self.parent_stdin = std::ptr::null_mut();
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WindowsSpawnHandles {
+    fn drop(&mut self) {
+        unsafe {
+            close_if_live(self.child_stdout);
+            close_if_live(self.child_stderr);
+            close_if_live(self.child_stdin);
+            close_if_live(self.parent_stdin);
+        }
+    }
+}
+
+#[cfg(windows)]
+struct WindowsProcThreadAttributeList {
+    heap: WindowsHandle,
+    ptr: windows_sys::Win32::System::Threading::LPPROC_THREAD_ATTRIBUTE_LIST,
+    job_list: [WindowsHandle; 1],
+    initialized: bool,
+}
+
+#[cfg(windows)]
+impl WindowsProcThreadAttributeList {
+    fn for_job_and_handles(job: WindowsHandle, handles: &mut [WindowsHandle]) -> io::Result<Self> {
+        use std::{
+            mem::size_of,
+            ptr::{null, null_mut},
+        };
+        use windows_sys::Win32::System::{
+            Memory::{GetProcessHeap, HeapAlloc, HEAP_ZERO_MEMORY},
+            Threading::{
+                InitializeProcThreadAttributeList, UpdateProcThreadAttribute,
+                PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST,
+            },
+        };
+
+        let mut size = 0_usize;
+        unsafe {
+            InitializeProcThreadAttributeList(null_mut(), 2, 0, &mut size);
+        }
+        let heap = unsafe { GetProcessHeap() };
+        if heap.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let ptr = unsafe { HeapAlloc(heap, HEAP_ZERO_MEMORY, size) };
+        if ptr.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let mut list = Self {
+            heap,
+            ptr: ptr.cast(),
+            job_list: [job],
+            initialized: false,
+        };
+
+        let initialized = unsafe { InitializeProcThreadAttributeList(list.ptr, 2, 0, &mut size) };
+        if initialized == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        list.initialized = true;
+        let updated = unsafe {
+            UpdateProcThreadAttribute(
+                list.ptr,
+                0,
+                PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+                list.job_list.as_ptr().cast(),
+                size_of::<WindowsHandle>(),
+                null_mut(),
+                null(),
+            )
+        };
+        if updated == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let updated = unsafe {
+            UpdateProcThreadAttribute(
+                list.ptr,
+                0,
+                PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                handles.as_mut_ptr().cast(),
+                std::mem::size_of_val(handles),
+                null_mut(),
+                null(),
+            )
+        };
+        if updated == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(list)
+    }
+
+    fn as_mut_ptr(
+        &mut self,
+    ) -> windows_sys::Win32::System::Threading::LPPROC_THREAD_ATTRIBUTE_LIST {
+        self.ptr
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WindowsProcThreadAttributeList {
+    fn drop(&mut self) {
+        use windows_sys::Win32::System::{
+            Memory::HeapFree, Threading::DeleteProcThreadAttributeList,
+        };
+
+        unsafe {
+            if self.initialized {
+                DeleteProcThreadAttributeList(self.ptr);
+            }
+            HeapFree(self.heap, 0, self.ptr.cast());
+        }
+    }
+}
+
+#[cfg(windows)]
+fn create_kill_on_close_job() -> io::Result<WindowsHandle> {
+    use std::{mem::size_of, ptr::null};
+    use windows_sys::Win32::System::JobObjects::{
+        CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+
+    let job = unsafe { CreateJobObjectW(null(), null()) };
+    if job.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+
+    let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    let configured = unsafe {
+        SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &limits as *const _ as *const _,
+            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        )
+    };
+    if configured == 0 {
+        unsafe {
+            windows_sys::Win32::Foundation::CloseHandle(job);
+        }
+        return Err(io::Error::last_os_error());
+    }
+    Ok(job)
+}
+
+#[cfg(windows)]
+fn output_handle_for_mode(
+    mode: LocalToolRuntimeStdioMode,
+) -> io::Result<(WindowsHandle, Option<WindowsHandle>)> {
+    match mode {
+        LocalToolRuntimeStdioMode::Capture => {
+            let (read, write) = inheritable_pipe()?;
+            clear_handle_inherit(read)?;
+            Ok((write, Some(read)))
+        }
+        LocalToolRuntimeStdioMode::Ignore => Ok((nul_write_handle()?, None)),
+        LocalToolRuntimeStdioMode::Inherit => Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "inherited stdio is rejected before spawn",
+        )),
+    }
+}
+
+#[cfg(windows)]
+fn inheritable_pipe() -> io::Result<(WindowsHandle, WindowsHandle)> {
+    use std::ptr::null_mut;
+    use windows_sys::Win32::{Security::SECURITY_ATTRIBUTES, System::Pipes::CreatePipe};
+
+    let mut read = null_mut();
+    let mut write = null_mut();
+    let mut security = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: null_mut(),
+        bInheritHandle: 1,
+    };
+    let created = unsafe { CreatePipe(&mut read, &mut write, &mut security, 0) };
+    if created == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok((read, write))
+    }
+}
+
+#[cfg(windows)]
+fn clear_handle_inherit(handle: WindowsHandle) -> io::Result<()> {
+    use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE_FLAG_INHERIT};
+
+    let updated = unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) };
+    if updated == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn nul_write_handle() -> io::Result<WindowsHandle> {
+    use std::ptr::null_mut;
+    use windows_sys::Win32::{
+        Foundation::INVALID_HANDLE_VALUE,
+        Security::SECURITY_ATTRIBUTES,
+        Storage::FileSystem::{
+            CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_WRITE, FILE_SHARE_READ,
+            FILE_SHARE_WRITE, OPEN_EXISTING,
+        },
+    };
+
+    let path = encode_wide_string("NUL");
+    let handle = unsafe {
+        CreateFileW(
+            path.as_ptr(),
+            FILE_GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            &SECURITY_ATTRIBUTES {
+                nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+                lpSecurityDescriptor: null_mut(),
+                bInheritHandle: 1,
+            },
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(handle)
+    }
+}
+
+#[cfg(windows)]
+fn handle_to_reader(handle: WindowsHandle) -> Box<dyn Read + Send> {
+    use std::{fs::File, os::windows::io::FromRawHandle};
+
+    let file = unsafe { File::from_raw_handle(handle.cast()) };
+    Box::new(file)
+}
+
+#[cfg(windows)]
+unsafe fn close_if_live(handle: WindowsHandle) {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+
+    if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+        CloseHandle(handle);
+    }
+}
+
+#[cfg(windows)]
+fn windows_command_line(executable: &Path, args: &[String]) -> String {
+    std::iter::once(executable.display().to_string())
+        .chain(args.iter().cloned())
+        .map(|arg| windows_quote_arg(&arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(windows)]
+fn windows_quote_arg(value: &str) -> String {
+    if value.is_empty()
+        || value
+            .bytes()
+            .any(|byte| matches!(byte, b' ' | b'\t' | b'"'))
+    {
+        let mut quoted = String::from("\"");
+        let mut backslashes = 0;
+        for character in value.chars() {
+            if character == '\\' {
+                backslashes += 1;
+            } else if character == '"' {
+                quoted.push_str(&"\\".repeat(backslashes * 2 + 1));
+                quoted.push('"');
+                backslashes = 0;
+            } else {
+                quoted.push_str(&"\\".repeat(backslashes));
+                quoted.push(character);
+                backslashes = 0;
+            }
+        }
+        quoted.push_str(&"\\".repeat(backslashes * 2));
+        quoted.push('"');
+        quoted
+    } else {
+        value.to_string()
+    }
+}
+
+#[cfg(windows)]
+fn windows_environment_block(entries: Vec<(String, String)>) -> Vec<u16> {
+    let mut block = Vec::new();
+    for (key, value) in entries {
+        block.extend(encode_wide_string(&format!("{key}={value}")));
+    }
+    block.push(0);
+    block
+}
+
+#[cfg(windows)]
+fn encode_wide(value: &std::ffi::OsStr) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt;
+
+    value.encode_wide().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(windows)]
+fn encode_wide_string(value: &str) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt;
+
+    std::ffi::OsStr::new(value)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
 fn wait_until_deadline(
-    child: &Arc<Mutex<Child>>,
+    child: &Arc<Mutex<LocalToolChild>>,
     deadline: Instant,
     kill_process_tree: bool,
     operation: &'static str,
@@ -1236,7 +1914,7 @@ fn wait_until_deadline(
 }
 
 fn terminate_child(
-    child: &Arc<Mutex<Child>>,
+    child: &Arc<Mutex<LocalToolChild>>,
     kill_process_tree: bool,
     operation: &'static str,
 ) -> Result<(), HostProtocolError> {
@@ -1255,7 +1933,7 @@ fn terminate_child(
 
     if kill_process_tree {
         let mut locked_child = lock_child(child, operation)?;
-        platform::request_termination(&mut locked_child).map_err(|error| {
+        request_child_tree_termination(&mut locked_child).map_err(|error| {
             HostProtocolError::internal(
                 format!("failed to request local tool termination: {error}"),
                 operation,
@@ -1264,7 +1942,7 @@ fn terminate_child(
         drop(locked_child);
         if wait_for_child_exit(child, Instant::now() + TERMINATION_GRACE, operation)?.is_none() {
             let mut locked_child = lock_child(child, operation)?;
-            platform::force_termination(&mut locked_child).map_err(|error| {
+            force_child_tree_termination(&mut locked_child).map_err(|error| {
                 HostProtocolError::internal(
                     format!("failed to force local tool termination: {error}"),
                     operation,
@@ -1292,7 +1970,7 @@ fn terminate_child(
 }
 
 fn wait_for_child_exit(
-    child: &Arc<Mutex<Child>>,
+    child: &Arc<Mutex<LocalToolChild>>,
     deadline: Instant,
     operation: &'static str,
 ) -> Result<Option<ExitStatus>, HostProtocolError> {
@@ -1313,18 +1991,15 @@ fn wait_for_child_exit(
 }
 
 fn lock_child<'a>(
-    child: &'a Arc<Mutex<Child>>,
+    child: &'a Arc<Mutex<LocalToolChild>>,
     operation: &'static str,
-) -> Result<std::sync::MutexGuard<'a, Child>, HostProtocolError> {
+) -> Result<std::sync::MutexGuard<'a, LocalToolChild>, HostProtocolError> {
     child
         .lock()
         .map_err(|_| HostProtocolError::internal("local tool child lock poisoned", operation))
 }
 
-fn capture_stream(
-    stream: Option<impl Read + Send + 'static>,
-    limit: u64,
-) -> Option<CapturedStream> {
+fn capture_stream(stream: Option<Box<dyn Read + Send>>, limit: u64) -> Option<CapturedStream> {
     stream.map(|mut stream| {
         let (sender, receiver) = mpsc::channel();
         thread::spawn(move || {
@@ -2079,18 +2754,17 @@ mod tests {
         assert_eq!(error.tag(), "FrameTooLarge");
     }
 
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[test]
     fn run_enforces_stderr_budget() {
         let root = temp_dir("run-stderr-limit");
-        let executable = root.join("stderr.sh");
-        write_executable(&executable, "#!/bin/sh\nprintf 'err\\n' >&2\n");
+        let command = stderr_command(&root);
         let mut payload = register_payload_with_command(
             &root,
             "runtime-stderr-limit",
             "stderr",
-            &executable,
-            vec![],
+            &command.executable,
+            command.args,
             vec![],
         );
         payload["manifest"]["policy"]["budgets"]["stderrBytes"] = json!(1);
@@ -2131,18 +2805,17 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[test]
     fn run_reports_process_failure_and_captures_stderr() {
         let root = temp_dir("run-process-failure");
-        let executable = root.join("fail.sh");
-        write_executable(&executable, "#!/bin/sh\nprintf 'denied\\n' >&2\nexit 7\n");
+        let command = failure_command(&root);
         let payload = register_payload_with_command(
             &root,
             "runtime-process-failure",
             "fail",
-            &executable,
-            vec![],
+            &command.executable,
+            command.args,
             vec![],
         );
         register(Some(payload)).expect("register should succeed");
@@ -2157,21 +2830,23 @@ mod tests {
 
         assert_eq!(response["status"], json!("failed"));
         assert_eq!(response["exitCode"], json!(7));
-        assert_eq!(response["stderr"], json!("denied\n"));
+        assert_eq!(
+            normalize_newlines(response["stderr"].as_str().unwrap_or_default()),
+            "denied\n"
+        );
     }
 
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[test]
     fn run_reports_timeout_status() {
         let root = temp_dir("run-timeout");
-        let executable = root.join("sleep.sh");
-        write_executable(&executable, "#!/bin/sh\nsleep 1\n");
+        let command = sleep_command(&root, 2);
         let mut payload = register_payload_with_command(
             &root,
             "runtime-timeout",
             "sleep",
-            &executable,
-            vec![],
+            &command.executable,
+            command.args,
             vec![],
         );
         payload["manifest"]["commands"][0]["timeoutMillis"] = json!(50);
@@ -2230,6 +2905,47 @@ mod tests {
             }
             Ok(None) => panic!("run should return a payload or typed output timeout"),
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn run_cleans_windows_job_descendants_without_breakaway_escape() {
+        let root = temp_dir("run-windows-job-descendant");
+        let marker = root.join("descendant-survived.txt");
+        let powershell = windows_powershell();
+        let child_script = format!(
+            "Start-Sleep -Milliseconds 1500; Set-Content -LiteralPath '{}' -Value leaked",
+            powershell_quote(marker.display().to_string().as_str())
+        );
+        let parent_script = format!(
+            "Start-Process -FilePath '{}' -ArgumentList '-NoProfile','-NonInteractive','-Command','{}' -WindowStyle Hidden; Start-Sleep -Milliseconds 100",
+            powershell_quote(powershell.display().to_string().as_str()),
+            powershell_quote(child_script.as_str())
+        );
+        let payload = register_payload_with_command(
+            &root,
+            "runtime-windows-job-descendant",
+            "spawn-descendant",
+            &powershell,
+            powershell_args(parent_script.as_str()),
+            vec![],
+        );
+        register(Some(payload)).expect("register should succeed");
+
+        let response = run(Some(json!({
+            "runtimeId": "runtime-windows-job-descendant",
+            "commandId": "spawn-descendant",
+            "runId": "run-windows-job-descendant"
+        })))
+        .expect("run should succeed")
+        .expect("run should return payload");
+
+        assert_eq!(response["status"], json!("completed"));
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        assert!(
+            !marker.exists(),
+            "descendant escaped the Windows Job Object cleanup"
+        );
     }
 
     #[test]
@@ -2330,18 +3046,17 @@ mod tests {
         ));
     }
 
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[test]
     fn stop_terminates_active_run() {
         let root = temp_dir("stop-active-run");
-        let executable = root.join("sleep.sh");
-        write_executable(&executable, "#!/bin/sh\nsleep 5\n");
+        let command = sleep_command(&root, 5);
         let payload = register_payload_with_command(
             &root,
             "runtime-stop-active-run",
             "sleep",
-            &executable,
-            vec![],
+            &command.executable,
+            command.args,
             vec![],
         );
         register(Some(payload)).expect("register should succeed");
@@ -2367,18 +3082,17 @@ mod tests {
         assert_eq!(response["status"], json!("failed"));
     }
 
-    #[cfg(unix)]
+    #[cfg(any(unix, windows))]
     #[test]
     fn run_rejects_duplicate_active_run_id() {
         let root = temp_dir("run-duplicate-active-id");
-        let executable = root.join("sleep.sh");
-        write_executable(&executable, "#!/bin/sh\nsleep 1\n");
+        let command = sleep_command(&root, 2);
         let payload = register_payload_with_command(
             &root,
             "runtime-duplicate-active-run",
             "sleep",
-            &executable,
-            vec![],
+            &command.executable,
+            command.args,
             vec![],
         );
         register(Some(payload)).expect("register should succeed");
@@ -2577,6 +3291,106 @@ mod tests {
             "runtimeId": runtime_id,
             "traceId": "trace-local-tool-runtime"
         })
+    }
+
+    struct TestCommand {
+        executable: PathBuf,
+        args: Vec<serde_json::Value>,
+    }
+
+    #[cfg(unix)]
+    fn stderr_command(root: &Path) -> TestCommand {
+        let executable = root.join("stderr.sh");
+        write_executable(&executable, "#!/bin/sh\nprintf 'err\\n' >&2\n");
+        TestCommand {
+            executable,
+            args: vec![],
+        }
+    }
+
+    #[cfg(windows)]
+    fn stderr_command(_root: &Path) -> TestCommand {
+        TestCommand {
+            executable: windows_cmd(),
+            args: windows_cmd_args(">&2 echo err"),
+        }
+    }
+
+    #[cfg(unix)]
+    fn failure_command(root: &Path) -> TestCommand {
+        let executable = root.join("fail.sh");
+        write_executable(&executable, "#!/bin/sh\nprintf 'denied\\n' >&2\nexit 7\n");
+        TestCommand {
+            executable,
+            args: vec![],
+        }
+    }
+
+    #[cfg(windows)]
+    fn failure_command(_root: &Path) -> TestCommand {
+        TestCommand {
+            executable: windows_cmd(),
+            args: windows_cmd_args(">&2 echo denied & exit /B 7"),
+        }
+    }
+
+    #[cfg(unix)]
+    fn sleep_command(root: &Path, seconds: u64) -> TestCommand {
+        let executable = root.join("sleep.sh");
+        write_executable(&executable, &format!("#!/bin/sh\nsleep {seconds}\n"));
+        TestCommand {
+            executable,
+            args: vec![],
+        }
+    }
+
+    #[cfg(windows)]
+    fn sleep_command(_root: &Path, seconds: u64) -> TestCommand {
+        let ping_count = seconds.saturating_add(1).max(2);
+        TestCommand {
+            executable: windows_cmd(),
+            args: windows_cmd_args(&format!("ping -n {ping_count} 127.0.0.1 >NUL")),
+        }
+    }
+
+    #[cfg(windows)]
+    fn windows_cmd() -> PathBuf {
+        env::var_os("ComSpec")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                let system_root = env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+                PathBuf::from(system_root).join("System32\\cmd.exe")
+            })
+    }
+
+    #[cfg(windows)]
+    fn windows_cmd_args(script: &str) -> Vec<serde_json::Value> {
+        vec![json!("/D"), json!("/C"), json!(script)]
+    }
+
+    #[cfg(windows)]
+    fn windows_powershell() -> PathBuf {
+        let system_root = env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+        PathBuf::from(system_root).join("System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+    }
+
+    #[cfg(windows)]
+    fn powershell_args(script: &str) -> Vec<serde_json::Value> {
+        vec![
+            json!("-NoProfile"),
+            json!("-NonInteractive"),
+            json!("-Command"),
+            json!(script),
+        ]
+    }
+
+    #[cfg(windows)]
+    fn powershell_quote(value: &str) -> String {
+        value.replace('\'', "''")
+    }
+
+    fn normalize_newlines(value: &str) -> String {
+        value.replace("\r\n", "\n")
     }
 
     fn temp_dir(name: &str) -> PathBuf {

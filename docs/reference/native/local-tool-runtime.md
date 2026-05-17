@@ -67,17 +67,17 @@ The Rust host adapter registers manifests in host state and runs only declared c
 
 `policy.budgets.cpuMillis` and `policy.budgets.memoryBytes` accept only the unbounded sentinel `9007199254740991` until host OS CPU and memory enforcement exists. Constrained CPU or memory budgets fail closed with typed `Unsupported`. `policy.cleanup.removeWorkingDirectory: true` is rejected with typed `Unsupported` until ephemeral working-directory ownership has a safe host implementation. Issue [#1404](https://github.com/Rika-Labs/effect-desktop/issues/1404) tracks both gaps.
 
-| Platform | Status        |
-| -------- | ------------- |
-| macOS    | `supported`   |
-| Windows  | `unsupported` |
-| Linux    | `supported`   |
+| Platform | Status      |
+| -------- | ----------- |
+| macOS    | `supported` |
+| Windows  | `supported` |
+| Linux    | `supported` |
 
-`isSupported` returns `{ supported: true }` on Unix host builds and typed `Unsupported` metadata elsewhere. Windows remains unsupported until its host execution path is covered by CI; issue [#1405](https://github.com/Rika-Labs/effect-desktop/issues/1405) tracks that enablement. Invalid payloads, duplicate runtimes, unknown runtimes, unknown commands, cwd escapes, spawn failures, and output budget failures are returned as typed host protocol errors. Process exit failure and wall-clock timeout are terminal `run` result statuses.
+`isSupported` returns `{ supported: true }` on macOS, Linux, and Windows host builds and typed `Unsupported` metadata elsewhere. Windows process-tree cleanup is covered by host binary CI through Job Object termination; the host creates Windows local-tool processes inside the Job Object before the initial thread runs. Invalid payloads, duplicate runtimes, unknown runtimes, unknown commands, cwd escapes, spawn failures, and output budget failures are returned as typed host protocol errors. Process exit failure and wall-clock timeout are terminal `run` result statuses.
 
 ## Architecture-Debt Sweep
 
-Issue [#1394](https://github.com/Rika-Labs/effect-desktop/issues/1394) removed service-local event mirroring so `LocalToolRuntime.events()` delegates to the bridge event stream. The remaining host protocol helpers carry native/web routing, Schema-coded payloads, and OS process lifecycle policy; no additional zero-policy Effect wrapper debt was found in the touched path. Follow-ups [#1404](https://github.com/Rika-Labs/effect-desktop/issues/1404) and [#1405](https://github.com/Rika-Labs/effect-desktop/issues/1405) track cleanup-budget enforcement and Windows host execution coverage.
+Issue [#1394](https://github.com/Rika-Labs/effect-desktop/issues/1394) removed service-local event mirroring so `LocalToolRuntime.events()` delegates to the bridge event stream. Issue [#1405](https://github.com/Rika-Labs/effect-desktop/issues/1405) added Windows host-binary coverage without adding a new wrapper layer. The remaining host protocol helpers carry native/web routing, Schema-coded payloads, and OS process lifecycle policy; no additional zero-policy Effect wrapper debt was found in the touched path. Follow-up [#1404](https://github.com/Rika-Labs/effect-desktop/issues/1404) tracks cleanup-budget enforcement.
 
 ## Testing
 

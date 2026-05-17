@@ -30,11 +30,7 @@ import {
   makeLocalToolRuntimeServiceLayer,
   makeLocalToolRuntimeUnsupportedClient
 } from "./local-tool-runtime.js"
-import {
-  NativeCapabilities,
-  UnsupportedCapability,
-  makeNativeCapabilitiesLayer
-} from "./capabilities.js"
+import { NativeCapabilities, makeNativeCapabilitiesLayer } from "./capabilities.js"
 import { Native } from "./native.js"
 import {
   LocalToolRuntimeActor,
@@ -428,7 +424,7 @@ test("LocalToolRuntime unsupported client exposes typed unsupported failures", a
   expect(supported.supported).toBe(false)
 })
 
-test("LocalToolRuntime support metadata keeps Windows unsupported until host CI covers execution", async () => {
+test("LocalToolRuntime support metadata reports Windows supported after host CI coverage", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
@@ -446,24 +442,8 @@ test("LocalToolRuntime support metadata keeps Windows unsupported until host CI 
     )
   )
 
-  expect(result.support).toEqual({
-    status: "partial",
-    reason: "local-tool-runtime-platform-specific",
-    platforms: [
-      { platform: "macos", status: "supported" },
-      { platform: "linux", status: "supported" },
-      {
-        platform: "windows",
-        status: "unsupported",
-        reason: "local-tool-runtime-platform-unsupported"
-      }
-    ]
-  })
-  expect(Exit.isFailure(result.windows)).toBe(true)
-  if (Exit.isFailure(result.windows)) {
-    const failure = result.windows.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(UnsupportedCapability)
-  }
+  expect(result.support).toEqual({ status: "supported" })
+  expect(Exit.isSuccess(result.windows)).toBe(true)
 })
 
 interface PermissionFixtureOptions {
