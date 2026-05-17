@@ -19,6 +19,7 @@ import { Cause, Effect, Exit, Stream } from "effect"
 import {
   ExtensionConfig,
   ExtensionConfigClient,
+  ExtensionConfigSurface,
   type ExtensionConfigSecretStoreApi,
   type ExtensionConfigWriteRequest,
   makeExtensionConfigBridgeClientLayer,
@@ -284,6 +285,21 @@ test("ExtensionConfig unsupported client exposes typed unsupported failures", as
   expectExitFailure(exit, (error) => {
     expect(error).toMatchObject({ tag: "Unsupported", operation: "ExtensionConfig.read" })
   })
+})
+
+test("ExtensionConfig RPC metadata reports host methods as supported", () => {
+  expect(
+    ExtensionConfigSurface.schemaDocs.map((doc) => ({
+      support: doc.support,
+      tag: doc.tag
+    }))
+  ).toEqual([
+    { tag: "ExtensionConfig.read", support: { status: "supported" } },
+    { tag: "ExtensionConfig.write", support: { status: "supported" } },
+    { tag: "ExtensionConfig.reset", support: { status: "supported" } },
+    { tag: "ExtensionConfig.redact", support: { status: "supported" } },
+    { tag: "ExtensionConfig.isSupported", support: { status: "supported" } }
+  ])
 })
 
 test("ExtensionConfig memory client exposes typed host failures", async () => {
