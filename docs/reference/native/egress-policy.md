@@ -10,7 +10,7 @@ effect_version: 4
 
 Product-neutral network egress decision service. Callers submit an actor and destination before performing host-side network, file, process, or secret work that would cause outbound access. Trusted service configuration supplies the ordered policy rules; callers do not choose their own policy.
 
-The public service is Layer-first and test-substitutable. `decide` checks `network.connect` permission before crossing the native bridge, then asks the host adapter to evaluate the trusted policy payload. Denied decisions are recorded as audit rows with actor, destination, and rule details.
+The public service is Layer-first and test-substitutable. `decide` checks `network.connect` permission, asks the host to issue a decision receipt, then evaluates trusted service-layer rules in process using that host-issued `decisionId`. The Rust host adapter does not evaluate or accept caller-supplied policy rules on `decide`; lower native `record` accepts only `decisionId`, `actor`, and `destination`, verifies them against the host-issued receipt, appends the host receipt to the decision log under an OS file lock, and emits a native `decision-recorded` event after the append succeeds. Public service events observe that host or memory-client event source and map the host receipt back to the trusted service-layer decision.
 
 ## Methods
 
@@ -21,11 +21,13 @@ The public service is Layer-first and test-substitutable. `decide` checks `netwo
 | `isSupported` | `void`                             | `{ supported, reason? }`                                    |
 | `events`      | `void`                             | stream of `decision-recorded` events                        |
 
+The application-facing `record` payload is intentionally narrow: `{ decisionId, traceId? }`. The lower native bridge call carries `{ decisionId, actor, destination, traceId? }`; it never carries caller-supplied rules, outcomes, or reasons. The host rejects unknown top-level rule sets on `decide` and rejects `record` calls whose actor or destination do not match the host-issued receipt.
+
 ## Rules
 
 Rules are evaluated in order. The first matching rule wins. A rule may match by actor, host pattern, protocol, and port. If no rule matches, the service returns a `default-deny` decision.
 
-Rules belong to the trusted service layer through `makeEgressPolicyServiceLayer(..., { rules })`. The lower host-client contract carries those rules to the adapter, but the application-facing `EgressPolicy` service accepts only actor, destination, and optional trace id.
+Rules belong to the trusted service layer through `makeEgressPolicyServiceLayer(..., { rules })`. Direct native `decide` calls reject caller-supplied rules and only issue a default-deny host receipt; trusted allow/deny evaluation stays in the TypeScript service layer.
 
 ```ts
 {
@@ -47,6 +49,7 @@ Denied attempts are auditable. The emitted audit details include:
 - `rule`
 
 Permission-registry denials before the bridge are audited with rule id `permission-registry`.
+Public `decision-recorded` events are observed only after the native record call succeeds. Native host event frames describe the host-issued receipt; the public service maps them to the trusted service-layer decision for application consumers.
 
 ## Errors
 
@@ -54,15 +57,21 @@ Permission-registry denials before the bridge are audited with rule id `permissi
 
 ## Support
 
-| Platform | Status      |
-| -------- | ----------- |
-| macOS    | `supported` |
-| Windows  | `supported` |
-| Linux    | `supported` |
+| Platform | Status                                                   |
+| -------- | -------------------------------------------------------- |
+| macOS    | `partial`; runtime-probed decision log and event support |
+| Windows  | `partial`; runtime-probed decision log and event support |
+| Linux    | `partial`; runtime-probed decision log and event support |
+
+`isSupported` returns `{ supported: true }` only when the host adapter can validate records and append them to the host decision log. The log path can be overridden with `EFFECT_DESKTOP_EGRESS_POLICY_LOG`; otherwise the host uses the platform app/state data directory. Other platforms are unsupported unless they provide an explicit log path override.
 
 ## Testing
 
-Use `makeEgressPolicyMemoryClient()` for deterministic policy decisions and decision events. Use `makeEgressPolicyUnsupportedClient()` when a test needs a typed unsupported failure.
+Use `makeEgressPolicyMemoryClient()` for deterministic policy decisions, host-recording failures, and decision-recorded events. Use `makeEgressPolicyUnsupportedClient()` when a test needs a typed unsupported failure.
+
+## Architecture Debt Sweep
+
+No Effect wrapper debt was found in the touched EgressPolicy, host adapter, or host transport area. The change removed service-local event mirroring in favor of the existing host/memory event source and kept `BridgeRpc` scoped to the native/web boundary.
 
 ## Related
 

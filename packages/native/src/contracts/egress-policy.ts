@@ -94,6 +94,8 @@ export class EgressPolicyRecordInput extends Schema.Class<EgressPolicyRecordInpu
   "EgressPolicyRecordInput"
 )({
   decisionId: BridgeSafeNonEmptyString,
+  actor: EgressPolicyActor,
+  destination: EgressPolicyDestination,
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 

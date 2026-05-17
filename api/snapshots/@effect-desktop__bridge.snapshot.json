@@ -371,7 +371,7 @@
     {
       "name": "HostHandshakeExchange",
       "kind": "interface",
-      "signature": "export interface HostHandshakeExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> }"
+      "signature": "export interface HostHandshakeExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> readonly subscribe?: ( method: string ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never> readonly close?: () => Effect.Effect<void, never, never> }"
     },
     {
       "name": "HostProtocolAlreadyExistsError",

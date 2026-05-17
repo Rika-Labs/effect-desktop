@@ -26,6 +26,7 @@ import {
   EgressPolicyDecisionInput,
   EgressPolicyDecisionRequest,
   EgressPolicyDestination,
+  EgressPolicyRecordInput,
   EgressPolicyRecordRequest,
   EgressPolicyRule
 } from "./contracts/egress-policy.js"
@@ -62,7 +63,6 @@ test("EgressPolicy service allows matching egress and records an auditable decis
           permissions,
           audit: memoryAudit(rows),
           rules: [allowRule()],
-          nextDecisionId: () => "decision-allow",
           nextTraceId: () => "trace-egress"
         })
       )
@@ -73,6 +73,10 @@ test("EgressPolicy service allows matching egress and records an auditable decis
   expect(result.decision.rule.id).toBe("allow-api")
   expect(result.record.recorded).toBe(true)
   expect(result.event.decision.decisionId).toBe("decision-allow")
+  expect(result.event.decision.outcome).toBe("allowed")
+  expect(result.event.decision.rule.id).toBe("allow-api")
+  expect(result.event.decision.actor.id).toBe("extension-1")
+  expect(result.event.decision.destination.host).toBe("api.example.test")
   expect(rows.some((row) => row.kind === "permission-used")).toBe(true)
 })
 
@@ -95,9 +99,7 @@ test("EgressPolicy service fails denied policy decisions and audits actor destin
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const policy = yield* EgressPolicy
-      const exit = yield* Effect.exit(policy.decide(decisionRequest()))
-      const event = yield* policy.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
-      return { event, exit }
+      return yield* Effect.exit(policy.decide(decisionRequest()))
     }).pipe(
       Effect.provide(
         makeEgressPolicyServiceLayer(client, {
@@ -110,10 +112,9 @@ test("EgressPolicy service fails denied policy decisions and audits actor destin
     )
   )
 
-  expectExitFailure(result.exit, (error) => {
+  expectExitFailure(result, (error) => {
     expect(error).toMatchObject({ tag: "PermissionDenied", operation: "EgressPolicy.decide" })
   })
-  expect(result.event.decision.rule.id).toBe("deny-api")
   expect(
     rows.some(
       (row) =>
@@ -169,19 +170,10 @@ test("EgressPolicy service checks permission before client side effects", async 
   ).toBe(true)
 })
 
-test("EgressPolicy service rejects forged record requests before client side effects", async () => {
+test("EgressPolicy service receives typed unknown decision failures from the host client", async () => {
   const rows: AuditEvent[] = []
   const permissions = await Effect.runPromise(makePermissionRegistry())
-  let calls = 0
-  const client = {
-    decide: () => Effect.succeed(allowDecision()),
-    record: () => {
-      calls += 1
-      return Effect.succeed({ decisionId: "forged", recorded: true })
-    },
-    isSupported: () => Effect.succeed({ supported: true }),
-    events: () => Stream.empty
-  }
+  const client = await Effect.runPromise(makeEgressPolicyMemoryClient())
 
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
@@ -200,11 +192,53 @@ test("EgressPolicy service rejects forged record requests before client side eff
     )
   )
 
-  expect(calls).toBe(0)
   expect(rows).toEqual([])
   expectExitFailure(exit, (error) => {
     expect(error).toMatchObject({ tag: "InvalidArgument", operation: "EgressPolicy.record" })
   })
+})
+
+test("EgressPolicy service does not emit recorded events when host recording fails", async () => {
+  const rows: AuditEvent[] = []
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  await Effect.runPromise(
+    permissions.declare(P.networkConnect({ hosts: ["api.example.test"] }), { source: "test" })
+  )
+  const client = await Effect.runPromise(
+    makeEgressPolicyMemoryClient({
+      failure: {
+        record: makeHostProtocolInternalError("host record failed", "EgressPolicy.record")
+      }
+    })
+  )
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const policy = yield* EgressPolicy
+      const decision = yield* policy.decide(decisionRequest())
+      const recordExit = yield* Effect.exit(
+        policy.record(new EgressPolicyRecordRequest({ decisionId: decision.decisionId }))
+      )
+      const event = yield* policy
+        .events()
+        .pipe(Stream.take(1), Stream.runCollect, Effect.timeoutOption("20 millis"))
+      return { event, recordExit }
+    }).pipe(
+      Effect.provide(
+        makeEgressPolicyServiceLayer(client, {
+          permissions,
+          audit: memoryAudit(rows),
+          rules: [allowRule()],
+          nextTraceId: () => "trace-egress"
+        })
+      )
+    )
+  )
+
+  expectExitFailure(result.recordExit, (error) => {
+    expect(error).toMatchObject({ tag: "Internal", operation: "EgressPolicy.record" })
+  })
+  expect(Option.isNone(result.event)).toBe(true)
 })
 
 test("EgressPolicy service mints unique default decision ids", async () => {
@@ -307,6 +341,67 @@ test("EgressPolicy bridge client does not forward caller-supplied rules", async 
   })
 })
 
+test("EgressPolicy bridge client records issued decisions through the native payload", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({
+        kind: "success",
+        payload: { decisionId: "decision-allow", recorded: true }
+      })
+    },
+    subscribe: () => Stream.empty
+  }
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const policy = yield* EgressPolicyClient
+      return yield* policy.record(recordInput())
+    }).pipe(Effect.provide(makeEgressPolicyBridgeClientLayer(exchange)))
+  )
+
+  expect(result.recorded).toBe(true)
+  expect(requests).toHaveLength(1)
+  expect(requests[0]?.method).toBe("EgressPolicy.record")
+  expect(requests[0]?.payload).toMatchObject({
+    decisionId: "decision-allow",
+    actor: { id: "extension-1", kind: "extension" },
+    destination: { host: "api.example.test", protocol: "https" },
+    traceId: "trace-record"
+  })
+})
+
+test("EgressPolicy bridge client rejects malformed record input before native transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({ kind: "success", payload: { decisionId: "forged", recorded: true } })
+    },
+    subscribe: () => Stream.empty
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const policy = yield* EgressPolicyClient
+      return yield* Effect.exit(
+        policy.record({
+          decisionId: "",
+          actor: actor(),
+          destination: destination(),
+          traceId: "trace-record"
+        })
+      )
+    }).pipe(Effect.provide(makeEgressPolicyBridgeClientLayer(exchange)))
+  )
+
+  expect(requests).toEqual([])
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "EgressPolicy.record" })
+  })
+})
+
 const actor = (): EgressPolicyActor =>
   new EgressPolicyActor({ kind: "extension", id: "extension-1" })
 
@@ -343,6 +438,14 @@ const allowInput = (): EgressPolicyDecisionInput =>
     actor: actor(),
     destination: destination(),
     traceId: "trace-egress"
+  })
+
+const recordInput = (): EgressPolicyRecordInput =>
+  new EgressPolicyRecordInput({
+    decisionId: "decision-allow",
+    actor: actor(),
+    destination: destination(),
+    traceId: "trace-record"
   })
 
 const decisionRequest = (): EgressPolicyDecisionRequest =>

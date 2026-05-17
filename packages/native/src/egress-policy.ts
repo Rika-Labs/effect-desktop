@@ -9,6 +9,7 @@ import {
   makeHostProtocolInternalError,
   type HostProtocolError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup
 } from "@effect-desktop/bridge"
 import {
@@ -45,6 +46,14 @@ import {
 
 const Surface = "EgressPolicy"
 const UnsupportedReason = "host-adapter-unimplemented"
+const RuntimeProbedSupportReason = "host-decision-log-runtime-probed"
+const RuntimeProbedSupport = NativeSurface.support.partial(RuntimeProbedSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: RuntimeProbedSupportReason },
+    { platform: "windows", status: "partial", reason: RuntimeProbedSupportReason },
+    { platform: "linux", status: "partial", reason: RuntimeProbedSupportReason }
+  ]
+}) satisfies RpcSupportMetadata
 const DefaultDenyRule = new EgressPolicyRule({
   id: "default-deny",
   effect: "deny",
@@ -52,6 +61,13 @@ const DefaultDenyRule = new EgressPolicyRule({
   reason: "no matching egress allow rule"
 })
 const EgressPolicyEventMethod = "EgressPolicy.DecisionRecorded"
+const IssuedDecisionLimit = 4096
+const IssuedDecisionTtlMillis = 5 * 60 * 1000
+
+interface IssuedDecisionEntry {
+  readonly decision: EgressPolicyDecisionResult
+  readonly expiresAt: number
+}
 
 export type EgressPolicyError = HostProtocolError
 
@@ -72,7 +88,7 @@ export const EgressPolicyIsSupported = NativeSurface.rpc(Surface, "isSupported",
   success: EgressPolicySupportedResult,
   authority: NativeSurface.authority.none,
   endpoint: "query",
-  support: NativeSurface.support.supported
+  support: RuntimeProbedSupport
 })
 
 export const EgressPolicyRpcEvents = Object.freeze({
@@ -127,7 +143,6 @@ export interface EgressPolicyServiceOptions {
   readonly permissions: PermissionRegistryApi
   readonly audit?: AuditEventsApi
   readonly rules?: readonly EgressPolicyRule[]
-  readonly nextDecisionId?: () => string
   readonly nextTraceId?: () => string
 }
 
@@ -178,7 +193,12 @@ export const EgressPolicyHandlersLive = EgressPolicyRpcGroup.toLayer({
   "EgressPolicy.record": (input) =>
     Effect.gen(function* () {
       const policy = yield* EgressPolicy
-      return yield* policy.record(input)
+      return yield* policy.record(
+        new EgressPolicyRecordRequest({
+          decisionId: input.decisionId,
+          ...(input.traceId === undefined ? {} : { traceId: input.traceId })
+        })
+      )
     }),
   "EgressPolicy.isSupported": () =>
     Effect.gen(function* () {
@@ -211,20 +231,8 @@ export const makeEgressPolicyMemoryClient = (
 ): Effect.Effect<EgressPolicyClientApi, never, never> =>
   Effect.gen(function* () {
     const pubsub = yield* PubSub.bounded<EgressPolicyEvent>({ capacity: 256, replay: 64 })
+    const issued = yield* Ref.make<ReadonlyMap<string, IssuedDecisionEntry>>(new Map())
     const nextDecisionId = yield* makeDecisionIdGenerator(options.nextDecisionId)
-
-    const publish = (decision: EgressPolicyDecisionResult): Effect.Effect<void, never, never> =>
-      Effect.gen(function* () {
-        const timestamp = yield* Clock.currentTimeMillis
-        yield* PubSub.publish(
-          pubsub,
-          new EgressPolicyDecisionRecordedEvent({
-            type: "decision-recorded",
-            timestamp,
-            decision
-          })
-        )
-      }).pipe(Effect.asVoid)
 
     return Object.freeze({
       decide: (input) =>
@@ -234,7 +242,10 @@ export const makeEgressPolicyMemoryClient = (
               options.failure?.decide,
               Effect.gen(function* () {
                 const decision = decideEgress(valid, [], yield* nextDecisionId())
-                yield* publish(decision)
+                const now = yield* Clock.currentTimeMillis
+                yield* Ref.update(issued, (current) =>
+                  rememberIssuedDecision(current, decision, now)
+                )
                 return decision
               })
             )
@@ -245,12 +256,20 @@ export const makeEgressPolicyMemoryClient = (
           Effect.flatMap((valid) =>
             failOr(
               options.failure?.record,
-              Effect.succeed(
-                new EgressPolicyRecordResult({
-                  decisionId: valid.decisionId,
+              Effect.gen(function* () {
+                const now = yield* Clock.currentTimeMillis
+                const claimed = yield* claimIssuedDecision(
+                  issued,
+                  valid,
+                  now,
+                  "EgressPolicy.record"
+                )
+                yield* publishDecisionEvent(pubsub, claimed.decision)
+                return new EgressPolicyRecordResult({
+                  decisionId: claimed.decision.decisionId,
                   recorded: true
                 })
-              )
+              })
             )
           )
         ),
@@ -284,10 +303,9 @@ const makeEgressPolicyService = (
   options: EgressPolicyServiceOptions
 ): Effect.Effect<EgressPolicyServiceApi, never, never> =>
   Effect.gen(function* () {
-    const issued = yield* Ref.make<ReadonlyMap<string, EgressPolicyDecisionResult>>(new Map())
-    const events = yield* PubSub.bounded<EgressPolicyEvent>({ capacity: 256, replay: 64 })
+    const issued = yield* Ref.make<ReadonlyMap<string, IssuedDecisionEntry>>(new Map())
+    const recorded = yield* Ref.make<ReadonlyMap<string, IssuedDecisionEntry>>(new Map())
     const trustedRules = options.rules ?? []
-    const nextDecisionId = yield* makeDecisionIdGenerator(options.nextDecisionId)
 
     return Object.freeze({
       decide: (input) =>
@@ -299,42 +317,54 @@ const makeEgressPolicyService = (
             ...(request.traceId === undefined ? {} : { traceId: request.traceId })
           })
           yield* checkEgressPermission(options, valid)
-          const decision = decideEgress(valid, trustedRules, yield* nextDecisionId())
-          yield* Ref.update(issued, (current) =>
-            new Map(current).set(decision.decisionId, decision)
-          )
-          yield* publishDecision(events, decision)
+          const hostDecision = yield* client.decide(valid)
+          const decision = decideEgress(valid, trustedRules, hostDecision.decisionId)
           yield* emitDecisionAudit(options, decision, "EgressPolicy.decide")
           if (decision.outcome === "denied") {
             return yield* Effect.fail(deniedError(decision, "EgressPolicy.decide"))
           }
+          const now = yield* Clock.currentTimeMillis
+          yield* Ref.update(issued, (current) => rememberIssuedDecision(current, decision, now))
           return decision
         }),
       record: (input) =>
         Effect.gen(function* () {
           const valid = yield* validateRecordRequest(input)
-          const current = yield* Ref.get(issued)
-          const decision = current.get(valid.decisionId)
-          if (decision === undefined) {
-            return yield* Effect.fail(
-              makeHostProtocolInvalidArgumentError(
-                "decisionId",
-                "must reference an issued egress decision",
+          return yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              const now = yield* Clock.currentTimeMillis
+              const claimed = yield* claimIssuedDecisionById(
+                issued,
+                valid.decisionId,
+                now,
                 "EgressPolicy.record"
               )
-            )
-          }
-          const result = yield* client.record(
-            new EgressPolicyRecordInput({
-              decisionId: valid.decisionId,
-              ...(valid.traceId === undefined ? {} : { traceId: valid.traceId })
+              yield* Ref.update(recorded, (current) =>
+                rememberIssuedDecision(current, claimed.decision, now)
+              )
+              return yield* client
+                .record(
+                  new EgressPolicyRecordInput({
+                    decisionId: claimed.decision.decisionId,
+                    actor: claimed.decision.actor,
+                    destination: claimed.decision.destination,
+                    ...(valid.traceId === undefined ? {} : { traceId: valid.traceId })
+                  })
+                )
+                .pipe(
+                  Effect.catch((error) =>
+                    removeIssuedDecision(recorded, claimed.decision.decisionId).pipe(
+                      Effect.andThen(restoreIssuedDecision(issued, claimed, now)),
+                      Effect.andThen(Effect.fail(error))
+                    )
+                  )
+                )
             })
           )
-          yield* emitDecisionAudit(options, decision, "EgressPolicy.record")
-          return result
         }),
       isSupported: () => client.isSupported(),
-      events: () => Stream.fromPubSub(events)
+      events: () =>
+        client.events().pipe(Stream.mapEffect((event) => mapRecordedEvent(recorded, event)))
     } satisfies EgressPolicyServiceApi)
   })
 
@@ -371,7 +401,7 @@ function egressPolicyRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: RuntimeProbedSupport
   })
 }
 
@@ -421,22 +451,6 @@ const makeDecisionIdGenerator = (
       )
   })
 
-const publishDecision = (
-  events: PubSub.PubSub<EgressPolicyEvent>,
-  decision: EgressPolicyDecisionResult
-): Effect.Effect<void, never, never> =>
-  Effect.gen(function* () {
-    const timestamp = yield* Clock.currentTimeMillis
-    yield* PubSub.publish(
-      events,
-      new EgressPolicyDecisionRecordedEvent({
-        type: "decision-recorded",
-        timestamp,
-        decision
-      })
-    )
-  }).pipe(Effect.asVoid)
-
 const decideEgress = (
   input: EgressPolicyDecisionInput,
   rules: readonly EgressPolicyRule[],
@@ -470,6 +484,168 @@ const matchesOne = (patterns: readonly string[], value: string): boolean =>
 
 const sameActor = (left: EgressPolicyActor, right: EgressPolicyActor): boolean =>
   left.kind === right.kind && left.id === right.id
+
+const sameDestination = (left: EgressPolicyDestination, right: EgressPolicyDestination): boolean =>
+  left.protocol === right.protocol &&
+  left.host === right.host &&
+  left.port === right.port &&
+  left.path === right.path
+
+interface IssuedDecisionClaim {
+  readonly decisionId: string
+  readonly actor: EgressPolicyActor
+  readonly destination: EgressPolicyDestination
+}
+
+const rememberIssuedDecision = (
+  current: ReadonlyMap<string, IssuedDecisionEntry>,
+  decision: EgressPolicyDecisionResult,
+  now: number
+): ReadonlyMap<string, IssuedDecisionEntry> => {
+  const next = new Map(pruneIssuedDecisions(current, now))
+  while (next.size >= IssuedDecisionLimit) {
+    const oldest = next.keys().next().value
+    if (oldest === undefined) {
+      break
+    }
+    next.delete(oldest)
+  }
+  next.set(decision.decisionId, {
+    decision,
+    expiresAt: now + IssuedDecisionTtlMillis
+  })
+  return next
+}
+
+const claimIssuedDecisionById = (
+  issued: Ref.Ref<ReadonlyMap<string, IssuedDecisionEntry>>,
+  decisionId: string,
+  now: number,
+  operation: string
+): Effect.Effect<IssuedDecisionEntry, EgressPolicyError, never> =>
+  Ref.modify(issued, (current) => {
+    const pruned = pruneIssuedDecisions(current, now)
+    const entry = pruned.get(decisionId)
+    if (entry === undefined) {
+      return [undefined, pruned] as const
+    }
+    const next = new Map(pruned)
+    next.delete(decisionId)
+    return [entry, next] as const
+  }).pipe(
+    Effect.flatMap((entry) =>
+      entry === undefined
+        ? Effect.fail(
+            makeHostProtocolInvalidArgumentError(
+              "decisionId",
+              "must reference an issued egress decision",
+              operation
+            )
+          )
+        : Effect.succeed(entry)
+    )
+  )
+
+const claimIssuedDecision = (
+  issued: Ref.Ref<ReadonlyMap<string, IssuedDecisionEntry>>,
+  claim: IssuedDecisionClaim,
+  now: number,
+  operation: string
+): Effect.Effect<IssuedDecisionEntry, EgressPolicyError, never> =>
+  Effect.gen(function* () {
+    const entry = yield* claimIssuedDecisionById(issued, claim.decisionId, now, operation)
+    if (!sameActor(entry.decision.actor, claim.actor)) {
+      yield* restoreIssuedDecision(issued, entry, now)
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "actor",
+          "must match issued egress decision actor",
+          operation
+        )
+      )
+    }
+    if (!sameDestination(entry.decision.destination, claim.destination)) {
+      yield* restoreIssuedDecision(issued, entry, now)
+      return yield* Effect.fail(
+        makeHostProtocolInvalidArgumentError(
+          "destination",
+          "must match issued egress decision destination",
+          operation
+        )
+      )
+    }
+    return entry
+  })
+
+const mapRecordedEvent = (
+  recorded: Ref.Ref<ReadonlyMap<string, IssuedDecisionEntry>>,
+  event: EgressPolicyEvent
+): Effect.Effect<EgressPolicyEvent, never, never> =>
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now) =>
+      Ref.modify(recorded, (current) => {
+        const pruned = pruneIssuedDecisions(current, now)
+        const entry = pruned.get(event.decision.decisionId)
+        if (entry === undefined) {
+          return [event, pruned] as const
+        }
+        const mapped = new EgressPolicyDecisionRecordedEvent({
+          type: event.type,
+          timestamp: event.timestamp,
+          decision: entry.decision
+        })
+        return [mapped, pruned] as const
+      })
+    )
+  )
+
+const restoreIssuedDecision = (
+  issued: Ref.Ref<ReadonlyMap<string, IssuedDecisionEntry>>,
+  entry: IssuedDecisionEntry,
+  now: number
+): Effect.Effect<void, never, never> =>
+  Ref.update(issued, (current) => rememberIssuedDecision(current, entry.decision, now)).pipe(
+    Effect.asVoid
+  )
+
+const removeIssuedDecision = (
+  issued: Ref.Ref<ReadonlyMap<string, IssuedDecisionEntry>>,
+  decisionId: string
+): Effect.Effect<void, never, never> =>
+  Ref.update(issued, (current) => {
+    const next = new Map(current)
+    next.delete(decisionId)
+    return next
+  }).pipe(Effect.asVoid)
+
+const pruneIssuedDecisions = (
+  current: ReadonlyMap<string, IssuedDecisionEntry>,
+  now: number
+): ReadonlyMap<string, IssuedDecisionEntry> => {
+  const next = new Map<string, IssuedDecisionEntry>()
+  for (const [decisionId, entry] of current) {
+    if (entry.expiresAt > now) {
+      next.set(decisionId, entry)
+    }
+  }
+  return next
+}
+
+const publishDecisionEvent = (
+  pubsub: PubSub.PubSub<EgressPolicyEvent>,
+  decision: EgressPolicyDecisionResult
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const timestamp = yield* Clock.currentTimeMillis
+    yield* PubSub.publish(
+      pubsub,
+      new EgressPolicyDecisionRecordedEvent({
+        type: "decision-recorded",
+        timestamp,
+        decision
+      })
+    )
+  }).pipe(Effect.asVoid)
 
 const checkEgressPermission = (
   options: EgressPolicyServiceOptions,

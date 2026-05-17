@@ -27,25 +27,70 @@ impl HostMethodRouter {
         Self { window }
     }
 
-    pub(crate) fn dispatch(&self, envelope: HostProtocolEnvelope) -> Option<HostProtocolEnvelope> {
-        self.dispatch_at(envelope, timestamp_millis())
+    pub(crate) fn dispatch_frames(
+        &self,
+        envelope: HostProtocolEnvelope,
+    ) -> Vec<HostProtocolEnvelope> {
+        self.dispatch_frames_at(envelope, timestamp_millis())
     }
 
+    #[cfg(test)]
     fn dispatch_at(
         &self,
         envelope: HostProtocolEnvelope,
         timestamp: u64,
     ) -> Option<HostProtocolEnvelope> {
+        self.dispatch_frames_at(envelope, timestamp)
+            .into_iter()
+            .next()
+    }
+
+    fn dispatch_frames_at(
+        &self,
+        envelope: HostProtocolEnvelope,
+        timestamp: u64,
+    ) -> Vec<HostProtocolEnvelope> {
         let HostProtocolEnvelope::Request {
             id,
             method,
             trace_id,
+            window_id,
             payload,
             ..
         } = envelope
         else {
-            return None;
+            return Vec::new();
         };
+
+        if method == host_protocol::EGRESS_POLICY_RECORD_METHOD {
+            let (payload, event_payload, error) =
+                match egress_policy::record_with_event(payload, timestamp) {
+                    Ok((payload, event_payload)) => (payload, event_payload, None),
+                    Err(error) => (None, None, Some(error)),
+                };
+
+            let response = HostProtocolEnvelope::Response {
+                id,
+                timestamp,
+                trace_id: trace_id.clone(),
+                payload,
+                error,
+            };
+
+            return match event_payload {
+                Some(payload) => vec![
+                    HostProtocolEnvelope::Event {
+                        method: host_protocol::EGRESS_POLICY_DECISION_RECORDED_EVENT.to_string(),
+                        timestamp,
+                        trace_id,
+                        window_id,
+                        payload: Some(payload),
+                    },
+                    response,
+                ],
+                None => vec![response],
+            };
+        }
 
         let result = match method.as_str() {
             host_protocol::HOST_PING_METHOD => Ok(None),
@@ -107,7 +152,6 @@ impl HostMethodRouter {
                 diagnostics_bundle::is_supported()
             }
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
-            host_protocol::EGRESS_POLICY_RECORD_METHOD => egress_policy::record(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
             host_protocol::EXECUTION_SANDBOX_CREATE_METHOD => execution_sandbox::create(payload),
             host_protocol::EXECUTION_SANDBOX_RUN_METHOD => execution_sandbox::run(payload),
@@ -166,13 +210,13 @@ impl HostMethodRouter {
             Err(error) => (None, Some(error)),
         };
 
-        Some(HostProtocolEnvelope::Response {
+        vec![HostProtocolEnvelope::Response {
             id,
             timestamp,
             trace_id,
             payload,
             error,
-        })
+        }]
     }
 }
 
@@ -721,6 +765,10 @@ mod tests {
             )
             .expect("egress policy request should return response");
 
+        let decision_id = egress_policy_decision_id(&response);
+        assert!(decision_id.starts_with("egress-decision-"));
+        assert_ne!(decision_id, "trace-egress-policy");
+
         assert_eq!(
             response,
             HostProtocolEnvelope::Response {
@@ -728,7 +776,7 @@ mod tests {
                 timestamp: 1710000000119,
                 trace_id: "trace-request-egress-policy".to_string(),
                 payload: Some(serde_json::json!({
-                    "decisionId": "trace-egress-policy",
+                    "decisionId": decision_id,
                     "outcome": "denied",
                     "actor": { "kind": "extension", "id": "extension-1" },
                     "destination": {
@@ -782,6 +830,108 @@ mod tests {
                 )),
             }
         );
+    }
+
+    #[test]
+    fn egress_policy_record_routes_response_and_native_event() {
+        let _guard = super::egress_policy::EGRESS_POLICY_ENV_LOCK
+            .lock()
+            .expect("egress policy env lock should not be poisoned");
+        let dir = unique_temp_dir("egress-policy-record-route");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let log_path = dir.join("egress-policy.jsonl");
+        let previous_log_path = std::env::var_os("EFFECT_DESKTOP_EGRESS_POLICY_LOG");
+        std::env::set_var("EFFECT_DESKTOP_EGRESS_POLICY_LOG", &log_path);
+
+        let router = test_router();
+        let decision_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-egress-policy-issue",
+                    host_protocol::EGRESS_POLICY_DECIDE_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "destination": {
+                            "protocol": "https",
+                            "host": "api.example.test",
+                            "port": 443
+                        },
+                        "traceId": "decision-router-record"
+                    }),
+                ),
+                1710000000121,
+            )
+            .expect("egress policy decision should be issued");
+        let decision_id = egress_policy_decision_id(&decision_response);
+
+        let frames = router.dispatch_frames_at(
+            request_with_payload(
+                "request-egress-policy-record",
+                host_protocol::EGRESS_POLICY_RECORD_METHOD,
+                serde_json::json!({
+                    "decisionId": decision_id,
+                    "actor": { "kind": "extension", "id": "extension-1" },
+                    "destination": {
+                        "protocol": "https",
+                        "host": "api.example.test",
+                        "port": 443
+                    },
+                    "traceId": "trace-record"
+                }),
+            ),
+            1710000000122,
+        );
+
+        match previous_log_path {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_EGRESS_POLICY_LOG", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_EGRESS_POLICY_LOG"),
+        }
+
+        assert_eq!(
+            frames,
+            vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::EGRESS_POLICY_DECISION_RECORDED_EVENT.to_string(),
+                    timestamp: 1710000000122,
+                    trace_id: "trace-request-egress-policy-record".to_string(),
+                    window_id: None,
+                    payload: Some(serde_json::json!({
+                    "type": "decision-recorded",
+                    "timestamp": 1_710_000_000_122_u64,
+                        "decision": {
+                            "decisionId": decision_id,
+                            "outcome": "denied",
+                            "actor": { "kind": "extension", "id": "extension-1" },
+                            "destination": {
+                                "protocol": "https",
+                            "host": "api.example.test",
+                            "port": 443
+                            },
+                            "rule": {
+                                "id": "default-deny",
+                                "effect": "deny",
+                                "hosts": ["*"],
+                                "reason": "no matching egress allow rule"
+                            },
+                            "reason": "no matching egress allow rule"
+                        }
+                    })),
+                },
+                HostProtocolEnvelope::Response {
+                    id: "request-egress-policy-record".to_string(),
+                    timestamp: 1710000000122,
+                    trace_id: "trace-request-egress-policy-record".to_string(),
+                    payload: Some(serde_json::json!({
+                        "decisionId": decision_id,
+                        "recorded": true
+                    })),
+                    error: None,
+                },
+            ]
+        );
+        assert!(log_path.exists());
+
+        fs::remove_dir_all(dir).expect("temp dir should be removed");
     }
 
     #[test]
@@ -1375,6 +1525,31 @@ mod tests {
             Ok(WindowCreateResponse::new("window-test")),
             Ok(()),
         )))
+    }
+
+    fn egress_policy_decision_id(response: &HostProtocolEnvelope) -> String {
+        let HostProtocolEnvelope::Response {
+            payload: Some(payload),
+            error: None,
+            ..
+        } = response
+        else {
+            panic!("egress policy decision response should be successful");
+        };
+
+        payload
+            .get("decisionId")
+            .and_then(serde_json::Value::as_str)
+            .expect("egress policy decision response should include decisionId")
+            .to_string()
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("effect-desktop-method-router-{nanos}-{name}"))
     }
 
     fn execution_sandbox_create_payload() -> serde_json::Value {

@@ -596,7 +596,7 @@
     {
       "name": "EgressPolicyServiceOptions",
       "kind": "interface",
-      "signature": "export interface EgressPolicyServiceOptions { readonly permissions: PermissionRegistryApi readonly audit?: AuditEventsApi readonly rules?: readonly EgressPolicyRule[] readonly nextDecisionId?: () => string readonly nextTraceId?: () => string }"
+      "signature": "export interface EgressPolicyServiceOptions { readonly permissions: PermissionRegistryApi readonly audit?: AuditEventsApi readonly rules?: readonly EgressPolicyRule[] readonly nextTraceId?: () => string }"
     },
     {
       "name": "EgressPolicySurface",

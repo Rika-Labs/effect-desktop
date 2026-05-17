@@ -1056,26 +1056,59 @@ impl EgressPolicyDecisionResultPayload {
     pub fn outcome(&self) -> EgressPolicyOutcome {
         self.outcome
     }
+
+    pub fn actor(&self) -> &EgressPolicyActorPayload {
+        &self.actor
+    }
+
+    pub fn destination(&self) -> &EgressPolicyDestinationPayload {
+        &self.destination
+    }
+
+    pub fn rule(&self) -> &EgressPolicyRulePayload {
+        &self.rule
+    }
+
+    pub fn reason(&self) -> &str {
+        &self.reason
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EgressPolicyRecordPayload {
     decision_id: String,
+    actor: EgressPolicyActorPayload,
+    destination: EgressPolicyDestinationPayload,
     #[serde(skip_serializing_if = "Option::is_none")]
     trace_id: Option<String>,
 }
 
 impl EgressPolicyRecordPayload {
-    pub fn new(decision_id: impl Into<String>, trace_id: Option<String>) -> Self {
+    pub fn new(
+        decision_id: impl Into<String>,
+        actor: EgressPolicyActorPayload,
+        destination: EgressPolicyDestinationPayload,
+        trace_id: Option<String>,
+    ) -> Self {
         Self {
             decision_id: decision_id.into(),
+            actor,
+            destination,
             trace_id,
         }
     }
 
     pub fn decision_id(&self) -> &str {
         &self.decision_id
+    }
+
+    pub fn actor(&self) -> &EgressPolicyActorPayload {
+        &self.actor
+    }
+
+    pub fn destination(&self) -> &EgressPolicyDestinationPayload {
+        &self.destination
     }
 
     pub fn trace_id(&self) -> Option<&str> {
@@ -1096,6 +1129,37 @@ impl EgressPolicyRecordResultPayload {
             decision_id: decision_id.into(),
             recorded: true,
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EgressPolicyDecisionRecordedEventPayload {
+    #[serde(rename = "type")]
+    event_type: String,
+    timestamp: u64,
+    decision: EgressPolicyDecisionResultPayload,
+}
+
+impl EgressPolicyDecisionRecordedEventPayload {
+    pub fn new(timestamp: u64, decision: EgressPolicyDecisionResultPayload) -> Self {
+        Self {
+            event_type: "decision-recorded".to_string(),
+            timestamp,
+            decision,
+        }
+    }
+
+    pub fn event_type(&self) -> &str {
+        &self.event_type
+    }
+
+    pub fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
+    pub fn decision(&self) -> &EgressPolicyDecisionResultPayload {
+        &self.decision
     }
 }
 
@@ -4618,25 +4682,25 @@ mod tests {
         DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
         DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
         DiagnosticsBundleWriteResultPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
-        EgressPolicyDecisionPayload, EgressPolicyDecisionResultPayload,
-        EgressPolicyDestinationPayload, EgressPolicyOutcome, EgressPolicyProtocol,
-        EgressPolicyRecordPayload, EgressPolicyRecordResultPayload, EgressPolicyRuleEffect,
-        EgressPolicyRulePayload, EgressPolicySupportedPayload, ExecutionSandboxActorKind,
-        ExecutionSandboxActorPayload, ExecutionSandboxBudgetPolicyPayload,
-        ExecutionSandboxCleanupPolicyPayload, ExecutionSandboxCreatePayload,
-        ExecutionSandboxEnvironmentEntryPayload, ExecutionSandboxEventPayload,
-        ExecutionSandboxEventPhase, ExecutionSandboxFilesystemPolicyPayload,
-        ExecutionSandboxNetworkPolicyPayload, ExecutionSandboxPolicyPayload,
-        ExecutionSandboxRunPayload, ExecutionSandboxRunStatus, ExecutionSandboxSupportedPayload,
-        ExtensionConfigActorKind, ExtensionConfigActorPayload, ExtensionConfigEventPayload,
-        ExtensionConfigEventPhase, ExtensionConfigExportPolicy, ExtensionConfigFieldPayload,
-        ExtensionConfigReadPayload, ExtensionConfigRedactResultPayload,
-        ExtensionConfigRedactionEvidencePayload, ExtensionConfigResetResultPayload,
-        ExtensionConfigSupportedPayload, ExtensionConfigValueEntryPayload,
-        ExtensionConfigValueType, ExtensionConfigWritePayload, ExtensionPackageActorKind,
-        ExtensionPackageActorPayload, ExtensionPackageCapabilityDeclarationPayload,
-        ExtensionPackageCompatibilityPayload, ExtensionPackageEventPayload,
-        ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
+        EgressPolicyDecisionPayload, EgressPolicyDecisionRecordedEventPayload,
+        EgressPolicyDecisionResultPayload, EgressPolicyDestinationPayload, EgressPolicyOutcome,
+        EgressPolicyProtocol, EgressPolicyRecordPayload, EgressPolicyRecordResultPayload,
+        EgressPolicyRuleEffect, EgressPolicyRulePayload, EgressPolicySupportedPayload,
+        ExecutionSandboxActorKind, ExecutionSandboxActorPayload,
+        ExecutionSandboxBudgetPolicyPayload, ExecutionSandboxCleanupPolicyPayload,
+        ExecutionSandboxCreatePayload, ExecutionSandboxEnvironmentEntryPayload,
+        ExecutionSandboxEventPayload, ExecutionSandboxEventPhase,
+        ExecutionSandboxFilesystemPolicyPayload, ExecutionSandboxNetworkPolicyPayload,
+        ExecutionSandboxPolicyPayload, ExecutionSandboxRunPayload, ExecutionSandboxRunStatus,
+        ExecutionSandboxSupportedPayload, ExtensionConfigActorKind, ExtensionConfigActorPayload,
+        ExtensionConfigEventPayload, ExtensionConfigEventPhase, ExtensionConfigExportPolicy,
+        ExtensionConfigFieldPayload, ExtensionConfigReadPayload,
+        ExtensionConfigRedactResultPayload, ExtensionConfigRedactionEvidencePayload,
+        ExtensionConfigResetResultPayload, ExtensionConfigSupportedPayload,
+        ExtensionConfigValueEntryPayload, ExtensionConfigValueType, ExtensionConfigWritePayload,
+        ExtensionPackageActorKind, ExtensionPackageActorPayload,
+        ExtensionPackageCapabilityDeclarationPayload, ExtensionPackageCompatibilityPayload,
+        ExtensionPackageEventPayload, ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
         ExtensionPackageInstallResultPayload, ExtensionPackageManifestPayload,
         ExtensionPackageRemoveResultPayload, ExtensionPackageSourceKind,
         ExtensionPackageSourcePayload, ExtensionPackageSupportedPayload,
@@ -5228,14 +5292,39 @@ mod tests {
         );
         assert_eq!(result.decision_id(), "decision-1");
         assert_eq!(result.outcome(), EgressPolicyOutcome::Allowed);
+        assert_eq!(result.actor().id(), "extension-1");
+        assert_eq!(result.destination().host(), "api.example.test");
+        assert_eq!(result.rule().id(), "allow-api");
+        assert_eq!(result.reason(), "workspace policy allows API access");
         assert_eq!(
             serde_json::to_string(&result).expect("decision result should encode"),
             r#"{"decisionId":"decision-1","outcome":"allowed","actor":{"kind":"extension","id":"extension-1"},"destination":{"protocol":"https","host":"api.example.test","port":443,"path":"/v1"},"rule":{"id":"allow-api","effect":"allow","hosts":["api.example.test"],"protocols":["https"],"ports":[443],"actor":{"kind":"extension","id":"extension-1"},"reason":"workspace policy allows API access"},"reason":"workspace policy allows API access"}"#
         );
 
-        let record = EgressPolicyRecordPayload::new("decision-1", Some("trace-record".to_string()));
+        let event =
+            EgressPolicyDecisionRecordedEventPayload::new(1_710_000_000_120, result.clone());
+        assert_eq!(event.event_type(), "decision-recorded");
+        assert_eq!(event.timestamp(), 1_710_000_000_120);
+        assert_eq!(event.decision().decision_id(), "decision-1");
+        assert_eq!(
+            serde_json::to_string(&event).expect("recorded event payload should encode"),
+            r#"{"type":"decision-recorded","timestamp":1710000000120,"decision":{"decisionId":"decision-1","outcome":"allowed","actor":{"kind":"extension","id":"extension-1"},"destination":{"protocol":"https","host":"api.example.test","port":443,"path":"/v1"},"rule":{"id":"allow-api","effect":"allow","hosts":["api.example.test"],"protocols":["https"],"ports":[443],"actor":{"kind":"extension","id":"extension-1"},"reason":"workspace policy allows API access"},"reason":"workspace policy allows API access"}}"#
+        );
+
+        let record = EgressPolicyRecordPayload::new(
+            "decision-1",
+            result.actor().clone(),
+            result.destination().clone(),
+            Some("trace-record".to_string()),
+        );
         assert_eq!(record.trace_id(), Some("trace-record"));
         assert_eq!(record.decision_id(), "decision-1");
+        assert_eq!(record.actor().id(), "extension-1");
+        assert_eq!(record.destination().host(), "api.example.test");
+        assert_eq!(
+            serde_json::to_string(&record).expect("record payload should encode"),
+            r#"{"decisionId":"decision-1","actor":{"kind":"extension","id":"extension-1"},"destination":{"protocol":"https","host":"api.example.test","port":443,"path":"/v1"},"traceId":"trace-record"}"#
+        );
         assert_eq!(
             serde_json::to_string(&EgressPolicyRecordResultPayload::recorded("decision-1"))
                 .expect("record result should encode"),

@@ -876,11 +876,11 @@ where
             "failed to decode host protocol frame after {RUNTIME_READY_EVENT}"
         ))?;
 
-        if let Some(response) = method_router.dispatch(envelope) {
-            let response = serde_json::to_vec(&response).context(format!(
+        for frame in method_router.dispatch_frames(envelope) {
+            let frame = serde_json::to_vec(&frame).context(format!(
                 "failed to encode host protocol response after {RUNTIME_READY_EVENT}"
             ))?;
-            writer.send(&response).context(format!(
+            writer.send(&frame).context(format!(
                 "failed to write host protocol response after {RUNTIME_READY_EVENT}"
             ))?;
         }
