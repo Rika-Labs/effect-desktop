@@ -22,6 +22,7 @@ use window::RunMode;
 
 const HOST_STARTED_EVENT: &str = "host.started";
 const RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(10);
+const HOST_PROTOCOL_STDIO_ARG: &str = "--host-protocol-stdio";
 const WINDOW_SMOKE_TEST_ARG: &str = "--window-smoke-test";
 const WINDOW_SMOKE_TEST_ENV: &str = "EFFECT_DESKTOP_WINDOW_SMOKE_TEST";
 const STARTUP_WINDOWS_ENV: &str = "EFFECT_DESKTOP_STARTUP_WINDOWS";
@@ -44,6 +45,9 @@ fn startup_event() -> StartupEvent {
 
 fn main() -> Result<()> {
     let run_mode = parse_run_mode(std::env::args())?;
+    if matches!(run_mode, RunMode::HostProtocolStdio) {
+        return serve_host_protocol_stdio();
+    }
 
     tracing_subscriber::fmt()
         .with_ansi(false)
@@ -72,6 +76,13 @@ fn main() -> Result<()> {
     );
 
     window::run_main_window(run_mode, window_methods)
+}
+
+fn serve_host_protocol_stdio() -> Result<()> {
+    let method_router = methods::HostMethodRouter::new(Arc::new(window::WindowMethodPort::new()));
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    runtime::serve_framed_host_requests(stdin.lock(), stdout, &method_router)
 }
 
 fn runtime_config(run_mode: RunMode) -> Result<runtime::RuntimeConfig> {
@@ -153,6 +164,7 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
 
     for arg in args.into_iter().skip(1) {
         match arg.as_str() {
+            HOST_PROTOCOL_STDIO_ARG => run_mode = RunMode::HostProtocolStdio,
             WINDOW_SMOKE_TEST_ARG => run_mode = RunMode::WindowSmokeTest,
             unknown => bail!("unknown host argument: {unknown}"),
         }
@@ -165,8 +177,8 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
 mod tests {
     use super::{
         packaged_runtime_config_for_exe, parse_run_mode, resolve_source_runtime_cwd_from_anchors,
-        runtime_config, startup_event, HOST_STARTED_EVENT, SOURCE_RUNTIME_ENTRY,
-        STARTUP_WINDOWS_ENV, WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
+        runtime_config, startup_event, HOST_PROTOCOL_STDIO_ARG, HOST_STARTED_EVENT,
+        SOURCE_RUNTIME_ENTRY, STARTUP_WINDOWS_ENV, WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
     };
     use crate::window::RunMode;
     use std::path::PathBuf;
@@ -194,6 +206,15 @@ mod tests {
             parse_run_mode(["host".to_string(), WINDOW_SMOKE_TEST_ARG.to_string()])
                 .expect("run mode should parse"),
             RunMode::WindowSmokeTest
+        );
+    }
+
+    #[test]
+    fn host_protocol_stdio_arg_selects_protocol_stdio_mode() {
+        assert_eq!(
+            parse_run_mode(["host".to_string(), HOST_PROTOCOL_STDIO_ARG.to_string()])
+                .expect("run mode should parse"),
+            RunMode::HostProtocolStdio
         );
     }
 

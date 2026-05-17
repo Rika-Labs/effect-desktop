@@ -1,6 +1,6 @@
 //! Runtime child-process supervision.
 
-mod platform;
+pub(crate) mod platform;
 
 use crate::{
     methods,
@@ -857,7 +857,7 @@ where
     })
 }
 
-fn serve_framed_host_requests<R, W>(
+pub(crate) fn serve_framed_host_requests<R, W>(
     reader: R,
     writer: W,
     method_router: &methods::HostMethodRouter,
@@ -906,10 +906,29 @@ where
                     format!("failed to decode host protocol frame after {RUNTIME_READY_EVENT}"),
                 )?;
 
-                for frame in method_router.dispatch_frames(envelope) {
-                    outgoing_tx.send(frame).context(format!(
-                        "failed to queue host protocol response after {RUNTIME_READY_EVENT}"
-                    ))?;
+                if dispatch_runtime_request_async(&envelope) {
+                    method_router
+                        .track_pending_local_tool_runtime_run_request(&envelope)
+                        .map_err(|error| {
+                            anyhow::anyhow!(
+                                "failed to track pending local tool runtime request: {error}"
+                            )
+                        })?;
+                    let router = method_router.clone();
+                    let sender = outgoing_tx.clone();
+                    scope.spawn(move || {
+                        for frame in router.dispatch_frames(envelope) {
+                            if sender.send(frame).is_err() {
+                                break;
+                            }
+                        }
+                    });
+                } else {
+                    for frame in method_router.dispatch_frames(envelope) {
+                        outgoing_tx.send(frame).context(format!(
+                            "failed to queue host protocol response after {RUNTIME_READY_EVENT}"
+                        ))?;
+                    }
                 }
             }
 
@@ -944,6 +963,14 @@ where
             .and(write_result)
     });
     result
+}
+
+fn dispatch_runtime_request_async(envelope: &HostProtocolEnvelope) -> bool {
+    matches!(
+        envelope,
+        HostProtocolEnvelope::Request { method, .. }
+            if method == host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD
+    )
 }
 
 fn trim_line_end(line: &mut String) {
@@ -1070,6 +1097,8 @@ mod tests {
         RestartPolicy, RuntimeChild, RuntimeConfig, RuntimeEvent, RuntimeProfile, RuntimeReady,
         RuntimeStream, Supervisor, Termination,
     };
+    #[cfg(unix)]
+    use std::os::unix::net::UnixStream;
     use std::{
         ffi::OsString,
         fs,
@@ -1545,6 +1574,166 @@ console.log("this is not framed");
                 error: None,
             }
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn framed_runtime_can_stop_active_local_tool_run() {
+        let root = unique_temp_dir("local-tool-runtime-framed-stop");
+        fs::create_dir_all(&root).expect("temp dir should be created");
+        let executable = root.join("sleep.sh");
+        write_executable(&executable, "#!/bin/sh\nsleep 30\n");
+        let (input_reader, input_writer) = UnixStream::pair().expect("input socket pair");
+        let (mut output_reader, output_writer) = UnixStream::pair().expect("output socket pair");
+        output_reader
+            .set_read_timeout(Some(EVENT_TIMEOUT))
+            .expect("output reader timeout should be set");
+
+        let server = thread::spawn(move || {
+            super::serve_framed_host_requests(input_reader, output_writer, &test_router())
+                .expect("framed runtime should dispatch");
+        });
+        let mut frame_writer = FrameWriter::new(input_writer);
+        let mut frame_reader = FrameReader::new(&mut output_reader);
+
+        write_host_frame(
+            &mut frame_writer,
+            &local_tool_runtime_request(
+                "register",
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                local_tool_runtime_register_payload(&root, "runtime-framed-stop", &executable),
+            ),
+        );
+        let register_frames = read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_response_id(frame, "request-local-tool-runtime-register"),
+            "register response",
+        );
+        assert!(
+            register_frames
+                .iter()
+                .any(|frame| is_local_tool_runtime_event(frame, "registered")),
+            "registered event missing: {register_frames:?}"
+        );
+
+        write_host_frame(
+            &mut frame_writer,
+            &local_tool_runtime_request(
+                "run-stop",
+                host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD,
+                serde_json::json!({
+                    "runtimeId": "runtime-framed-stop",
+                    "commandId": "sleep",
+                    "runId": "run-framed-stop"
+                }),
+            ),
+        );
+        let run_frames = read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_local_tool_runtime_event(frame, "run-started"),
+            "run-started event",
+        );
+        assert!(
+            run_frames
+                .iter()
+                .any(|frame| is_local_tool_runtime_event(frame, "run-started")),
+            "run-started event missing: {run_frames:?}"
+        );
+
+        assert!(
+            write_and_wait_for_stop_response(
+                &mut frame_writer,
+                &mut frame_reader,
+                "runtime-framed-stop"
+            ) < Duration::from_secs(2),
+            "stop response must not wait for the local tool timeout"
+        );
+        drop(frame_writer);
+        server.join().expect("framed runtime thread should join");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn framed_runtime_cancel_stops_active_local_tool_run() {
+        let root = unique_temp_dir("local-tool-runtime-framed-cancel");
+        fs::create_dir_all(&root).expect("temp dir should be created");
+        let executable = root.join("sleep.sh");
+        write_executable(&executable, "#!/bin/sh\nsleep 30\n");
+        let (input_reader, input_writer) = UnixStream::pair().expect("input socket pair");
+        let (mut output_reader, output_writer) = UnixStream::pair().expect("output socket pair");
+        output_reader
+            .set_read_timeout(Some(EVENT_TIMEOUT))
+            .expect("output reader timeout should be set");
+
+        let server = thread::spawn(move || {
+            super::serve_framed_host_requests(input_reader, output_writer, &test_router())
+                .expect("framed runtime should dispatch");
+        });
+        let mut frame_writer = FrameWriter::new(input_writer);
+        let mut frame_reader = FrameReader::new(&mut output_reader);
+
+        write_host_frame(
+            &mut frame_writer,
+            &local_tool_runtime_request(
+                "register",
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                local_tool_runtime_register_payload(&root, "runtime-framed-cancel", &executable),
+            ),
+        );
+        read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_response_id(frame, "request-local-tool-runtime-register"),
+            "register response",
+        );
+
+        write_host_frame(
+            &mut frame_writer,
+            &local_tool_runtime_request(
+                "run-cancel",
+                host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD,
+                serde_json::json!({
+                    "runtimeId": "runtime-framed-cancel",
+                    "commandId": "sleep",
+                    "runId": "run-framed-cancel"
+                }),
+            ),
+        );
+        read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_local_tool_runtime_event(frame, "run-started"),
+            "run-started event",
+        );
+
+        let started = Instant::now();
+        write_host_frame(
+            &mut frame_writer,
+            &HostProtocolEnvelope::Cancel {
+                id: Some("request-local-tool-runtime-run-cancel".to_string()),
+                resource_id: None,
+                timestamp: 1710000000001,
+                trace_id: "trace-local-tool-runtime-cancel".to_string(),
+            },
+        );
+        let cancel_frames = read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_response_id(frame, "request-local-tool-runtime-run-cancel"),
+            "run response after cancel",
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "cancel response must not wait for the local tool timeout"
+        );
+        assert!(
+            !cancel_frames
+                .iter()
+                .any(|frame| is_local_tool_runtime_event(frame, "run-completed")),
+            "canceled run must not emit run-completed: {cancel_frames:?}"
+        );
+
+        drop(frame_writer);
+        server.join().expect("framed runtime thread should join");
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -2216,6 +2405,167 @@ console.log("this is not framed");
             .expect("time should be after epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("effect-desktop-runtime-{nanos}-{name}"))
+    }
+
+    fn write_host_frame<W: std::io::Write>(
+        writer: &mut FrameWriter<W>,
+        envelope: &HostProtocolEnvelope,
+    ) {
+        let bytes = serde_json::to_vec(envelope).expect("host frame should encode");
+        writer.send(&bytes).expect("host frame should write");
+    }
+
+    #[cfg(unix)]
+    fn read_host_frames_until<R>(
+        reader: &mut FrameReader<R>,
+        matches_expected: impl Fn(&HostProtocolEnvelope) -> bool,
+        expected: &str,
+    ) -> Vec<HostProtocolEnvelope>
+    where
+        R: std::io::Read,
+    {
+        let mut frames = Vec::new();
+        for _ in 0..8 {
+            let frame = reader
+                .recv()
+                .expect("host frame should decode")
+                .expect("host frame should exist");
+            let envelope = serde_json::from_slice::<HostProtocolEnvelope>(&frame)
+                .expect("host protocol frame should decode");
+            let found = matches_expected(&envelope);
+            frames.push(envelope);
+            if found {
+                return frames;
+            }
+        }
+
+        panic!("{expected} missing: {frames:?}");
+    }
+
+    #[cfg(unix)]
+    fn write_and_wait_for_stop_response<W, R>(
+        writer: &mut FrameWriter<W>,
+        reader: &mut FrameReader<R>,
+        runtime_id: &str,
+    ) -> Duration
+    where
+        W: std::io::Write,
+        R: std::io::Read,
+    {
+        let started = Instant::now();
+        write_host_frame(
+            writer,
+            &local_tool_runtime_request(
+                "stop",
+                host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD,
+                serde_json::json!({ "runtimeId": runtime_id }),
+            ),
+        );
+        read_host_frames_until(
+            reader,
+            |frame| is_response_id(frame, "request-local-tool-runtime-stop"),
+            "stop response",
+        );
+        started.elapsed()
+    }
+
+    fn is_response_id(frame: &HostProtocolEnvelope, expected: &str) -> bool {
+        matches!(
+            frame,
+            HostProtocolEnvelope::Response { id, error, .. } if id == expected && error.is_none()
+        )
+    }
+
+    fn is_local_tool_runtime_event(frame: &HostProtocolEnvelope, expected_phase: &str) -> bool {
+        matches!(
+            frame,
+            HostProtocolEnvelope::Event { method, payload, .. }
+                if method == host_protocol::LOCAL_TOOL_RUNTIME_EVENT
+                    && payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("phase"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some(expected_phase)
+        )
+    }
+
+    fn local_tool_runtime_request(
+        id: &str,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> HostProtocolEnvelope {
+        HostProtocolEnvelope::Request {
+            id: format!("request-local-tool-runtime-{id}"),
+            method: method.to_string(),
+            timestamp: 1710000000000,
+            trace_id: format!("trace-local-tool-runtime-{id}"),
+            window_id: None,
+            origin_token: None,
+            payload: Some(payload),
+        }
+    }
+
+    fn local_tool_runtime_register_payload(
+        root: &Path,
+        runtime_id: &str,
+        executable: &Path,
+    ) -> serde_json::Value {
+        let root = root.display().to_string();
+        let executable = executable.display().to_string();
+        serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "manifest": {
+                "toolId": "tool-1",
+                "name": "Tool One",
+                "version": "1.0.0",
+                "commands": [{
+                    "commandId": "sleep",
+                    "executable": executable,
+                    "defaultArgs": [],
+                    "cwd": root,
+                    "environment": [],
+                    "timeoutMillis": 30_000
+                }],
+                "permissions": [{
+                    "kind": "process.spawn",
+                    "commands": [executable],
+                    "cwd": [root],
+                    "environment": "none",
+                    "shell": false,
+                    "audit": "always"
+                }],
+                "policy": {
+                    "cwd": { "roots": [root] },
+                    "environment": { "variables": [] },
+                    "filesystem": { "readRoots": [root] },
+                    "network": { "hosts": [] },
+                    "budgets": {
+                        "cpuMillis": 9007199254740991u64,
+                        "memoryBytes": 9007199254740991u64,
+                        "wallClockMillis": 30_000,
+                        "stdoutBytes": 1024,
+                        "stderrBytes": 1024
+                    },
+                    "stdio": { "stdout": "capture", "stderr": "capture" },
+                    "cleanup": {
+                        "killProcessTree": true,
+                        "removeWorkingDirectory": false
+                    }
+                }
+            },
+            "runtimeId": runtime_id,
+            "traceId": "trace-local-tool-runtime"
+        })
+    }
+
+    #[cfg(unix)]
+    fn write_executable(path: &Path, contents: &str) {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::write(path, contents).expect("script should write");
+        let mut permissions = fs::metadata(path).expect("script metadata").permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("script should be executable");
     }
 
     fn extension_config_fields() -> serde_json::Value {

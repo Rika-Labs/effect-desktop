@@ -9,6 +9,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup
 } from "@effect-desktop/bridge"
 import {
@@ -63,14 +64,16 @@ import {
 
 const Surface = "LocalToolRuntime"
 const UnsupportedReason = "host-adapter-unimplemented"
-const LocalToolRuntimeEventMethod = "LocalToolRuntime.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const PlatformSupportReason = "local-tool-runtime-platform-specific"
+const WindowsUnsupportedReason = "local-tool-runtime-platform-unsupported"
+const LocalToolRuntimeSupport = NativeSurface.support.partial(PlatformSupportReason, {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+    { platform: "macos", status: "supported" },
+    { platform: "linux", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: WindowsUnsupportedReason }
   ]
-})
+}) satisfies RpcSupportMetadata
+const LocalToolRuntimeEventMethod = "LocalToolRuntime.Event"
 
 const IdentifierPattern = /^[A-Za-z0-9._-]+$/
 const SemverPattern =
@@ -104,7 +107,7 @@ export const LocalToolRuntimeHealth = NativeSurface.rpc(Surface, "health", {
     P.nativeInvoke({ primitive: Surface, methods: ["health"] })
   ),
   endpoint: "query",
-  support: UnsupportedSupport
+  support: LocalToolRuntimeSupport
 })
 export const LocalToolRuntimeIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   payload: Schema.Void,
@@ -458,7 +461,6 @@ const makeLocalToolRuntimeService = (
 ): Effect.Effect<LocalToolRuntimeServiceApi, never, never> =>
   Effect.gen(function* () {
     const runtimes = yield* Ref.make<ReadonlyMap<string, LocalToolRuntimeState>>(new Map())
-    const events = yield* PubSub.bounded<LocalToolRuntimeEvent>({ capacity: 256, replay: 64 })
     const nextRuntimeId = yield* makeIdGenerator(options.nextRuntimeId, "local-tool-runtime")
     const nextRunId = yield* makeIdGenerator(options.nextRunId, "local-tool-run")
 
@@ -483,7 +485,6 @@ const makeLocalToolRuntimeService = (
               registered: result
             })
           )
-          yield* publishEvent(events, result.runtimeId, "registered", { toolId: result.toolId })
           yield* emitRuntimeAudit(
             options,
             "permission-used",
@@ -521,11 +522,6 @@ const makeLocalToolRuntimeService = (
           }
           const runId = request.runId ?? (yield* nextRunId())
           yield* authorizeRun(options, runtime, command, request.traceId)
-          yield* publishEvent(events, request.runtimeId, "run-started", {
-            toolId: runtime.registered.toolId,
-            commandId: request.commandId,
-            runId
-          })
           const result = yield* client.run(
             new LocalToolRuntimeRunInput({
               runtimeId: request.runtimeId,
@@ -535,12 +531,6 @@ const makeLocalToolRuntimeService = (
               ...(request.traceId === undefined ? {} : { traceId: request.traceId })
             })
           )
-          yield* publishEvent(events, request.runtimeId, "run-completed", {
-            toolId: runtime.registered.toolId,
-            commandId: request.commandId,
-            runId: result.runId,
-            status: result.status
-          })
           yield* emitRuntimeAudit(
             options,
             "permission-used",
@@ -575,9 +565,6 @@ const makeLocalToolRuntimeService = (
             const next = new Map(state)
             next.delete(request.runtimeId)
             return next
-          })
-          yield* publishEvent(events, request.runtimeId, "stopped", {
-            toolId: runtime.registered.toolId
           })
           yield* emitRuntimeAudit(
             options,
@@ -618,14 +605,10 @@ const makeLocalToolRuntimeService = (
               ...(request.traceId === undefined ? {} : { traceId: request.traceId })
             })
           )
-          yield* publishEvent(events, request.runtimeId, "health-checked", {
-            toolId: runtime.registered.toolId,
-            health: result.status
-          })
           return result
         }),
       isSupported: () => client.isSupported(),
-      events: () => Stream.fromPubSub(events)
+      events: () => client.events()
     } satisfies LocalToolRuntimeServiceApi)
   })
 
@@ -682,7 +665,7 @@ function localToolRuntimeRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: LocalToolRuntimeSupport
   })
 }
 

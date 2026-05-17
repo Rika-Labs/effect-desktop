@@ -19,8 +19,11 @@ pub(crate) use extension_package::EXTENSION_PACKAGE_ENV_LOCK;
 
 use crate::{linux, window::WindowMethodHandler};
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
-use std::sync::{mpsc::Sender, Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    collections::HashSet,
+    sync::{mpsc::Sender, Arc, Mutex},
+};
 
 type RealtimeMediaHandler = fn(
     &str,
@@ -35,6 +38,8 @@ type ExtensionConfigHandler =
     fn(Option<serde_json::Value>, u64) -> extension_config::EventfulResponse;
 type ExtensionPackageHandler =
     fn(Option<serde_json::Value>, u64) -> extension_package::EventfulResponse;
+type LocalToolRuntimeHandler =
+    fn(Option<serde_json::Value>, u64) -> local_tool_runtime::EventfulResponse;
 type WorkspaceIndexHandler =
     fn(Option<serde_json::Value>, u64) -> workspace_index::EventfulResponse;
 
@@ -62,6 +67,15 @@ struct ExtensionPackageDispatch {
     timestamp: u64,
 }
 
+struct LocalToolRuntimeDispatch {
+    id: String,
+    method: String,
+    trace_id: String,
+    window_id: Option<String>,
+    payload: Option<serde_json::Value>,
+    timestamp: u64,
+}
+
 struct WorkspaceIndexDispatch {
     id: String,
     trace_id: String,
@@ -75,6 +89,7 @@ pub(crate) struct HostMethodRouter {
     window: Arc<dyn WindowMethodHandler>,
     runtime_event_sender: Arc<Mutex<Option<Sender<HostProtocolEnvelope>>>>,
     runtime_session_failure_sender: Arc<Mutex<Option<Sender<realtime_media_session::SessionKey>>>>,
+    local_tool_runtime_ids: Arc<Mutex<HashSet<String>>>,
 }
 
 impl HostMethodRouter {
@@ -83,6 +98,7 @@ impl HostMethodRouter {
             window,
             runtime_event_sender: Arc::new(Mutex::new(None)),
             runtime_session_failure_sender: Arc::new(Mutex::new(None)),
+            local_tool_runtime_ids: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -100,6 +116,10 @@ impl HostMethodRouter {
         else {
             return Ok(());
         };
+        if let Some(request_id) = id.as_deref() {
+            local_tool_runtime::cancel_run_for_request_id(request_id, "host.runtime.cancel")
+                .map_err(|error| format!("{error:?}"))?;
+        }
         realtime_media_session::close_session_for_cancel(
             id.as_deref(),
             resource_id.as_deref(),
@@ -108,9 +128,29 @@ impl HostMethodRouter {
         .map_err(|error| format!("{error:?}"))
     }
 
+    pub(crate) fn track_pending_local_tool_runtime_run_request(
+        &self,
+        envelope: &HostProtocolEnvelope,
+    ) -> Result<(), String> {
+        let HostProtocolEnvelope::Request { id, method, .. } = envelope else {
+            return Ok(());
+        };
+        if method != host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD {
+            return Ok(());
+        }
+        local_tool_runtime::track_pending_run_request(id, "host.runtime.request")
+            .map_err(|error| format!("{error:?}"))
+    }
+
     pub(crate) fn clear_runtime_resources(&self) -> Result<(), String> {
         realtime_media_session::close_all_sessions("host.runtime.disconnect")
-            .map_err(|error| format!("{error:?}"))
+            .map_err(|error| format!("{error:?}"))?;
+        let runtime_ids = self.drain_local_tool_runtime_ids()?;
+        local_tool_runtime::clear_runtime_resources_for_runtime_ids(
+            &runtime_ids,
+            "host.runtime.disconnect",
+        )
+        .map_err(|error| format!("{error:?}"))
     }
 
     pub(crate) fn install_runtime_event_sender(
@@ -150,6 +190,36 @@ impl HostMethodRouter {
             .lock()
             .map_err(|_| "runtime session failure sender lock poisoned".to_string())? = None;
         Ok(())
+    }
+
+    fn track_local_tool_runtime(&self, runtime_id: String) -> Option<HostProtocolError> {
+        let Ok(mut runtime_ids) = self.local_tool_runtime_ids.lock() else {
+            return Some(HostProtocolError::internal(
+                "local tool runtime owner lock poisoned",
+                "host.runtime.localToolRuntime.track",
+            ));
+        };
+        runtime_ids.insert(runtime_id);
+        None
+    }
+
+    fn forget_local_tool_runtime(&self, runtime_id: &str) -> Option<HostProtocolError> {
+        let Ok(mut runtime_ids) = self.local_tool_runtime_ids.lock() else {
+            return Some(HostProtocolError::internal(
+                "local tool runtime owner lock poisoned",
+                "host.runtime.localToolRuntime.forget",
+            ));
+        };
+        runtime_ids.remove(runtime_id);
+        None
+    }
+
+    fn drain_local_tool_runtime_ids(&self) -> Result<Vec<String>, String> {
+        let mut runtime_ids = self
+            .local_tool_runtime_ids
+            .lock()
+            .map_err(|_| "local tool runtime owner lock poisoned".to_string())?;
+        Ok(runtime_ids.drain().collect())
     }
 
     pub(crate) fn handle_realtime_media_session_failure(
@@ -471,11 +541,54 @@ impl HostMethodRouter {
                 extension_package::is_supported()
             }
             host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD => {
-                local_tool_runtime::register(payload)
+                return self.dispatch_local_tool_runtime(
+                    LocalToolRuntimeDispatch {
+                        id,
+                        method,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    local_tool_runtime::register_with_event,
+                );
             }
-            host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD => local_tool_runtime::run(payload),
-            host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD => local_tool_runtime::stop(payload),
-            host_protocol::LOCAL_TOOL_RUNTIME_HEALTH_METHOD => local_tool_runtime::health(payload),
+            host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD => {
+                return self.dispatch_local_tool_runtime_run(LocalToolRuntimeDispatch {
+                    id,
+                    method,
+                    trace_id,
+                    window_id,
+                    payload,
+                    timestamp,
+                });
+            }
+            host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD => {
+                return self.dispatch_local_tool_runtime(
+                    LocalToolRuntimeDispatch {
+                        id,
+                        method,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    local_tool_runtime::stop_with_event,
+                );
+            }
+            host_protocol::LOCAL_TOOL_RUNTIME_HEALTH_METHOD => {
+                return self.dispatch_local_tool_runtime(
+                    LocalToolRuntimeDispatch {
+                        id,
+                        method,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    local_tool_runtime::health_with_event,
+                );
+            }
             host_protocol::LOCAL_TOOL_RUNTIME_IS_SUPPORTED_METHOD => {
                 local_tool_runtime::is_supported()
             }
@@ -624,6 +737,133 @@ impl HostMethodRouter {
         }
     }
 
+    fn dispatch_local_tool_runtime(
+        &self,
+        request: LocalToolRuntimeDispatch,
+        handler: LocalToolRuntimeHandler,
+    ) -> Vec<HostProtocolEnvelope> {
+        let (payload, events, error) = match handler(request.payload, request.timestamp) {
+            Ok((payload, events)) => (payload, events, None),
+            Err(error) => (None, Vec::new(), Some(error)),
+        };
+        if error.is_none() {
+            if let Some(tracking_error) =
+                self.update_local_tool_runtime_tracking(&request.method, payload.as_ref())
+            {
+                return vec![HostProtocolEnvelope::Response {
+                    id: request.id,
+                    timestamp: request.timestamp,
+                    trace_id: request.trace_id,
+                    payload: None,
+                    error: Some(tracking_error),
+                }];
+            }
+        }
+
+        let mut frames = events
+            .into_iter()
+            .map(|(event_method, payload)| HostProtocolEnvelope::Event {
+                method: event_method.to_string(),
+                timestamp: request.timestamp,
+                trace_id: request.trace_id.clone(),
+                window_id: request.window_id.clone(),
+                payload: Some(payload),
+            })
+            .collect::<Vec<_>>();
+        frames.push(HostProtocolEnvelope::Response {
+            id: request.id,
+            timestamp: request.timestamp,
+            trace_id: request.trace_id,
+            payload,
+            error,
+        });
+        frames
+    }
+
+    fn update_local_tool_runtime_tracking(
+        &self,
+        method: &str,
+        payload: Option<&serde_json::Value>,
+    ) -> Option<HostProtocolError> {
+        match method {
+            host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD => {
+                let Some(runtime_id) = local_tool_runtime_payload_id(payload) else {
+                    return Some(HostProtocolError::internal(
+                        "local tool runtime response omitted runtimeId",
+                        host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                    ));
+                };
+                self.track_local_tool_runtime(runtime_id)
+            }
+            host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD => {
+                let Some(runtime_id) = local_tool_runtime_payload_id(payload) else {
+                    return Some(HostProtocolError::internal(
+                        "local tool runtime response omitted runtimeId",
+                        host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD,
+                    ));
+                };
+                self.forget_local_tool_runtime(&runtime_id)
+            }
+            _ => None,
+        }
+    }
+
+    fn dispatch_local_tool_runtime_run(
+        &self,
+        request: LocalToolRuntimeDispatch,
+    ) -> Vec<HostProtocolEnvelope> {
+        let event_sink = match self.runtime_event_sender.lock() {
+            Ok(sender) => sender.clone().map(|sender| {
+                local_tool_runtime::RuntimeEventSink::new(
+                    sender,
+                    request.trace_id.clone(),
+                    request.window_id.clone(),
+                )
+            }),
+            Err(_) => {
+                return vec![HostProtocolEnvelope::Response {
+                    id: request.id,
+                    timestamp: request.timestamp,
+                    trace_id: request.trace_id,
+                    payload: None,
+                    error: Some(HostProtocolError::internal(
+                        "runtime event sender lock poisoned",
+                        host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD,
+                    )),
+                }];
+            }
+        };
+        let (payload, events, error) = match local_tool_runtime::run_with_event_sink_for_request(
+            request.payload,
+            request.timestamp,
+            Some(&request.id),
+            event_sink,
+        ) {
+            Ok((payload, events)) => (payload, events, None),
+            Err(error) => (None, Vec::new(), Some(error)),
+        };
+        local_tool_runtime::clear_run_request_tracking(&request.id);
+
+        let mut frames = events
+            .into_iter()
+            .map(|(event_method, payload)| HostProtocolEnvelope::Event {
+                method: event_method.to_string(),
+                timestamp: request.timestamp,
+                trace_id: request.trace_id.clone(),
+                window_id: request.window_id.clone(),
+                payload: Some(payload),
+            })
+            .collect::<Vec<_>>();
+        frames.push(HostProtocolEnvelope::Response {
+            id: request.id,
+            timestamp: request.timestamp,
+            trace_id: request.trace_id,
+            payload,
+            error,
+        });
+        frames
+    }
+
     fn dispatch_workspace_index(
         &self,
         request: WorkspaceIndexDispatch,
@@ -672,6 +912,13 @@ fn decode_window_destroy_id(payload: Option<serde_json::Value>) -> Option<String
         .map(|payload| payload.window_id().to_string())
 }
 
+fn local_tool_runtime_payload_id(payload: Option<&serde_json::Value>) -> Option<String> {
+    payload
+        .and_then(|payload| payload.get("runtimeId"))
+        .and_then(serde_json::Value::as_str)
+        .map(ToString::to_string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::HostMethodRouter;
@@ -679,10 +926,10 @@ mod tests {
     use host_protocol::{
         HostProtocolEnvelope, HostProtocolError, WindowCreateResponse, PROTOCOL_VERSION,
     };
-    use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{env, fs};
 
     #[test]
     fn ping_returns_response_with_matching_id_and_trace() {
@@ -1909,36 +2156,111 @@ mod tests {
     }
 
     #[test]
-    fn local_tool_runtime_register_routes_to_typed_unsupported() {
-        let response = test_router()
-            .dispatch_at(
-                request_with_payload(
-                    "request-local-tool-runtime-register",
-                    host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
-                    local_tool_runtime_register_payload(),
-                ),
-                1710000000130,
-            )
-            .expect("local tool runtime request should return response");
-
-        assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-local-tool-runtime-register".to_string(),
-                timestamp: 1710000000130,
-                trace_id: "trace-request-local-tool-runtime-register".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON,
-                    host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
-                )),
-            }
+    fn local_tool_runtime_register_routes_to_supported_adapter_with_events() {
+        let root = temp_dir("local-tool-runtime-route-register");
+        let frames = test_router().dispatch_frames_at(
+            request_with_payload(
+                "request-local-tool-runtime-register",
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                local_tool_runtime_register_payload(&root, "runtime-route-register"),
+            ),
+            1710000000130,
         );
+
+        assert_eq!(frames.len(), 2);
+        assert!(matches!(
+            &frames[0],
+            HostProtocolEnvelope::Event { method, payload, .. }
+                if method == host_protocol::LOCAL_TOOL_RUNTIME_EVENT
+                    && payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("phase"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some("registered")
+        ));
+        assert!(matches!(
+            &frames[1],
+            HostProtocolEnvelope::Response {
+                id,
+                timestamp: 1710000000130,
+                error: None,
+                ..
+            } if id == "request-local-tool-runtime-register"
+        ));
+    }
+
+    #[test]
+    fn local_tool_runtime_run_routes_to_supported_adapter_with_events() {
+        let root = temp_dir("local-tool-runtime-route-run");
+        let router = test_router();
+        let _ = router.dispatch_frames_at(
+            request_with_payload(
+                "request-local-tool-runtime-register-run",
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                local_tool_runtime_register_payload(&root, "runtime-route-run"),
+            ),
+            1710000000130,
+        );
+
+        let frames = router.dispatch_frames_at(
+            request_with_payload(
+                "request-local-tool-runtime-run",
+                host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD,
+                serde_json::json!({
+                    "runtimeId": "runtime-route-run",
+                    "commandId": "help",
+                    "runId": "run-route"
+                }),
+            ),
+            1710000000131,
+        );
+
+        assert_eq!(frames.len(), 3);
+        assert!(matches!(
+            &frames[0],
+            HostProtocolEnvelope::Event { method, payload, .. }
+                if method == host_protocol::LOCAL_TOOL_RUNTIME_EVENT
+                    && payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("phase"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some("run-started")
+                    && payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("status"))
+                        .is_none()
+        ));
+        assert!(matches!(
+            &frames[1],
+            HostProtocolEnvelope::Event { method, payload, .. }
+                if method == host_protocol::LOCAL_TOOL_RUNTIME_EVENT
+                    && payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("phase"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some("run-completed")
+                    && payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("status"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some("completed")
+        ));
+        assert!(matches!(
+            &frames[2],
+            HostProtocolEnvelope::Response {
+                id,
+                payload: Some(payload),
+                error: None,
+                ..
+            } if id == "request-local-tool-runtime-run"
+                && payload.get("status").and_then(serde_json::Value::as_str) == Some("completed")
+        ));
     }
 
     #[test]
     fn local_tool_runtime_invalid_payload_returns_invalid_argument_before_unsupported() {
-        let mut payload = local_tool_runtime_register_payload();
+        let root = temp_dir("local-tool-runtime-route-invalid");
+        let mut payload = local_tool_runtime_register_payload(&root, "runtime-route-invalid");
         payload["manifest"]["commands"][0]["executable"] = serde_json::json!("/usr/bin/node;rm");
         let response = test_router()
             .dispatch_at(
@@ -1968,7 +2290,7 @@ mod tests {
     }
 
     #[test]
-    fn local_tool_runtime_is_supported_reports_unimplemented_adapter() {
+    fn local_tool_runtime_is_supported_reports_host_adapter() {
         let response = test_router()
             .dispatch_at(
                 request(
@@ -1985,13 +2307,62 @@ mod tests {
                 id: "request-local-tool-runtime-supported".to_string(),
                 timestamp: 1710000000132,
                 trace_id: "trace-request-local-tool-runtime-supported".to_string(),
-                payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON
-                })),
+                payload: Some(if cfg!(unix) {
+                    serde_json::json!({ "supported": true })
+                } else {
+                    serde_json::json!({
+                        "supported": false,
+                        "reason": "local-tool-runtime-platform-unsupported"
+                    })
+                }),
                 error: None,
             }
         );
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn local_tool_runtime_unsupported_platform_operations_return_typed_failures() {
+        let root = temp_dir("local-tool-runtime-route-unsupported");
+        let cases = [
+            (
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                local_tool_runtime_register_payload(&root, "runtime-route-unsupported"),
+            ),
+            (
+                host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD,
+                serde_json::json!({
+                    "runtimeId": "runtime-route-unsupported",
+                    "commandId": "node-version",
+                    "runId": "run-route-unsupported"
+                }),
+            ),
+            (
+                host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD,
+                serde_json::json!({ "runtimeId": "runtime-route-unsupported" }),
+            ),
+            (
+                host_protocol::LOCAL_TOOL_RUNTIME_HEALTH_METHOD,
+                serde_json::json!({ "runtimeId": "runtime-route-unsupported" }),
+            ),
+        ];
+
+        for (method, payload) in cases {
+            let response = test_router()
+                .dispatch_at(
+                    request_with_payload("request-local-tool-runtime-unsupported", method, payload),
+                    1710000000133,
+                )
+                .expect("local tool runtime request should return response");
+
+            assert!(matches!(
+                response,
+                HostProtocolEnvelope::Response {
+                    error: Some(HostProtocolError::Unsupported { reason, .. }),
+                    ..
+                } if reason == "local-tool-runtime-platform-unsupported"
+            ));
+        }
     }
 
     #[test]
@@ -2410,7 +2781,12 @@ mod tests {
         })
     }
 
-    fn local_tool_runtime_register_payload() -> serde_json::Value {
+    fn local_tool_runtime_register_payload(root: &Path, runtime_id: &str) -> serde_json::Value {
+        let executable = env::current_exe()
+            .expect("current test executable")
+            .display()
+            .to_string();
+        let root = root.display().to_string();
         serde_json::json!({
             "actor": { "kind": "extension", "id": "extension-1" },
             "manifest": {
@@ -2419,43 +2795,43 @@ mod tests {
                 "version": "1.0.0",
                 "commands": [
                     {
-                        "commandId": "node-version",
-                        "executable": "/usr/bin/node",
-                        "defaultArgs": ["--version"],
-                        "cwd": "/tmp/app",
-                        "timeoutMillis": 1000
+                        "commandId": "help",
+                        "executable": executable,
+                        "defaultArgs": ["--help"],
+                        "cwd": root,
+                        "timeoutMillis": 5000
                     }
                 ],
                 "permissions": [
                     {
                         "kind": "process.spawn",
-                        "commands": ["/usr/bin/node"],
-                        "cwd": ["/tmp/app"],
+                        "commands": [executable],
+                        "cwd": [root],
                         "environment": "none",
                         "shell": false,
                         "audit": "always"
                     }
                 ],
                 "policy": {
-                    "cwd": { "roots": ["/tmp/app"] },
+                    "cwd": { "roots": [root] },
                     "environment": { "variables": [] },
-                    "filesystem": { "readRoots": ["/tmp/app"] },
+                    "filesystem": { "readRoots": [root] },
                     "network": { "hosts": [] },
                     "budgets": {
-                        "cpuMillis": 500,
-                        "memoryBytes": 67108864,
-                        "wallClockMillis": 1000,
-                        "stdoutBytes": 1024,
-                        "stderrBytes": 1024
+                        "cpuMillis": 9007199254740991u64,
+                        "memoryBytes": 9007199254740991u64,
+                        "wallClockMillis": 5000,
+                        "stdoutBytes": 65536,
+                        "stderrBytes": 65536
                     },
                     "stdio": { "stdout": "capture", "stderr": "capture" },
                     "cleanup": {
                         "killProcessTree": true,
-                        "removeWorkingDirectory": true
+                        "removeWorkingDirectory": false
                     }
                 }
             },
-            "runtimeId": "runtime-1",
+            "runtimeId": runtime_id,
             "traceId": "trace-local-tool-runtime"
         })
     }

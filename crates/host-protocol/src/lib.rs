@@ -1827,7 +1827,7 @@ impl LocalToolRuntimeCwdPolicyPayload {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LocalToolRuntimeEnvironmentPolicyPayload {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     variables: Vec<LocalToolRuntimeEnvironmentEntryPayload>,
 }
 
@@ -1943,6 +1943,14 @@ impl LocalToolRuntimeStdioPolicyPayload {
     pub fn new(stdout: LocalToolRuntimeStdioMode, stderr: LocalToolRuntimeStdioMode) -> Self {
         Self { stdout, stderr }
     }
+
+    pub fn stdout(&self) -> LocalToolRuntimeStdioMode {
+        self.stdout
+    }
+
+    pub fn stderr(&self) -> LocalToolRuntimeStdioMode {
+        self.stderr
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1958,6 +1966,14 @@ impl LocalToolRuntimeCleanupPolicyPayload {
             kill_process_tree,
             remove_working_directory,
         }
+    }
+
+    pub fn kill_process_tree(&self) -> bool {
+        self.kill_process_tree
+    }
+
+    pub fn remove_working_directory(&self) -> bool {
+        self.remove_working_directory
     }
 }
 
@@ -2014,6 +2030,14 @@ impl LocalToolRuntimePolicyPayload {
 
     pub fn budgets(&self) -> &LocalToolRuntimeBudgetPolicyPayload {
         &self.budgets
+    }
+
+    pub fn stdio(&self) -> &LocalToolRuntimeStdioPolicyPayload {
+        &self.stdio
+    }
+
+    pub fn cleanup(&self) -> &LocalToolRuntimeCleanupPolicyPayload {
+        &self.cleanup
     }
 }
 
@@ -2234,6 +2258,18 @@ impl LocalToolRuntimeRegisterResultPayload {
             state: "registered".to_string(),
         }
     }
+
+    pub fn runtime_id(&self) -> &str {
+        &self.runtime_id
+    }
+
+    pub fn tool_id(&self) -> &str {
+        &self.tool_id
+    }
+
+    pub fn manifest(&self) -> &LocalToolRuntimeManifestPayload {
+        &self.manifest
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -2423,15 +2459,18 @@ pub struct LocalToolRuntimeSupportedPayload {
 }
 
 impl LocalToolRuntimeSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
             reason: Some(reason.into()),
         }
-    }
-
-    pub fn supported(&self) -> bool {
-        self.supported
     }
 
     pub fn reason(&self) -> Option<&str> {
@@ -2491,6 +2530,38 @@ impl LocalToolRuntimeEventPayload {
         self.command_id = Some(command_id.into());
         self.run_id = Some(run_id.into());
         self.status = Some(status);
+        self
+    }
+
+    pub fn with_run_ref(
+        mut self,
+        tool_id: impl Into<String>,
+        command_id: impl Into<String>,
+        run_id: impl Into<String>,
+    ) -> Self {
+        self.tool_id = Some(tool_id.into());
+        self.command_id = Some(command_id.into());
+        self.run_id = Some(run_id.into());
+        self
+    }
+
+    pub fn with_tool(mut self, tool_id: impl Into<String>) -> Self {
+        self.tool_id = Some(tool_id.into());
+        self
+    }
+
+    pub fn with_health(
+        mut self,
+        tool_id: impl Into<String>,
+        health: LocalToolRuntimeHealthStatus,
+    ) -> Self {
+        self.tool_id = Some(tool_id.into());
+        self.health = Some(health);
+        self
+    }
+
+    pub fn with_reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
         self
     }
 }
@@ -5788,7 +5859,7 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&empty_policy).expect("empty policy should encode"),
-            r#"{"cwd":{"roots":["/tmp/app"]},"environment":{},"filesystem":{},"network":{},"budgets":{"cpuMillis":500,"memoryBytes":67108864,"wallClockMillis":1000,"stdoutBytes":1024,"stderrBytes":1024},"stdio":{"stdout":"capture","stderr":"capture"},"cleanup":{"killProcessTree":true,"removeWorkingDirectory":true}}"#
+            r#"{"cwd":{"roots":["/tmp/app"]},"environment":{"variables":[]},"filesystem":{},"network":{},"budgets":{"cpuMillis":500,"memoryBytes":67108864,"wallClockMillis":1000,"stdoutBytes":1024,"stderrBytes":1024},"stdio":{"stdout":"capture","stderr":"capture"},"cleanup":{"killProcessTree":true,"removeWorkingDirectory":true}}"#
         );
     }
 

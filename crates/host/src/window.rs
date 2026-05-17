@@ -35,6 +35,7 @@ const WINDOW_SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(150);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RunMode {
     Interactive,
+    HostProtocolStdio,
     WindowSmokeTest,
 }
 
