@@ -19,6 +19,7 @@ import { ExecutionSandboxSurface } from "./execution-sandbox.js"
 import { ExtensionConfigSurface } from "./extension-config.js"
 import { ExtensionPackageSurface } from "./extension-package.js"
 import { FocusedApplicationContextSurface } from "./focused-application-context.js"
+import { JobSurface } from "./job.js"
 import { LocalToolRuntimeSurface } from "./local-tool-runtime.js"
 import { TransientWindowRoleSurface } from "./transient-window-role.js"
 import { TransactionalFileMutationSurface } from "./transactional-file-mutation.js"
@@ -60,6 +61,7 @@ const BuiltInSurfaces = Object.freeze([
   ExtensionConfigSurface,
   ExtensionPackageSurface,
   FocusedApplicationContextSurface,
+  JobSurface,
   LocalToolRuntimeSurface,
   TransientWindowRoleSurface,
   TransactionalFileMutationSurface,
@@ -107,6 +109,7 @@ const ExecutionSandbox = ExecutionSandboxSurface.selection
 const ExtensionConfig = ExtensionConfigSurface.selection
 const ExtensionPackage = ExtensionPackageSurface.selection
 const FocusedApplicationContext = FocusedApplicationContextSurface.selection
+const Job = JobSurface.selection
 const LocalToolRuntime = LocalToolRuntimeSurface.selection
 const TransientWindowRole = TransientWindowRoleSurface.selection
 const TransactionalFileMutation = TransactionalFileMutationSurface.selection
@@ -154,6 +157,7 @@ export const Permissions = Object.freeze({
   extensionConfig: ExtensionConfigSurface.permissions,
   extensionPackage: ExtensionPackageSurface.permissions,
   focusedApplicationContext: FocusedApplicationContextSurface.permissions,
+  job: JobSurface.permissions,
   localToolRuntime: LocalToolRuntimeSurface.permissions,
   transientWindowRole: TransientWindowRoleSurface.permissions,
   transactionalFileMutation: TransactionalFileMutationSurface.permissions,
@@ -196,6 +200,7 @@ export const Native = Object.freeze({
   ExtensionConfig,
   ExtensionPackage,
   FocusedApplicationContext,
+  Job,
   LocalToolRuntime,
   TransientWindowRole,
   TransactionalFileMutation,

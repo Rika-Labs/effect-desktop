@@ -193,6 +193,32 @@ export {
   type DistributionParityServiceOptions
 } from "./distribution-parity.js"
 export {
+  Job,
+  JobClient,
+  JobHandlersLive,
+  JobLive,
+  JobMethodNames,
+  JobRpcEvents,
+  JobRpcs,
+  JobRuntime,
+  JobRuntimeLive,
+  JobSurface,
+  makeHostJobRpcRuntime,
+  makeJobBridgeClientLayer,
+  makeJobClientLayer,
+  makeJobMemoryClient,
+  makeJobServiceLayer,
+  makeJobUnsupportedClient,
+  type JobClientApi,
+  type JobError,
+  type JobMemoryClientOptions,
+  type JobRpc,
+  type JobRpcHandlers,
+  type JobRuntimeApi,
+  type JobServiceApi,
+  type JobServiceOptions
+} from "./job.js"
+export {
   DesktopHttpApi,
   DesktopHttpApiHttpServer,
   DesktopHttpApiRoutes,

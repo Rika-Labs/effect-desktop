@@ -87,6 +87,17 @@ pub const RESIDENT_LIFECYCLE_EVENT: &str = "ResidentLifecycle.Event";
 pub const DISTRIBUTION_PARITY_VERIFY_METHOD: &str = "DistributionParity.verify";
 pub const DISTRIBUTION_PARITY_IS_SUPPORTED_METHOD: &str = "DistributionParity.isSupported";
 pub const DISTRIBUTION_PARITY_EVENT: &str = "DistributionParity.Event";
+pub const JOB_START_METHOD: &str = "Job.start";
+pub const JOB_PAUSE_METHOD: &str = "Job.pause";
+pub const JOB_RESUME_METHOD: &str = "Job.resume";
+pub const JOB_RETRY_METHOD: &str = "Job.retry";
+pub const JOB_INTERRUPT_METHOD: &str = "Job.interrupt";
+pub const JOB_SUCCEED_METHOD: &str = "Job.succeed";
+pub const JOB_FAIL_METHOD: &str = "Job.fail";
+pub const JOB_REPORT_PROGRESS_METHOD: &str = "Job.reportProgress";
+pub const JOB_GET_METHOD: &str = "Job.get";
+pub const JOB_IS_SUPPORTED_METHOD: &str = "Job.isSupported";
+pub const JOB_EVENT: &str = "Job.Event";
 pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
@@ -150,6 +161,7 @@ pub const TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON: &str = "host-adapter-unimple
 pub const ACTIVATION_REGISTRY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RESIDENT_LIFECYCLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const DISTRIBUTION_PARITY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const JOB_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -6553,6 +6565,297 @@ impl DistributionParityEventPayload {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum JobState {
+    Running,
+    Paused,
+    Interrupted,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum JobEventPhase {
+    Started,
+    Paused,
+    Resumed,
+    Retried,
+    Interrupted,
+    Progress,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobHandlePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: JobState,
+}
+
+impl JobHandlePayload {
+    pub fn new(
+        id: impl Into<String>,
+        generation: u64,
+        owner_scope: impl Into<String>,
+        state: JobState,
+    ) -> Self {
+        Self {
+            kind: "job".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn state(&self) -> &JobState {
+        &self.state
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobProgressPayload {
+    completed: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    updated_at: u64,
+}
+
+impl JobProgressPayload {
+    pub fn new(
+        completed: f64,
+        total: Option<f64>,
+        message: Option<String>,
+        updated_at: u64,
+    ) -> Self {
+        Self {
+            completed,
+            total,
+            message,
+            updated_at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobSnapshotPayload {
+    handle: JobHandlePayload,
+    name: String,
+    state: JobState,
+    started_at: u64,
+    updated_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    progress: Option<JobProgressPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl JobSnapshotPayload {
+    pub fn new(
+        handle: JobHandlePayload,
+        name: impl Into<String>,
+        state: JobState,
+        started_at: u64,
+        updated_at: u64,
+        progress: Option<JobProgressPayload>,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            handle,
+            name: name.into(),
+            state,
+            started_at,
+            updated_at,
+            progress,
+            reason,
+        }
+    }
+
+    pub fn handle(&self) -> &JobHandlePayload {
+        &self.handle
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn state(&self) -> &JobState {
+        &self.state
+    }
+
+    pub fn started_at(&self) -> u64 {
+        self.started_at
+    }
+
+    pub fn updated_at(&self) -> u64 {
+        self.updated_at
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobStartPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    job_id: Option<String>,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl JobStartPayload {
+    pub fn job_id(&self) -> Option<&str> {
+        self.job_id.as_deref()
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobControlPayload {
+    job_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl JobControlPayload {
+    pub fn job_id(&self) -> &str {
+        &self.job_id
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobProgressReportPayload {
+    job_id: String,
+    completed: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl JobProgressReportPayload {
+    pub fn job_id(&self) -> &str {
+        &self.job_id
+    }
+
+    pub fn completed(&self) -> f64 {
+        self.completed
+    }
+
+    pub fn total(&self) -> Option<f64> {
+        self.total
+    }
+
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobGetPayload {
+    job_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl JobGetPayload {
+    pub fn job_id(&self) -> &str {
+        &self.job_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl JobSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobEventPayload {
+    #[serde(rename = "type")]
+    event_type: String,
+    timestamp: u64,
+    phase: JobEventPhase,
+    job: JobSnapshotPayload,
+}
+
+impl JobEventPayload {
+    pub fn new(timestamp: u64, phase: JobEventPhase, job: JobSnapshotPayload) -> Self {
+        Self {
+            event_type: "job-event".to_string(),
+            timestamp,
+            phase,
+            job,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExtensionPackageActorPayload {
     kind: ExtensionPackageActorKind,
@@ -7589,39 +7892,42 @@ mod tests {
         ExtensionPackageRemoveResultPayload, ExtensionPackageSourceKind,
         ExtensionPackageSourcePayload, ExtensionPackageSupportedPayload,
         ExtensionPackageUpdateResultPayload, HostProtocolEnvelope, HostProtocolError,
-        HostVersionPayload, LocalToolRuntimeActorKind, LocalToolRuntimeActorPayload,
-        LocalToolRuntimeBudgetPolicyPayload, LocalToolRuntimeCleanupPolicyPayload,
-        LocalToolRuntimeCommandPayload, LocalToolRuntimeCwdPolicyPayload,
-        LocalToolRuntimeEnvironmentEntryPayload, LocalToolRuntimeEnvironmentPolicyPayload,
-        LocalToolRuntimeEventPayload, LocalToolRuntimeEventPhase,
-        LocalToolRuntimeFilesystemPolicyPayload, LocalToolRuntimeHealthCheckPayload,
-        LocalToolRuntimeHealthResultPayload, LocalToolRuntimeHealthStatus,
-        LocalToolRuntimeManifestPayload, LocalToolRuntimeNetworkPolicyPayload,
-        LocalToolRuntimePolicyPayload, LocalToolRuntimeRegisterPayload,
-        LocalToolRuntimeRegisterResultPayload, LocalToolRuntimeRunPayload,
-        LocalToolRuntimeRunResultPayload, LocalToolRuntimeRunStatus, LocalToolRuntimeStdioMode,
-        LocalToolRuntimeStdioPolicyPayload, LocalToolRuntimeStopResultPayload,
-        LocalToolRuntimeSupportedPayload, RealtimeMediaDeviceKind,
-        RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
-        RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
-        RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
-        RealtimeMediaSessionIdentityPayload, RealtimeMediaSessionInterruptPayload,
-        RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
-        RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
-        RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
-        RendererResumedPayload, ResidentLifecycleBackgroundAvailability,
-        ResidentLifecycleDisablePayload, ResidentLifecycleEnablePayload,
-        ResidentLifecycleEventPayload, ResidentLifecycleEventPhase, ResidentLifecyclePolicyPayload,
-        ResidentLifecycleProcessPolicy, ResidentLifecycleStatePayload,
-        ResidentLifecycleSupportedPayload, ResidentLifecycleWindowPolicy, ResumeTicket,
-        TransactionalFileMutationActorKind, TransactionalFileMutationActorPayload,
-        TransactionalFileMutationCommitPayload, TransactionalFileMutationCommitResultPayload,
-        TransactionalFileMutationDiffPayload, TransactionalFileMutationEventPayload,
-        TransactionalFileMutationEventPhase, TransactionalFileMutationPreparePayload,
-        TransactionalFileMutationPrepareResultPayload, TransactionalFileMutationRollbackPayload,
-        TransactionalFileMutationRollbackResultPayload, TransactionalFileMutationState,
-        TransactionalFileMutationSupportedPayload, TransientWindowDismissalPolicy,
-        TransientWindowFocusPolicy, TransientWindowRestorationPolicy, TransientWindowRoleActorKind,
+        HostVersionPayload, JobControlPayload, JobEventPayload, JobEventPhase, JobGetPayload,
+        JobHandlePayload, JobProgressPayload, JobProgressReportPayload, JobSnapshotPayload,
+        JobStartPayload, JobState, JobSupportedPayload, LocalToolRuntimeActorKind,
+        LocalToolRuntimeActorPayload, LocalToolRuntimeBudgetPolicyPayload,
+        LocalToolRuntimeCleanupPolicyPayload, LocalToolRuntimeCommandPayload,
+        LocalToolRuntimeCwdPolicyPayload, LocalToolRuntimeEnvironmentEntryPayload,
+        LocalToolRuntimeEnvironmentPolicyPayload, LocalToolRuntimeEventPayload,
+        LocalToolRuntimeEventPhase, LocalToolRuntimeFilesystemPolicyPayload,
+        LocalToolRuntimeHealthCheckPayload, LocalToolRuntimeHealthResultPayload,
+        LocalToolRuntimeHealthStatus, LocalToolRuntimeManifestPayload,
+        LocalToolRuntimeNetworkPolicyPayload, LocalToolRuntimePolicyPayload,
+        LocalToolRuntimeRegisterPayload, LocalToolRuntimeRegisterResultPayload,
+        LocalToolRuntimeRunPayload, LocalToolRuntimeRunResultPayload, LocalToolRuntimeRunStatus,
+        LocalToolRuntimeStdioMode, LocalToolRuntimeStdioPolicyPayload,
+        LocalToolRuntimeStopResultPayload, LocalToolRuntimeSupportedPayload,
+        RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
+        RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
+        RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
+        RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
+        RealtimeMediaSessionInterruptPayload, RealtimeMediaSessionSelectDevicePayload,
+        RealtimeMediaSessionState, RealtimeMediaSessionStateEventPayload,
+        RealtimeMediaSessionSupportedPayload, RendererResumeDeniedPayload,
+        RendererResumeDeniedReason, RendererResumePayload, RendererResumedPayload,
+        ResidentLifecycleBackgroundAvailability, ResidentLifecycleDisablePayload,
+        ResidentLifecycleEnablePayload, ResidentLifecycleEventPayload, ResidentLifecycleEventPhase,
+        ResidentLifecyclePolicyPayload, ResidentLifecycleProcessPolicy,
+        ResidentLifecycleStatePayload, ResidentLifecycleSupportedPayload,
+        ResidentLifecycleWindowPolicy, ResumeTicket, TransactionalFileMutationActorKind,
+        TransactionalFileMutationActorPayload, TransactionalFileMutationCommitPayload,
+        TransactionalFileMutationCommitResultPayload, TransactionalFileMutationDiffPayload,
+        TransactionalFileMutationEventPayload, TransactionalFileMutationEventPhase,
+        TransactionalFileMutationPreparePayload, TransactionalFileMutationPrepareResultPayload,
+        TransactionalFileMutationRollbackPayload, TransactionalFileMutationRollbackResultPayload,
+        TransactionalFileMutationState, TransactionalFileMutationSupportedPayload,
+        TransientWindowDismissalPolicy, TransientWindowFocusPolicy,
+        TransientWindowRestorationPolicy, TransientWindowRoleActorKind,
         TransientWindowRoleActorPayload, TransientWindowRoleEventPayload,
         TransientWindowRoleEventPhase, TransientWindowRoleKind, TransientWindowRoleOpenPayload,
         TransientWindowRolePlacementPayload, TransientWindowRolePointPayload,
@@ -7637,7 +7943,7 @@ mod tests {
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, DISPLAY_CAPTURE_UNSUPPORTED_REASON,
         DISTRIBUTION_PARITY_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
         EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
-        EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS,
+        EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, JOB_UNSUPPORTED_REASON,
         LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
         TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
@@ -8355,6 +8661,66 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("distribution support should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn job_payloads_serialize_canonically() {
+        let start: JobStartPayload = serde_json::from_value(serde_json::json!({
+            "jobId": "job-1",
+            "name": "Index workspace",
+            "traceId": "trace-job"
+        }))
+        .expect("job start should decode");
+        let control: JobControlPayload = serde_json::from_value(serde_json::json!({
+            "jobId": "job-1",
+            "reason": "user-paused"
+        }))
+        .expect("job control should decode");
+        let progress_report: JobProgressReportPayload = serde_json::from_value(serde_json::json!({
+            "jobId": "job-1",
+            "completed": 3,
+            "total": 10,
+            "message": "indexed 3 files"
+        }))
+        .expect("job progress should decode");
+        let get: JobGetPayload = serde_json::from_value(serde_json::json!({
+            "jobId": "job-1"
+        }))
+        .expect("job get should decode");
+        let progress = JobProgressPayload::new(
+            3.0,
+            Some(10.0),
+            Some("indexed 3 files".to_string()),
+            1710000000001,
+        );
+        let snapshot = JobSnapshotPayload::new(
+            JobHandlePayload::new("job-1", 1, "native-job", JobState::Running),
+            "Index workspace",
+            JobState::Running,
+            1710000000000,
+            1710000000001,
+            Some(progress),
+            None,
+        );
+        let event = JobEventPayload::new(1710000000001, JobEventPhase::Progress, snapshot.clone());
+        let supported = JobSupportedPayload::unsupported(JOB_UNSUPPORTED_REASON);
+
+        assert_eq!(start.job_id(), Some("job-1"));
+        assert_eq!(control.job_id(), "job-1");
+        assert_eq!(progress_report.completed(), 3.0);
+        assert_eq!(get.job_id(), "job-1");
+        assert_eq!(
+            serde_json::to_string(&snapshot).expect("job snapshot should encode"),
+            r#"{"handle":{"kind":"job","id":"job-1","generation":1,"ownerScope":"native-job","state":"running"},"name":"Index workspace","state":"running","startedAt":1710000000000,"updatedAt":1710000000001,"progress":{"completed":3.0,"total":10.0,"message":"indexed 3 files","updatedAt":1710000000001}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("job event should encode"),
+            r#"{"type":"job-event","timestamp":1710000000001,"phase":"progress","job":{"handle":{"kind":"job","id":"job-1","generation":1,"ownerScope":"native-job","state":"running"},"name":"Index workspace","state":"running","startedAt":1710000000000,"updatedAt":1710000000001,"progress":{"completed":3.0,"total":10.0,"message":"indexed 3 files","updatedAt":1710000000001}}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("job support should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
     }

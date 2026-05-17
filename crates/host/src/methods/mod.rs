@@ -10,6 +10,7 @@ mod extension_config;
 mod extension_package;
 mod focused_application_context;
 pub(crate) mod handshake;
+mod job;
 mod local_tool_runtime;
 mod menu;
 mod realtime_media_session;
@@ -25,6 +26,8 @@ mod workspace_index;
 pub(crate) use extension_config::EXTENSION_CONFIG_ENV_LOCK;
 #[cfg(test)]
 pub(crate) use extension_package::EXTENSION_PACKAGE_ENV_LOCK;
+#[cfg(test)]
+pub(crate) use job::JOB_ENV_LOCK;
 
 use crate::{linux, window::WindowMethodHandler};
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
@@ -49,6 +52,7 @@ type ExtensionPackageHandler =
     fn(Option<serde_json::Value>, u64) -> extension_package::EventfulResponse;
 type DistributionParityHandler =
     fn(Option<serde_json::Value>, u64) -> distribution_parity::EventfulResponse;
+type JobHandler = fn(Option<serde_json::Value>, u64) -> job::EventfulResponse;
 type LocalToolRuntimeHandler =
     fn(Option<serde_json::Value>, u64) -> local_tool_runtime::EventfulResponse;
 type WorkspaceIndexHandler =
@@ -79,6 +83,14 @@ struct ExtensionPackageDispatch {
 }
 
 struct DistributionParityDispatch {
+    id: String,
+    trace_id: String,
+    window_id: Option<String>,
+    payload: Option<serde_json::Value>,
+    timestamp: u64,
+}
+
+struct JobDispatch {
     id: String,
     trace_id: String,
     window_id: Option<String>,
@@ -516,6 +528,104 @@ impl HostMethodRouter {
             host_protocol::DISTRIBUTION_PARITY_IS_SUPPORTED_METHOD => {
                 distribution_parity::is_supported()
             }
+            host_protocol::JOB_START_METHOD => {
+                return self.dispatch_job(
+                    JobDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    job::start_with_event,
+                );
+            }
+            host_protocol::JOB_PAUSE_METHOD => {
+                return self.dispatch_job(
+                    JobDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    job::pause_with_event,
+                );
+            }
+            host_protocol::JOB_RESUME_METHOD => {
+                return self.dispatch_job(
+                    JobDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    job::resume_with_event,
+                );
+            }
+            host_protocol::JOB_RETRY_METHOD => {
+                return self.dispatch_job(
+                    JobDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    job::retry_with_event,
+                );
+            }
+            host_protocol::JOB_INTERRUPT_METHOD => {
+                return self.dispatch_job(
+                    JobDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    job::interrupt_with_event,
+                );
+            }
+            host_protocol::JOB_SUCCEED_METHOD => {
+                return self.dispatch_job(
+                    JobDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    job::succeed_with_event,
+                );
+            }
+            host_protocol::JOB_FAIL_METHOD => {
+                return self.dispatch_job(
+                    JobDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    job::fail_with_event,
+                );
+            }
+            host_protocol::JOB_REPORT_PROGRESS_METHOD => {
+                return self.dispatch_job(
+                    JobDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    job::report_progress_with_event,
+                );
+            }
+            host_protocol::JOB_GET_METHOD => job::get(payload),
+            host_protocol::JOB_IS_SUPPORTED_METHOD => job::is_supported(),
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
             host_protocol::EXECUTION_SANDBOX_CREATE_METHOD => execution_sandbox::create(payload),
@@ -875,6 +985,35 @@ impl HostMethodRouter {
             Some(payload) => vec![
                 HostProtocolEnvelope::Event {
                     method: host_protocol::DISTRIBUTION_PARITY_EVENT.to_string(),
+                    timestamp: request.timestamp,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: Some(payload),
+                },
+                response,
+            ],
+            None => vec![response],
+        }
+    }
+
+    fn dispatch_job(&self, request: JobDispatch, handler: JobHandler) -> Vec<HostProtocolEnvelope> {
+        let (payload, event_payload, error) = match handler(request.payload, request.timestamp) {
+            Ok((payload, event_payload)) => (payload, event_payload, None),
+            Err(error) => (None, None, Some(error)),
+        };
+
+        let response = HostProtocolEnvelope::Response {
+            id: request.id,
+            timestamp: request.timestamp,
+            trace_id: request.trace_id.clone(),
+            payload,
+            error,
+        };
+
+        match event_payload {
+            Some(payload) => vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::JOB_EVENT.to_string(),
                     timestamp: request.timestamp,
                     trace_id: request.trace_id,
                     window_id: request.window_id,
@@ -1681,6 +1820,258 @@ mod tests {
         assert!(matches!(
             error,
             Some(HostProtocolError::InvalidArgument { .. })
+        ));
+    }
+
+    #[test]
+    fn job_routes_lifecycle_and_persists_state() {
+        let _guard = super::JOB_ENV_LOCK
+            .lock()
+            .expect("job env lock should not be poisoned");
+        let dir = temp_dir("job-route");
+        let store_path = dir.join("jobs.json");
+        let previous_store = std::env::var_os("EFFECT_DESKTOP_JOB_STORE");
+        std::env::set_var("EFFECT_DESKTOP_JOB_STORE", &store_path);
+
+        let router = test_router();
+        let start_frames = router.dispatch_frames_at(
+            request_with_payload(
+                "request-job-start",
+                host_protocol::JOB_START_METHOD,
+                serde_json::json!({
+                    "jobId": "job-1",
+                    "name": "Index workspace",
+                    "traceId": "trace-job-start"
+                }),
+            ),
+            1710000000117,
+        );
+        let progress_frames = router.dispatch_frames_at(
+            request_with_payload(
+                "request-job-progress",
+                host_protocol::JOB_REPORT_PROGRESS_METHOD,
+                serde_json::json!({
+                    "jobId": "job-1",
+                    "completed": 3,
+                    "total": 10,
+                    "message": "indexed 3 files"
+                }),
+            ),
+            1710000000118,
+        );
+        let retry_frames = router.dispatch_frames_at(
+            request_with_payload(
+                "request-job-retry",
+                host_protocol::JOB_RETRY_METHOD,
+                serde_json::json!({
+                    "jobId": "job-1",
+                    "reason": "retry requested"
+                }),
+            ),
+            1710000000119,
+        );
+        let fail_frames = router.dispatch_frames_at(
+            request_with_payload(
+                "request-job-fail",
+                host_protocol::JOB_FAIL_METHOD,
+                serde_json::json!({
+                    "jobId": "job-1",
+                    "reason": "terminal failure"
+                }),
+            ),
+            1710000000120,
+        );
+        let get_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-job-get",
+                    host_protocol::JOB_GET_METHOD,
+                    serde_json::json!({ "jobId": "job-1" }),
+                ),
+                1710000000121,
+            )
+            .expect("job get should return response");
+
+        match previous_store {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_JOB_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_JOB_STORE"),
+        }
+
+        assert!(matches!(
+            start_frames.first(),
+            Some(HostProtocolEnvelope::Event { method, .. }) if method == host_protocol::JOB_EVENT
+        ));
+        assert!(matches!(
+            progress_frames.first(),
+            Some(HostProtocolEnvelope::Event { method, .. }) if method == host_protocol::JOB_EVENT
+        ));
+        assert!(matches!(
+            retry_frames.first(),
+            Some(HostProtocolEnvelope::Event { method, payload, .. })
+                if method == host_protocol::JOB_EVENT
+                    && payload.as_ref().is_some_and(|value| value["phase"] == "retried")
+        ));
+        assert!(matches!(
+            fail_frames.first(),
+            Some(HostProtocolEnvelope::Event { method, payload, .. })
+                if method == host_protocol::JOB_EVENT
+                    && payload.as_ref().is_some_and(|value| value["phase"] == "failed")
+        ));
+        let HostProtocolEnvelope::Response { payload, error, .. } = get_response else {
+            panic!("job get should return response");
+        };
+        assert_eq!(error, None);
+        let payload = payload.expect("job get should include payload");
+        assert_eq!(payload["handle"]["id"], "job-1");
+        assert_eq!(payload["handle"]["generation"], 3);
+        assert_eq!(payload["state"], "failed");
+        assert_eq!(payload["progress"]["completed"], 3.0);
+        assert_eq!(payload["reason"], "terminal failure");
+    }
+
+    #[test]
+    fn job_rejects_invalid_progress() {
+        let _guard = super::JOB_ENV_LOCK
+            .lock()
+            .expect("job env lock should not be poisoned");
+        let dir = temp_dir("job-invalid");
+        let store_path = dir.join("jobs.json");
+        let previous_store = std::env::var_os("EFFECT_DESKTOP_JOB_STORE");
+        std::env::set_var("EFFECT_DESKTOP_JOB_STORE", &store_path);
+
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-job-progress-invalid",
+                    host_protocol::JOB_REPORT_PROGRESS_METHOD,
+                    serde_json::json!({
+                        "jobId": "job-1",
+                        "completed": 11,
+                        "total": 10
+                    }),
+                ),
+                1710000000120,
+            )
+            .expect("job invalid progress should return response");
+
+        match previous_store {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_JOB_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_JOB_STORE"),
+        }
+
+        let HostProtocolEnvelope::Response { error, .. } = response else {
+            panic!("job invalid progress should return response");
+        };
+        assert!(matches!(
+            error,
+            Some(HostProtocolError::InvalidArgument { .. })
+        ));
+    }
+
+    #[test]
+    fn job_rejects_duplicate_ids_and_terminal_mutation() {
+        let _guard = super::JOB_ENV_LOCK
+            .lock()
+            .expect("job env lock should not be poisoned");
+        let dir = temp_dir("job-terminal");
+        let store_path = dir.join("jobs.json");
+        let previous_store = std::env::var_os("EFFECT_DESKTOP_JOB_STORE");
+        std::env::set_var("EFFECT_DESKTOP_JOB_STORE", &store_path);
+
+        let router = test_router();
+        let _ = router.dispatch_frames_at(
+            request_with_payload(
+                "request-job-start-terminal",
+                host_protocol::JOB_START_METHOD,
+                serde_json::json!({
+                    "jobId": "job-terminal",
+                    "name": "Terminal job"
+                }),
+            ),
+            1710000000120,
+        );
+        let duplicate = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-job-start-duplicate",
+                    host_protocol::JOB_START_METHOD,
+                    serde_json::json!({
+                        "jobId": "job-terminal",
+                        "name": "Duplicate job"
+                    }),
+                ),
+                1710000000121,
+            )
+            .expect("duplicate start should return response");
+        let _ = router.dispatch_frames_at(
+            request_with_payload(
+                "request-job-succeed-terminal",
+                host_protocol::JOB_SUCCEED_METHOD,
+                serde_json::json!({ "jobId": "job-terminal" }),
+            ),
+            1710000000122,
+        );
+        let mutate_terminal = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-job-interrupt-terminal",
+                    host_protocol::JOB_INTERRUPT_METHOD,
+                    serde_json::json!({ "jobId": "job-terminal" }),
+                ),
+                1710000000123,
+            )
+            .expect("terminal mutation should return response");
+        let progress_terminal = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-job-progress-terminal",
+                    host_protocol::JOB_REPORT_PROGRESS_METHOD,
+                    serde_json::json!({
+                        "jobId": "job-terminal",
+                        "completed": 1
+                    }),
+                ),
+                1710000000124,
+            )
+            .expect("terminal progress should return response");
+
+        match previous_store {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_JOB_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_JOB_STORE"),
+        }
+
+        let HostProtocolEnvelope::Response {
+            error: duplicate_error,
+            ..
+        } = duplicate
+        else {
+            panic!("duplicate start should return response");
+        };
+        let HostProtocolEnvelope::Response {
+            error: mutate_error,
+            ..
+        } = mutate_terminal
+        else {
+            panic!("terminal mutation should return response");
+        };
+        let HostProtocolEnvelope::Response {
+            error: progress_error,
+            ..
+        } = progress_terminal
+        else {
+            panic!("terminal progress should return response");
+        };
+        assert!(matches!(
+            duplicate_error,
+            Some(HostProtocolError::AlreadyExists { .. })
+        ));
+        assert!(matches!(
+            mutate_error,
+            Some(HostProtocolError::InvalidState { .. })
+        ));
+        assert!(matches!(
+            progress_error,
+            Some(HostProtocolError::InvalidState { .. })
         ));
     }
 
