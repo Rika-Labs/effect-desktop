@@ -29,16 +29,18 @@ The local failure mode was milestone pressure: a coherent Effect service and bri
 ## Example
 
 ```ts
-const support = yield* RealtimeMediaSession.isSupported
+Effect.gen(function* () {
+  const support = yield* RealtimeMediaSession.isSupported
 
-if (!support.supported) {
-  return yield* Effect.fail(
-    new HostProtocolUnsupportedError({
-      method: "RealtimeMediaSession.events",
-      reason: support.reason ?? "host-media-startup-unverified"
-    })
-  )
-}
+  if (!support.supported) {
+    return yield* Effect.fail(
+      new HostProtocolUnsupportedError({
+        method: "RealtimeMediaSession.events",
+        reason: support.reason ?? "host-media-startup-unverified"
+      })
+    )
+  }
+})
 ```
 
 ## Rule candidate
