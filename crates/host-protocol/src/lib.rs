@@ -3322,6 +3322,10 @@ impl ExtensionConfigFieldPayload {
     pub fn default_value(&self) -> Option<&Value> {
         self.default_value.as_ref()
     }
+
+    pub fn export_policy(&self) -> Option<ExtensionConfigExportPolicy> {
+        self.export_policy
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -3361,6 +3365,14 @@ impl ExtensionConfigSecretStatePayload {
             key: key.into(),
             present,
         }
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub fn present(&self) -> bool {
+        self.present
     }
 }
 
@@ -3624,6 +3636,13 @@ pub struct ExtensionConfigSupportedPayload {
 }
 
 impl ExtensionConfigSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,

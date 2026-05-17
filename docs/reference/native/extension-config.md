@@ -59,15 +59,15 @@ Secret reads also require `safeStorage.read` for `extension-config.<extensionId>
 
 ## Support
 
-The current Rust host adapter is intentionally fail-closed while native persistence adapters are not implemented.
+The Rust host adapter stores non-secret values and secret-key presence in a durable desktop host store. Secret bytes remain safe-storage-owned by the TypeScript service and never cross the native bridge or Rust host boundary.
 
-| Platform | Status        | Reason                       |
-| -------- | ------------- | ---------------------------- |
-| macOS    | `unsupported` | `host-adapter-unimplemented` |
-| Windows  | `unsupported` | `host-adapter-unimplemented` |
-| Linux    | `unsupported` | `host-adapter-unimplemented` |
+| Platform | Status      | Notes                                        |
+| -------- | ----------- | -------------------------------------------- |
+| macOS    | `supported` | Store lives under Application Support.       |
+| Windows  | `supported` | Store lives under the user application data. |
+| Linux    | `supported` | Store lives under XDG config or `~/.config`. |
 
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Mutating host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
+`isSupported` returns `{ supported: true }` when the host can create and decode the store. If the store path is unavailable or corrupt, requests fail with typed host errors instead of silently falling back to memory.
 
 ## Testing
 

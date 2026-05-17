@@ -26,7 +26,18 @@ type RealtimeMediaHandler = fn(
     Option<Sender<realtime_media_session::SessionKey>>,
 ) -> realtime_media_session::EventfulResponse;
 
+type ExtensionConfigHandler =
+    fn(Option<serde_json::Value>, u64) -> extension_config::EventfulResponse;
+
 struct RealtimeMediaDispatch {
+    id: String,
+    trace_id: String,
+    window_id: Option<String>,
+    payload: Option<serde_json::Value>,
+    timestamp: u64,
+}
+
+struct ExtensionConfigDispatch {
     id: String,
     trace_id: String,
     window_id: Option<String>,
@@ -309,10 +320,54 @@ impl HostMethodRouter {
             host_protocol::EXECUTION_SANDBOX_IS_SUPPORTED_METHOD => {
                 execution_sandbox::is_supported()
             }
-            host_protocol::EXTENSION_CONFIG_READ_METHOD => extension_config::read(payload),
-            host_protocol::EXTENSION_CONFIG_WRITE_METHOD => extension_config::write(payload),
-            host_protocol::EXTENSION_CONFIG_RESET_METHOD => extension_config::reset(payload),
-            host_protocol::EXTENSION_CONFIG_REDACT_METHOD => extension_config::redact(payload),
+            host_protocol::EXTENSION_CONFIG_READ_METHOD => {
+                return self.dispatch_extension_config(
+                    ExtensionConfigDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    extension_config::read_with_event,
+                );
+            }
+            host_protocol::EXTENSION_CONFIG_WRITE_METHOD => {
+                return self.dispatch_extension_config(
+                    ExtensionConfigDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    extension_config::write_with_event,
+                );
+            }
+            host_protocol::EXTENSION_CONFIG_RESET_METHOD => {
+                return self.dispatch_extension_config(
+                    ExtensionConfigDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    extension_config::reset_with_event,
+                );
+            }
+            host_protocol::EXTENSION_CONFIG_REDACT_METHOD => {
+                return self.dispatch_extension_config(
+                    ExtensionConfigDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    extension_config::redact_with_event,
+                );
+            }
             host_protocol::EXTENSION_CONFIG_IS_SUPPORTED_METHOD => extension_config::is_supported(),
             host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD => extension_package::install(payload),
             host_protocol::EXTENSION_PACKAGE_UPDATE_METHOD => extension_package::update(payload),
@@ -410,6 +465,39 @@ impl HostMethodRouter {
             error,
         });
         frames
+    }
+
+    fn dispatch_extension_config(
+        &self,
+        request: ExtensionConfigDispatch,
+        handler: ExtensionConfigHandler,
+    ) -> Vec<HostProtocolEnvelope> {
+        let (payload, event_payload, error) = match handler(request.payload, request.timestamp) {
+            Ok((payload, event_payload)) => (payload, event_payload, None),
+            Err(error) => (None, None, Some(error)),
+        };
+
+        let response = HostProtocolEnvelope::Response {
+            id: request.id,
+            timestamp: request.timestamp,
+            trace_id: request.trace_id.clone(),
+            payload,
+            error,
+        };
+
+        match event_payload {
+            Some(payload) => vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::EXTENSION_CONFIG_EVENT.to_string(),
+                    timestamp: request.timestamp,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: Some(payload),
+                },
+                response,
+            ],
+            None => vec![response],
+        }
     }
 }
 
@@ -1311,30 +1399,61 @@ mod tests {
     }
 
     #[test]
-    fn extension_config_read_routes_to_typed_unsupported() {
-        let response = test_router()
-            .dispatch_at(
-                request_with_payload(
-                    "request-extension-config-read",
-                    host_protocol::EXTENSION_CONFIG_READ_METHOD,
-                    extension_config_read_payload(),
-                ),
-                1710000000124,
-            )
-            .expect("extension config request should return response");
+    fn extension_config_read_routes_response_and_native_event() {
+        let _guard = super::extension_config::EXTENSION_CONFIG_ENV_LOCK
+            .lock()
+            .expect("extension config env lock should not be poisoned");
+        let dir = unique_temp_dir("extension-config-read-route");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let store_path = dir.join("extension-config.json");
+        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE");
+        std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", &store_path);
+
+        let frames = test_router().dispatch_frames_at(
+            request_with_payload(
+                "request-extension-config-read",
+                host_protocol::EXTENSION_CONFIG_READ_METHOD,
+                extension_config_read_payload(),
+            ),
+            1710000000124,
+        );
+
+        match previous_store_path {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE"),
+        }
+        let _ = fs::remove_dir_all(dir);
 
         assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-extension-config-read".to_string(),
-                timestamp: 1710000000124,
-                trace_id: "trace-request-extension-config-read".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::EXTENSION_CONFIG_UNSUPPORTED_REASON,
-                    host_protocol::EXTENSION_CONFIG_READ_METHOD,
-                )),
-            }
+            frames,
+            vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::EXTENSION_CONFIG_EVENT.to_string(),
+                    timestamp: 1710000000124,
+                    trace_id: "trace-request-extension-config-read".to_string(),
+                    window_id: None,
+                    payload: Some(serde_json::json!({
+                        "type": "extension-config-event",
+                        "timestamp": 1_710_000_000_124_u64,
+                        "extensionId": "extension-1",
+                        "phase": "read",
+                        "keys": ["theme", "apiKey"],
+                        "revision": 0
+                    })),
+                },
+                HostProtocolEnvelope::Response {
+                    id: "request-extension-config-read".to_string(),
+                    timestamp: 1710000000124,
+                    trace_id: "trace-request-extension-config-read".to_string(),
+                    payload: Some(serde_json::json!({
+                        "extensionId": "extension-1",
+                        "values": [{ "key": "theme", "value": "light" }],
+                        "secrets": [{ "key": "apiKey", "present": false }],
+                        "revision": 0
+                    })),
+                    error: None,
+                },
+            ]
         );
     }
 
@@ -1373,7 +1492,16 @@ mod tests {
     }
 
     #[test]
-    fn extension_config_is_supported_reports_unimplemented_adapter() {
+    fn extension_config_is_supported_reports_store_availability() {
+        let _guard = super::extension_config::EXTENSION_CONFIG_ENV_LOCK
+            .lock()
+            .expect("extension config env lock should not be poisoned");
+        let dir = unique_temp_dir("extension-config-supported-route");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let store_path = dir.join("extension-config.json");
+        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE");
+        std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", &store_path);
+
         let response = test_router()
             .dispatch_at(
                 request(
@@ -1384,16 +1512,19 @@ mod tests {
             )
             .expect("extension config support request should return response");
 
+        match previous_store_path {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE"),
+        }
+        let _ = fs::remove_dir_all(dir);
+
         assert_eq!(
             response,
             HostProtocolEnvelope::Response {
                 id: "request-extension-config-supported".to_string(),
                 timestamp: 1710000000126,
                 trace_id: "trace-request-extension-config-supported".to_string(),
-                payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::EXTENSION_CONFIG_UNSUPPORTED_REASON
-                })),
+                payload: Some(serde_json::json!({ "supported": true })),
                 error: None,
             }
         );

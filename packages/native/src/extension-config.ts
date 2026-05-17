@@ -69,13 +69,6 @@ import { SafeStorage } from "./safe-storage.js"
 const Surface = "ExtensionConfig"
 const UnsupportedReason = "host-adapter-unimplemented"
 const ExtensionConfigEventMethod = "ExtensionConfig.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
 
 const ConfigNamePattern = /^[A-Za-z0-9._-]+$/
 const RedactedSecretValue = "<redacted:ExtensionConfigSecret>"
@@ -688,7 +681,7 @@ function extensionConfigRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: NativeSurface.support.supported
   })
 }
 
