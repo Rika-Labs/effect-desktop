@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import path from "node:path"
 import {
   type BridgeClientExchange,
   type HostProtocolError,
@@ -38,13 +39,16 @@ import {
 } from "./contracts/transactional-file-mutation.js"
 
 const Text = new TextEncoder()
+const WORKSPACE_ROOT = path.resolve("workspace", "app")
+const WORKSPACE_FILE = path.join(WORKSPACE_ROOT, "src", "main.ts")
+const initialFiles = (): Record<string, string> => ({ [WORKSPACE_FILE]: "old\n" })
 
 test("TransactionalFileMutation prepares diffs, commits atomically, detects conflicts, emits events, and audits use", async () => {
   const rows: AuditEvent[] = []
   const permissions = await configuredPermissions(rows)
   const client = await Effect.runPromise(
     makeTransactionalFileMutationMemoryClient({
-      files: { "/workspace/app/src/main.ts": "old\n" },
+      files: initialFiles(),
       nextMutationId: nextIdFactory(["file-mutation-1", "file-mutation-2"])
     })
   )
@@ -85,7 +89,7 @@ test("TransactionalFileMutation prepares diffs, commits atomically, detects conf
 
   expect(result.first).toMatchObject({
     mutationId: "file-mutation-1",
-    path: "/workspace/app/src/main.ts",
+    path: WORKSPACE_FILE,
     state: "prepared"
   })
   expect(result.first.diff).toMatchObject({
@@ -97,7 +101,7 @@ test("TransactionalFileMutation prepares diffs, commits atomically, detects conf
   expect(result.first.diff.text).toContain("+first")
   expect(result.committed).toMatchObject({
     mutationId: "file-mutation-2",
-    path: "/workspace/app/src/main.ts",
+    path: WORKSPACE_FILE,
     state: "committed",
     committed: true
   })
@@ -129,7 +133,7 @@ test("TransactionalFileMutation denies prepare before host side effects", async 
   const permissions = await Effect.runPromise(makePermissionRegistry())
   let calls = 0
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   const client: TransactionalFileMutationClientApi = {
     ...baseClient,
@@ -157,7 +161,7 @@ test("TransactionalFileMutation denies prepare before host side effects", async 
 
 test("TransactionalFileMutation rejects duplicate memory mutation IDs without overwriting the prepared mutation", async () => {
   const client = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   const first = await Effect.runPromise(client.prepare(prepareInput("first\n", "same-mutation")))
   const duplicate = await Effect.runPromise(
@@ -176,7 +180,7 @@ test("TransactionalFileMutation rejects duplicate memory mutation IDs without ov
     client.prepare(
       new TransactionalFileMutationPrepareInput({
         actor: actor(),
-        path: "/workspace/app/src/main.ts",
+        path: WORKSPACE_FILE,
         replacementBytes: bytes("third\n"),
         expectedSourceHash: first.replacementHash,
         mutationId: "next-mutation"
@@ -197,7 +201,7 @@ test("TransactionalFileMutation claims a prepared mutation before concurrent com
   const rows: AuditEvent[] = []
   const permissions = await configuredPermissions(rows)
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let commitCalls = 0
   const client: TransactionalFileMutationClientApi = {
@@ -243,7 +247,7 @@ test("TransactionalFileMutation registers or rolls back host prepare when interr
   const prepareEntered = await Effect.runPromise(Deferred.make<void>())
   const releasePrepare = await Effect.runPromise(Deferred.make<void>())
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let prepareCalls = 0
   let rollbackCalls = 0
@@ -270,7 +274,7 @@ test("TransactionalFileMutation registers or rolls back host prepare when interr
         .prepare(
           new TransactionalFileMutationPrepareRequest({
             actor: actor(),
-            path: "/workspace/app/src/main.ts",
+            path: WORKSPACE_FILE,
             replacementBytes: bytes("next\n"),
             mutationId: "interrupted-prepare",
             ownerScope: "scope-workspace"
@@ -336,7 +340,7 @@ test("TransactionalFileMutation disposes the actual registered resource id after
     })
   )
   const client = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
 
   const snapshot = await Effect.runPromise(
@@ -345,7 +349,7 @@ test("TransactionalFileMutation disposes the actual registered resource id after
       const prepared = yield* files.prepare(
         new TransactionalFileMutationPrepareRequest({
           actor: actor(),
-          path: "/workspace/app/src/main.ts",
+          path: WORKSPACE_FILE,
           replacementBytes: bytes("next\n"),
           mutationId: "colliding-mutation",
           ownerScope: "scope-workspace"
@@ -378,7 +382,7 @@ test("TransactionalFileMutation restores a commit claim when interrupted before 
   const permissions = await configuredPermissions(rows)
   const auditEntered = await Effect.runPromise(Deferred.make<void>())
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let commitCalls = 0
   let rollbackCalls = 0
@@ -437,7 +441,7 @@ test("TransactionalFileMutation restores a rollback claim when interrupted befor
   const permissions = await configuredPermissions(rows)
   const auditEntered = await Effect.runPromise(Deferred.make<void>())
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let commitCalls = 0
   let rollbackCalls = 0
@@ -498,7 +502,7 @@ test("TransactionalFileMutation does not let owner-scope cleanup rollback an in-
   const commitEntered = await Effect.runPromise(Deferred.make<void>())
   const releaseCommit = await Effect.runPromise(Deferred.make<void>())
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let rollbackCalls = 0
   const client: TransactionalFileMutationClientApi = {
@@ -520,7 +524,7 @@ test("TransactionalFileMutation does not let owner-scope cleanup rollback an in-
       const prepared = yield* files.prepare(
         new TransactionalFileMutationPrepareRequest({
           actor: actor(),
-          path: "/workspace/app/src/main.ts",
+          path: WORKSPACE_FILE,
           replacementBytes: bytes("next\n"),
           ownerScope: "scope-workspace"
         })
@@ -559,7 +563,7 @@ test("TransactionalFileMutation does not restore a failed commit after owner-sco
   const commitEntered = await Effect.runPromise(Deferred.make<void>())
   const releaseCommit = await Effect.runPromise(Deferred.make<void>())
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let rollbackCalls = 0
   const client: TransactionalFileMutationClientApi = {
@@ -581,7 +585,7 @@ test("TransactionalFileMutation does not restore a failed commit after owner-sco
       const prepared = yield* files.prepare(
         new TransactionalFileMutationPrepareRequest({
           actor: actor(),
-          path: "/workspace/app/src/main.ts",
+          path: WORKSPACE_FILE,
           replacementBytes: bytes("next\n"),
           ownerScope: "scope-workspace"
         })
@@ -641,7 +645,7 @@ test("TransactionalFileMutation does not restore a failed rollback after owner-s
   const rollbackEntered = await Effect.runPromise(Deferred.make<void>())
   const releaseRollback = await Effect.runPromise(Deferred.make<void>())
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let rollbackCalls = 0
   const client: TransactionalFileMutationClientApi = {
@@ -670,7 +674,7 @@ test("TransactionalFileMutation does not restore a failed rollback after owner-s
       const prepared = yield* files.prepare(
         new TransactionalFileMutationPrepareRequest({
           actor: actor(),
-          path: "/workspace/app/src/main.ts",
+          path: WORKSPACE_FILE,
           replacementBytes: bytes("next\n"),
           ownerScope: "scope-workspace"
         })
@@ -727,7 +731,7 @@ test("TransactionalFileMutation rolls back prepared mutations when their resourc
   const permissions = await configuredPermissions(rows)
   const resources = await Effect.runPromise(makeResourceRegistry())
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let rollbackCalls = 0
   const client: TransactionalFileMutationClientApi = {
@@ -744,7 +748,7 @@ test("TransactionalFileMutation rolls back prepared mutations when their resourc
       const prepared = yield* files.prepare(
         new TransactionalFileMutationPrepareRequest({
           actor: actor(),
-          path: "/workspace/app/src/main.ts",
+          path: WORKSPACE_FILE,
           replacementBytes: bytes("next\n"),
           ownerScope: "scope-workspace"
         })
@@ -782,7 +786,7 @@ test("TransactionalFileMutation rolls back host state when a returned mutation I
   const rows: AuditEvent[] = []
   const permissions = await configuredPermissions(rows)
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let rollbackCalls = 0
   const client: TransactionalFileMutationClientApi = {
@@ -811,7 +815,7 @@ test("TransactionalFileMutation rolls back host state when a returned mutation I
         Effect.as(
           new TransactionalFileMutationRollbackResult({
             mutationId: input.mutationId,
-            path: "/workspace/app/src/main.ts",
+            path: WORKSPACE_FILE,
             state: "rolled-back",
             rolledBack: true
           })
@@ -847,7 +851,7 @@ test("TransactionalFileMutation uses one generated trace for prepare permission 
   const rows: AuditEvent[] = []
   const permissions = await configuredPermissions(rows)
   const client = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
 
   await Effect.runPromise(
@@ -856,7 +860,7 @@ test("TransactionalFileMutation uses one generated trace for prepare permission 
       return yield* files.prepare(
         new TransactionalFileMutationPrepareRequest({
           actor: actor(),
-          path: "/workspace/app/src/main.ts",
+          path: WORKSPACE_FILE,
           replacementBytes: bytes("next\n")
         })
       )
@@ -882,7 +886,7 @@ test("TransactionalFileMutation rejects blank owner scopes before host transport
   const rows: AuditEvent[] = []
   const permissions = await configuredPermissions(rows)
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   let calls = 0
   const client: TransactionalFileMutationClientApi = {
@@ -900,7 +904,7 @@ test("TransactionalFileMutation rejects blank owner scopes before host transport
         files.prepare(
           new TransactionalFileMutationPrepareRequest({
             actor: actor(),
-            path: "/workspace/app/src/main.ts",
+            path: WORKSPACE_FILE,
             replacementBytes: bytes("next\n"),
             ownerScope: " "
           })
@@ -930,7 +934,7 @@ test("TransactionalFileMutation audit failures stop host side effects", async ()
   const permissions = await configuredPermissions(rows)
   let calls = 0
   const baseClient = await Effect.runPromise(
-    makeTransactionalFileMutationMemoryClient({ files: { "/workspace/app/src/main.ts": "old\n" } })
+    makeTransactionalFileMutationMemoryClient({ files: initialFiles() })
   )
   const client: TransactionalFileMutationClientApi = {
     ...baseClient,
@@ -969,7 +973,7 @@ test("TransactionalFileMutation rejects malformed paths before bridge transport"
         kind: "success",
         payload: {
           mutationId: "file-mutation-1",
-          path: "/workspace/app/src/main.ts",
+          path: WORKSPACE_FILE,
           state: "prepared",
           ownerScope: "scope-workspace",
           sourceHash: "fnv1a-source",
@@ -1064,8 +1068,8 @@ const configuredPermissions = async (rows: AuditEvent[]) => {
       permissions.declare(
         P.nativeInvoke({ primitive: "TransactionalFileMutation", methods: ["rollback"] })
       ),
-      permissions.declare(P.filesystemRead({ roots: ["/workspace/app"] })),
-      permissions.declare(P.filesystemWrite({ roots: ["/workspace/app"] }))
+      permissions.declare(P.filesystemRead({ roots: [WORKSPACE_ROOT] })),
+      permissions.declare(P.filesystemWrite({ roots: [WORKSPACE_ROOT] }))
     ])
   )
   return permissions
@@ -1080,7 +1084,7 @@ const prepareRequest = (
 ): TransactionalFileMutationPrepareRequest =>
   new TransactionalFileMutationPrepareRequest({
     actor: actor(),
-    path: "/workspace/app/src/main.ts",
+    path: WORKSPACE_FILE,
     replacementBytes: bytes(content),
     ...(mutationId === undefined ? {} : { mutationId }),
     traceId: "trace-prepare"
@@ -1092,7 +1096,7 @@ const prepareInput = (
 ): TransactionalFileMutationPrepareInput =>
   new TransactionalFileMutationPrepareInput({
     actor: actor(),
-    path: "/workspace/app/src/main.ts",
+    path: WORKSPACE_FILE,
     replacementBytes: bytes(content),
     ...(mutationId === undefined ? {} : { mutationId }),
     traceId: "trace-prepare"
