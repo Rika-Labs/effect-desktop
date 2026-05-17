@@ -17,6 +17,7 @@ import {
   type AuditEventsApi,
   type DesktopRpcClient,
   emitAuditEvent,
+  makeResourceId,
   type NormalizedCapability,
   P,
   PermissionActor,
@@ -25,7 +26,10 @@ import {
   PermissionRegistry,
   type PermissionRegistryApi,
   type PermissionRegistryError,
-  permissionAuditEvent
+  permissionAuditEvent,
+  type ResourceId,
+  ResourceRegistry,
+  type ResourceRegistryApi
 } from "@effect-desktop/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
@@ -52,13 +56,6 @@ import { NativeSurface } from "./native-surface.js"
 const Surface = "TransactionalFileMutation"
 const UnsupportedReason = "host-adapter-unimplemented"
 const TransactionalFileMutationEventMethod = "TransactionalFileMutation.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
 
 const IdentifierPattern = /^[A-Za-z0-9._-]+$/
 const WindowsAbsolutePath = /^[A-Za-z]:[\\/]/u
@@ -172,6 +169,7 @@ export interface TransactionalFileMutationServiceApi {
 
 export interface TransactionalFileMutationServiceOptions {
   readonly permissions: PermissionRegistryApi
+  readonly resources?: ResourceRegistryApi
   readonly audit?: AuditEventsApi
   readonly nextMutationId?: () => string
   readonly nextTraceId?: () => string
@@ -185,7 +183,8 @@ export class TransactionalFileMutation extends Context.Service<
     Effect.gen(function* () {
       const client = yield* TransactionalFileMutationClient
       const permissions = yield* PermissionRegistry
-      return yield* makeTransactionalFileMutationService(client, { permissions })
+      const resources = yield* ResourceRegistry
+      return yield* makeTransactionalFileMutationService(client, { permissions, resources })
     })
   )
 }
@@ -267,18 +266,55 @@ export interface TransactionalFileMutationMemoryClientOptions {
 interface PreparedMutation {
   readonly actor: TransactionalFileMutationActor
   readonly path: string
+  readonly ownerScope: string
+  readonly state: "prepared" | "committing" | "rolling-back" | "conflicted"
+  readonly resourceId?: ResourceId
   readonly sourceHash: string
   readonly replacementHash: string
   readonly replacementBytes: Uint8Array
   readonly diff: TransactionalFileMutationDiff
 }
 
+interface MemoryState {
+  readonly files: ReadonlyMap<string, Uint8Array>
+  readonly mutations: ReadonlyMap<string, PreparedMutation>
+}
+
+type MemoryPrepareResult =
+  | { readonly _tag: "success" }
+  | { readonly _tag: "failure"; readonly error: TransactionalFileMutationError }
+
+type MemoryCommitResult =
+  | { readonly _tag: "committed"; readonly prepared: PreparedMutation }
+  | {
+      readonly _tag: "conflicted"
+      readonly prepared: PreparedMutation
+      readonly currentHash: string
+    }
+  | { readonly _tag: "failure"; readonly error: TransactionalFileMutationError }
+
+type MemoryRollbackResult =
+  | { readonly _tag: "rolled-back"; readonly prepared: PreparedMutation }
+  | { readonly _tag: "failure"; readonly error: TransactionalFileMutationError }
+
+type ClaimMutationResult =
+  | { readonly _tag: "success"; readonly prepared: PreparedMutation }
+  | { readonly _tag: "failure"; readonly error: TransactionalFileMutationError }
+
+type ServicePrepareResult =
+  | { readonly _tag: "success"; readonly prepared: PreparedMutation }
+  | { readonly _tag: "failure"; readonly error: TransactionalFileMutationError }
+
+type RestoreClaimResult = { readonly _tag: "restored" } | { readonly _tag: "ownerClosed" }
+
 export const makeTransactionalFileMutationMemoryClient = (
   options: TransactionalFileMutationMemoryClientOptions = {}
 ): Effect.Effect<TransactionalFileMutationClientApi, never, never> =>
   Effect.gen(function* () {
-    const files = yield* Ref.make<ReadonlyMap<string, Uint8Array>>(normalizeFiles(options.files))
-    const mutations = yield* Ref.make<ReadonlyMap<string, PreparedMutation>>(new Map())
+    const state = yield* Ref.make<MemoryState>({
+      files: normalizeFiles(options.files),
+      mutations: new Map()
+    })
     const pubsub = yield* PubSub.bounded<TransactionalFileMutationEvent>({
       capacity: 256,
       replay: 64
@@ -292,8 +328,10 @@ export const makeTransactionalFileMutationMemoryClient = (
             failOr(
               options.failure?.prepare,
               Effect.gen(function* () {
-                const current = yield* Ref.get(files)
-                const source = current.get(normalizePath(valid.path))
+                const current = yield* Ref.get(state)
+                const path = normalizePath(valid.path)
+                const ownerScope = mutationOwnerScope(valid.actor, valid.ownerScope)
+                const source = current.files.get(path)
                 if (source === undefined) {
                   return yield* Effect.fail(
                     makeHostProtocolNotFoundError(valid.path, "TransactionalFileMutation.prepare")
@@ -314,18 +352,45 @@ export const makeTransactionalFileMutationMemoryClient = (
                 const replacementBytes = copyBytes(valid.replacementBytes)
                 const replacementHash = hashBytes(replacementBytes)
                 const diff = makeDiff(valid.path, source, replacementBytes)
-                yield* Ref.update(mutations, (currentMutations) =>
-                  new Map(currentMutations).set(mutationId, {
-                    actor: valid.actor,
-                    path: normalizePath(valid.path),
-                    sourceHash,
-                    replacementHash,
-                    replacementBytes,
-                    diff
-                  })
+                const prepareResult = yield* Ref.modify(
+                  state,
+                  (currentState): readonly [MemoryPrepareResult, MemoryState] => {
+                    if (currentState.mutations.has(mutationId)) {
+                      return [
+                        {
+                          _tag: "failure",
+                          error: makeHostProtocolInvalidArgumentError(
+                            "mutationId",
+                            "must identify a mutation that is not already prepared",
+                            "TransactionalFileMutation.prepare"
+                          )
+                        },
+                        currentState
+                      ] as const
+                    }
+                    return [
+                      { _tag: "success" },
+                      {
+                        ...currentState,
+                        mutations: new Map(currentState.mutations).set(mutationId, {
+                          actor: valid.actor,
+                          path,
+                          ownerScope,
+                          state: "prepared",
+                          sourceHash,
+                          replacementHash,
+                          replacementBytes,
+                          diff
+                        })
+                      }
+                    ] as const
+                  }
                 )
+                if (prepareResult._tag === "failure") {
+                  return yield* Effect.fail(prepareResult.error)
+                }
                 yield* publishEvent(pubsub, mutationId, "prepared", {
-                  path: normalizePath(valid.path),
+                  path,
                   state: "prepared",
                   sourceHash,
                   replacementHash,
@@ -333,8 +398,9 @@ export const makeTransactionalFileMutationMemoryClient = (
                 })
                 return new TransactionalFileMutationPrepareResult({
                   mutationId,
-                  path: normalizePath(valid.path),
+                  path,
                   state: "prepared",
+                  ownerScope,
                   sourceHash,
                   replacementHash,
                   diff
@@ -349,63 +415,108 @@ export const makeTransactionalFileMutationMemoryClient = (
             failOr(
               options.failure?.commit,
               Effect.gen(function* () {
-                const currentMutations = yield* Ref.get(mutations)
-                const prepared = currentMutations.get(valid.mutationId)
-                if (prepared === undefined) {
-                  return yield* mutationNotFound(
-                    valid.mutationId,
-                    "TransactionalFileMutation.commit"
-                  )
-                }
-                yield* validateActorMatch(
-                  prepared.actor,
-                  valid.actor,
-                  "TransactionalFileMutation.commit"
+                const commitResult = yield* Ref.modify(
+                  state,
+                  (currentState): readonly [MemoryCommitResult, MemoryState] => {
+                    const prepared = currentState.mutations.get(valid.mutationId)
+                    if (prepared === undefined) {
+                      return [
+                        {
+                          _tag: "failure" as const,
+                          error: mutationNotFoundError(
+                            valid.mutationId,
+                            "TransactionalFileMutation.commit"
+                          )
+                        },
+                        currentState
+                      ] as const
+                    }
+                    const actorError = actorMismatch({
+                      actor: valid.actor,
+                      expected: prepared.actor,
+                      operation: "TransactionalFileMutation.commit"
+                    })
+                    if (actorError !== undefined) {
+                      return [
+                        { _tag: "failure" as const, error: actorError },
+                        currentState
+                      ] as const
+                    }
+                    if (prepared.state !== "prepared") {
+                      return [
+                        {
+                          _tag: "failure" as const,
+                          error: invalidStateError(
+                            prepared.state,
+                            "prepared",
+                            "TransactionalFileMutation.commit"
+                          )
+                        },
+                        currentState
+                      ] as const
+                    }
+                    if (
+                      valid.expectedSourceHash !== undefined &&
+                      valid.expectedSourceHash !== prepared.sourceHash
+                    ) {
+                      return [
+                        {
+                          _tag: "failure" as const,
+                          error: invalidStateError(
+                            prepared.sourceHash,
+                            valid.expectedSourceHash,
+                            "TransactionalFileMutation.commit"
+                          )
+                        },
+                        currentState
+                      ] as const
+                    }
+                    const currentSource = currentState.files.get(prepared.path)
+                    const currentHash =
+                      currentSource === undefined ? "missing" : hashBytes(currentSource)
+                    if (currentHash !== prepared.sourceHash) {
+                      const nextMutations = new Map(currentState.mutations)
+                      nextMutations.set(valid.mutationId, { ...prepared, state: "conflicted" })
+                      return [
+                        { _tag: "conflicted" as const, prepared, currentHash },
+                        { ...currentState, mutations: nextMutations }
+                      ] as const
+                    }
+                    const nextFiles = new Map(currentState.files)
+                    nextFiles.set(prepared.path, copyBytes(prepared.replacementBytes))
+                    const nextMutations = new Map(currentState.mutations)
+                    nextMutations.delete(valid.mutationId)
+                    return [
+                      { _tag: "committed" as const, prepared },
+                      { files: nextFiles, mutations: nextMutations }
+                    ] as const
+                  }
                 )
-                if (
-                  valid.expectedSourceHash !== undefined &&
-                  valid.expectedSourceHash !== prepared.sourceHash
-                ) {
-                  return yield* conflict(
-                    prepared.sourceHash,
-                    valid.expectedSourceHash,
-                    "TransactionalFileMutation.commit"
-                  )
+                if (commitResult._tag === "failure") {
+                  return yield* Effect.fail(commitResult.error)
                 }
-                const currentFiles = yield* Ref.get(files)
-                const currentSource = currentFiles.get(prepared.path)
-                const currentHash =
-                  currentSource === undefined ? "missing" : hashBytes(currentSource)
-                if (currentHash !== prepared.sourceHash) {
+                if (commitResult._tag === "conflicted") {
                   yield* publishEvent(pubsub, valid.mutationId, "conflicted", {
-                    path: prepared.path,
+                    path: commitResult.prepared.path,
                     state: "conflicted",
-                    sourceHash: currentHash,
-                    replacementHash: prepared.replacementHash
+                    sourceHash: commitResult.currentHash,
+                    replacementHash: commitResult.prepared.replacementHash
                   })
                   return yield* conflict(
-                    currentHash,
-                    prepared.sourceHash,
+                    commitResult.currentHash,
+                    commitResult.prepared.sourceHash,
                     "TransactionalFileMutation.commit"
                   )
                 }
-                yield* Ref.update(files, (currentFiles) =>
-                  new Map(currentFiles).set(prepared.path, copyBytes(prepared.replacementBytes))
-                )
-                yield* Ref.update(mutations, (currentMutations) => {
-                  const next = new Map(currentMutations)
-                  next.delete(valid.mutationId)
-                  return next
-                })
                 yield* publishEvent(pubsub, valid.mutationId, "committed", {
-                  path: prepared.path,
+                  path: commitResult.prepared.path,
                   state: "committed",
-                  sourceHash: prepared.sourceHash,
-                  replacementHash: prepared.replacementHash
+                  sourceHash: commitResult.prepared.sourceHash,
+                  replacementHash: commitResult.prepared.replacementHash
                 })
                 return new TransactionalFileMutationCommitResult({
                   mutationId: valid.mutationId,
-                  path: prepared.path,
+                  path: commitResult.prepared.path,
                   state: "committed",
                   committed: true
                 })
@@ -419,23 +530,45 @@ export const makeTransactionalFileMutationMemoryClient = (
             failOr(
               options.failure?.rollback,
               Effect.gen(function* () {
-                const prepared = (yield* Ref.get(mutations)).get(valid.mutationId)
-                if (prepared === undefined) {
-                  return yield* mutationNotFound(
-                    valid.mutationId,
-                    "TransactionalFileMutation.rollback"
-                  )
-                }
-                yield* validateActorMatch(
-                  prepared.actor,
-                  valid.actor,
-                  "TransactionalFileMutation.rollback"
+                const rollbackResult = yield* Ref.modify(
+                  state,
+                  (currentState): readonly [MemoryRollbackResult, MemoryState] => {
+                    const prepared = currentState.mutations.get(valid.mutationId)
+                    if (prepared === undefined) {
+                      return [
+                        {
+                          _tag: "failure" as const,
+                          error: mutationNotFoundError(
+                            valid.mutationId,
+                            "TransactionalFileMutation.rollback"
+                          )
+                        },
+                        currentState
+                      ] as const
+                    }
+                    const actorError = actorMismatch({
+                      actor: valid.actor,
+                      expected: prepared.actor,
+                      operation: "TransactionalFileMutation.rollback"
+                    })
+                    if (actorError !== undefined) {
+                      return [
+                        { _tag: "failure" as const, error: actorError },
+                        currentState
+                      ] as const
+                    }
+                    const next = new Map(currentState.mutations)
+                    next.delete(valid.mutationId)
+                    return [
+                      { _tag: "rolled-back" as const, prepared },
+                      { ...currentState, mutations: next }
+                    ] as const
+                  }
                 )
-                yield* Ref.update(mutations, (currentMutations) => {
-                  const next = new Map(currentMutations)
-                  next.delete(valid.mutationId)
-                  return next
-                })
+                if (rollbackResult._tag === "failure") {
+                  return yield* Effect.fail(rollbackResult.error)
+                }
+                const { prepared } = rollbackResult
                 yield* publishEvent(pubsub, valid.mutationId, "rolled-back", {
                   path: prepared.path,
                   state: "rolled-back"
@@ -497,146 +630,310 @@ const makeTransactionalFileMutationService = (
         Effect.gen(function* () {
           const request = yield* validatePrepareRequest(input)
           const path = normalizePath(request.path)
-          yield* authorizePrepare(options, request.actor, path, request.traceId)
-          yield* emitPrepareUseAudit(options, request.actor, path, request.traceId ?? path)
-          const result = yield* client.prepare(
-            new TransactionalFileMutationPrepareInput({
-              actor: request.actor,
-              path,
-              replacementBytes: request.replacementBytes,
-              ...(request.expectedSourceHash === undefined
-                ? {}
-                : { expectedSourceHash: request.expectedSourceHash }),
-              ...(request.mutationId === undefined ? {} : { mutationId: request.mutationId }),
-              ...(request.traceId === undefined ? {} : { traceId: request.traceId })
+          const traceId = operationTraceId(
+            options,
+            request.traceId,
+            "TransactionalFileMutation.prepare"
+          )
+          const ownerScope = mutationOwnerScope(request.actor, request.ownerScope)
+          if (request.mutationId !== undefined) {
+            yield* ensureMutationIdAvailable(
+              mutations,
+              request.mutationId,
+              "TransactionalFileMutation.prepare"
+            )
+          }
+          yield* authorizePrepare(options, request.actor, path, traceId)
+          yield* emitPrepareUseAudit(options, request.actor, path, traceId)
+          return yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              const result = yield* client.prepare(
+                new TransactionalFileMutationPrepareInput({
+                  actor: request.actor,
+                  path,
+                  replacementBytes: request.replacementBytes,
+                  ...(request.expectedSourceHash === undefined
+                    ? {}
+                    : { expectedSourceHash: request.expectedSourceHash }),
+                  ...(request.mutationId === undefined ? {} : { mutationId: request.mutationId }),
+                  ownerScope,
+                  traceId
+                })
+              )
+              const resourceId =
+                options.resources === undefined
+                  ? undefined
+                  : makeResourceId(`transactional-file-mutation-${result.mutationId}`)
+              const prepared = {
+                actor: request.actor,
+                path,
+                ownerScope,
+                state: "prepared" as const,
+                ...(resourceId === undefined ? {} : { resourceId }),
+                sourceHash: result.sourceHash,
+                replacementHash: result.replacementHash,
+                replacementBytes: copyBytes(request.replacementBytes),
+                diff: result.diff
+              }
+              const prepareResult = yield* Ref.modify(
+                mutations,
+                (
+                  current
+                ): readonly [ServicePrepareResult, ReadonlyMap<string, PreparedMutation>] => {
+                  if (current.has(result.mutationId)) {
+                    return [
+                      {
+                        _tag: "failure",
+                        error: makeHostProtocolInvalidArgumentError(
+                          "mutationId",
+                          "must identify a mutation that is not already prepared",
+                          "TransactionalFileMutation.prepare"
+                        )
+                      },
+                      current
+                    ] as const
+                  }
+                  return [
+                    { _tag: "success", prepared },
+                    new Map(current).set(result.mutationId, prepared)
+                  ] as const
+                }
+              )
+              if (prepareResult._tag === "failure") {
+                yield* rollbackHostMutation(client, request.actor, result.mutationId, traceId)
+                return yield* Effect.fail(prepareResult.error)
+              }
+              yield* registerPreparedMutation(
+                options,
+                result.mutationId,
+                prepareResult.prepared,
+                mutations,
+                client
+              ).pipe(
+                Effect.tapError(() => removePreparedMutation(mutations, result.mutationId)),
+                Effect.tapError(() =>
+                  rollbackHostMutation(client, request.actor, result.mutationId, traceId)
+                )
+              )
+              const publicResult = new TransactionalFileMutationPrepareResult({
+                mutationId: result.mutationId,
+                path: result.path,
+                state: "prepared",
+                ownerScope,
+                sourceHash: result.sourceHash,
+                replacementHash: result.replacementHash,
+                diff: result.diff
+              })
+              yield* publishEvent(events, result.mutationId, "prepared", {
+                path,
+                state: "prepared",
+                sourceHash: result.sourceHash,
+                replacementHash: result.replacementHash,
+                diff: result.diff
+              })
+              return publicResult
             })
           )
-          yield* Ref.update(mutations, (current) =>
-            new Map(current).set(result.mutationId, {
-              actor: request.actor,
-              path,
-              sourceHash: result.sourceHash,
-              replacementHash: result.replacementHash,
-              replacementBytes: copyBytes(request.replacementBytes),
-              diff: result.diff
-            })
-          )
-          yield* publishEvent(events, result.mutationId, "prepared", {
-            path,
-            state: "prepared",
-            sourceHash: result.sourceHash,
-            replacementHash: result.replacementHash,
-            diff: result.diff
-          })
-          return result
         }),
       commit: (input) =>
         Effect.gen(function* () {
           const request = yield* validateCommitRequest(input)
-          const current = yield* Ref.get(mutations)
-          const prepared = current.get(request.mutationId)
-          if (prepared === undefined) {
-            return yield* mutationNotFound(request.mutationId, "TransactionalFileMutation.commit")
-          }
-          yield* validateActorMatch(
-            prepared.actor,
-            request.actor,
+          const traceId = operationTraceId(
+            options,
+            request.traceId,
             "TransactionalFileMutation.commit"
           )
-          yield* authorizeCommit(options, request.actor, prepared.path, request.traceId)
-          yield* emitCommitUseAudit(
-            options,
+          const prepared = yield* claimPreparedMutation(
+            mutations,
             request.actor,
-            prepared.path,
             request.mutationId,
-            request.traceId ?? request.mutationId
+            "committing",
+            "TransactionalFileMutation.commit"
           )
-          yield* publishEvent(events, request.mutationId, "commit-started", {
-            path: prepared.path,
-            state: "committing"
-          })
-          const result = yield* client
-            .commit(
-              new TransactionalFileMutationCommitInput({
-                actor: request.actor,
-                mutationId: request.mutationId,
-                ...(request.expectedSourceHash === undefined
-                  ? {}
-                  : { expectedSourceHash: request.expectedSourceHash }),
-                ...(request.traceId === undefined ? {} : { traceId: request.traceId })
-              })
-            )
-            .pipe(
-              Effect.catch((error: TransactionalFileMutationError) =>
-                publishCommitFailureEvent(events, request.mutationId, prepared, error)
+          yield* Effect.gen(function* () {
+            yield* authorizeCommit(options, request.actor, prepared.path, traceId).pipe(
+              Effect.tapError(() =>
+                restoreClaimedMutation(
+                  mutations,
+                  request.mutationId,
+                  prepared,
+                  "prepared",
+                  rollbackHostMutation(client, request.actor, request.mutationId, traceId)
+                )
               )
             )
-          yield* Ref.update(mutations, (currentMutations) => {
-            const next = new Map(currentMutations)
-            next.delete(request.mutationId)
-            return next
-          })
-          yield* publishEvent(events, request.mutationId, "committed", {
-            path: result.path,
-            state: "committed",
-            sourceHash: prepared.sourceHash,
-            replacementHash: prepared.replacementHash
-          })
-          return result
+            yield* emitCommitUseAudit(
+              options,
+              request.actor,
+              prepared.path,
+              request.mutationId,
+              traceId
+            ).pipe(
+              Effect.tapError(() =>
+                restoreClaimedMutation(
+                  mutations,
+                  request.mutationId,
+                  prepared,
+                  "prepared",
+                  rollbackHostMutation(client, request.actor, request.mutationId, traceId)
+                )
+              )
+            )
+            yield* publishEvent(events, request.mutationId, "commit-started", {
+              path: prepared.path,
+              state: "committing"
+            })
+          }).pipe(
+            Effect.onInterrupt(() =>
+              restoreClaimedMutation(
+                mutations,
+                request.mutationId,
+                prepared,
+                "prepared",
+                rollbackHostMutation(client, request.actor, request.mutationId, traceId)
+              )
+            )
+          )
+          return yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              const result = yield* client
+                .commit(
+                  new TransactionalFileMutationCommitInput({
+                    actor: request.actor,
+                    mutationId: request.mutationId,
+                    ...(request.expectedSourceHash === undefined
+                      ? {}
+                      : { expectedSourceHash: request.expectedSourceHash }),
+                    traceId
+                  })
+                )
+                .pipe(
+                  Effect.catch((error: TransactionalFileMutationError) =>
+                    restoreAfterCommitFailure(
+                      mutations,
+                      request.mutationId,
+                      prepared,
+                      error,
+                      rollbackHostMutation(client, request.actor, request.mutationId, traceId)
+                    ).pipe(
+                      Effect.andThen(
+                        publishCommitFailureEvent(events, request.mutationId, prepared, error)
+                      )
+                    )
+                  )
+                )
+              yield* removePreparedMutation(mutations, request.mutationId)
+              yield* disposePreparedResource(options, prepared)
+              yield* publishEvent(events, request.mutationId, "committed", {
+                path: result.path,
+                state: "committed",
+                sourceHash: prepared.sourceHash,
+                replacementHash: prepared.replacementHash
+              })
+              return result
+            })
+          )
         }),
       rollback: (input) =>
         Effect.gen(function* () {
           const request = yield* validateRollbackRequest(input)
-          const current = yield* Ref.get(mutations)
-          const prepared = current.get(request.mutationId)
-          if (prepared === undefined) {
-            return yield* mutationNotFound(request.mutationId, "TransactionalFileMutation.rollback")
-          }
-          yield* validateActorMatch(
-            prepared.actor,
-            request.actor,
+          const traceId = operationTraceId(
+            options,
+            request.traceId,
             "TransactionalFileMutation.rollback"
           )
-          yield* checkPermission(
-            options,
-            P.nativeInvoke({ primitive: Surface, methods: ["rollback"] }),
-            request.actor,
-            `mutation:${request.mutationId}:rollback`,
-            request.mutationId,
-            "TransactionalFileMutation.rollback",
-            request.traceId
-          )
-          yield* emitMutationAudit(
-            options,
-            "permission-used",
-            P.nativeInvoke({ primitive: Surface, methods: ["rollback"] }),
+          const prepared = yield* claimPreparedMutation(
+            mutations,
             request.actor,
             request.mutationId,
-            request.traceId ?? request.mutationId,
-            "TransactionalFileMutation.rollback",
-            { mutationId: request.mutationId, path: prepared.path }
+            "rolling-back",
+            "TransactionalFileMutation.rollback"
           )
-          yield* publishEvent(events, request.mutationId, "rollback-started", {
-            path: prepared.path,
-            state: "rolling-back"
-          })
-          const result = yield* client.rollback(
-            new TransactionalFileMutationRollbackInput({
-              actor: request.actor,
-              mutationId: request.mutationId,
-              ...(request.traceId === undefined ? {} : { traceId: request.traceId })
+          yield* Effect.gen(function* () {
+            yield* checkPermission(
+              options,
+              P.nativeInvoke({ primitive: Surface, methods: ["rollback"] }),
+              request.actor,
+              `mutation:${request.mutationId}:rollback`,
+              request.mutationId,
+              "TransactionalFileMutation.rollback",
+              traceId
+            ).pipe(
+              Effect.tapError(() =>
+                restoreClaimedMutation(
+                  mutations,
+                  request.mutationId,
+                  prepared,
+                  prepared.state,
+                  rollbackHostMutation(client, request.actor, request.mutationId, traceId)
+                )
+              )
+            )
+            yield* emitMutationAudit(
+              options,
+              "permission-used",
+              P.nativeInvoke({ primitive: Surface, methods: ["rollback"] }),
+              request.actor,
+              request.mutationId,
+              traceId,
+              "TransactionalFileMutation.rollback",
+              { mutationId: request.mutationId, path: prepared.path }
+            ).pipe(
+              Effect.tapError(() =>
+                restoreClaimedMutation(
+                  mutations,
+                  request.mutationId,
+                  prepared,
+                  prepared.state,
+                  rollbackHostMutation(client, request.actor, request.mutationId, traceId)
+                )
+              )
+            )
+            yield* publishEvent(events, request.mutationId, "rollback-started", {
+              path: prepared.path,
+              state: "rolling-back"
+            })
+          }).pipe(
+            Effect.onInterrupt(() =>
+              restoreClaimedMutation(
+                mutations,
+                request.mutationId,
+                prepared,
+                prepared.state,
+                rollbackHostMutation(client, request.actor, request.mutationId, traceId)
+              )
+            )
+          )
+          return yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              const result = yield* client
+                .rollback(
+                  new TransactionalFileMutationRollbackInput({
+                    actor: request.actor,
+                    mutationId: request.mutationId,
+                    traceId
+                  })
+                )
+                .pipe(
+                  Effect.tapError(() =>
+                    restoreClaimedMutation(
+                      mutations,
+                      request.mutationId,
+                      prepared,
+                      prepared.state,
+                      Effect.void
+                    )
+                  )
+                )
+              yield* removePreparedMutation(mutations, request.mutationId)
+              yield* disposePreparedResource(options, prepared)
+              yield* publishEvent(events, request.mutationId, "rolled-back", {
+                path: result.path,
+                state: "rolled-back"
+              })
+              return result
             })
           )
-          yield* Ref.update(mutations, (currentMutations) => {
-            const next = new Map(currentMutations)
-            next.delete(request.mutationId)
-            return next
-          })
-          yield* publishEvent(events, request.mutationId, "rolled-back", {
-            path: result.path,
-            state: "rolled-back"
-          })
-          return result
         }),
       isSupported: () => client.isSupported(),
       events: () => Stream.fromPubSub(events)
@@ -698,7 +995,7 @@ function transactionalFileMutationRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: NativeSurface.support.supported
   })
 }
 
@@ -769,6 +1066,9 @@ const validatePreparePayload =
   ): Effect.Effect<void, TransactionalFileMutationError, never> =>
     Effect.gen(function* () {
       yield* validateIdentifier("actor.id", input.actor.id, operation)
+      if (input.ownerScope !== undefined) {
+        yield* validateNonBlank("ownerScope", input.ownerScope, operation)
+      }
       yield* validatePath("path", input.path, operation)
     })
 
@@ -790,7 +1090,7 @@ const authorizePrepare = (
   options: TransactionalFileMutationServiceOptions,
   actor: TransactionalFileMutationActor,
   path: string,
-  traceId: string | undefined
+  traceId: string
 ): Effect.Effect<void, TransactionalFileMutationError, never> =>
   Effect.gen(function* () {
     yield* checkPermission(
@@ -826,7 +1126,7 @@ const authorizeCommit = (
   options: TransactionalFileMutationServiceOptions,
   actor: TransactionalFileMutationActor,
   path: string,
-  traceId: string | undefined
+  traceId: string
 ): Effect.Effect<void, TransactionalFileMutationError, never> =>
   Effect.gen(function* () {
     yield* checkPermission(
@@ -865,7 +1165,7 @@ const checkPermission = (
   resource: string,
   auditResource: string,
   operation: string,
-  traceId: string | undefined
+  traceId: string
 ): Effect.Effect<void, TransactionalFileMutationError, never> =>
   options.permissions
     .check(
@@ -873,7 +1173,7 @@ const checkPermission = (
       new PermissionContext({
         actor: permissionActor(actor),
         resource,
-        traceId: traceId ?? options.nextTraceId?.() ?? operation
+        traceId
       })
     )
     .pipe(
@@ -905,6 +1205,242 @@ const filesystemReadCapability = (path: string): NormalizedCapability =>
 
 const filesystemWriteCapability = (path: string): NormalizedCapability =>
   P.filesystemWrite({ roots: [normalizePath(path)] })
+
+const operationTraceId = (
+  options: TransactionalFileMutationServiceOptions,
+  traceId: string | undefined,
+  operation: string
+): string => traceId ?? options.nextTraceId?.() ?? operation
+
+const mutationOwnerScope = (actor: TransactionalFileMutationActor, ownerScope?: string): string =>
+  ownerScope ?? `transactional-file-mutation-${actor.kind}-${actor.id}`
+
+const ensureMutationIdAvailable = (
+  mutations: Ref.Ref<ReadonlyMap<string, PreparedMutation>>,
+  mutationId: string,
+  operation: string
+): Effect.Effect<void, TransactionalFileMutationError, never> =>
+  Ref.get(mutations).pipe(
+    Effect.flatMap((current) =>
+      current.has(mutationId)
+        ? Effect.fail(
+            makeHostProtocolInvalidArgumentError(
+              "mutationId",
+              "must identify a mutation that is not already prepared",
+              operation
+            )
+          )
+        : Effect.void
+    )
+  )
+
+const claimPreparedMutation = (
+  mutations: Ref.Ref<ReadonlyMap<string, PreparedMutation>>,
+  actor: TransactionalFileMutationActor,
+  mutationId: string,
+  nextState: PreparedMutation["state"],
+  operation: string
+): Effect.Effect<PreparedMutation, TransactionalFileMutationError, never> =>
+  Effect.gen(function* () {
+    const result = yield* Ref.modify(
+      mutations,
+      (current): readonly [ClaimMutationResult, ReadonlyMap<string, PreparedMutation>] => {
+        const prepared = current.get(mutationId)
+        if (prepared === undefined) {
+          return [
+            { _tag: "failure", error: mutationNotFoundError(mutationId, operation) },
+            current
+          ] as const
+        }
+        const actorError = actorMismatch({ actor, expected: prepared.actor, operation })
+        if (actorError !== undefined) {
+          return [{ _tag: "failure", error: actorError }, current] as const
+        }
+        if (!canClaimMutation(prepared.state, nextState)) {
+          return [
+            {
+              _tag: "failure",
+              error: invalidStateError(prepared.state, nextState, operation)
+            },
+            current
+          ] as const
+        }
+        const next = new Map(current)
+        next.set(mutationId, { ...prepared, state: nextState })
+        return [{ _tag: "success", prepared }, next] as const
+      }
+    )
+    if (result._tag === "failure") {
+      return yield* Effect.fail(result.error)
+    }
+    return result.prepared
+  })
+
+const canClaimMutation = (
+  current: PreparedMutation["state"],
+  next: PreparedMutation["state"]
+): boolean => {
+  if (next === "committing") {
+    return current === "prepared"
+  }
+  if (next === "rolling-back") {
+    return current === "prepared" || current === "conflicted"
+  }
+  return false
+}
+
+const restoreClaimedMutation = (
+  mutations: Ref.Ref<ReadonlyMap<string, PreparedMutation>>,
+  mutationId: string,
+  prepared: PreparedMutation,
+  state: PreparedMutation["state"],
+  whenOwnerClosed: Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  Ref.modify(
+    mutations,
+    (current): readonly [RestoreClaimResult, ReadonlyMap<string, PreparedMutation>] => {
+      const currentPrepared = current.get(mutationId)
+      if (currentPrepared === undefined) {
+        return [{ _tag: "ownerClosed" }, current] as const
+      }
+      if (
+        currentPrepared.resourceId !== prepared.resourceId ||
+        (currentPrepared.state !== "committing" && currentPrepared.state !== "rolling-back")
+      ) {
+        return [{ _tag: "restored" }, current] as const
+      }
+
+      const next = new Map(current)
+      next.set(mutationId, { ...prepared, state })
+      return [{ _tag: "restored" }, next] as const
+    }
+  ).pipe(
+    Effect.flatMap((result) => (result._tag === "ownerClosed" ? whenOwnerClosed : Effect.void))
+  )
+
+const restoreAfterCommitFailure = (
+  mutations: Ref.Ref<ReadonlyMap<string, PreparedMutation>>,
+  mutationId: string,
+  prepared: PreparedMutation,
+  error: TransactionalFileMutationError,
+  whenOwnerClosed: Effect.Effect<void, never, never>
+): Effect.Effect<void, never, never> =>
+  restoreClaimedMutation(
+    mutations,
+    mutationId,
+    prepared,
+    error.tag === "InvalidState" ? "conflicted" : "prepared",
+    whenOwnerClosed
+  )
+
+const removePreparedMutation = (
+  mutations: Ref.Ref<ReadonlyMap<string, PreparedMutation>>,
+  mutationId: string
+): Effect.Effect<void, never, never> =>
+  Ref.update(mutations, (current) => {
+    const next = new Map(current)
+    next.delete(mutationId)
+    return next
+  })
+
+const registerPreparedMutation = (
+  options: TransactionalFileMutationServiceOptions,
+  mutationId: string,
+  prepared: PreparedMutation,
+  mutations: Ref.Ref<ReadonlyMap<string, PreparedMutation>>,
+  client: TransactionalFileMutationClientApi
+): Effect.Effect<void, TransactionalFileMutationError, never> => {
+  if (options.resources === undefined || prepared.resourceId === undefined) {
+    return Effect.void
+  }
+  return options.resources
+    .register({
+      kind: "transactional-file-mutation",
+      id: prepared.resourceId,
+      ownerScope: prepared.ownerScope,
+      state: "prepared",
+      dispose: cleanupPreparedMutation(mutations, mutationId, client)
+    })
+    .pipe(
+      Effect.flatMap((handle) =>
+        Ref.update(mutations, (current) => {
+          const currentPrepared = current.get(mutationId)
+          if (currentPrepared === undefined || currentPrepared.resourceId !== prepared.resourceId) {
+            return current
+          }
+          return new Map(current).set(mutationId, {
+            ...currentPrepared,
+            resourceId: handle.id
+          })
+        })
+      ),
+      Effect.mapError((error) =>
+        makeHostProtocolInternalError(
+          `failed to register transactional file mutation resource: ${error.message}`,
+          "TransactionalFileMutation.prepare"
+        )
+      )
+    )
+}
+
+const cleanupPreparedMutation = (
+  mutations: Ref.Ref<ReadonlyMap<string, PreparedMutation>>,
+  mutationId: string,
+  client: TransactionalFileMutationClientApi
+): Effect.Effect<void, never, never> =>
+  Ref.modify(mutations, (current) => {
+    const prepared = current.get(mutationId)
+    if (prepared === undefined) {
+      return [undefined, current] as const
+    }
+    if (prepared.state !== "prepared" && prepared.state !== "conflicted") {
+      const next = new Map(current)
+      next.delete(mutationId)
+      return [undefined, next] as const
+    }
+    const next = new Map(current)
+    next.delete(mutationId)
+    return [prepared, next] as const
+  }).pipe(
+    Effect.flatMap((prepared) =>
+      prepared === undefined
+        ? Effect.void
+        : client
+            .rollback(
+              new TransactionalFileMutationRollbackInput({
+                actor: prepared.actor,
+                mutationId
+              })
+            )
+            .pipe(Effect.ignore)
+    )
+  )
+
+const rollbackHostMutation = (
+  client: TransactionalFileMutationClientApi,
+  actor: TransactionalFileMutationActor,
+  mutationId: string,
+  traceId: string
+): Effect.Effect<void, never, never> =>
+  client
+    .rollback(
+      new TransactionalFileMutationRollbackInput({
+        actor,
+        mutationId,
+        traceId
+      })
+    )
+    .pipe(Effect.ignore)
+
+const disposePreparedResource = (
+  options: TransactionalFileMutationServiceOptions,
+  prepared: PreparedMutation
+): Effect.Effect<void, never, never> => {
+  if (options.resources === undefined || prepared.resourceId === undefined) {
+    return Effect.void
+  }
+  return options.resources.dispose(prepared.resourceId).pipe(Effect.ignore)
+}
 
 const normalizeFiles = (
   files: ReadonlyMap<string, Uint8Array> | Record<string, Uint8Array | string> | undefined
@@ -966,14 +1502,18 @@ const hashBytes = (bytes: Uint8Array): string => {
 
 const copyBytes = (bytes: Uint8Array): Uint8Array => new Uint8Array(bytes)
 
-const validateActorMatch = (
-  expected: TransactionalFileMutationActor,
-  actual: TransactionalFileMutationActor,
-  operation: string
-): Effect.Effect<void, TransactionalFileMutationError, never> =>
-  expected.kind === actual.kind && expected.id === actual.id
-    ? Effect.void
-    : invalid("actor", "must match the actor that prepared the mutation", operation)
+const actorMismatch = (options: {
+  readonly actor: TransactionalFileMutationActor
+  readonly expected: TransactionalFileMutationActor
+  readonly operation: string
+}): TransactionalFileMutationError | undefined =>
+  options.expected.kind === options.actor.kind && options.expected.id === options.actor.id
+    ? undefined
+    : makeHostProtocolInvalidArgumentError(
+        "actor",
+        "must match the actor that prepared the mutation",
+        options.operation
+      )
 
 const validatePath = (
   field: string,
@@ -997,7 +1537,7 @@ const hasDotPathSegment = (path: string): boolean =>
     .some((segment) => segment === "." || segment === "..")
 
 const isAbsolutePath = (path: string): boolean =>
-  path.startsWith("/") || WindowsAbsolutePath.test(path)
+  process.platform === "win32" ? WindowsAbsolutePath.test(path) : path.startsWith("/")
 
 const validateIdentifier = (
   field: string,
@@ -1009,6 +1549,13 @@ const validateIdentifier = (
   }
   return Effect.void
 }
+
+const validateNonBlank = (
+  field: string,
+  value: string,
+  operation: string
+): Effect.Effect<void, TransactionalFileMutationError, never> =>
+  value.trim().length > 0 ? Effect.void : invalid(field, "must be non-empty", operation)
 
 const failOr = <A>(
   error: TransactionalFileMutationError | undefined,
@@ -1232,11 +1779,18 @@ const conflict = (
 ): Effect.Effect<never, TransactionalFileMutationError, never> =>
   Effect.fail(makeHostProtocolInvalidStateError(current, attempted, operation))
 
-const mutationNotFound = (
+const invalidStateError = (
+  current: string,
+  attempted: string,
+  operation: string
+): TransactionalFileMutationError =>
+  makeHostProtocolInvalidStateError(current, attempted, operation)
+
+const mutationNotFoundError = (
   mutationId: string,
   operation: string
-): Effect.Effect<never, TransactionalFileMutationError, never> =>
-  Effect.fail(makeHostProtocolNotFoundError(`TransactionalFileMutation:${mutationId}`, operation))
+): TransactionalFileMutationError =>
+  makeHostProtocolNotFoundError(`TransactionalFileMutation:${mutationId}`, operation)
 
 const permissionDeniedError = (
   capability: NormalizedCapability,

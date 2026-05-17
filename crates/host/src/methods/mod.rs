@@ -192,7 +192,10 @@ mod tests {
     use host_protocol::{
         HostProtocolEnvelope, HostProtocolError, WindowCreateResponse, PROTOCOL_VERSION,
     };
+    use std::fs;
+    use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn ping_returns_response_with_matching_id_and_trace() {
@@ -1229,13 +1232,17 @@ mod tests {
     }
 
     #[test]
-    fn transactional_file_mutation_prepare_routes_to_typed_unsupported() {
+    fn transactional_file_mutation_prepare_routes_to_supported_adapter() {
+        let path = temp_file("transactional-file-mutation-route", b"source\n");
+        let mut payload = transactional_file_mutation_prepare_payload();
+        payload["path"] = serde_json::json!(path.display().to_string());
+        payload["expectedSourceHash"] = serde_json::json!("fnv1a-991ed596");
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
                     "request-file-mutation-prepare",
                     host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD,
-                    transactional_file_mutation_prepare_payload(),
+                    payload,
                 ),
                 1710000000136,
             )
@@ -1247,17 +1254,43 @@ mod tests {
                 id: "request-file-mutation-prepare".to_string(),
                 timestamp: 1710000000136,
                 trace_id: "trace-request-file-mutation-prepare".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
-                    host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD,
-                )),
+                payload: Some(serde_json::json!({
+                    "mutationId": "file-mutation-1",
+                    "path": path.display().to_string(),
+                    "state": "prepared",
+                    "ownerScope": "transactional-file-mutation-workspace-workspace-1",
+                    "sourceHash": "fnv1a-991ed596",
+                    "replacementHash": "fnv1a-d5615ac6",
+                    "diff": {
+                        "format": "unified",
+                        "text": format!(
+                            "--- {}\n+++ {}\n@@ -1,2 +1,2 @@\n-source\n-\n+next\n+",
+                            path.display(),
+                            path.display()
+                        ),
+                        "additions": 2,
+                        "deletions": 2
+                    }
+                })),
+                error: None,
             }
         );
+        let _ = test_router().dispatch_at(
+            request_with_payload(
+                "request-file-mutation-cleanup",
+                host_protocol::TRANSACTIONAL_FILE_MUTATION_ROLLBACK_METHOD,
+                serde_json::json!({
+                    "actor": { "kind": "workspace", "id": "workspace-1" },
+                    "mutationId": "file-mutation-1"
+                }),
+            ),
+            1710000000139,
+        );
+        cleanup_path(path);
     }
 
     #[test]
-    fn transactional_file_mutation_invalid_payload_returns_invalid_argument_before_unsupported() {
+    fn transactional_file_mutation_invalid_payload_returns_invalid_argument_before_host_work() {
         let mut payload = transactional_file_mutation_prepare_payload();
         payload["path"] = serde_json::json!("workspace/app/src/main.ts");
         let response = test_router()
@@ -1288,7 +1321,7 @@ mod tests {
     }
 
     #[test]
-    fn transactional_file_mutation_is_supported_reports_unimplemented_adapter() {
+    fn transactional_file_mutation_is_supported_reports_supported_adapter() {
         let response = test_router()
             .dispatch_at(
                 request(
@@ -1306,8 +1339,7 @@ mod tests {
                 timestamp: 1710000000138,
                 trace_id: "trace-request-file-mutation-supported".to_string(),
                 payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON
+                    "supported": true
                 })),
                 error: None,
             }
@@ -1504,6 +1536,24 @@ mod tests {
             "mutationId": "file-mutation-1",
             "traceId": "trace-file-mutation"
         })
+    }
+
+    fn temp_file(name: &str, bytes: &[u8]) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after Unix epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("effect-desktop-methods-{nanos}"));
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let path = dir.join(format!("{name}.txt"));
+        fs::write(&path, bytes).expect("temp file should be written");
+        path
+    }
+
+    fn cleanup_path(path: PathBuf) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
     }
 
     struct FakeWindowHandler {

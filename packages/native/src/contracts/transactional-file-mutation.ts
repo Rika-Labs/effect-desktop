@@ -68,6 +68,7 @@ export class TransactionalFileMutationPrepareRequest extends Schema.Class<Transa
   replacementBytes: Schema.Uint8Array,
   expectedSourceHash: Schema.optionalKey(BridgeSafeNonEmptyString),
   mutationId: Schema.optionalKey(BridgeSafeNonEmptyString),
+  ownerScope: Schema.optionalKey(BridgeSafeNonEmptyString),
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 
@@ -79,6 +80,7 @@ export class TransactionalFileMutationPrepareInput extends Schema.Class<Transact
   replacementBytes: Schema.Uint8Array,
   expectedSourceHash: Schema.optionalKey(BridgeSafeNonEmptyString),
   mutationId: Schema.optionalKey(BridgeSafeNonEmptyString),
+  ownerScope: Schema.optionalKey(BridgeSafeNonEmptyString),
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 
@@ -88,6 +90,7 @@ export class TransactionalFileMutationPrepareResult extends Schema.Class<Transac
   mutationId: BridgeSafeNonEmptyString,
   path: PrintableNonEmptyString,
   state: Schema.Literal("prepared"),
+  ownerScope: BridgeSafeNonEmptyString,
   sourceHash: BridgeSafeNonEmptyString,
   replacementHash: BridgeSafeNonEmptyString,
   diff: TransactionalFileMutationDiff

@@ -2296,7 +2296,7 @@
     {
       "name": "TransactionalFileMutation",
       "kind": "class",
-      "signature": "export class TransactionalFileMutation extends Context.Service< TransactionalFileMutation, TransactionalFileMutationServiceApi >()(\"@effect-desktop/native/TransactionalFileMutation\") { static readonly layer = Layer.effect(TransactionalFileMutation)( Effect.gen(function* () { const client = yield* TransactionalFileMutationClient const permissions = yield* PermissionRegistry return yield* makeTransactionalFileMutationService(client, { permissions }) }) ) }"
+      "signature": "export class TransactionalFileMutation extends Context.Service< TransactionalFileMutation, TransactionalFileMutationServiceApi >()(\"@effect-desktop/native/TransactionalFileMutation\") { static readonly layer = Layer.effect(TransactionalFileMutation)( Effect.gen(function* () { const client = yield* TransactionalFileMutationClient const permissions = yield* PermissionRegistry const resources = yield* ResourceRegistry return yield* makeTransactionalFileMutationService(client, { permissions, resources }) }) ) }"
     },
     {
       "name": "TransactionalFileMutationClient",
@@ -2321,7 +2321,7 @@
     {
       "name": "TransactionalFileMutationLive",
       "kind": "value",
-      "signature": "const TransactionalFileMutationLive: Layer.Layer<TransactionalFileMutation, never, PermissionRegistry | TransactionalFileMutationClient>"
+      "signature": "const TransactionalFileMutationLive: Layer.Layer<TransactionalFileMutation, never, PermissionRegistry | ResourceRegistry | TransactionalFileMutationClient>"
     },
     {
       "name": "TransactionalFileMutationMemoryClientOptions",
@@ -2361,7 +2361,7 @@
     {
       "name": "TransactionalFileMutationServiceOptions",
       "kind": "interface",
-      "signature": "export interface TransactionalFileMutationServiceOptions { readonly permissions: PermissionRegistryApi readonly audit?: AuditEventsApi readonly nextMutationId?: () => string readonly nextTraceId?: () => string }"
+      "signature": "export interface TransactionalFileMutationServiceOptions { readonly permissions: PermissionRegistryApi readonly resources?: ResourceRegistryApi readonly audit?: AuditEventsApi readonly nextMutationId?: () => string readonly nextTraceId?: () => string }"
     },
     {
       "name": "TransactionalFileMutationSurface",

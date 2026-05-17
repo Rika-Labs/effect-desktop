@@ -2818,6 +2818,10 @@ impl TransactionalFileMutationActorPayload {
         }
     }
 
+    pub fn kind(&self) -> TransactionalFileMutationActorKind {
+        self.kind
+    }
+
     pub fn id(&self) -> &str {
         &self.id
     }
@@ -2854,6 +2858,8 @@ pub struct TransactionalFileMutationPreparePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     mutation_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     trace_id: Option<String>,
 }
 
@@ -2864,6 +2870,7 @@ impl TransactionalFileMutationPreparePayload {
         replacement_bytes: Vec<u8>,
         expected_source_hash: Option<String>,
         mutation_id: Option<String>,
+        owner_scope: Option<String>,
         trace_id: Option<String>,
     ) -> Self {
         Self {
@@ -2872,6 +2879,7 @@ impl TransactionalFileMutationPreparePayload {
             replacement_bytes,
             expected_source_hash,
             mutation_id,
+            owner_scope,
             trace_id,
         }
     }
@@ -2884,12 +2892,20 @@ impl TransactionalFileMutationPreparePayload {
         &self.path
     }
 
+    pub fn replacement_bytes(&self) -> &[u8] {
+        &self.replacement_bytes
+    }
+
     pub fn expected_source_hash(&self) -> Option<&str> {
         self.expected_source_hash.as_deref()
     }
 
     pub fn mutation_id(&self) -> Option<&str> {
         self.mutation_id.as_deref()
+    }
+
+    pub fn owner_scope(&self) -> Option<&str> {
+        self.owner_scope.as_deref()
     }
 
     pub fn trace_id(&self) -> Option<&str> {
@@ -2903,6 +2919,7 @@ pub struct TransactionalFileMutationPrepareResultPayload {
     mutation_id: String,
     path: String,
     state: TransactionalFileMutationState,
+    owner_scope: String,
     source_hash: String,
     replacement_hash: String,
     diff: TransactionalFileMutationDiffPayload,
@@ -2912,6 +2929,7 @@ impl TransactionalFileMutationPrepareResultPayload {
     pub fn prepared(
         mutation_id: impl Into<String>,
         path: impl Into<String>,
+        owner_scope: impl Into<String>,
         source_hash: impl Into<String>,
         replacement_hash: impl Into<String>,
         diff: TransactionalFileMutationDiffPayload,
@@ -2920,6 +2938,7 @@ impl TransactionalFileMutationPrepareResultPayload {
             mutation_id: mutation_id.into(),
             path: path.into(),
             state: TransactionalFileMutationState::Prepared,
+            owner_scope: owner_scope.into(),
             source_hash: source_hash.into(),
             replacement_hash: replacement_hash.into(),
             diff,
@@ -3054,6 +3073,13 @@ pub struct TransactionalFileMutationSupportedPayload {
 }
 
 impl TransactionalFileMutationSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -5727,11 +5753,12 @@ mod tests {
             b"next\n".to_vec(),
             Some("fnv1a-source".to_string()),
             Some("file-mutation-1".to_string()),
+            Some("scope-workspace".to_string()),
             Some("trace-prepare".to_string()),
         );
         assert_eq!(
             serde_json::to_string(&prepare).expect("prepare payload should encode"),
-            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"path":"/workspace/app/src/main.ts","replacementBytes":[110,101,120,116,10],"expectedSourceHash":"fnv1a-source","mutationId":"file-mutation-1","traceId":"trace-prepare"}"#
+            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"path":"/workspace/app/src/main.ts","replacementBytes":[110,101,120,116,10],"expectedSourceHash":"fnv1a-source","mutationId":"file-mutation-1","ownerScope":"scope-workspace","traceId":"trace-prepare"}"#
         );
 
         let diff = TransactionalFileMutationDiffPayload::unified(
@@ -5743,12 +5770,13 @@ mod tests {
             serde_json::to_string(&TransactionalFileMutationPrepareResultPayload::prepared(
                 "file-mutation-1",
                 "/workspace/app/src/main.ts",
+                "scope-workspace",
                 "fnv1a-source",
                 "fnv1a-next",
                 diff,
             ))
             .expect("prepare result should encode"),
-            r#"{"mutationId":"file-mutation-1","path":"/workspace/app/src/main.ts","state":"prepared","sourceHash":"fnv1a-source","replacementHash":"fnv1a-next","diff":{"format":"unified","text":"--- /workspace/app/src/main.ts\n+++ /workspace/app/src/main.ts","additions":1,"deletions":1}}"#
+            r#"{"mutationId":"file-mutation-1","path":"/workspace/app/src/main.ts","state":"prepared","ownerScope":"scope-workspace","sourceHash":"fnv1a-source","replacementHash":"fnv1a-next","diff":{"format":"unified","text":"--- /workspace/app/src/main.ts\n+++ /workspace/app/src/main.ts","additions":1,"deletions":1}}"#
         );
 
         let commit = TransactionalFileMutationCommitPayload::new(
@@ -5812,6 +5840,11 @@ mod tests {
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&TransactionalFileMutationSupportedPayload::supported())
+                .expect("support payload should encode"),
+            r#"{"supported":true}"#
         );
     }
 
