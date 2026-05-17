@@ -8,6 +8,7 @@ pub(crate) mod handshake;
 mod local_tool_runtime;
 mod menu;
 mod realtime_media_session;
+mod scoped_access_grant;
 mod transactional_file_mutation;
 mod window;
 mod workspace_index;
@@ -593,6 +594,16 @@ impl HostMethodRouter {
                 local_tool_runtime::is_supported()
             }
             host_protocol::WORKSPACE_INDEX_IS_SUPPORTED_METHOD => workspace_index::is_supported(),
+            host_protocol::SCOPED_ACCESS_GRANT_GRANT_METHOD => scoped_access_grant::grant(payload),
+            host_protocol::SCOPED_ACCESS_GRANT_RESOLVE_METHOD => {
+                scoped_access_grant::resolve(payload)
+            }
+            host_protocol::SCOPED_ACCESS_GRANT_REVOKE_METHOD => {
+                scoped_access_grant::revoke(payload)
+            }
+            host_protocol::SCOPED_ACCESS_GRANT_IS_SUPPORTED_METHOD => {
+                scoped_access_grant::is_supported()
+            }
             host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD => {
                 transactional_file_mutation::prepare(payload)
             }

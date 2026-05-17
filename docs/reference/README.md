@@ -46,7 +46,7 @@ If you're trying to learn the framework, start with [Tutorials](../tutorials/). 
 
 - [App](native/app.md) · [Clipboard](native/clipboard.md) · [ContextMenu](native/context-menu.md) · [CrashReporter](native/crash-reporter.md) · [DiagnosticsBundle](native/diagnostics-bundle.md) · [Dialog](native/dialog.md)
 - [Dock](native/dock.md) · [EgressPolicy](native/egress-policy.md) · [ExecutionSandbox](native/execution-sandbox.md) · [ExtensionConfig](native/extension-config.md) · [ExtensionPackage](native/extension-package.md) · [LocalToolRuntime](native/local-tool-runtime.md) · [TransactionalFileMutation](native/transactional-file-mutation.md) · [WorkspaceIndex](native/workspace-index.md) · [GlobalShortcut](native/global-shortcut.md) · [Menu](native/menu.md) · [Notification](native/notification.md) · [Path](native/path.md)
-- [PowerMonitor](native/power-monitor.md) · [Protocol](native/protocol.md) · [RealtimeMediaSession](native/realtime-media-session.md) · [SafeStorage](native/safe-storage.md) · [Screen](native/screen.md) · [Shell](native/shell.md)
+- [PowerMonitor](native/power-monitor.md) · [Protocol](native/protocol.md) · [RealtimeMediaSession](native/realtime-media-session.md) · [SafeStorage](native/safe-storage.md) · [ScopedAccessGrant](native/scoped-access-grant.md) · [Screen](native/screen.md) · [Shell](native/shell.md)
 - [SystemAppearance](native/system-appearance.md) · [Tray](native/tray.md) · [Updater](native/updater.md) · [WebView](native/webview.md) · [Window](native/window.md)
 
 ## React hooks — `@effect-desktop/react`

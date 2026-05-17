@@ -77,6 +77,11 @@ pub const WORKSPACE_INDEX_REFRESH_METHOD: &str = "WorkspaceIndex.refresh";
 pub const WORKSPACE_INDEX_CLOSE_METHOD: &str = "WorkspaceIndex.close";
 pub const WORKSPACE_INDEX_IS_SUPPORTED_METHOD: &str = "WorkspaceIndex.isSupported";
 pub const WORKSPACE_INDEX_EVENT: &str = "WorkspaceIndex.Event";
+pub const SCOPED_ACCESS_GRANT_GRANT_METHOD: &str = "ScopedAccessGrant.grant";
+pub const SCOPED_ACCESS_GRANT_RESOLVE_METHOD: &str = "ScopedAccessGrant.resolve";
+pub const SCOPED_ACCESS_GRANT_REVOKE_METHOD: &str = "ScopedAccessGrant.revoke";
+pub const SCOPED_ACCESS_GRANT_IS_SUPPORTED_METHOD: &str = "ScopedAccessGrant.isSupported";
+pub const SCOPED_ACCESS_GRANT_EVENT: &str = "ScopedAccessGrant.Event";
 pub const TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD: &str = "TransactionalFileMutation.prepare";
 pub const TRANSACTIONAL_FILE_MUTATION_COMMIT_METHOD: &str = "TransactionalFileMutation.commit";
 pub const TRANSACTIONAL_FILE_MUTATION_ROLLBACK_METHOD: &str = "TransactionalFileMutation.rollback";
@@ -101,6 +106,7 @@ pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemente
 pub const EXTENSION_PACKAGE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const SCOPED_ACCESS_GRANT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -2869,6 +2875,303 @@ impl WorkspaceIndexSupportedPayload {
             supported: false,
             reason: Some(reason.into()),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScopedAccessGrantActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScopedAccessGrantScopeKind {
+    File,
+    Directory,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScopedAccessGrantAccess {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScopedAccessGrantState {
+    Granted,
+    Resolved,
+    Revoked,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScopedAccessGrantEventPhase {
+    Granted,
+    Resolved,
+    Revoked,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantActorPayload {
+    kind: ScopedAccessGrantActorKind,
+    id: String,
+}
+
+impl ScopedAccessGrantActorPayload {
+    pub fn new(kind: ScopedAccessGrantActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantScopePayload {
+    path: String,
+    kind: ScopedAccessGrantScopeKind,
+    access: ScopedAccessGrantAccess,
+}
+
+impl ScopedAccessGrantScopePayload {
+    pub fn new(
+        path: impl Into<String>,
+        kind: ScopedAccessGrantScopeKind,
+        access: ScopedAccessGrantAccess,
+    ) -> Self {
+        Self {
+            path: path.into(),
+            kind,
+            access,
+        }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantGrantPayload {
+    actor: ScopedAccessGrantActorPayload,
+    scope: ScopedAccessGrantScopePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    grant_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ScopedAccessGrantGrantPayload {
+    pub fn new(
+        actor: ScopedAccessGrantActorPayload,
+        scope: ScopedAccessGrantScopePayload,
+        grant_id: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            scope,
+            grant_id,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &ScopedAccessGrantActorPayload {
+        &self.actor
+    }
+
+    pub fn scope(&self) -> &ScopedAccessGrantScopePayload {
+        &self.scope
+    }
+
+    pub fn grant_id(&self) -> Option<&str> {
+        self.grant_id.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantResolvePayload {
+    grant_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ScopedAccessGrantResolvePayload {
+    pub fn new(grant_id: impl Into<String>, trace_id: Option<String>) -> Self {
+        Self {
+            grant_id: grant_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn grant_id(&self) -> &str {
+        &self.grant_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantRevokePayload {
+    grant_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ScopedAccessGrantRevokePayload {
+    pub fn new(grant_id: impl Into<String>, trace_id: Option<String>) -> Self {
+        Self {
+            grant_id: grant_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn grant_id(&self) -> &str {
+        &self.grant_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantGrantResultPayload {
+    grant_id: String,
+    scope: ScopedAccessGrantScopePayload,
+    state: ScopedAccessGrantState,
+}
+
+impl ScopedAccessGrantGrantResultPayload {
+    pub fn granted(grant_id: impl Into<String>, scope: ScopedAccessGrantScopePayload) -> Self {
+        Self {
+            grant_id: grant_id.into(),
+            scope,
+            state: ScopedAccessGrantState::Granted,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantResolveResultPayload {
+    grant_id: String,
+    scope: ScopedAccessGrantScopePayload,
+    state: ScopedAccessGrantState,
+    revalidated: bool,
+}
+
+impl ScopedAccessGrantResolveResultPayload {
+    pub fn resolved(
+        grant_id: impl Into<String>,
+        scope: ScopedAccessGrantScopePayload,
+        revalidated: bool,
+    ) -> Self {
+        Self {
+            grant_id: grant_id.into(),
+            scope,
+            state: ScopedAccessGrantState::Resolved,
+            revalidated,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantRevokeResultPayload {
+    grant_id: String,
+    revoked: bool,
+}
+
+impl ScopedAccessGrantRevokeResultPayload {
+    pub fn new(grant_id: impl Into<String>, revoked: bool) -> Self {
+        Self {
+            grant_id: grant_id.into(),
+            revoked,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ScopedAccessGrantSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopedAccessGrantEventPayload {
+    r#type: String,
+    timestamp: u64,
+    grant_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    phase: ScopedAccessGrantEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<ScopedAccessGrantState>,
+}
+
+impl ScopedAccessGrantEventPayload {
+    pub fn new(
+        timestamp: u64,
+        grant_id: impl Into<String>,
+        phase: ScopedAccessGrantEventPhase,
+    ) -> Self {
+        let state = match phase {
+            ScopedAccessGrantEventPhase::Granted => ScopedAccessGrantState::Granted,
+            ScopedAccessGrantEventPhase::Resolved => ScopedAccessGrantState::Resolved,
+            ScopedAccessGrantEventPhase::Revoked => ScopedAccessGrantState::Revoked,
+        };
+        Self {
+            r#type: "scoped-access-grant-event".to_string(),
+            timestamp,
+            grant_id: grant_id.into(),
+            path: None,
+            phase,
+            state: Some(state),
+        }
+    }
+
+    pub fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(path.into());
+        self
     }
 }
 

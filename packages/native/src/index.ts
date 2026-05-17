@@ -290,6 +290,29 @@ export {
   type TransactionalFileMutationServiceOptions
 } from "./transactional-file-mutation.js"
 export {
+  ScopedAccessGrant,
+  ScopedAccessGrantClient,
+  ScopedAccessGrantHandlersLive,
+  ScopedAccessGrantLive,
+  ScopedAccessGrantMethodNames,
+  ScopedAccessGrantRpcEvents,
+  ScopedAccessGrantRpcs,
+  ScopedAccessGrantSurface,
+  makeHostScopedAccessGrantRpcRuntime,
+  makeScopedAccessGrantBridgeClientLayer,
+  makeScopedAccessGrantClientLayer,
+  makeScopedAccessGrantMemoryClient,
+  makeScopedAccessGrantServiceLayer,
+  makeScopedAccessGrantUnsupportedClient,
+  type ScopedAccessGrantClientApi,
+  type ScopedAccessGrantError,
+  type ScopedAccessGrantMemoryClientOptions,
+  type ScopedAccessGrantRpc,
+  type ScopedAccessGrantRpcHandlers,
+  type ScopedAccessGrantServiceApi,
+  type ScopedAccessGrantServiceOptions
+} from "./scoped-access-grant.js"
+export {
   WorkspaceIndex,
   WorkspaceIndexClient,
   WorkspaceIndexHandlersLive,
