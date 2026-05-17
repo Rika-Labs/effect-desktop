@@ -1161,6 +1161,7 @@ dependencies = [
  "muda",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tao",
  "tracing",
  "tracing-subscriber",

@@ -14,6 +14,8 @@ mod workspace_index;
 
 #[cfg(test)]
 pub(crate) use extension_config::EXTENSION_CONFIG_ENV_LOCK;
+#[cfg(test)]
+pub(crate) use extension_package::EXTENSION_PACKAGE_ENV_LOCK;
 
 use crate::{linux, window::WindowMethodHandler};
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
@@ -31,6 +33,8 @@ type RealtimeMediaHandler = fn(
 
 type ExtensionConfigHandler =
     fn(Option<serde_json::Value>, u64) -> extension_config::EventfulResponse;
+type ExtensionPackageHandler =
+    fn(Option<serde_json::Value>, u64) -> extension_package::EventfulResponse;
 
 struct RealtimeMediaDispatch {
     id: String,
@@ -41,6 +45,14 @@ struct RealtimeMediaDispatch {
 }
 
 struct ExtensionConfigDispatch {
+    id: String,
+    trace_id: String,
+    window_id: Option<String>,
+    payload: Option<serde_json::Value>,
+    timestamp: u64,
+}
+
+struct ExtensionPackageDispatch {
     id: String,
     trace_id: String,
     window_id: Option<String>,
@@ -372,9 +384,42 @@ impl HostMethodRouter {
                 );
             }
             host_protocol::EXTENSION_CONFIG_IS_SUPPORTED_METHOD => extension_config::is_supported(),
-            host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD => extension_package::install(payload),
-            host_protocol::EXTENSION_PACKAGE_UPDATE_METHOD => extension_package::update(payload),
-            host_protocol::EXTENSION_PACKAGE_REMOVE_METHOD => extension_package::remove(payload),
+            host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD => {
+                return self.dispatch_extension_package(
+                    ExtensionPackageDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    extension_package::install_with_event,
+                );
+            }
+            host_protocol::EXTENSION_PACKAGE_UPDATE_METHOD => {
+                return self.dispatch_extension_package(
+                    ExtensionPackageDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    extension_package::update_with_event,
+                );
+            }
+            host_protocol::EXTENSION_PACKAGE_REMOVE_METHOD => {
+                return self.dispatch_extension_package(
+                    ExtensionPackageDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    extension_package::remove_with_event,
+                );
+            }
             host_protocol::EXTENSION_PACKAGE_LIST_METHOD => extension_package::list(),
             host_protocol::EXTENSION_PACKAGE_IS_SUPPORTED_METHOD => {
                 extension_package::is_supported()
@@ -502,6 +547,39 @@ impl HostMethodRouter {
             None => vec![response],
         }
     }
+
+    fn dispatch_extension_package(
+        &self,
+        request: ExtensionPackageDispatch,
+        handler: ExtensionPackageHandler,
+    ) -> Vec<HostProtocolEnvelope> {
+        let (payload, event_payload, error) = match handler(request.payload, request.timestamp) {
+            Ok((payload, event_payload)) => (payload, event_payload, None),
+            Err(error) => (None, None, Some(error)),
+        };
+
+        let response = HostProtocolEnvelope::Response {
+            id: request.id,
+            timestamp: request.timestamp,
+            trace_id: request.trace_id.clone(),
+            payload,
+            error,
+        };
+
+        match event_payload {
+            Some(payload) => vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::EXTENSION_PACKAGE_EVENT.to_string(),
+                    timestamp: request.timestamp,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: Some(payload),
+                },
+                response,
+            ],
+            None => vec![response],
+        }
+    }
 }
 
 fn timestamp_millis() -> u64 {
@@ -529,7 +607,7 @@ mod tests {
         HostProtocolEnvelope, HostProtocolError, WindowCreateResponse, PROTOCOL_VERSION,
     };
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1645,36 +1723,61 @@ mod tests {
     }
 
     #[test]
-    fn extension_package_install_routes_to_typed_unsupported() {
-        let response = test_router()
-            .dispatch_at(
+    fn extension_package_install_routes_with_event_and_response() {
+        let frames = with_extension_package_store("extension-package-install-route", |source| {
+            test_router().dispatch_frames_at(
                 request_with_payload(
                     "request-extension-package-install",
                     host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
-                    extension_package_install_payload(),
+                    extension_package_install_payload(source),
                 ),
                 1710000000127,
             )
-            .expect("extension package request should return response");
+        });
 
         assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-extension-package-install".to_string(),
-                timestamp: 1710000000127,
-                trace_id: "trace-request-extension-package-install".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::EXTENSION_PACKAGE_UNSUPPORTED_REASON,
-                    host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
-                )),
-            }
+            frames,
+            vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::EXTENSION_PACKAGE_EVENT.to_string(),
+                    timestamp: 1710000000127,
+                    trace_id: "trace-request-extension-package-install".to_string(),
+                    window_id: None,
+                    payload: Some(serde_json::json!({
+                        "type": "extension-package-event",
+                        "timestamp": 1710000000127_u64,
+                        "packageId": "extension-1",
+                        "phase": "installed",
+                        "version": "1.0.0",
+                        "revision": 1
+                    })),
+                },
+                HostProtocolEnvelope::Response {
+                    id: "request-extension-package-install".to_string(),
+                    timestamp: 1710000000127,
+                    trace_id: "trace-request-extension-package-install".to_string(),
+                    payload: Some(serde_json::json!({
+                        "packageId": "extension-1",
+                        "version": "1.0.0",
+                        "revision": 1,
+                        "registeredCapabilities": [
+                            {
+                                "kind": "filesystem.read",
+                                "roots": ["/tmp/extensions"],
+                                "audit": "always"
+                            }
+                        ]
+                    })),
+                    error: None,
+                }
+            ]
         );
     }
 
     #[test]
     fn extension_package_invalid_payload_returns_invalid_argument_before_unsupported() {
-        let mut payload = extension_package_install_payload();
+        let mut payload =
+            extension_package_install_payload(Path::new("/tmp/extensions/extension-1"));
         payload["manifest"]["entrypoint"] = serde_json::json!("../escape.js");
         let response = test_router()
             .dispatch_at(
@@ -1704,16 +1807,19 @@ mod tests {
     }
 
     #[test]
-    fn extension_package_is_supported_reports_unimplemented_adapter() {
-        let response = test_router()
-            .dispatch_at(
-                request(
-                    "request-extension-package-supported",
-                    host_protocol::EXTENSION_PACKAGE_IS_SUPPORTED_METHOD,
-                ),
-                1710000000129,
-            )
-            .expect("extension package support request should return response");
+    fn extension_package_is_supported_reports_store_availability() {
+        let response =
+            with_extension_package_store("extension-package-supported-route", |_source| {
+                test_router()
+                    .dispatch_at(
+                        request(
+                            "request-extension-package-supported",
+                            host_protocol::EXTENSION_PACKAGE_IS_SUPPORTED_METHOD,
+                        ),
+                        1710000000129,
+                    )
+                    .expect("extension package support request should return response")
+            });
 
         assert_eq!(
             response,
@@ -1722,8 +1828,7 @@ mod tests {
                 timestamp: 1710000000129,
                 trace_id: "trace-request-extension-package-supported".to_string(),
                 payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::EXTENSION_PACKAGE_UNSUPPORTED_REASON
+                    "supported": true
                 })),
                 error: None,
             }
@@ -2174,13 +2279,33 @@ mod tests {
         result
     }
 
-    fn extension_package_install_payload() -> serde_json::Value {
+    fn with_extension_package_store<T>(name: &str, test: impl FnOnce(&Path) -> T) -> T {
+        let _guard = super::EXTENSION_PACKAGE_ENV_LOCK
+            .lock()
+            .expect("extension package env lock should not be poisoned");
+        let dir = unique_temp_dir(name);
+        let source = dir.join("source");
+        fs::create_dir_all(source.join("dist")).expect("extension package source should exist");
+        fs::write(source.join("dist/main.js"), "export default 1\n")
+            .expect("extension package source file should be written");
+        let store_path = dir.join("store");
+        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE");
+        std::env::set_var("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE", &store_path);
+        let result = test(&source);
+        match previous_store_path {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE"),
+        }
+        let _ = fs::remove_dir_all(dir);
+        result
+    }
+
+    fn extension_package_install_payload(source: &Path) -> serde_json::Value {
         serde_json::json!({
             "actor": { "kind": "extension", "id": "extension-1" },
             "source": {
                 "kind": "directory",
-                "uri": "file:///tmp/extensions/extension-1",
-                "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                "uri": source.to_string_lossy()
             },
             "manifest": {
                 "id": "extension-1",

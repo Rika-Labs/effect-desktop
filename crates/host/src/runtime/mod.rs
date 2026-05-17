@@ -1679,6 +1679,137 @@ console.log("this is not framed");
     }
 
     #[test]
+    fn framed_runtime_extension_package_requests_use_host_persistence_and_events() {
+        let _guard = crate::methods::EXTENSION_PACKAGE_ENV_LOCK
+            .lock()
+            .expect("extension package env lock should not be poisoned");
+        let dir = unique_temp_dir("extension-package-framed-runtime");
+        let source = dir.join("source");
+        fs::create_dir_all(source.join("dist")).expect("source dir should be created");
+        fs::write(source.join("dist/main.js"), "export default 1\n")
+            .expect("source file should be written");
+        let store_path = dir.join("store");
+        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE");
+        std::env::set_var("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE", &store_path);
+        let mut input = Vec::new();
+        {
+            let mut writer = FrameWriter::new(&mut input);
+            for request in [
+                extension_package_request(
+                    "install",
+                    host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
+                    extension_package_install_payload(&source, "1.0.0", None),
+                ),
+                extension_package_request(
+                    "list-installed",
+                    host_protocol::EXTENSION_PACKAGE_LIST_METHOD,
+                    serde_json::Value::Null,
+                ),
+                extension_package_request(
+                    "update",
+                    host_protocol::EXTENSION_PACKAGE_UPDATE_METHOD,
+                    extension_package_install_payload(&source, "1.1.0", Some("1.0.0")),
+                ),
+                extension_package_request(
+                    "list-updated",
+                    host_protocol::EXTENSION_PACKAGE_LIST_METHOD,
+                    serde_json::Value::Null,
+                ),
+                extension_package_request(
+                    "remove",
+                    host_protocol::EXTENSION_PACKAGE_REMOVE_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "packageId": "extension-1",
+                        "traceId": "trace-extension-package"
+                    }),
+                ),
+                extension_package_request(
+                    "list-removed",
+                    host_protocol::EXTENSION_PACKAGE_LIST_METHOD,
+                    serde_json::Value::Null,
+                ),
+            ] {
+                let request_bytes = serde_json::to_vec(&request).expect("request should encode");
+                writer
+                    .send(&request_bytes)
+                    .expect("request frame should encode");
+            }
+        }
+        let mut output = Vec::new();
+
+        super::serve_framed_host_requests(Cursor::new(input), &mut output, &test_router())
+            .expect("extension package frames should dispatch");
+
+        match previous_store_path {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE"),
+        }
+        let _ = fs::remove_dir_all(dir);
+
+        let mut reader = FrameReader::new(Cursor::new(output));
+        let mut frames = Vec::new();
+        while let Some(frame) = reader.recv().expect("response frame should decode") {
+            frames.push(
+                serde_json::from_slice::<HostProtocolEnvelope>(&frame)
+                    .expect("host protocol frame should decode"),
+            );
+        }
+
+        assert_eq!(frames.len(), 9);
+        assert_extension_package_event(&frames[0], "installed", Some("1.0.0"), Some(1));
+        assert_extension_package_response(
+            &frames[1],
+            "request-extension-package-install",
+            serde_json::json!({
+                "packageId": "extension-1",
+                "version": "1.0.0",
+                "revision": 1,
+                "registeredCapabilities": [extension_package_capability()]
+            }),
+        );
+        assert_extension_package_list(
+            &frames[2],
+            "request-extension-package-list-installed",
+            1,
+            "1.0.0",
+        );
+        assert_extension_package_event(&frames[3], "updated", Some("1.1.0"), Some(2));
+        assert_extension_package_response(
+            &frames[4],
+            "request-extension-package-update",
+            serde_json::json!({
+                "packageId": "extension-1",
+                "previousVersion": "1.0.0",
+                "version": "1.1.0",
+                "revision": 2,
+                "registeredCapabilities": [extension_package_capability()]
+            }),
+        );
+        assert_extension_package_list(
+            &frames[5],
+            "request-extension-package-list-updated",
+            2,
+            "1.1.0",
+        );
+        assert_extension_package_event(&frames[6], "removed", None, Some(3));
+        assert_extension_package_response(
+            &frames[7],
+            "request-extension-package-remove",
+            serde_json::json!({
+                "packageId": "extension-1",
+                "removed": true,
+                "revision": 3
+            }),
+        );
+        assert_extension_package_response(
+            &frames[8],
+            "request-extension-package-list-removed",
+            serde_json::json!({ "packages": [] }),
+        );
+    }
+
+    #[test]
     fn child_runtime_round_trips_ping_and_version_after_ready_for_bun_and_node() {
         for executable in runtime_provider_executables() {
             let script = RUNTIME_HANDSHAKE_SCRIPT.replace("__PROTOCOL_VERSION__", PROTOCOL_VERSION);
@@ -2115,6 +2246,69 @@ console.log("this is not framed");
         }
     }
 
+    fn extension_package_capability() -> serde_json::Value {
+        serde_json::json!({
+            "kind": "filesystem.read",
+            "roots": ["/tmp/extensions"],
+            "audit": "always"
+        })
+    }
+
+    fn extension_package_install_payload(
+        source: &Path,
+        version: &str,
+        expected_version: Option<&str>,
+    ) -> serde_json::Value {
+        let mut payload = serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "source": {
+                "kind": "directory",
+                "uri": source.to_string_lossy()
+            },
+            "manifest": {
+                "id": "extension-1",
+                "name": "Extension One",
+                "version": version,
+                "entrypoint": "dist/main.js",
+                "compatibility": {
+                    "minHostVersion": "1.0.0",
+                    "maxHostVersion": "2.0.0"
+                },
+                "capabilities": [
+                    {
+                        "capability": extension_package_capability(),
+                        "reason": "read extension files"
+                    }
+                ]
+            },
+            "traceId": "trace-extension-package"
+        });
+        if let Some(expected_version) = expected_version {
+            payload["expectedVersion"] = serde_json::json!(expected_version);
+        }
+        payload
+    }
+
+    fn extension_package_request(
+        id: &str,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> HostProtocolEnvelope {
+        HostProtocolEnvelope::Request {
+            id: format!("request-extension-package-{id}"),
+            method: method.to_string(),
+            timestamp: 1710000000000,
+            trace_id: format!("trace-extension-package-{id}"),
+            window_id: None,
+            origin_token: None,
+            payload: if payload.is_null() {
+                None
+            } else {
+                Some(payload)
+            },
+        }
+    }
+
     fn assert_extension_config_event(
         frame: &HostProtocolEnvelope,
         phase: &str,
@@ -2155,6 +2349,74 @@ console.log("this is not framed");
         assert_eq!(response_id, id);
         assert_eq!(payload.as_ref(), Some(&expected_payload));
         assert_eq!(error, &None);
+    }
+
+    fn assert_extension_package_event(
+        frame: &HostProtocolEnvelope,
+        phase: &str,
+        version: Option<&str>,
+        revision: Option<u64>,
+    ) {
+        let HostProtocolEnvelope::Event {
+            method,
+            payload: Some(payload),
+            ..
+        } = frame
+        else {
+            panic!("expected extension package event frame: {frame:?}");
+        };
+        assert_eq!(method, host_protocol::EXTENSION_PACKAGE_EVENT);
+        assert_eq!(payload["phase"], phase);
+        assert_eq!(payload["packageId"], "extension-1");
+        match version {
+            Some(version) => assert_eq!(payload["version"], version),
+            None => assert!(payload.get("version").is_none()),
+        }
+        match revision {
+            Some(revision) => assert_eq!(payload["revision"], revision),
+            None => assert!(payload.get("revision").is_none()),
+        }
+    }
+
+    fn assert_extension_package_response(
+        frame: &HostProtocolEnvelope,
+        id: &str,
+        expected_payload: serde_json::Value,
+    ) {
+        let HostProtocolEnvelope::Response {
+            id: response_id,
+            payload,
+            error,
+            ..
+        } = frame
+        else {
+            panic!("expected extension package response frame: {frame:?}");
+        };
+        assert_eq!(response_id, id);
+        assert_eq!(payload.as_ref(), Some(&expected_payload));
+        assert_eq!(error, &None);
+    }
+
+    fn assert_extension_package_list(
+        frame: &HostProtocolEnvelope,
+        id: &str,
+        revision: u64,
+        version: &str,
+    ) {
+        let HostProtocolEnvelope::Response {
+            id: response_id,
+            payload: Some(payload),
+            error,
+            ..
+        } = frame
+        else {
+            panic!("expected extension package list response frame: {frame:?}");
+        };
+        assert_eq!(response_id, id);
+        assert_eq!(error, &None);
+        assert_eq!(payload["packages"][0]["packageId"], "extension-1");
+        assert_eq!(payload["packages"][0]["manifest"]["version"], version);
+        assert_eq!(payload["packages"][0]["revision"], revision);
     }
 
     fn crash_once_runtime_config(count_path: &Path) -> RuntimeConfig {

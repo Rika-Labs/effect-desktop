@@ -3,10 +3,13 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
+  HostProtocolAlreadyExistsError,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidStateError,
+  makeHostProtocolNotFoundError,
   type HostProtocolError,
   type RpcCapabilityMetadata,
   RpcGroup
@@ -53,14 +56,6 @@ import {
 const Surface = "ExtensionPackage"
 const UnsupportedReason = "host-adapter-unimplemented"
 const ExtensionPackageEventMethod = "ExtensionPackage.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
-
 const PackageNamePattern = /^[A-Za-z0-9._-]+$/
 const SemverPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
@@ -91,7 +86,7 @@ export const ExtensionPackageList = NativeSurface.rpc(Surface, "list", {
   success: ExtensionPackageListResult,
   authority: NativeSurface.authority.none,
   endpoint: "query",
-  support: UnsupportedSupport
+  support: NativeSurface.support.supported
 })
 export const ExtensionPackageIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   payload: Schema.Void,
@@ -286,6 +281,13 @@ export const makeExtensionPackageMemoryClient = (
             failOr(
               options.failure?.install,
               Effect.gen(function* () {
+                const current = yield* Ref.get(state)
+                if (current.packages.has(valid.manifest.id)) {
+                  return yield* alreadyExists(
+                    `ExtensionPackage:${valid.manifest.id}`,
+                    "ExtensionPackage.install"
+                  )
+                }
                 const revision = yield* Ref.modify(state, (current) => {
                   const nextRevision = current.revision + 1
                   const nextPackage = new ExtensionPackageState({
@@ -326,15 +328,26 @@ export const makeExtensionPackageMemoryClient = (
               options.failure?.update,
               Effect.gen(function* () {
                 const previous = yield* Ref.get(state)
-                const previousVersion = previous.packages.get(valid.manifest.id)?.manifest.version
+                const installed = previous.packages.get(valid.manifest.id)
+                if (installed === undefined) {
+                  return yield* Effect.fail(
+                    makeHostProtocolNotFoundError(
+                      `ExtensionPackage:${valid.manifest.id}`,
+                      "ExtensionPackage.update"
+                    )
+                  )
+                }
+                const previousVersion = installed.manifest.version
                 if (
                   valid.expectedVersion !== undefined &&
                   previousVersion !== valid.expectedVersion
                 ) {
-                  return yield* invalid(
-                    "expectedVersion",
-                    "does not match installed version",
-                    "ExtensionPackage.update"
+                  return yield* Effect.fail(
+                    makeHostProtocolInvalidStateError(
+                      `installed:${previousVersion}`,
+                      `expected:${valid.expectedVersion}`,
+                      "ExtensionPackage.update"
+                    )
                   )
                 }
                 const revision = yield* Ref.modify(state, (current) => {
@@ -591,7 +604,7 @@ function extensionPackageRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: NativeSurface.support.supported
   })
 }
 
@@ -801,9 +814,15 @@ const validateName = (
   value: string,
   operation: string
 ): Effect.Effect<void, ExtensionPackageError, never> =>
-  PackageNamePattern.test(value)
-    ? Effect.void
-    : invalid(field, "must contain only letters, numbers, dots, underscores, or dashes", operation)
+  value === "." || value === ".."
+    ? invalid(field, "must not be a dot segment", operation)
+    : PackageNamePattern.test(value)
+      ? Effect.void
+      : invalid(
+          field,
+          "must contain only letters, numbers, dots, underscores, or dashes",
+          operation
+        )
 
 const validateVersion = (
   field: string,
@@ -830,6 +849,20 @@ const invalid = (
   operation: string
 ): Effect.Effect<never, ExtensionPackageError, never> =>
   Effect.fail(makeHostProtocolInvalidArgumentError(field, message, operation))
+
+const alreadyExists = (
+  resource: string,
+  operation: string
+): Effect.Effect<never, ExtensionPackageError, never> =>
+  Effect.fail(
+    new HostProtocolAlreadyExistsError({
+      tag: "AlreadyExists",
+      resource,
+      message: `resource already exists: ${resource}`,
+      operation,
+      recoverable: false
+    })
+  )
 
 const failOr = <A>(
   error: ExtensionPackageError | undefined,

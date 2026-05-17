@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
   type HostProtocolError,
+  type HostProtocolEventEnvelope,
   type HostProtocolRequestEnvelope,
   makeHostProtocolInternalError
 } from "@effect-desktop/bridge"
@@ -17,6 +18,7 @@ import { Cause, Effect, Exit, Stream } from "effect"
 import {
   ExtensionPackage,
   ExtensionPackageClient,
+  ExtensionPackageSurface,
   makeExtensionPackageBridgeClientLayer,
   makeExtensionPackageMemoryClient,
   makeExtensionPackageServiceLayer,
@@ -32,6 +34,7 @@ import {
   ExtensionPackageManifest,
   ExtensionPackageRemoveRequest,
   ExtensionPackageSource,
+  ExtensionPackageUpdateInput,
   ExtensionPackageUpdateRequest
 } from "./contracts/extension-package.js"
 
@@ -257,6 +260,45 @@ test("ExtensionPackage rejects malformed SemVer before host transport", async ()
   })
 })
 
+test("ExtensionPackage rejects dot-segment package ids before host transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({
+        kind: "success",
+        payload: {
+          packageId: "..",
+          version: "1.0.0",
+          revision: 1,
+          registeredCapabilities: [manifestCapability()]
+        }
+      })
+    },
+    subscribe: () => Stream.empty
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* ExtensionPackageClient
+      return yield* Effect.exit(
+        client.install(
+          new ExtensionPackageInstallInput({
+            actor: actor(),
+            source: source(),
+            manifest: manifest({ id: ".." })
+          })
+        )
+      )
+    }).pipe(Effect.provide(makeExtensionPackageBridgeClientLayer(exchange)))
+  )
+
+  expect(requests).toEqual([])
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "ExtensionPackage.install" })
+  })
+})
+
 test("ExtensionPackage unsupported client exposes typed unsupported failures", async () => {
   const client = makeExtensionPackageUnsupportedClient()
   const supported = await Effect.runPromise(client.isSupported())
@@ -284,6 +326,45 @@ test("ExtensionPackage memory client exposes typed host failures", async () => {
 
   expectExitFailure(exit, (error) => {
     expect(error).toMatchObject({ tag: "Internal", operation: "ExtensionPackage.install" })
+  })
+})
+
+test("ExtensionPackage memory client enforces host lifecycle state", async () => {
+  const client = await Effect.runPromise(makeExtensionPackageMemoryClient())
+  await Effect.runPromise(client.install(installInput()))
+
+  const duplicate = await Effect.runPromiseExit(client.install(installInput()))
+  const staleUpdate = await Effect.runPromiseExit(
+    client.update(
+      new ExtensionPackageUpdateInput({
+        actor: actor(),
+        source: source(),
+        manifest: manifest({ version: "1.1.0" }),
+        expectedVersion: "0.9.0",
+        traceId: "trace-update"
+      })
+    )
+  )
+  const missingClient = await Effect.runPromise(makeExtensionPackageMemoryClient())
+  const missingUpdate = await Effect.runPromiseExit(
+    missingClient.update(
+      new ExtensionPackageUpdateInput({
+        actor: actor(),
+        source: source(),
+        manifest: manifest({ version: "1.1.0" }),
+        traceId: "trace-update"
+      })
+    )
+  )
+
+  expectExitFailure(duplicate, (error) => {
+    expect(error).toMatchObject({ tag: "AlreadyExists", operation: "ExtensionPackage.install" })
+  })
+  expectExitFailure(staleUpdate, (error) => {
+    expect(error).toMatchObject({ tag: "InvalidState", operation: "ExtensionPackage.update" })
+  })
+  expectExitFailure(missingUpdate, (error) => {
+    expect(error).toMatchObject({ tag: "NotFound", operation: "ExtensionPackage.update" })
   })
 })
 
@@ -316,6 +397,62 @@ test("ExtensionPackage update and remove publish lifecycle state", async () => {
   expect(result.listed.packages).toEqual([])
 })
 
+test("ExtensionPackage bridge client decodes native lifecycle events", async () => {
+  const nativeEvent: HostProtocolEventEnvelope = {
+    kind: "event",
+    method: "ExtensionPackage.Event",
+    timestamp: 1710000000000,
+    traceId: "trace-extension-package-event",
+    payload: {
+      type: "extension-package-event",
+      timestamp: 1710000000000,
+      packageId: "extension-1",
+      phase: "installed",
+      version: "1.0.0",
+      revision: 1
+    }
+  }
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+    subscribe: (method) => {
+      expect(method).toBe("ExtensionPackage.Event")
+      return Stream.make(nativeEvent)
+    }
+  }
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* ExtensionPackageClient
+    }).pipe(Effect.provide(makeExtensionPackageBridgeClientLayer(exchange)))
+  )
+
+  const event = await Effect.runPromise(client.events().pipe(Stream.runHead))
+
+  expect(event._tag).toBe("Some")
+  if (event._tag === "Some") {
+    expect(event.value).toMatchObject({
+      packageId: "extension-1",
+      phase: "installed",
+      version: "1.0.0",
+      revision: 1
+    })
+  }
+})
+
+test("ExtensionPackage RPC metadata reports host methods as supported", () => {
+  expect(
+    ExtensionPackageSurface.schemaDocs.map((doc) => ({
+      support: doc.support,
+      tag: doc.tag
+    }))
+  ).toEqual([
+    { tag: "ExtensionPackage.install", support: { status: "supported" } },
+    { tag: "ExtensionPackage.update", support: { status: "supported" } },
+    { tag: "ExtensionPackage.remove", support: { status: "supported" } },
+    { tag: "ExtensionPackage.list", support: { status: "supported" } },
+    { tag: "ExtensionPackage.isSupported", support: { status: "supported" } }
+  ])
+})
+
 const actor = (): ExtensionPackageActor =>
   new ExtensionPackageActor({ kind: "extension", id: "extension-1" })
 
@@ -332,11 +469,12 @@ const manifest = (
   overrides: Partial<{
     readonly compatibility: ExtensionPackageCompatibility
     readonly entrypoint: string
+    readonly id: string
     readonly version: string
   }> = {}
 ): ExtensionPackageManifest =>
   new ExtensionPackageManifest({
-    id: "extension-1",
+    id: overrides.id ?? "extension-1",
     name: "Extension One",
     version: overrides.version ?? "1.0.0",
     entrypoint: overrides.entrypoint ?? "dist/main.js",

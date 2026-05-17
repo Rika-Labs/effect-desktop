@@ -60,17 +60,29 @@ Install/update also checks every manifest-declared capability against the instal
 
 `ExtensionPackageError` is the canonical host protocol error union. Permission denial, unsupported platform behavior, invalid input, and host failures are typed tagged failures.
 
+## Host Persistence
+
+The Rust host adapter persists package lifecycle state in the user data directory:
+
+- macOS: `$HOME/Library/Application Support/effect-desktop/extension-packages`
+- Windows: `%LOCALAPPDATA%\effect-desktop\extension-packages` or `%APPDATA%\effect-desktop\extension-packages`
+- Linux: `$XDG_CONFIG_HOME/effect-desktop/extension-packages` or `~/.config/effect-desktop/extension-packages`
+
+Tests and embedded hosts can override the store root with `EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE`.
+
+For `directory` sources the host resolves a local absolute path or `file://` URI, rejects symlinks and special files, copies the directory into staging, verifies the staged manifest entrypoint exists as a regular file, optionally verifies `sha256:<hex>` against a deterministic directory digest, and promotes the staged directory into a revisioned package store. For `archive` sources the host resolves a local absolute path or `file://` URI, rejects root symlinks, copies the archive into staging, optionally verifies the staged archive file digest, and promotes the archive into the revisioned package store; archive contents are not unpacked or inspected. `registry` sources remain unsupported because marketplace or registry discovery is product-specific and out of scope for this primitive.
+
+Install fails if the package already exists. Update requires an installed package and rejects stale `expectedVersion` values. Remove records a new revision and returns `removed: false` when the package was already absent.
+
 ## Support
 
-The current Rust host adapter is intentionally fail-closed while native package installation is not implemented.
+| Platform | Status      | Reason |
+| -------- | ----------- | ------ |
+| macOS    | `supported` |        |
+| Windows  | `supported` |        |
+| Linux    | `supported` |        |
 
-| Platform | Status        | Reason                       |
-| -------- | ------------- | ---------------------------- |
-| macOS    | `unsupported` | `host-adapter-unimplemented` |
-| Windows  | `unsupported` | `host-adapter-unimplemented` |
-| Linux    | `unsupported` | `host-adapter-unimplemented` |
-
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Mutating host requests decode and validate payloads, then return typed `Unsupported`; invalid manifests are rejected before the unsupported response.
+`isSupported` locks the package store, decodes existing state, creates required directories, writes a temporary metadata file, and atomically replaces the store file before it reports `{ supported: true }`. If the store cannot be created, read, decoded, or replaced, support is reported as `{ supported: false, reason: "extension-package-store-unavailable" }`.
 
 ## Testing
 

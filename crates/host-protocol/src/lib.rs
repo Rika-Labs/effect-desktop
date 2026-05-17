@@ -3766,6 +3766,10 @@ impl ExtensionPackageSourcePayload {
         &self.uri
     }
 
+    pub fn kind(&self) -> ExtensionPackageSourceKind {
+        self.kind
+    }
+
     pub fn digest(&self) -> Option<&str> {
         self.digest.as_deref()
     }
@@ -4107,6 +4111,13 @@ pub struct ExtensionPackageSupportedPayload {
 }
 
 impl ExtensionPackageSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
