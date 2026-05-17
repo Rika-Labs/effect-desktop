@@ -5,6 +5,7 @@ import {
 } from "@effect-desktop/core"
 
 import { AppSurface } from "./app.js"
+import { AttachmentIntakeSurface } from "./attachment-intake.js"
 import { ClipboardSurface } from "./clipboard.js"
 import { ContextMenuSurface } from "./context-menu.js"
 import { CrashReporterSurface } from "./crash-reporter.js"
@@ -38,6 +39,7 @@ import type { NativeSurfaceSelection } from "./native-surface.js"
 
 const BuiltInSurfaces = Object.freeze([
   AppSurface,
+  AttachmentIntakeSurface,
   ClipboardSurface,
   ContextMenuSurface,
   CrashReporterSurface,
@@ -77,6 +79,7 @@ export const available = (...selections: readonly NativeSurfaceSelection[]): Des
   Desktop.native(...selections)
 
 const App = AppSurface.selection
+const AttachmentIntake = AttachmentIntakeSurface.selection
 const Clipboard = ClipboardSurface.selection
 const ContextMenu = ContextMenuSurface.selection
 const CrashReporter = CrashReporterSurface.selection
@@ -116,6 +119,7 @@ const permissionAll = Object.freeze(BuiltInSurfaces.flatMap((surface) => surface
 
 export const Permissions = Object.freeze({
   app: AppSurface.permissions,
+  attachmentIntake: AttachmentIntakeSurface.permissions,
   clipboard: ClipboardSurface.permissions,
   contextMenu: ContextMenuSurface.permissions,
   crashReporter: CrashReporterSurface.permissions,
@@ -150,6 +154,7 @@ export const Permissions = Object.freeze({
 
 export const Native = Object.freeze({
   App,
+  AttachmentIntake,
   Clipboard,
   ContextMenu,
   CrashReporter,

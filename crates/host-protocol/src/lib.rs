@@ -45,6 +45,11 @@ pub const DIAGNOSTICS_BUNDLE_COLLECT_STARTED_EVENT: &str = "DiagnosticsBundle.Co
 pub const DIAGNOSTICS_BUNDLE_SOURCE_REDACTED_EVENT: &str = "DiagnosticsBundle.SourceRedacted";
 pub const DIAGNOSTICS_BUNDLE_WRITE_COMPLETED_EVENT: &str = "DiagnosticsBundle.WriteCompleted";
 pub const DIAGNOSTICS_BUNDLE_FAILED_EVENT: &str = "DiagnosticsBundle.Failed";
+pub const ATTACHMENT_INTAKE_INGEST_METHOD: &str = "AttachmentIntake.ingest";
+pub const ATTACHMENT_INTAKE_INSPECT_METHOD: &str = "AttachmentIntake.inspect";
+pub const ATTACHMENT_INTAKE_DISPOSE_METHOD: &str = "AttachmentIntake.dispose";
+pub const ATTACHMENT_INTAKE_IS_SUPPORTED_METHOD: &str = "AttachmentIntake.isSupported";
+pub const ATTACHMENT_INTAKE_EVENT: &str = "AttachmentIntake.Event";
 pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
@@ -100,6 +105,7 @@ pub const REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON: &str = "host-adapter-unimpl
 pub const REALTIME_MEDIA_SESSION_MEDIA_UNAVAILABLE_REASON: &str = "host-media-unavailable";
 pub const REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON: &str = "host-media-startup-unverified";
 pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const ATTACHMENT_INTAKE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -543,6 +549,388 @@ pub enum DiagnosticsBundleSourceKind {
     HostState,
     ExtensionHealth,
     AuditEvents,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AttachmentIntakeActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AttachmentIntakeSource {
+    ProvidedByCaller,
+    DragDrop,
+    Paste,
+    FilePicker,
+    ClipboardFile,
+    Screenshot,
+    MimePayload,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AttachmentIntakeState {
+    Ingested,
+    Disposed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AttachmentIntakeEventPhase {
+    Ingested,
+    Disposed,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeActorPayload {
+    kind: AttachmentIntakeActorKind,
+    id: String,
+}
+
+impl AttachmentIntakeActorPayload {
+    pub fn new(kind: AttachmentIntakeActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakePolicyPayload {
+    allowed_mime_types: Vec<String>,
+    max_items: u64,
+    max_bytes_per_item: u64,
+    max_total_bytes: u64,
+    lifetime_millis: u64,
+}
+
+impl AttachmentIntakePolicyPayload {
+    pub fn new(
+        allowed_mime_types: Vec<String>,
+        max_items: u64,
+        max_bytes_per_item: u64,
+        max_total_bytes: u64,
+        lifetime_millis: u64,
+    ) -> Self {
+        Self {
+            allowed_mime_types,
+            max_items,
+            max_bytes_per_item,
+            max_total_bytes,
+            lifetime_millis,
+        }
+    }
+
+    pub fn allowed_mime_types(&self) -> &[String] {
+        &self.allowed_mime_types
+    }
+
+    pub fn max_items(&self) -> u64 {
+        self.max_items
+    }
+
+    pub fn max_bytes_per_item(&self) -> u64 {
+        self.max_bytes_per_item
+    }
+
+    pub fn max_total_bytes(&self) -> u64 {
+        self.max_total_bytes
+    }
+
+    pub fn lifetime_millis(&self) -> u64 {
+        self.lifetime_millis
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeItemInputPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    item_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    mime_type: String,
+    source: AttachmentIntakeSource,
+    bytes: Vec<u8>,
+}
+
+impl AttachmentIntakeItemInputPayload {
+    pub fn new(
+        item_id: Option<String>,
+        name: Option<String>,
+        mime_type: impl Into<String>,
+        source: AttachmentIntakeSource,
+        bytes: Vec<u8>,
+    ) -> Self {
+        Self {
+            item_id,
+            name,
+            mime_type: mime_type.into(),
+            source,
+            bytes,
+        }
+    }
+
+    pub fn item_id(&self) -> Option<&str> {
+        self.item_id.as_deref()
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    pub fn mime_type(&self) -> &str {
+        &self.mime_type
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeItemPayload {
+    item_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    mime_type: String,
+    source: AttachmentIntakeSource,
+    size_bytes: u64,
+}
+
+impl AttachmentIntakeItemPayload {
+    pub fn new(
+        item_id: impl Into<String>,
+        name: Option<String>,
+        mime_type: impl Into<String>,
+        source: AttachmentIntakeSource,
+        size_bytes: u64,
+    ) -> Self {
+        Self {
+            item_id: item_id.into(),
+            name,
+            mime_type: mime_type.into(),
+            source,
+            size_bytes,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeIngestPayload {
+    actor: AttachmentIntakeActorPayload,
+    policy: AttachmentIntakePolicyPayload,
+    items: Vec<AttachmentIntakeItemInputPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    intake_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl AttachmentIntakeIngestPayload {
+    pub fn new(
+        actor: AttachmentIntakeActorPayload,
+        policy: AttachmentIntakePolicyPayload,
+        items: Vec<AttachmentIntakeItemInputPayload>,
+        intake_id: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            policy,
+            items,
+            intake_id,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &AttachmentIntakeActorPayload {
+        &self.actor
+    }
+
+    pub fn policy(&self) -> &AttachmentIntakePolicyPayload {
+        &self.policy
+    }
+
+    pub fn items(&self) -> &[AttachmentIntakeItemInputPayload] {
+        &self.items
+    }
+
+    pub fn intake_id(&self) -> Option<&str> {
+        self.intake_id.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeInspectPayload {
+    intake_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl AttachmentIntakeInspectPayload {
+    pub fn new(intake_id: impl Into<String>, trace_id: Option<String>) -> Self {
+        Self {
+            intake_id: intake_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn intake_id(&self) -> &str {
+        &self.intake_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeDisposePayload {
+    intake_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl AttachmentIntakeDisposePayload {
+    pub fn new(intake_id: impl Into<String>, trace_id: Option<String>) -> Self {
+        Self {
+            intake_id: intake_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn intake_id(&self) -> &str {
+        &self.intake_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeIngestResultPayload {
+    intake_id: String,
+    items: Vec<AttachmentIntakeItemPayload>,
+    state: AttachmentIntakeState,
+    expires_at: u64,
+}
+
+impl AttachmentIntakeIngestResultPayload {
+    pub fn ingested(
+        intake_id: impl Into<String>,
+        items: Vec<AttachmentIntakeItemPayload>,
+        expires_at: u64,
+    ) -> Self {
+        Self {
+            intake_id: intake_id.into(),
+            items,
+            state: AttachmentIntakeState::Ingested,
+            expires_at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeInspectResultPayload {
+    intake_id: String,
+    items: Vec<AttachmentIntakeItemPayload>,
+    state: AttachmentIntakeState,
+    expires_at: u64,
+}
+
+impl AttachmentIntakeInspectResultPayload {
+    pub fn new(
+        intake_id: impl Into<String>,
+        items: Vec<AttachmentIntakeItemPayload>,
+        state: AttachmentIntakeState,
+        expires_at: u64,
+    ) -> Self {
+        Self {
+            intake_id: intake_id.into(),
+            items,
+            state,
+            expires_at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeDisposeResultPayload {
+    intake_id: String,
+    disposed: bool,
+}
+
+impl AttachmentIntakeDisposeResultPayload {
+    pub fn new(intake_id: impl Into<String>, disposed: bool) -> Self {
+        Self {
+            intake_id: intake_id.into(),
+            disposed,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl AttachmentIntakeSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentIntakeEventPayload {
+    r#type: String,
+    timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    intake_id: Option<String>,
+    phase: AttachmentIntakeEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<AttachmentIntakeState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    item_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

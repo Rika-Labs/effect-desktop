@@ -1,3 +1,4 @@
+mod attachment_intake;
 mod diagnostics_bundle;
 mod dock;
 mod egress_policy;
@@ -407,6 +408,12 @@ impl HostMethodRouter {
             host_protocol::DIAGNOSTICS_BUNDLE_WRITE_METHOD => diagnostics_bundle::write(payload),
             host_protocol::DIAGNOSTICS_BUNDLE_IS_SUPPORTED_METHOD => {
                 diagnostics_bundle::is_supported()
+            }
+            host_protocol::ATTACHMENT_INTAKE_INGEST_METHOD => attachment_intake::ingest(payload),
+            host_protocol::ATTACHMENT_INTAKE_INSPECT_METHOD => attachment_intake::inspect(payload),
+            host_protocol::ATTACHMENT_INTAKE_DISPOSE_METHOD => attachment_intake::dispose(payload),
+            host_protocol::ATTACHMENT_INTAKE_IS_SUPPORTED_METHOD => {
+                attachment_intake::is_supported()
             }
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),

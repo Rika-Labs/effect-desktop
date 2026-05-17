@@ -16,6 +16,29 @@ export {
   type AppServiceApi
 } from "./app.js"
 export {
+  AttachmentIntake,
+  AttachmentIntakeClient,
+  AttachmentIntakeHandlersLive,
+  AttachmentIntakeLive,
+  AttachmentIntakeMethodNames,
+  AttachmentIntakeRpcEvents,
+  AttachmentIntakeRpcs,
+  AttachmentIntakeSurface,
+  makeAttachmentIntakeBridgeClientLayer,
+  makeAttachmentIntakeClientLayer,
+  makeAttachmentIntakeMemoryClient,
+  makeAttachmentIntakeServiceLayer,
+  makeAttachmentIntakeUnsupportedClient,
+  makeHostAttachmentIntakeRpcRuntime,
+  type AttachmentIntakeClientApi,
+  type AttachmentIntakeError,
+  type AttachmentIntakeMemoryClientOptions,
+  type AttachmentIntakeRpc,
+  type AttachmentIntakeRpcHandlers,
+  type AttachmentIntakeServiceApi,
+  type AttachmentIntakeServiceOptions
+} from "./attachment-intake.js"
+export {
   NativeCapabilities,
   NativeCapabilitiesLive,
   NativeCapabilityPlatformSchema,

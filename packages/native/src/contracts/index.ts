@@ -1,4 +1,5 @@
 export * from "./app.js"
+export * from "./attachment-intake.js"
 export * from "./clipboard.js"
 export * from "./context-menu.js"
 export * from "./crash-reporter.js"
