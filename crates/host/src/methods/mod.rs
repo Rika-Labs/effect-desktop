@@ -5,6 +5,7 @@ mod egress_policy;
 mod execution_sandbox;
 mod extension_config;
 mod extension_package;
+mod focused_application_context;
 pub(crate) mod handshake;
 mod local_tool_runtime;
 mod menu;
@@ -430,6 +431,18 @@ impl HostMethodRouter {
             }
             host_protocol::SELECTION_CONTEXT_IS_SUPPORTED_METHOD => {
                 selection_context::is_supported()
+            }
+            host_protocol::FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD => {
+                focused_application_context::snapshot(payload)
+            }
+            host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD => {
+                focused_application_context::watch(payload)
+            }
+            host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD => {
+                focused_application_context::stop_watching(payload)
+            }
+            host_protocol::FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD => {
+                focused_application_context::is_supported()
             }
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
@@ -1017,6 +1030,33 @@ mod tests {
                 trace_id: "trace-request-missing".to_string(),
                 payload: None,
                 error: Some(HostProtocolError::method_not_found("host.missing")),
+            }
+        );
+    }
+
+    #[test]
+    fn focused_application_context_support_dispatches_through_router() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-focused-application-context-supported",
+                    host_protocol::FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD,
+                ),
+                1710000000103,
+            )
+            .expect("focused application context support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-focused-application-context-supported".to_string(),
+                timestamp: 1710000000103,
+                trace_id: "trace-request-focused-application-context-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::FOCUSED_APPLICATION_CONTEXT_UNSUPPORTED_REASON
+                })),
+                error: None,
             }
         );
     }

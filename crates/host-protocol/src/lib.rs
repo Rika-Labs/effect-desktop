@@ -56,6 +56,13 @@ pub const SELECTION_CONTEXT_WATCH_FOCUS_METHOD: &str = "SelectionContext.watchFo
 pub const SELECTION_CONTEXT_STOP_WATCHING_METHOD: &str = "SelectionContext.stopWatching";
 pub const SELECTION_CONTEXT_IS_SUPPORTED_METHOD: &str = "SelectionContext.isSupported";
 pub const SELECTION_CONTEXT_EVENT: &str = "SelectionContext.Event";
+pub const FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD: &str = "FocusedApplicationContext.snapshot";
+pub const FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD: &str = "FocusedApplicationContext.watch";
+pub const FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD: &str =
+    "FocusedApplicationContext.stopWatching";
+pub const FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD: &str =
+    "FocusedApplicationContext.isSupported";
+pub const FOCUSED_APPLICATION_CONTEXT_EVENT: &str = "FocusedApplicationContext.Event";
 pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
@@ -113,6 +120,7 @@ pub const REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON: &str = "host-media-s
 pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const ATTACHMENT_INTAKE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const SELECTION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const FOCUSED_APPLICATION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -1307,6 +1315,331 @@ impl SelectionContextEventPayload {
             watch_id: None,
             document: None,
             selection: None,
+            reason: None,
+            message: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FocusedApplicationContextActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FocusedApplicationContextEventPhase {
+    FocusChanged,
+    WatchStarted,
+    WatchStopped,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextActorPayload {
+    kind: FocusedApplicationContextActorKind,
+    id: String,
+}
+
+impl FocusedApplicationContextActorPayload {
+    pub fn new(kind: FocusedApplicationContextActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextSnapshotPayload {
+    actor: FocusedApplicationContextActorPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl FocusedApplicationContextSnapshotPayload {
+    pub fn new(actor: FocusedApplicationContextActorPayload, trace_id: Option<String>) -> Self {
+        Self { actor, trace_id }
+    }
+
+    pub fn actor(&self) -> &FocusedApplicationContextActorPayload {
+        &self.actor
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextWatchPayload {
+    actor: FocusedApplicationContextActorPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    watch_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl FocusedApplicationContextWatchPayload {
+    pub fn new(
+        actor: FocusedApplicationContextActorPayload,
+        watch_id: Option<String>,
+        owner_scope: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            watch_id,
+            owner_scope,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &FocusedApplicationContextActorPayload {
+        &self.actor
+    }
+
+    pub fn watch_id(&self) -> Option<&str> {
+        self.watch_id.as_deref()
+    }
+
+    pub fn owner_scope(&self) -> Option<&str> {
+        self.owner_scope.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextStopWatchingPayload {
+    actor: FocusedApplicationContextActorPayload,
+    watch_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl FocusedApplicationContextStopWatchingPayload {
+    pub fn new(
+        actor: FocusedApplicationContextActorPayload,
+        watch_id: impl Into<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            watch_id: watch_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &FocusedApplicationContextActorPayload {
+        &self.actor
+    }
+
+    pub fn watch_id(&self) -> &str {
+        &self.watch_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextBoundsPayload {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl FocusedApplicationContextBoundsPayload {
+    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationMetadataPayload {
+    application_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bundle_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    package_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    executable_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    process_id: Option<u64>,
+}
+
+impl FocusedApplicationMetadataPayload {
+    pub fn new(application_id: impl Into<String>) -> Self {
+        Self {
+            application_id: application_id.into(),
+            name: None,
+            bundle_id: None,
+            package_name: None,
+            executable_path: None,
+            process_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedWindowMetadataPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    window_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bounds: Option<FocusedApplicationContextBoundsPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedDisplayMetadataPayload {
+    display_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bounds: Option<FocusedApplicationContextBoundsPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scale_factor: Option<f64>,
+}
+
+impl FocusedDisplayMetadataPayload {
+    pub fn new(display_id: impl Into<String>) -> Self {
+        Self {
+            display_id: display_id.into(),
+            bounds: None,
+            scale_factor: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextSnapshotResultPayload {
+    application: FocusedApplicationMetadataPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    window: Option<FocusedWindowMetadataPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display: Option<FocusedDisplayMetadataPayload>,
+    observed_at: u64,
+}
+
+impl FocusedApplicationContextSnapshotResultPayload {
+    pub fn new(application: FocusedApplicationMetadataPayload, observed_at: u64) -> Self {
+        Self {
+            application,
+            window: None,
+            display: None,
+            observed_at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextWatchResultPayload {
+    watch_id: String,
+    active: bool,
+}
+
+impl FocusedApplicationContextWatchResultPayload {
+    pub fn new(watch_id: impl Into<String>, active: bool) -> Self {
+        Self {
+            watch_id: watch_id.into(),
+            active,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextStopWatchingResultPayload {
+    watch_id: String,
+    stopped: bool,
+}
+
+impl FocusedApplicationContextStopWatchingResultPayload {
+    pub fn new(watch_id: impl Into<String>, stopped: bool) -> Self {
+        Self {
+            watch_id: watch_id.into(),
+            stopped,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl FocusedApplicationContextSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FocusedApplicationContextEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: FocusedApplicationContextEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    watch_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<FocusedApplicationContextSnapshotResultPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl FocusedApplicationContextEventPayload {
+    pub fn new(timestamp: u64, phase: FocusedApplicationContextEventPhase) -> Self {
+        Self {
+            r#type: "focused-application-context-event".to_string(),
+            timestamp,
+            phase,
+            watch_id: None,
+            snapshot: None,
             reason: None,
             message: None,
         }

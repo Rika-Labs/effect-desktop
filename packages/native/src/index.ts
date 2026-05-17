@@ -359,6 +359,29 @@ export {
   type SelectionContextServiceOptions
 } from "./selection-context.js"
 export {
+  FocusedApplicationContext,
+  FocusedApplicationContextClient,
+  FocusedApplicationContextHandlersLive,
+  FocusedApplicationContextLive,
+  FocusedApplicationContextMethodNames,
+  FocusedApplicationContextRpcEvents,
+  FocusedApplicationContextRpcs,
+  FocusedApplicationContextSurface,
+  makeFocusedApplicationContextBridgeClientLayer,
+  makeFocusedApplicationContextClientLayer,
+  makeFocusedApplicationContextMemoryClient,
+  makeFocusedApplicationContextServiceLayer,
+  makeFocusedApplicationContextUnsupportedClient,
+  makeHostFocusedApplicationContextRpcRuntime,
+  type FocusedApplicationContextClientApi,
+  type FocusedApplicationContextError,
+  type FocusedApplicationContextMemoryClientOptions,
+  type FocusedApplicationContextRpc,
+  type FocusedApplicationContextRpcHandlers,
+  type FocusedApplicationContextServiceApi,
+  type FocusedApplicationContextServiceOptions
+} from "./focused-application-context.js"
+export {
   WorkspaceIndex,
   WorkspaceIndexClient,
   WorkspaceIndexHandlersLive,
