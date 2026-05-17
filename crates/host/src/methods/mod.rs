@@ -5,6 +5,7 @@ mod execution_sandbox;
 mod extension_config;
 mod extension_package;
 pub(crate) mod handshake;
+mod local_tool_runtime;
 mod menu;
 mod realtime_media_session;
 mod window;
@@ -123,6 +124,15 @@ impl HostMethodRouter {
             host_protocol::EXTENSION_PACKAGE_LIST_METHOD => extension_package::list(),
             host_protocol::EXTENSION_PACKAGE_IS_SUPPORTED_METHOD => {
                 extension_package::is_supported()
+            }
+            host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD => {
+                local_tool_runtime::register(payload)
+            }
+            host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD => local_tool_runtime::run(payload),
+            host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD => local_tool_runtime::stop(payload),
+            host_protocol::LOCAL_TOOL_RUNTIME_HEALTH_METHOD => local_tool_runtime::health(payload),
+            host_protocol::LOCAL_TOOL_RUNTIME_IS_SUPPORTED_METHOD => {
+                local_tool_runtime::is_supported()
             }
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
                 menu::set_application_menu(&*self.window, payload)
@@ -1028,6 +1038,92 @@ mod tests {
         );
     }
 
+    #[test]
+    fn local_tool_runtime_register_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-local-tool-runtime-register",
+                    host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                    local_tool_runtime_register_payload(),
+                ),
+                1710000000130,
+            )
+            .expect("local tool runtime request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-local-tool-runtime-register".to_string(),
+                timestamp: 1710000000130,
+                trace_id: "trace-request-local-tool-runtime-register".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON,
+                    host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn local_tool_runtime_invalid_payload_returns_invalid_argument_before_unsupported() {
+        let mut payload = local_tool_runtime_register_payload();
+        payload["manifest"]["commands"][0]["executable"] = serde_json::json!("/usr/bin/node;rm");
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-local-tool-runtime-invalid",
+                    host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                    payload,
+                ),
+                1710000000131,
+            )
+            .expect("local tool runtime request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-local-tool-runtime-invalid".to_string(),
+                timestamp: 1710000000131,
+                trace_id: "trace-request-local-tool-runtime-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "manifest.commands.executable",
+                    "contains shell metacharacters",
+                    host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn local_tool_runtime_is_supported_reports_unimplemented_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-local-tool-runtime-supported",
+                    host_protocol::LOCAL_TOOL_RUNTIME_IS_SUPPORTED_METHOD,
+                ),
+                1710000000132,
+            )
+            .expect("local tool runtime support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-local-tool-runtime-supported".to_string(),
+                timestamp: 1710000000132,
+                trace_id: "trace-request-local-tool-runtime-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
+    }
+
     fn request(id: &str, method: &str) -> HostProtocolEnvelope {
         request_with_payload(id, method, serde_json::Value::Null)
     }
@@ -1134,6 +1230,56 @@ mod tests {
                 ]
             },
             "traceId": "trace-extension-package"
+        })
+    }
+
+    fn local_tool_runtime_register_payload() -> serde_json::Value {
+        serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "manifest": {
+                "toolId": "tool-1",
+                "name": "Tool One",
+                "version": "1.0.0",
+                "commands": [
+                    {
+                        "commandId": "node-version",
+                        "executable": "/usr/bin/node",
+                        "defaultArgs": ["--version"],
+                        "cwd": "/tmp/app",
+                        "timeoutMillis": 1000
+                    }
+                ],
+                "permissions": [
+                    {
+                        "kind": "process.spawn",
+                        "commands": ["/usr/bin/node"],
+                        "cwd": ["/tmp/app"],
+                        "environment": "none",
+                        "shell": false,
+                        "audit": "always"
+                    }
+                ],
+                "policy": {
+                    "cwd": { "roots": ["/tmp/app"] },
+                    "environment": { "variables": [] },
+                    "filesystem": { "readRoots": ["/tmp/app"] },
+                    "network": { "hosts": [] },
+                    "budgets": {
+                        "cpuMillis": 500,
+                        "memoryBytes": 67108864,
+                        "wallClockMillis": 1000,
+                        "stdoutBytes": 1024,
+                        "stderrBytes": 1024
+                    },
+                    "stdio": { "stdout": "capture", "stderr": "capture" },
+                    "cleanup": {
+                        "killProcessTree": true,
+                        "removeWorkingDirectory": true
+                    }
+                }
+            },
+            "runtimeId": "runtime-1",
+            "traceId": "trace-local-tool-runtime"
         })
     }
 

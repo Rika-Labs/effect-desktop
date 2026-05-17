@@ -66,6 +66,12 @@ pub const EXTENSION_PACKAGE_REMOVE_METHOD: &str = "ExtensionPackage.remove";
 pub const EXTENSION_PACKAGE_LIST_METHOD: &str = "ExtensionPackage.list";
 pub const EXTENSION_PACKAGE_IS_SUPPORTED_METHOD: &str = "ExtensionPackage.isSupported";
 pub const EXTENSION_PACKAGE_EVENT: &str = "ExtensionPackage.Event";
+pub const LOCAL_TOOL_RUNTIME_REGISTER_METHOD: &str = "LocalToolRuntime.register";
+pub const LOCAL_TOOL_RUNTIME_RUN_METHOD: &str = "LocalToolRuntime.run";
+pub const LOCAL_TOOL_RUNTIME_STOP_METHOD: &str = "LocalToolRuntime.stop";
+pub const LOCAL_TOOL_RUNTIME_HEALTH_METHOD: &str = "LocalToolRuntime.health";
+pub const LOCAL_TOOL_RUNTIME_IS_SUPPORTED_METHOD: &str = "LocalToolRuntime.isSupported";
+pub const LOCAL_TOOL_RUNTIME_EVENT: &str = "LocalToolRuntime.Event";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
@@ -80,6 +86,7 @@ pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_PACKAGE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1623,6 +1630,787 @@ impl ExecutionSandboxEventPayload {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum LocalToolRuntimeActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalToolRuntimeRunStatus {
+    Completed,
+    Failed,
+    Timeout,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalToolRuntimeHealthStatus {
+    Unknown,
+    Healthy,
+    Unhealthy,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalToolRuntimeEventPhase {
+    Registered,
+    RunStarted,
+    RunCompleted,
+    HealthChecked,
+    Stopped,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalToolRuntimeStdioMode {
+    Capture,
+    Inherit,
+    Ignore,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeActorPayload {
+    kind: LocalToolRuntimeActorKind,
+    id: String,
+}
+
+impl LocalToolRuntimeActorPayload {
+    pub fn new(kind: LocalToolRuntimeActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn kind(&self) -> LocalToolRuntimeActorKind {
+        self.kind
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeEnvironmentEntryPayload {
+    name: String,
+    value: String,
+}
+
+impl LocalToolRuntimeEnvironmentEntryPayload {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeCwdPolicyPayload {
+    roots: Vec<String>,
+}
+
+impl LocalToolRuntimeCwdPolicyPayload {
+    pub fn new(roots: Vec<String>) -> Self {
+        Self { roots }
+    }
+
+    pub fn roots(&self) -> &[String] {
+        &self.roots
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeEnvironmentPolicyPayload {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    variables: Vec<LocalToolRuntimeEnvironmentEntryPayload>,
+}
+
+impl LocalToolRuntimeEnvironmentPolicyPayload {
+    pub fn new(variables: Vec<LocalToolRuntimeEnvironmentEntryPayload>) -> Self {
+        Self { variables }
+    }
+
+    pub fn variables(&self) -> &[LocalToolRuntimeEnvironmentEntryPayload] {
+        &self.variables
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeFilesystemPolicyPayload {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    read_roots: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    write_roots: Vec<String>,
+}
+
+impl LocalToolRuntimeFilesystemPolicyPayload {
+    pub fn new(read_roots: Vec<String>, write_roots: Vec<String>) -> Self {
+        Self {
+            read_roots,
+            write_roots,
+        }
+    }
+
+    pub fn read_roots(&self) -> &[String] {
+        &self.read_roots
+    }
+
+    pub fn write_roots(&self) -> &[String] {
+        &self.write_roots
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeNetworkPolicyPayload {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    hosts: Vec<String>,
+}
+
+impl LocalToolRuntimeNetworkPolicyPayload {
+    pub fn new(hosts: Vec<String>) -> Self {
+        Self { hosts }
+    }
+
+    pub fn hosts(&self) -> &[String] {
+        &self.hosts
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeBudgetPolicyPayload {
+    cpu_millis: u64,
+    memory_bytes: u64,
+    wall_clock_millis: u64,
+    stdout_bytes: u64,
+    stderr_bytes: u64,
+}
+
+impl LocalToolRuntimeBudgetPolicyPayload {
+    pub fn new(
+        cpu_millis: u64,
+        memory_bytes: u64,
+        wall_clock_millis: u64,
+        stdout_bytes: u64,
+        stderr_bytes: u64,
+    ) -> Self {
+        Self {
+            cpu_millis,
+            memory_bytes,
+            wall_clock_millis,
+            stdout_bytes,
+            stderr_bytes,
+        }
+    }
+
+    pub fn cpu_millis(&self) -> u64 {
+        self.cpu_millis
+    }
+
+    pub fn memory_bytes(&self) -> u64 {
+        self.memory_bytes
+    }
+
+    pub fn wall_clock_millis(&self) -> u64 {
+        self.wall_clock_millis
+    }
+
+    pub fn stdout_bytes(&self) -> u64 {
+        self.stdout_bytes
+    }
+
+    pub fn stderr_bytes(&self) -> u64 {
+        self.stderr_bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeStdioPolicyPayload {
+    stdout: LocalToolRuntimeStdioMode,
+    stderr: LocalToolRuntimeStdioMode,
+}
+
+impl LocalToolRuntimeStdioPolicyPayload {
+    pub fn new(stdout: LocalToolRuntimeStdioMode, stderr: LocalToolRuntimeStdioMode) -> Self {
+        Self { stdout, stderr }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeCleanupPolicyPayload {
+    kill_process_tree: bool,
+    remove_working_directory: bool,
+}
+
+impl LocalToolRuntimeCleanupPolicyPayload {
+    pub fn new(kill_process_tree: bool, remove_working_directory: bool) -> Self {
+        Self {
+            kill_process_tree,
+            remove_working_directory,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimePolicyPayload {
+    cwd: LocalToolRuntimeCwdPolicyPayload,
+    environment: LocalToolRuntimeEnvironmentPolicyPayload,
+    #[serde(default)]
+    filesystem: LocalToolRuntimeFilesystemPolicyPayload,
+    #[serde(default)]
+    network: LocalToolRuntimeNetworkPolicyPayload,
+    budgets: LocalToolRuntimeBudgetPolicyPayload,
+    stdio: LocalToolRuntimeStdioPolicyPayload,
+    cleanup: LocalToolRuntimeCleanupPolicyPayload,
+}
+
+impl LocalToolRuntimePolicyPayload {
+    pub fn new(
+        cwd: LocalToolRuntimeCwdPolicyPayload,
+        environment: LocalToolRuntimeEnvironmentPolicyPayload,
+        filesystem: LocalToolRuntimeFilesystemPolicyPayload,
+        network: LocalToolRuntimeNetworkPolicyPayload,
+        budgets: LocalToolRuntimeBudgetPolicyPayload,
+        stdio: LocalToolRuntimeStdioPolicyPayload,
+        cleanup: LocalToolRuntimeCleanupPolicyPayload,
+    ) -> Self {
+        Self {
+            cwd,
+            environment,
+            filesystem,
+            network,
+            budgets,
+            stdio,
+            cleanup,
+        }
+    }
+
+    pub fn cwd(&self) -> &LocalToolRuntimeCwdPolicyPayload {
+        &self.cwd
+    }
+
+    pub fn environment(&self) -> &LocalToolRuntimeEnvironmentPolicyPayload {
+        &self.environment
+    }
+
+    pub fn filesystem(&self) -> &LocalToolRuntimeFilesystemPolicyPayload {
+        &self.filesystem
+    }
+
+    pub fn network(&self) -> &LocalToolRuntimeNetworkPolicyPayload {
+        &self.network
+    }
+
+    pub fn budgets(&self) -> &LocalToolRuntimeBudgetPolicyPayload {
+        &self.budgets
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeCommandPayload {
+    command_id: String,
+    executable: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    default_args: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    environment: Vec<LocalToolRuntimeEnvironmentEntryPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timeout_millis: Option<u64>,
+}
+
+impl LocalToolRuntimeCommandPayload {
+    pub fn new(
+        command_id: impl Into<String>,
+        executable: impl Into<String>,
+        default_args: Vec<String>,
+        cwd: Option<String>,
+        environment: Vec<LocalToolRuntimeEnvironmentEntryPayload>,
+        timeout_millis: Option<u64>,
+    ) -> Self {
+        Self {
+            command_id: command_id.into(),
+            executable: executable.into(),
+            default_args,
+            cwd,
+            environment,
+            timeout_millis,
+        }
+    }
+
+    pub fn command_id(&self) -> &str {
+        &self.command_id
+    }
+
+    pub fn executable(&self) -> &str {
+        &self.executable
+    }
+
+    pub fn default_args(&self) -> &[String] {
+        &self.default_args
+    }
+
+    pub fn cwd(&self) -> Option<&str> {
+        self.cwd.as_deref()
+    }
+
+    pub fn environment(&self) -> &[LocalToolRuntimeEnvironmentEntryPayload] {
+        &self.environment
+    }
+
+    pub fn timeout_millis(&self) -> Option<u64> {
+        self.timeout_millis
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeHealthCheckPayload {
+    command_id: String,
+    interval_millis: u64,
+    timeout_millis: u64,
+}
+
+impl LocalToolRuntimeHealthCheckPayload {
+    pub fn new(command_id: impl Into<String>, interval_millis: u64, timeout_millis: u64) -> Self {
+        Self {
+            command_id: command_id.into(),
+            interval_millis,
+            timeout_millis,
+        }
+    }
+
+    pub fn command_id(&self) -> &str {
+        &self.command_id
+    }
+
+    pub fn interval_millis(&self) -> u64 {
+        self.interval_millis
+    }
+
+    pub fn timeout_millis(&self) -> u64 {
+        self.timeout_millis
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeManifestPayload {
+    tool_id: String,
+    name: String,
+    version: String,
+    commands: Vec<LocalToolRuntimeCommandPayload>,
+    permissions: Vec<Value>,
+    policy: LocalToolRuntimePolicyPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    health: Option<LocalToolRuntimeHealthCheckPayload>,
+}
+
+impl LocalToolRuntimeManifestPayload {
+    pub fn new(
+        tool_id: impl Into<String>,
+        name: impl Into<String>,
+        version: impl Into<String>,
+        commands: Vec<LocalToolRuntimeCommandPayload>,
+        permissions: Vec<Value>,
+        policy: LocalToolRuntimePolicyPayload,
+    ) -> Self {
+        Self {
+            tool_id: tool_id.into(),
+            name: name.into(),
+            version: version.into(),
+            commands,
+            permissions,
+            policy,
+            health: None,
+        }
+    }
+
+    pub fn with_health(mut self, health: LocalToolRuntimeHealthCheckPayload) -> Self {
+        self.health = Some(health);
+        self
+    }
+
+    pub fn tool_id(&self) -> &str {
+        &self.tool_id
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub fn commands(&self) -> &[LocalToolRuntimeCommandPayload] {
+        &self.commands
+    }
+
+    pub fn permissions(&self) -> &[Value] {
+        &self.permissions
+    }
+
+    pub fn policy(&self) -> &LocalToolRuntimePolicyPayload {
+        &self.policy
+    }
+
+    pub fn health(&self) -> Option<&LocalToolRuntimeHealthCheckPayload> {
+        self.health.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeRegisterPayload {
+    actor: LocalToolRuntimeActorPayload,
+    manifest: LocalToolRuntimeManifestPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl LocalToolRuntimeRegisterPayload {
+    pub fn new(
+        actor: LocalToolRuntimeActorPayload,
+        manifest: LocalToolRuntimeManifestPayload,
+        runtime_id: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            manifest,
+            runtime_id,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &LocalToolRuntimeActorPayload {
+        &self.actor
+    }
+
+    pub fn manifest(&self) -> &LocalToolRuntimeManifestPayload {
+        &self.manifest
+    }
+
+    pub fn runtime_id(&self) -> Option<&str> {
+        self.runtime_id.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeRegisterResultPayload {
+    runtime_id: String,
+    tool_id: String,
+    manifest: LocalToolRuntimeManifestPayload,
+    state: String,
+}
+
+impl LocalToolRuntimeRegisterResultPayload {
+    pub fn registered(
+        runtime_id: impl Into<String>,
+        tool_id: impl Into<String>,
+        manifest: LocalToolRuntimeManifestPayload,
+    ) -> Self {
+        Self {
+            runtime_id: runtime_id.into(),
+            tool_id: tool_id.into(),
+            manifest,
+            state: "registered".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeRunPayload {
+    runtime_id: String,
+    command_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    args: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl LocalToolRuntimeRunPayload {
+    pub fn new(
+        runtime_id: impl Into<String>,
+        command_id: impl Into<String>,
+        args: Vec<String>,
+        run_id: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            runtime_id: runtime_id.into(),
+            command_id: command_id.into(),
+            args,
+            run_id,
+            trace_id,
+        }
+    }
+
+    pub fn runtime_id(&self) -> &str {
+        &self.runtime_id
+    }
+
+    pub fn command_id(&self) -> &str {
+        &self.command_id
+    }
+
+    pub fn args(&self) -> &[String] {
+        &self.args
+    }
+
+    pub fn run_id(&self) -> Option<&str> {
+        self.run_id.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeRunResultPayload {
+    runtime_id: String,
+    command_id: String,
+    run_id: String,
+    status: LocalToolRuntimeRunStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exit_code: Option<u32>,
+    stdout: String,
+    stderr: String,
+}
+
+impl LocalToolRuntimeRunResultPayload {
+    pub fn new(
+        runtime_id: impl Into<String>,
+        command_id: impl Into<String>,
+        run_id: impl Into<String>,
+        status: LocalToolRuntimeRunStatus,
+        exit_code: Option<u32>,
+        stdout: impl Into<String>,
+        stderr: impl Into<String>,
+    ) -> Self {
+        Self {
+            runtime_id: runtime_id.into(),
+            command_id: command_id.into(),
+            run_id: run_id.into(),
+            status,
+            exit_code,
+            stdout: stdout.into(),
+            stderr: stderr.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeStopPayload {
+    runtime_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl LocalToolRuntimeStopPayload {
+    pub fn new(runtime_id: impl Into<String>, trace_id: Option<String>) -> Self {
+        Self {
+            runtime_id: runtime_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn runtime_id(&self) -> &str {
+        &self.runtime_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeStopResultPayload {
+    runtime_id: String,
+    stopped: bool,
+}
+
+impl LocalToolRuntimeStopResultPayload {
+    pub fn stopped(runtime_id: impl Into<String>) -> Self {
+        Self {
+            runtime_id: runtime_id.into(),
+            stopped: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeHealthPayload {
+    runtime_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl LocalToolRuntimeHealthPayload {
+    pub fn new(runtime_id: impl Into<String>, trace_id: Option<String>) -> Self {
+        Self {
+            runtime_id: runtime_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn runtime_id(&self) -> &str {
+        &self.runtime_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeHealthResultPayload {
+    runtime_id: String,
+    status: LocalToolRuntimeHealthStatus,
+    checked_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl LocalToolRuntimeHealthResultPayload {
+    pub fn new(
+        runtime_id: impl Into<String>,
+        status: LocalToolRuntimeHealthStatus,
+        checked_at: u64,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            runtime_id: runtime_id.into(),
+            status,
+            checked_at,
+            reason,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl LocalToolRuntimeSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalToolRuntimeEventPayload {
+    r#type: String,
+    timestamp: u64,
+    runtime_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    command_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<String>,
+    phase: LocalToolRuntimeEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<LocalToolRuntimeRunStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    health: Option<LocalToolRuntimeHealthStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl LocalToolRuntimeEventPayload {
+    pub fn new(
+        timestamp: u64,
+        runtime_id: impl Into<String>,
+        phase: LocalToolRuntimeEventPhase,
+    ) -> Self {
+        Self {
+            r#type: "local-tool-runtime-event".to_string(),
+            timestamp,
+            runtime_id: runtime_id.into(),
+            tool_id: None,
+            command_id: None,
+            run_id: None,
+            phase,
+            status: None,
+            health: None,
+            reason: None,
+        }
+    }
+
+    pub fn with_run(
+        mut self,
+        tool_id: impl Into<String>,
+        command_id: impl Into<String>,
+        run_id: impl Into<String>,
+        status: LocalToolRuntimeRunStatus,
+    ) -> Self {
+        self.tool_id = Some(tool_id.into());
+        self.command_id = Some(command_id.into());
+        self.run_id = Some(run_id.into());
+        self.status = Some(status);
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ExtensionConfigActorKind {
     Workspace,
     Extension,
@@ -3125,19 +3913,33 @@ mod tests {
         ExtensionPackageRemoveResultPayload, ExtensionPackageSourceKind,
         ExtensionPackageSourcePayload, ExtensionPackageSupportedPayload,
         ExtensionPackageUpdateResultPayload, HostProtocolEnvelope, HostProtocolError,
-        HostVersionPayload, RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
-        RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
-        RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
-        RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
-        RealtimeMediaSessionInterruptPayload, RealtimeMediaSessionSelectDevicePayload,
-        RealtimeMediaSessionState, RealtimeMediaSessionStateEventPayload,
-        RealtimeMediaSessionSupportedPayload, RendererResumeDeniedPayload,
-        RendererResumeDeniedReason, RendererResumePayload, RendererResumedPayload, ResumeTicket,
-        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowTitleBarStyle,
-        WindowTrafficLights, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
+        HostVersionPayload, LocalToolRuntimeActorKind, LocalToolRuntimeActorPayload,
+        LocalToolRuntimeBudgetPolicyPayload, LocalToolRuntimeCleanupPolicyPayload,
+        LocalToolRuntimeCommandPayload, LocalToolRuntimeCwdPolicyPayload,
+        LocalToolRuntimeEnvironmentEntryPayload, LocalToolRuntimeEnvironmentPolicyPayload,
+        LocalToolRuntimeEventPayload, LocalToolRuntimeEventPhase,
+        LocalToolRuntimeFilesystemPolicyPayload, LocalToolRuntimeHealthCheckPayload,
+        LocalToolRuntimeHealthResultPayload, LocalToolRuntimeHealthStatus,
+        LocalToolRuntimeManifestPayload, LocalToolRuntimeNetworkPolicyPayload,
+        LocalToolRuntimePolicyPayload, LocalToolRuntimeRegisterPayload,
+        LocalToolRuntimeRegisterResultPayload, LocalToolRuntimeRunPayload,
+        LocalToolRuntimeRunResultPayload, LocalToolRuntimeRunStatus, LocalToolRuntimeStdioMode,
+        LocalToolRuntimeStdioPolicyPayload, LocalToolRuntimeStopResultPayload,
+        LocalToolRuntimeSupportedPayload, RealtimeMediaDeviceKind,
+        RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
+        RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
+        RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
+        RealtimeMediaSessionIdentityPayload, RealtimeMediaSessionInterruptPayload,
+        RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
+        RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
+        RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
+        RendererResumedPayload, ResumeTicket, WindowCreatePayload, WindowCreateResponse,
+        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights,
+        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
         EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
-        EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
+        EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS,
+        LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
     };
     use std::{
@@ -3958,6 +4760,152 @@ mod tests {
     }
 
     #[test]
+    fn local_tool_runtime_payloads_serialize_canonically() {
+        let actor =
+            LocalToolRuntimeActorPayload::new(LocalToolRuntimeActorKind::Extension, "extension-1");
+        let command = LocalToolRuntimeCommandPayload::new(
+            "node-version",
+            "/usr/bin/node",
+            vec!["--version".to_string()],
+            Some("/tmp/app".to_string()),
+            vec![LocalToolRuntimeEnvironmentEntryPayload::new(
+                "PATH", "/usr/bin",
+            )],
+            Some(1_000),
+        );
+        let permission = serde_json::json!({
+            "kind": "process.spawn",
+            "commands": ["/usr/bin/node"],
+            "cwd": ["/tmp/app"],
+            "environment": "allowlist",
+            "shell": false,
+            "audit": "always"
+        });
+        let policy = local_tool_runtime_policy();
+        let manifest = LocalToolRuntimeManifestPayload::new(
+            "tool-1",
+            "Tool One",
+            "1.0.0",
+            vec![command],
+            vec![permission],
+            policy,
+        )
+        .with_health(LocalToolRuntimeHealthCheckPayload::new(
+            "node-version",
+            10_000,
+            1_000,
+        ));
+        let register = LocalToolRuntimeRegisterPayload::new(
+            actor,
+            manifest,
+            Some("runtime-1".to_string()),
+            Some("trace-register".to_string()),
+        );
+
+        assert_eq!(
+            serde_json::to_string(&register).expect("register payload should encode"),
+            r#"{"actor":{"kind":"extension","id":"extension-1"},"manifest":{"toolId":"tool-1","name":"Tool One","version":"1.0.0","commands":[{"commandId":"node-version","executable":"/usr/bin/node","defaultArgs":["--version"],"cwd":"/tmp/app","environment":[{"name":"PATH","value":"/usr/bin"}],"timeoutMillis":1000}],"permissions":[{"audit":"always","commands":["/usr/bin/node"],"cwd":["/tmp/app"],"environment":"allowlist","kind":"process.spawn","shell":false}],"policy":{"cwd":{"roots":["/tmp/app"]},"environment":{"variables":[{"name":"PATH","value":"/usr/bin"}]},"filesystem":{"readRoots":["/tmp/app"]},"network":{"hosts":["api.example.test"]},"budgets":{"cpuMillis":500,"memoryBytes":67108864,"wallClockMillis":1000,"stdoutBytes":1024,"stderrBytes":1024},"stdio":{"stdout":"capture","stderr":"capture"},"cleanup":{"killProcessTree":true,"removeWorkingDirectory":true}},"health":{"commandId":"node-version","intervalMillis":10000,"timeoutMillis":1000}},"runtimeId":"runtime-1","traceId":"trace-register"}"#
+        );
+
+        let manifest = register.manifest().clone();
+        assert_eq!(
+            serde_json::to_string(&LocalToolRuntimeRegisterResultPayload::registered(
+                "runtime-1",
+                "tool-1",
+                manifest,
+            ))
+            .expect("register result should encode"),
+            r#"{"runtimeId":"runtime-1","toolId":"tool-1","manifest":{"toolId":"tool-1","name":"Tool One","version":"1.0.0","commands":[{"commandId":"node-version","executable":"/usr/bin/node","defaultArgs":["--version"],"cwd":"/tmp/app","environment":[{"name":"PATH","value":"/usr/bin"}],"timeoutMillis":1000}],"permissions":[{"audit":"always","commands":["/usr/bin/node"],"cwd":["/tmp/app"],"environment":"allowlist","kind":"process.spawn","shell":false}],"policy":{"cwd":{"roots":["/tmp/app"]},"environment":{"variables":[{"name":"PATH","value":"/usr/bin"}]},"filesystem":{"readRoots":["/tmp/app"]},"network":{"hosts":["api.example.test"]},"budgets":{"cpuMillis":500,"memoryBytes":67108864,"wallClockMillis":1000,"stdoutBytes":1024,"stderrBytes":1024},"stdio":{"stdout":"capture","stderr":"capture"},"cleanup":{"killProcessTree":true,"removeWorkingDirectory":true}},"health":{"commandId":"node-version","intervalMillis":10000,"timeoutMillis":1000}},"state":"registered"}"#
+        );
+
+        let run = LocalToolRuntimeRunPayload::new(
+            "runtime-1",
+            "node-version",
+            vec!["--version".to_string()],
+            Some("run-1".to_string()),
+            Some("trace-run".to_string()),
+        );
+        assert_eq!(run.runtime_id(), "runtime-1");
+        assert_eq!(run.command_id(), "node-version");
+        assert_eq!(
+            serde_json::to_string(&run).expect("run payload should encode"),
+            r#"{"runtimeId":"runtime-1","commandId":"node-version","args":["--version"],"runId":"run-1","traceId":"trace-run"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&LocalToolRuntimeRunResultPayload::new(
+                "runtime-1",
+                "node-version",
+                "run-1",
+                LocalToolRuntimeRunStatus::Completed,
+                Some(0),
+                "v20.0.0",
+                "",
+            ))
+            .expect("run result should encode"),
+            r#"{"runtimeId":"runtime-1","commandId":"node-version","runId":"run-1","status":"completed","exitCode":0,"stdout":"v20.0.0","stderr":""}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&LocalToolRuntimeHealthResultPayload::new(
+                "runtime-1",
+                LocalToolRuntimeHealthStatus::Healthy,
+                1_710_000_000_000,
+                None,
+            ))
+            .expect("health result should encode"),
+            r#"{"runtimeId":"runtime-1","status":"healthy","checkedAt":1710000000000}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&LocalToolRuntimeStopResultPayload::stopped("runtime-1"))
+                .expect("stop result should encode"),
+            r#"{"runtimeId":"runtime-1","stopped":true}"#
+        );
+
+        let event = LocalToolRuntimeEventPayload::new(
+            1_710_000_000_000,
+            "runtime-1",
+            LocalToolRuntimeEventPhase::RunCompleted,
+        )
+        .with_run(
+            "tool-1",
+            "node-version",
+            "run-1",
+            LocalToolRuntimeRunStatus::Completed,
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("event should encode"),
+            r#"{"type":"local-tool-runtime-event","timestamp":1710000000000,"runtimeId":"runtime-1","toolId":"tool-1","commandId":"node-version","runId":"run-1","phase":"run-completed","status":"completed"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&LocalToolRuntimeSupportedPayload::unsupported(
+                LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON,
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+
+        let empty_policy = LocalToolRuntimePolicyPayload::new(
+            LocalToolRuntimeCwdPolicyPayload::new(vec!["/tmp/app".to_string()]),
+            LocalToolRuntimeEnvironmentPolicyPayload::new(vec![]),
+            LocalToolRuntimeFilesystemPolicyPayload::new(vec![], vec![]),
+            LocalToolRuntimeNetworkPolicyPayload::new(vec![]),
+            LocalToolRuntimeBudgetPolicyPayload::new(500, 67_108_864, 1_000, 1_024, 1_024),
+            LocalToolRuntimeStdioPolicyPayload::new(
+                LocalToolRuntimeStdioMode::Capture,
+                LocalToolRuntimeStdioMode::Capture,
+            ),
+            LocalToolRuntimeCleanupPolicyPayload::new(true, true),
+        );
+        assert_eq!(
+            serde_json::to_string(&empty_policy).expect("empty policy should encode"),
+            r#"{"cwd":{"roots":["/tmp/app"]},"environment":{},"filesystem":{},"network":{},"budgets":{"cpuMillis":500,"memoryBytes":67108864,"wallClockMillis":1000,"stdoutBytes":1024,"stderrBytes":1024},"stdio":{"stdout":"capture","stderr":"capture"},"cleanup":{"killProcessTree":true,"removeWorkingDirectory":true}}"#
+        );
+    }
+
+    #[test]
     fn execution_sandbox_create_rejects_excess_fields() {
         let value = serde_json::json!({
             "actor": { "kind": "extension", "id": "extension-1" },
@@ -3996,6 +4944,23 @@ mod tests {
             ExecutionSandboxNetworkPolicyPayload::new(vec!["api.example.test".to_string()]),
             ExecutionSandboxBudgetPolicyPayload::new(500, 67_108_864, 1_000, 1_024, 1_024),
             ExecutionSandboxCleanupPolicyPayload::new(true, true),
+        )
+    }
+
+    fn local_tool_runtime_policy() -> LocalToolRuntimePolicyPayload {
+        LocalToolRuntimePolicyPayload::new(
+            LocalToolRuntimeCwdPolicyPayload::new(vec!["/tmp/app".to_string()]),
+            LocalToolRuntimeEnvironmentPolicyPayload::new(vec![
+                LocalToolRuntimeEnvironmentEntryPayload::new("PATH", "/usr/bin"),
+            ]),
+            LocalToolRuntimeFilesystemPolicyPayload::new(vec!["/tmp/app".to_string()], vec![]),
+            LocalToolRuntimeNetworkPolicyPayload::new(vec!["api.example.test".to_string()]),
+            LocalToolRuntimeBudgetPolicyPayload::new(500, 67_108_864, 1_000, 1_024, 1_024),
+            LocalToolRuntimeStdioPolicyPayload::new(
+                LocalToolRuntimeStdioMode::Capture,
+                LocalToolRuntimeStdioMode::Capture,
+            ),
+            LocalToolRuntimeCleanupPolicyPayload::new(true, true),
         )
     }
 

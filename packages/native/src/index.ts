@@ -244,6 +244,29 @@ export {
   type ExecutionSandboxServiceOptions
 } from "./execution-sandbox.js"
 export {
+  LocalToolRuntime,
+  LocalToolRuntimeClient,
+  LocalToolRuntimeHandlersLive,
+  LocalToolRuntimeLive,
+  LocalToolRuntimeMethodNames,
+  LocalToolRuntimeRpcEvents,
+  LocalToolRuntimeRpcs,
+  LocalToolRuntimeSurface,
+  makeHostLocalToolRuntimeRpcRuntime,
+  makeLocalToolRuntimeBridgeClientLayer,
+  makeLocalToolRuntimeClientLayer,
+  makeLocalToolRuntimeMemoryClient,
+  makeLocalToolRuntimeServiceLayer,
+  makeLocalToolRuntimeUnsupportedClient,
+  type LocalToolRuntimeClientApi,
+  type LocalToolRuntimeError,
+  type LocalToolRuntimeMemoryClientOptions,
+  type LocalToolRuntimeRpc,
+  type LocalToolRuntimeRpcHandlers,
+  type LocalToolRuntimeServiceApi,
+  type LocalToolRuntimeServiceOptions
+} from "./local-tool-runtime.js"
+export {
   Dock,
   DockClient,
   DockHandlersLive,
