@@ -8,9 +8,9 @@ effect_version: 4
 
 # `DiagnosticsBundle`
 
-Product-neutral diagnostics bundle exporter. It collects logs, traces, crash reports, host state, extension health, and audit events into one user-shareable artifact.
+Product-neutral diagnostics bundle exporter. It writes one user-shareable JSON artifact containing host state plus explicit source records for logs, traces, crash reports, extension health, and audit events.
 
-The public service is Layer-first and test-substitutable. The Rust host adapter validates input, collects source metadata, applies JSON redaction, and writes a JSON bundle artifact to the requested destination.
+The public service is Layer-first and test-substitutable. The Rust host adapter validates input, runs each requested source through the host collector registry, applies JSON redaction, and writes the artifact to the requested destination.
 
 ## Methods
 
@@ -32,7 +32,41 @@ The public service is Layer-first and test-substitutable. The Rust host adapter 
 - `extension-health`
 - `audit-events`
 
-When omitted, the memory client uses all sources.
+When omitted, the host and memory clients use all sources.
+
+The host artifact never uses metadata-only placeholders. Each source entry is either:
+
+```json
+{
+  "source": "host-state",
+  "status": "collected",
+  "items": [{ "kind": "host-state", "os": "macos", "arch": "aarch64" }]
+}
+```
+
+or:
+
+```json
+{
+  "source": "logs",
+  "status": "unavailable",
+  "items": [
+    {
+      "kind": "source-unavailable",
+      "reason": "collector-unavailable",
+      "message": "host logs are not connected to a persisted log source",
+      "recoverable": false
+    }
+  ],
+  "unavailable": {
+    "reason": "collector-unavailable",
+    "message": "host logs are not connected to a persisted log source",
+    "recoverable": false
+  }
+}
+```
+
+`host-state` is collected from the running host process. Logs, traces, crash reports, extension health, and audit events currently appear as explicit unavailable records until those durable host stores are connected.
 
 ## Events
 
@@ -49,7 +83,7 @@ Events carry the bundle id, timestamp, and source/write/error details needed to 
 
 ```ts
 {
-  id: "default-secret-patterns",
+  id: "host-secret-patterns",
   evidence: [{ path, action: "redacted", reason }]
 }
 ```
@@ -67,6 +101,12 @@ Evidence records which source policy was used and where redaction happened witho
 | macOS    | `supported` |
 | Windows  | `supported` |
 | Linux    | `supported` |
+
+`supported` means the host can validate requests, run the source registry, write the JSON artifact, and report unavailable sources in-band. It does not mean every source has a durable backing store on every platform.
+
+## Architecture-debt sweep
+
+The diagnostics host path keeps the source registry inside the Rust adapter because it owns desktop-specific source availability and artifact layout. No additional Effect wrapper debt was found in the touched area.
 
 ## Testing
 

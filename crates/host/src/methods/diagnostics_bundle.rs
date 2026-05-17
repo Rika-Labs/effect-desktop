@@ -22,8 +22,29 @@ use std::{
 
 const REDACTION_POLICY_ID: &str = "host-secret-patterns";
 const REDACTED_VALUE: &str = "<redacted:redacted>";
+const SOURCE_STATUS_COLLECTED: &str = "collected";
+const SOURCE_STATUS_UNAVAILABLE: &str = "unavailable";
+const SOURCE_UNAVAILABLE_REASON: &str = "collector-unavailable";
 
 static BUNDLES: OnceLock<Mutex<HashMap<String, BundleRecord>>> = OnceLock::new();
+
+const SOURCE_COLLECTORS: &[SourceCollector] = &[
+    SourceCollector::new(DiagnosticsBundleSourceKind::Logs, collect_logs),
+    SourceCollector::new(DiagnosticsBundleSourceKind::Traces, collect_traces),
+    SourceCollector::new(
+        DiagnosticsBundleSourceKind::CrashReports,
+        collect_crash_reports,
+    ),
+    SourceCollector::new(DiagnosticsBundleSourceKind::HostState, collect_host_state),
+    SourceCollector::new(
+        DiagnosticsBundleSourceKind::ExtensionHealth,
+        collect_extension_health,
+    ),
+    SourceCollector::new(
+        DiagnosticsBundleSourceKind::AuditEvents,
+        collect_audit_events,
+    ),
+];
 
 pub(crate) fn collect(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     let input = decode_payload::<DiagnosticsBundleCollectPayload>(
@@ -55,20 +76,18 @@ pub(crate) fn collect(payload: Option<Value>) -> Result<Option<Value>, HostProto
     } else {
         input.sources().to_vec()
     };
-    let summaries = sources
+    let collected = sources
         .iter()
         .copied()
-        .map(|source| source_summary(source, Vec::new()))
+        .map(|source| collect_source(source, collected_at, input.trace_id()))
         .collect::<Vec<_>>();
-    let artifacts = sources
+    let summaries = collected
         .iter()
-        .copied()
-        .map(|source| {
-            (
-                source_key(source),
-                collect_artifact(source, collected_at, input.trace_id()),
-            )
-        })
+        .map(SourceArtifact::summary)
+        .collect::<Vec<_>>();
+    let artifacts = collected
+        .into_iter()
+        .map(SourceArtifact::into_entry)
         .collect::<BTreeMap<_, _>>();
 
     let record = BundleRecord {
@@ -120,9 +139,11 @@ pub(crate) fn redact(payload: Option<Value>) -> Result<Option<Value>, HostProtoc
         ));
     };
     upsert_summary(record, input.source(), policy.clone());
+    let artifact =
+        redacted_source_artifact(input.source(), record.collected_at, redacted.value.clone());
     record
         .artifacts
-        .insert(source_key(input.source()), redacted.value.clone());
+        .insert(source_key(input.source()), artifact);
 
     encode_payload(
         DiagnosticsBundleRedactResultPayload::new(
@@ -292,33 +313,162 @@ fn default_sources() -> Vec<DiagnosticsBundleSourceKind> {
     ]
 }
 
-fn collect_artifact(
+struct SourceCollector {
     source: DiagnosticsBundleSourceKind,
-    collected_at: u64,
-    trace_id: Option<&str>,
-) -> Value {
-    match source {
-        DiagnosticsBundleSourceKind::HostState => json!({
-            "source": source_key(source),
-            "collectedAt": collected_at,
-            "os": std::env::consts::OS,
-            "arch": std::env::consts::ARCH,
-            "protocolVersion": host_protocol::PROTOCOL_VERSION
-        }),
-        _ => json!({
-            "source": source_key(source),
-            "collectedAt": collected_at,
-            "traceIdPresent": trace_id.is_some(),
-            "status": "metadata-only"
-        }),
+    collect: fn(SourceCollectionContext<'_>) -> SourceArtifact,
+}
+
+impl SourceCollector {
+    const fn new(
+        source: DiagnosticsBundleSourceKind,
+        collect: fn(SourceCollectionContext<'_>) -> SourceArtifact,
+    ) -> Self {
+        Self { source, collect }
     }
 }
 
-fn source_summary(
+struct SourceCollectionContext<'a> {
     source: DiagnosticsBundleSourceKind,
+    collected_at: u64,
+    trace_id: Option<&'a str>,
+}
+
+struct SourceArtifact {
+    source: DiagnosticsBundleSourceKind,
+    item_count: u64,
+    value: Value,
     evidence: Vec<DiagnosticsBundleRedactionEvidencePayload>,
-) -> DiagnosticsBundleSourceSummaryPayload {
-    DiagnosticsBundleSourceSummaryPayload::new(source, 1, redaction_policy(evidence))
+}
+
+impl SourceArtifact {
+    fn summary(&self) -> DiagnosticsBundleSourceSummaryPayload {
+        DiagnosticsBundleSourceSummaryPayload::new(
+            self.source,
+            self.item_count,
+            redaction_policy(self.evidence.clone()),
+        )
+    }
+
+    fn into_entry(self) -> (String, Value) {
+        (source_key(self.source), self.value)
+    }
+}
+
+fn collect_source(
+    source: DiagnosticsBundleSourceKind,
+    collected_at: u64,
+    trace_id: Option<&str>,
+) -> SourceArtifact {
+    let context = SourceCollectionContext {
+        source,
+        collected_at,
+        trace_id,
+    };
+    if let Some(collector) = SOURCE_COLLECTORS
+        .iter()
+        .find(|collector| collector.source == source)
+    {
+        (collector.collect)(context)
+    } else {
+        unavailable_source(context, "collector is not registered")
+    }
+}
+
+fn collect_host_state(context: SourceCollectionContext<'_>) -> SourceArtifact {
+    let value = json!({
+        "source": source_key(context.source),
+        "collectedAt": context.collected_at,
+        "status": SOURCE_STATUS_COLLECTED,
+        "items": [{
+            "kind": "host-state",
+            "os": std::env::consts::OS,
+            "arch": std::env::consts::ARCH,
+            "protocolVersion": host_protocol::PROTOCOL_VERSION,
+            "processId": std::process::id(),
+            "traceIdPresent": context.trace_id.is_some()
+        }]
+    });
+    SourceArtifact {
+        source: context.source,
+        item_count: 1,
+        value,
+        evidence: Vec::new(),
+    }
+}
+
+fn collect_logs(context: SourceCollectionContext<'_>) -> SourceArtifact {
+    unavailable_source(
+        context,
+        "host logs are not connected to a persisted log source",
+    )
+}
+
+fn collect_traces(context: SourceCollectionContext<'_>) -> SourceArtifact {
+    unavailable_source(
+        context,
+        "host traces are not connected to a persisted trace source",
+    )
+}
+
+fn collect_crash_reports(context: SourceCollectionContext<'_>) -> SourceArtifact {
+    unavailable_source(
+        context,
+        "host crash reports are not connected to a crash report store",
+    )
+}
+
+fn collect_extension_health(context: SourceCollectionContext<'_>) -> SourceArtifact {
+    unavailable_source(
+        context,
+        "extension health is unavailable because no extension runtime is connected",
+    )
+}
+
+fn collect_audit_events(context: SourceCollectionContext<'_>) -> SourceArtifact {
+    unavailable_source(
+        context,
+        "host audit events are not connected to a persisted audit event source",
+    )
+}
+
+fn unavailable_source(context: SourceCollectionContext<'_>, message: &str) -> SourceArtifact {
+    let unavailable = json!({
+        "reason": SOURCE_UNAVAILABLE_REASON,
+        "message": message,
+        "recoverable": false
+    });
+    let value = json!({
+        "source": source_key(context.source),
+        "collectedAt": context.collected_at,
+        "status": SOURCE_STATUS_UNAVAILABLE,
+        "items": [{
+            "kind": "source-unavailable",
+            "reason": SOURCE_UNAVAILABLE_REASON,
+            "message": message,
+            "recoverable": false
+        }],
+        "unavailable": unavailable,
+        "traceIdPresent": context.trace_id.is_some()
+    });
+    SourceArtifact {
+        source: context.source,
+        item_count: 1,
+        value,
+        evidence: Vec::new(),
+    }
+}
+
+fn redacted_source_artifact(
+    source: DiagnosticsBundleSourceKind,
+    collected_at: u64,
+    payload: Value,
+) -> Value {
+    json!({
+        "source": source_key(source),
+        "collectedAt": collected_at,
+        "status": SOURCE_STATUS_COLLECTED,
+        "items": [payload]
+    })
 }
 
 fn redaction_policy(
@@ -363,7 +513,7 @@ fn redact_value_at(
                 })
                 .collect(),
         ),
-        Value::String(value) if key_is_secret || value == "secret" => {
+        Value::String(value) if key_is_secret || is_secret_value(&value) => {
             evidence.push(DiagnosticsBundleRedactionEvidencePayload::new(
                 "<redacted-path>",
                 "secret-pattern",
@@ -401,6 +551,15 @@ fn is_secret_key(key: &str) -> bool {
     ]
     .iter()
     .any(|needle| key.contains(needle))
+}
+
+fn is_secret_value(value: &str) -> bool {
+    let value = value.to_ascii_lowercase();
+    value == "secret"
+        || value.starts_with("bearer ")
+        || value.starts_with("sk-")
+        || value.contains("api_key=")
+        || value.contains("token=")
 }
 
 fn source_key(source: DiagnosticsBundleSourceKind) -> String {
@@ -540,6 +699,124 @@ mod tests {
         let body = fs::read_to_string(path).expect("bundle file should exist");
         let parsed: Value = serde_json::from_str(&body).expect("bundle should be JSON");
         assert_eq!(parsed["bundleId"], bundle_id);
+        assert_eq!(parsed["artifacts"]["host-state"]["status"], "collected");
+        assert_eq!(
+            parsed["artifacts"]["host-state"]["items"][0]["protocolVersion"],
+            host_protocol::PROTOCOL_VERSION
+        );
+    }
+
+    #[test]
+    fn write_persists_explicit_unavailable_records_for_unconnected_sources() {
+        let bundle_id = "bundle-rust-unavailable-sources";
+        collect(Some(json!({
+            "bundleId": bundle_id,
+            "sources": ["logs", "traces", "crash-reports", "extension-health", "audit-events"],
+            "traceId": "trace-unavailable"
+        })))
+        .expect("collect should succeed");
+        let path = temp_path("diagnostics-unavailable.json");
+
+        write(Some(json!({
+            "bundleId": bundle_id,
+            "destinationPath": path.to_string_lossy()
+        })))
+        .expect("write should succeed");
+
+        let body = fs::read_to_string(path).expect("bundle file should exist");
+        assert!(
+            !body.contains("metadata-only"),
+            "source records must not use placeholder metadata"
+        );
+        let parsed: Value = serde_json::from_str(&body).expect("bundle should be JSON");
+        for source in [
+            "logs",
+            "traces",
+            "crash-reports",
+            "extension-health",
+            "audit-events",
+        ] {
+            let artifact = &parsed["artifacts"][source];
+            assert_eq!(artifact["status"], "unavailable");
+            assert_eq!(artifact["unavailable"]["reason"], "collector-unavailable");
+            assert_eq!(artifact["unavailable"]["recoverable"], false);
+            assert_eq!(artifact["items"].as_array().expect("items array").len(), 1);
+            assert_eq!(artifact["items"][0]["kind"], "source-unavailable");
+            assert_eq!(artifact["traceIdPresent"], true);
+        }
+    }
+
+    #[test]
+    fn default_collect_writes_all_sources_as_collected_or_unavailable() {
+        let bundle_id = "bundle-rust-default-sources";
+        collect(Some(json!({ "bundleId": bundle_id }))).expect("collect should succeed");
+        let path = temp_path("diagnostics-default.json");
+
+        write(Some(json!({
+            "bundleId": bundle_id,
+            "destinationPath": path.to_string_lossy()
+        })))
+        .expect("write should succeed");
+
+        let body = fs::read_to_string(path).expect("bundle file should exist");
+        let parsed: Value = serde_json::from_str(&body).expect("bundle should be JSON");
+        for source in [
+            "logs",
+            "traces",
+            "crash-reports",
+            "host-state",
+            "extension-health",
+            "audit-events",
+        ] {
+            let status = parsed["artifacts"][source]["status"]
+                .as_str()
+                .expect("source status");
+            assert!(
+                matches!(status, "collected" | "unavailable"),
+                "unexpected status {status} for {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn write_uses_redacted_source_payload_without_secret_values() {
+        let bundle_id = "bundle-rust-redacted-write";
+        collect(Some(json!({ "bundleId": bundle_id, "sources": ["logs"] })))
+            .expect("collect should succeed");
+        redact(Some(json!({
+            "bundleId": bundle_id,
+            "source": "logs",
+            "payload": {
+                "apiKey": "secret",
+                "message": "Bearer sk-live-token",
+                "safe": "ok"
+            }
+        })))
+        .expect("redact should succeed");
+        let path = temp_path("diagnostics-redacted.json");
+
+        write(Some(json!({
+            "bundleId": bundle_id,
+            "destinationPath": path.to_string_lossy()
+        })))
+        .expect("write should succeed");
+
+        let body = fs::read_to_string(path).expect("bundle file should exist");
+        assert!(!body.contains("\"secret\""));
+        assert!(!body.contains("Bearer"));
+        assert!(!body.contains("sk-live-token"));
+        assert!(body.contains("<redacted:redacted>"));
+        let parsed: Value = serde_json::from_str(&body).expect("bundle should be JSON");
+        let logs = &parsed["artifacts"]["logs"];
+        assert_eq!(logs["source"], "logs");
+        assert_eq!(logs["status"], "collected");
+        assert_eq!(logs["items"][0]["apiKey"], "<redacted:redacted>");
+        assert_eq!(logs["items"][0]["message"], "<redacted:redacted>");
+        assert_eq!(logs["items"][0]["safe"], "ok");
+        assert_eq!(
+            parsed["sources"][0]["redactionPolicy"]["evidence"][0]["reason"],
+            "secret-pattern"
+        );
     }
 
     #[test]

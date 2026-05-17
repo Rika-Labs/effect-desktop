@@ -964,6 +964,63 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_bundle_router_collect_write_persists_source_records() {
+        let router = test_router();
+        let bundle_id = "bundle-router-write";
+        let dir = unique_temp_dir("diagnostics-router-write");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let path = dir.join("diagnostics.json");
+
+        let collect = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-diagnostics-router-real-collect",
+                    host_protocol::DIAGNOSTICS_BUNDLE_COLLECT_METHOD,
+                    serde_json::json!({
+                        "bundleId": bundle_id,
+                        "sources": ["host-state", "logs"],
+                        "traceId": "trace-diagnostics-router"
+                    }),
+                ),
+                1710000000119,
+            )
+            .expect("diagnostics collect should return response");
+        assert!(matches!(
+            collect,
+            HostProtocolEnvelope::Response { error: None, .. }
+        ));
+
+        let write = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-diagnostics-router-real-write",
+                    host_protocol::DIAGNOSTICS_BUNDLE_WRITE_METHOD,
+                    serde_json::json!({
+                        "bundleId": bundle_id,
+                        "destinationPath": path.to_string_lossy()
+                    }),
+                ),
+                1710000000120,
+            )
+            .expect("diagnostics write should return response");
+        assert!(matches!(
+            write,
+            HostProtocolEnvelope::Response { error: None, .. }
+        ));
+
+        let body = fs::read_to_string(path).expect("bundle file should exist");
+        assert!(!body.contains("metadata-only"));
+        let parsed: serde_json::Value = serde_json::from_str(&body).expect("bundle should be JSON");
+        assert_eq!(parsed["bundleId"], bundle_id);
+        assert_eq!(parsed["artifacts"]["host-state"]["status"], "collected");
+        assert_eq!(parsed["artifacts"]["logs"]["status"], "unavailable");
+        assert_eq!(
+            parsed["artifacts"]["logs"]["unavailable"]["reason"],
+            "collector-unavailable"
+        );
+    }
+
+    #[test]
     fn egress_policy_decide_routes_to_host_adapter() {
         let response = test_router()
             .dispatch_at(
