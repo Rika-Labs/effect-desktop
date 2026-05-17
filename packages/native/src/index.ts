@@ -1,4 +1,27 @@
 export {
+  ActivationRegistry,
+  ActivationRegistryClient,
+  ActivationRegistryHandlersLive,
+  ActivationRegistryLive,
+  ActivationRegistryMethodNames,
+  ActivationRegistryRpcEvents,
+  ActivationRegistryRpcs,
+  ActivationRegistrySurface,
+  makeActivationRegistryBridgeClientLayer,
+  makeActivationRegistryClientLayer,
+  makeActivationRegistryMemoryClient,
+  makeActivationRegistryServiceLayer,
+  makeActivationRegistryUnsupportedClient,
+  makeHostActivationRegistryRpcRuntime,
+  type ActivationRegistryClientApi,
+  type ActivationRegistryError,
+  type ActivationRegistryMemoryClientOptions,
+  type ActivationRegistryRpc,
+  type ActivationRegistryRpcHandlers,
+  type ActivationRegistryServiceApi,
+  type ActivationRegistryServiceOptions
+} from "./activation-registry.js"
+export {
   App,
   AppClient,
   AppHandlersLive,

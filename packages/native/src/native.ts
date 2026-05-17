@@ -4,6 +4,7 @@ import {
   type AnyDesktopNativeRegistration
 } from "@effect-desktop/core"
 
+import { ActivationRegistrySurface } from "./activation-registry.js"
 import { AppSurface } from "./app.js"
 import { AttachmentIntakeSurface } from "./attachment-intake.js"
 import { ClipboardSurface } from "./clipboard.js"
@@ -42,6 +43,7 @@ import { WindowSurface } from "./window.js"
 import type { NativeSurfaceSelection } from "./native-surface.js"
 
 const BuiltInSurfaces = Object.freeze([
+  ActivationRegistrySurface,
   AppSurface,
   AttachmentIntakeSurface,
   ClipboardSurface,
@@ -87,6 +89,7 @@ export const available = (...selections: readonly NativeSurfaceSelection[]): Des
   Desktop.native(...selections)
 
 const App = AppSurface.selection
+const ActivationRegistry = ActivationRegistrySurface.selection
 const AttachmentIntake = AttachmentIntakeSurface.selection
 const Clipboard = ClipboardSurface.selection
 const ContextMenu = ContextMenuSurface.selection
@@ -130,6 +133,7 @@ export const all: NativeSurfaceSelection = Object.freeze({
 const permissionAll = Object.freeze(BuiltInSurfaces.flatMap((surface) => surface.permissions.all))
 
 export const Permissions = Object.freeze({
+  activationRegistry: ActivationRegistrySurface.permissions,
   app: AppSurface.permissions,
   attachmentIntake: AttachmentIntakeSurface.permissions,
   clipboard: ClipboardSurface.permissions,
@@ -169,6 +173,7 @@ export const Permissions = Object.freeze({
 })
 
 export const Native = Object.freeze({
+  ActivationRegistry,
   App,
   AttachmentIntake,
   Clipboard,

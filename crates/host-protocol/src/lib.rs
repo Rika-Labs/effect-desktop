@@ -73,6 +73,12 @@ pub const TRANSIENT_WINDOW_ROLE_REPOSITION_METHOD: &str = "TransientWindowRole.r
 pub const TRANSIENT_WINDOW_ROLE_DISMISS_METHOD: &str = "TransientWindowRole.dismiss";
 pub const TRANSIENT_WINDOW_ROLE_IS_SUPPORTED_METHOD: &str = "TransientWindowRole.isSupported";
 pub const TRANSIENT_WINDOW_ROLE_EVENT: &str = "TransientWindowRole.Event";
+pub const ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD: &str = "ActivationRegistry.registerSurface";
+pub const ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD: &str =
+    "ActivationRegistry.unregisterSurface";
+pub const ACTIVATION_REGISTRY_LIST_SURFACES_METHOD: &str = "ActivationRegistry.listSurfaces";
+pub const ACTIVATION_REGISTRY_IS_SUPPORTED_METHOD: &str = "ActivationRegistry.isSupported";
+pub const ACTIVATION_REGISTRY_EVENT: &str = "ActivationRegistry.Event";
 pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
@@ -133,6 +139,7 @@ pub const SELECTION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-unimplement
 pub const FOCUSED_APPLICATION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const DISPLAY_CAPTURE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const ACTIVATION_REGISTRY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -2347,6 +2354,260 @@ impl TransientWindowRoleEventPayload {
             role_id: None,
             reason: None,
             message: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ActivationRegistryActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ActivationRegistrySource {
+    GlobalShortcut,
+    Tray,
+    Dock,
+    Taskbar,
+    ProtocolLink,
+    FileOpen,
+    Notification,
+    Custom,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivationRegistryActorPayload {
+    kind: ActivationRegistryActorKind,
+    id: String,
+}
+
+impl ActivationRegistryActorPayload {
+    pub fn new(kind: ActivationRegistryActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivationRegistryPermissionContextPayload {
+    actor: ActivationRegistryActorPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resource: Option<String>,
+    trace_id: String,
+}
+
+impl ActivationRegistryPermissionContextPayload {
+    pub fn new(actor: ActivationRegistryActorPayload, trace_id: impl Into<String>) -> Self {
+        Self {
+            actor,
+            resource: None,
+            trace_id: trace_id.into(),
+        }
+    }
+
+    pub fn actor(&self) -> &ActivationRegistryActorPayload {
+        &self.actor
+    }
+
+    pub fn resource(&self) -> Option<&str> {
+        self.resource.as_deref()
+    }
+
+    pub fn trace_id(&self) -> &str {
+        &self.trace_id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivationRegistrySurfacePayload {
+    surface_id: String,
+    source: ActivationRegistrySource,
+    command_id: String,
+    actor: ActivationRegistryActorPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ActivationRegistrySurfacePayload {
+    pub fn new(
+        surface_id: impl Into<String>,
+        source: ActivationRegistrySource,
+        command_id: impl Into<String>,
+        actor: ActivationRegistryActorPayload,
+    ) -> Self {
+        Self {
+            surface_id: surface_id.into(),
+            source,
+            command_id: command_id.into(),
+            actor,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn surface_id(&self) -> &str {
+        &self.surface_id
+    }
+
+    pub fn command_id(&self) -> &str {
+        &self.command_id
+    }
+
+    pub fn actor(&self) -> &ActivationRegistryActorPayload {
+        &self.actor
+    }
+
+    pub fn owner_scope(&self) -> Option<&str> {
+        self.owner_scope.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivationRegistrySurfaceRequestPayload {
+    surface_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ActivationRegistrySurfaceRequestPayload {
+    pub fn new(surface_id: impl Into<String>) -> Self {
+        Self {
+            surface_id: surface_id.into(),
+            trace_id: None,
+        }
+    }
+
+    pub fn surface_id(&self) -> &str {
+        &self.surface_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivationRegistryResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl ActivationRegistryResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "activation-surface".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "registered".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivationRegistrySurfaceListPayload {
+    surfaces: Vec<ActivationRegistrySurfacePayload>,
+}
+
+impl ActivationRegistrySurfaceListPayload {
+    pub fn empty() -> Self {
+        Self { surfaces: vec![] }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivationRegistrySupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ActivationRegistrySupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ActivationRegistryEventPhase {
+    Registered,
+    Routed,
+    Unregistered,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivationRegistryEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: ActivationRegistryEventPhase,
+    surface_id: String,
+    source: ActivationRegistrySource,
+    payload: Value,
+    actor: ActivationRegistryActorPayload,
+    trace_id: String,
+    permission_context: ActivationRegistryPermissionContextPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ActivationRegistryEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: ActivationRegistryEventPhase,
+        surface_id: impl Into<String>,
+        source: ActivationRegistrySource,
+        actor: ActivationRegistryActorPayload,
+        permission_context: ActivationRegistryPermissionContextPayload,
+    ) -> Self {
+        let trace_id = permission_context.trace_id().to_string();
+        let surface_id = surface_id.into();
+        Self {
+            r#type: "activation-registry-event".to_string(),
+            timestamp,
+            phase,
+            surface_id: surface_id.clone(),
+            source,
+            payload: serde_json::json!({ "surfaceId": surface_id }),
+            actor,
+            trace_id,
+            permission_context,
+            reason: None,
         }
     }
 }
@@ -6914,6 +7175,10 @@ fn validate_optional_host_identity(value: Option<String>) -> Result<Option<Strin
 #[cfg(test)]
 mod tests {
     use super::{
+        ActivationRegistryActorKind, ActivationRegistryActorPayload,
+        ActivationRegistryEventPayload, ActivationRegistryEventPhase,
+        ActivationRegistryPermissionContextPayload, ActivationRegistrySource,
+        ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload,
         DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
         DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
         DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
@@ -6987,7 +7252,8 @@ mod tests {
         WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
         WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
-        WorkspaceIndexSupportedPayload, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
+        WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
+        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, DISPLAY_CAPTURE_UNSUPPORTED_REASON,
         EGRESS_POLICY_UNSUPPORTED_REASON, EXECUTION_SANDBOX_UNSUPPORTED_REASON,
         EXTENSION_CONFIG_UNSUPPORTED_REASON, EXTENSION_PACKAGE_UNSUPPORTED_REASON,
@@ -7577,6 +7843,47 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn activation_registry_payloads_serialize_canonically() {
+        let actor = ActivationRegistryActorPayload::new(
+            ActivationRegistryActorKind::Workspace,
+            "workspace-1",
+        );
+        let surface = ActivationRegistrySurfacePayload::new(
+            "palette",
+            ActivationRegistrySource::GlobalShortcut,
+            "activation.open",
+            actor.clone(),
+        );
+        let permission_context =
+            ActivationRegistryPermissionContextPayload::new(actor.clone(), "trace-1");
+        let event = ActivationRegistryEventPayload::new(
+            1710000000000,
+            ActivationRegistryEventPhase::Routed,
+            "palette",
+            ActivationRegistrySource::GlobalShortcut,
+            actor,
+            permission_context,
+        );
+        let supported =
+            ActivationRegistrySupportedPayload::unsupported(ACTIVATION_REGISTRY_UNSUPPORTED_REASON);
+
+        assert_eq!(surface.surface_id(), "palette");
+        assert_eq!(surface.command_id(), "activation.open");
+        assert_eq!(
+            serde_json::to_string(&surface).expect("activation surface should encode"),
+            r#"{"surfaceId":"palette","source":"global-shortcut","commandId":"activation.open","actor":{"kind":"workspace","id":"workspace-1"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("activation event should encode"),
+            r#"{"type":"activation-registry-event","timestamp":1710000000000,"phase":"routed","surfaceId":"palette","source":"global-shortcut","payload":{"surfaceId":"palette"},"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1","permissionContext":{"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("activation support should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
     }

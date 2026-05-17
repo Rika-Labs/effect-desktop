@@ -1,3 +1,4 @@
+mod activation_registry;
 mod attachment_intake;
 mod diagnostics_bundle;
 mod display_capture;
@@ -467,6 +468,18 @@ impl HostMethodRouter {
             }
             host_protocol::TRANSIENT_WINDOW_ROLE_IS_SUPPORTED_METHOD => {
                 transient_window_role::is_supported()
+            }
+            host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD => {
+                activation_registry::register_surface(payload)
+            }
+            host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD => {
+                activation_registry::unregister_surface(payload)
+            }
+            host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD => {
+                activation_registry::list_surfaces()
+            }
+            host_protocol::ACTIVATION_REGISTRY_IS_SUPPORTED_METHOD => {
+                activation_registry::is_supported()
             }
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
@@ -1190,6 +1203,102 @@ mod tests {
             };
             assert!(matches!(error, Some(HostProtocolError::Unsupported { .. })));
         }
+    }
+
+    #[test]
+    fn activation_registry_support_dispatches_through_router() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-activation-registry-supported",
+                    host_protocol::ACTIVATION_REGISTRY_IS_SUPPORTED_METHOD,
+                ),
+                1710000000107,
+            )
+            .expect("activation registry support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-activation-registry-supported".to_string(),
+                timestamp: 1710000000107,
+                trace_id: "trace-request-activation-registry-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::ACTIVATION_REGISTRY_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn activation_registry_methods_dispatch_through_router() {
+        let cases = [
+            (
+                "request-activation-registry-register",
+                host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
+                Some(serde_json::json!({
+                    "surfaceId": "palette",
+                    "source": "global-shortcut",
+                    "commandId": "activation.open",
+                    "actor": { "kind": "workspace", "id": "workspace-1" },
+                    "traceId": "trace-1"
+                })),
+            ),
+            (
+                "request-activation-registry-unregister",
+                host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD,
+                Some(serde_json::json!({ "surfaceId": "palette" })),
+            ),
+            (
+                "request-activation-registry-list",
+                host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD,
+                None,
+            ),
+        ];
+
+        for (id, method, payload) in cases {
+            let request = match payload {
+                Some(payload) => request_with_payload(id, method, payload),
+                None => request(id, method),
+            };
+            let response = test_router()
+                .dispatch_at(request, 1710000000108)
+                .expect("activation registry request should return response");
+
+            let HostProtocolEnvelope::Response { error, .. } = response else {
+                panic!("activation registry request should return response");
+            };
+            assert!(matches!(error, Some(HostProtocolError::Unsupported { .. })));
+        }
+    }
+
+    #[test]
+    fn activation_registry_rejects_malformed_before_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-activation-registry-invalid",
+                    host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
+                    serde_json::json!({
+                        "surfaceId": "palette\u{0}",
+                        "source": "global-shortcut",
+                        "commandId": "activation.open",
+                        "actor": { "kind": "workspace", "id": "workspace-1" }
+                    }),
+                ),
+                1710000000109,
+            )
+            .expect("activation registry invalid request should return response");
+
+        let HostProtocolEnvelope::Response { error, .. } = response else {
+            panic!("activation registry invalid request should return response");
+        };
+        assert!(matches!(
+            error,
+            Some(HostProtocolError::InvalidArgument { .. })
+        ));
     }
 
     #[test]
