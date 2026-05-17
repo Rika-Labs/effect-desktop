@@ -15,6 +15,7 @@ import { ExecutionSandboxSurface } from "./execution-sandbox.js"
 import { ExtensionConfigSurface } from "./extension-config.js"
 import { ExtensionPackageSurface } from "./extension-package.js"
 import { LocalToolRuntimeSurface } from "./local-tool-runtime.js"
+import { WorkspaceIndexSurface } from "./workspace-index.js"
 import { DockSurface } from "./dock.js"
 import { GlobalShortcutSurface } from "./global-shortcut.js"
 import { MenuSurface } from "./menu.js"
@@ -45,6 +46,7 @@ const BuiltInSurfaces = Object.freeze([
   ExtensionConfigSurface,
   ExtensionPackageSurface,
   LocalToolRuntimeSurface,
+  WorkspaceIndexSurface,
   DockSurface,
   GlobalShortcutSurface,
   MenuSurface,
@@ -81,6 +83,7 @@ const ExecutionSandbox = ExecutionSandboxSurface.selection
 const ExtensionConfig = ExtensionConfigSurface.selection
 const ExtensionPackage = ExtensionPackageSurface.selection
 const LocalToolRuntime = LocalToolRuntimeSurface.selection
+const WorkspaceIndex = WorkspaceIndexSurface.selection
 const Dock = DockSurface.selection
 const GlobalShortcut = GlobalShortcutSurface.selection
 const Menu = MenuSurface.selection
@@ -117,6 +120,7 @@ export const Permissions = Object.freeze({
   extensionConfig: ExtensionConfigSurface.permissions,
   extensionPackage: ExtensionPackageSurface.permissions,
   localToolRuntime: LocalToolRuntimeSurface.permissions,
+  workspaceIndex: WorkspaceIndexSurface.permissions,
   dock: DockSurface.permissions,
   globalShortcut: GlobalShortcutSurface.permissions,
   menu: MenuSurface.permissions,
@@ -148,6 +152,7 @@ export const Native = Object.freeze({
   ExtensionConfig,
   ExtensionPackage,
   LocalToolRuntime,
+  WorkspaceIndex,
   Dock,
   GlobalShortcut,
   Menu,

@@ -72,6 +72,11 @@ pub const LOCAL_TOOL_RUNTIME_STOP_METHOD: &str = "LocalToolRuntime.stop";
 pub const LOCAL_TOOL_RUNTIME_HEALTH_METHOD: &str = "LocalToolRuntime.health";
 pub const LOCAL_TOOL_RUNTIME_IS_SUPPORTED_METHOD: &str = "LocalToolRuntime.isSupported";
 pub const LOCAL_TOOL_RUNTIME_EVENT: &str = "LocalToolRuntime.Event";
+pub const WORKSPACE_INDEX_OPEN_METHOD: &str = "WorkspaceIndex.open";
+pub const WORKSPACE_INDEX_REFRESH_METHOD: &str = "WorkspaceIndex.refresh";
+pub const WORKSPACE_INDEX_CLOSE_METHOD: &str = "WorkspaceIndex.close";
+pub const WORKSPACE_INDEX_IS_SUPPORTED_METHOD: &str = "WorkspaceIndex.isSupported";
+pub const WORKSPACE_INDEX_EVENT: &str = "WorkspaceIndex.Event";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
@@ -87,6 +92,11 @@ pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplement
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_PACKAGE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -2411,6 +2421,349 @@ impl LocalToolRuntimeEventPayload {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum WorkspaceIndexActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspaceIndexState {
+    Opened,
+    Refreshing,
+    Closed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkspaceIndexEventPhase {
+    Opened,
+    RefreshStarted,
+    EntryIndexed,
+    EntryInvalidated,
+    RefreshCompleted,
+    Closed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexActorPayload {
+    kind: WorkspaceIndexActorKind,
+    id: String,
+}
+
+impl WorkspaceIndexActorPayload {
+    pub fn new(kind: WorkspaceIndexActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexIgnoreRulePayload {
+    pattern: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl WorkspaceIndexIgnoreRulePayload {
+    pub fn new(pattern: impl Into<String>, reason: Option<String>) -> Self {
+        Self {
+            pattern: pattern.into(),
+            reason,
+        }
+    }
+
+    pub fn pattern(&self) -> &str {
+        &self.pattern
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexScopePayload {
+    root: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ignore_rules: Vec<WorkspaceIndexIgnoreRulePayload>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    grants: Vec<serde_json::Value>,
+    #[serde(default = "default_true")]
+    watch: bool,
+}
+
+impl WorkspaceIndexScopePayload {
+    pub fn new(
+        root: impl Into<String>,
+        ignore_rules: Vec<WorkspaceIndexIgnoreRulePayload>,
+        grants: Vec<serde_json::Value>,
+        watch: bool,
+    ) -> Self {
+        Self {
+            root: root.into(),
+            ignore_rules,
+            grants,
+            watch,
+        }
+    }
+
+    pub fn root(&self) -> &str {
+        &self.root
+    }
+
+    pub fn ignore_rules(&self) -> &[WorkspaceIndexIgnoreRulePayload] {
+        &self.ignore_rules
+    }
+
+    pub fn grants(&self) -> &[serde_json::Value] {
+        &self.grants
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexOpenPayload {
+    actor: WorkspaceIndexActorPayload,
+    scope: WorkspaceIndexScopePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    index_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl WorkspaceIndexOpenPayload {
+    pub fn new(
+        actor: WorkspaceIndexActorPayload,
+        scope: WorkspaceIndexScopePayload,
+        index_id: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            scope,
+            index_id,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &WorkspaceIndexActorPayload {
+        &self.actor
+    }
+
+    pub fn scope(&self) -> &WorkspaceIndexScopePayload {
+        &self.scope
+    }
+
+    pub fn index_id(&self) -> Option<&str> {
+        self.index_id.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexOpenResultPayload {
+    index_id: String,
+    root: String,
+    state: WorkspaceIndexState,
+}
+
+impl WorkspaceIndexOpenResultPayload {
+    pub fn opened(index_id: impl Into<String>, root: impl Into<String>) -> Self {
+        Self {
+            index_id: index_id.into(),
+            root: root.into(),
+            state: WorkspaceIndexState::Opened,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexRefreshPayload {
+    index_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    changed_paths: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl WorkspaceIndexRefreshPayload {
+    pub fn new(
+        index_id: impl Into<String>,
+        changed_paths: Vec<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            index_id: index_id.into(),
+            changed_paths,
+            trace_id,
+        }
+    }
+
+    pub fn index_id(&self) -> &str {
+        &self.index_id
+    }
+
+    pub fn changed_paths(&self) -> &[String] {
+        &self.changed_paths
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexRefreshResultPayload {
+    index_id: String,
+    state: WorkspaceIndexState,
+    indexed: u64,
+    invalidated: u64,
+    ignored: u64,
+}
+
+impl WorkspaceIndexRefreshResultPayload {
+    pub fn new(
+        index_id: impl Into<String>,
+        state: WorkspaceIndexState,
+        indexed: u64,
+        invalidated: u64,
+        ignored: u64,
+    ) -> Self {
+        Self {
+            index_id: index_id.into(),
+            state,
+            indexed,
+            invalidated,
+            ignored,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexClosePayload {
+    index_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl WorkspaceIndexClosePayload {
+    pub fn new(index_id: impl Into<String>, trace_id: Option<String>) -> Self {
+        Self {
+            index_id: index_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn index_id(&self) -> &str {
+        &self.index_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexCloseResultPayload {
+    index_id: String,
+    closed: bool,
+}
+
+impl WorkspaceIndexCloseResultPayload {
+    pub fn closed(index_id: impl Into<String>) -> Self {
+        Self {
+            index_id: index_id.into(),
+            closed: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl WorkspaceIndexSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceIndexEventPayload {
+    r#type: String,
+    timestamp: u64,
+    index_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    phase: WorkspaceIndexEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<WorkspaceIndexState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    indexed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    invalidated: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ignored: Option<u64>,
+}
+
+impl WorkspaceIndexEventPayload {
+    pub fn new(
+        timestamp: u64,
+        index_id: impl Into<String>,
+        phase: WorkspaceIndexEventPhase,
+    ) -> Self {
+        Self {
+            r#type: "workspace-index-event".to_string(),
+            timestamp,
+            index_id: index_id.into(),
+            root: None,
+            path: None,
+            phase,
+            state: None,
+            indexed: None,
+            invalidated: None,
+            ignored: None,
+        }
+    }
+
+    pub fn with_root(mut self, root: impl Into<String>, state: WorkspaceIndexState) -> Self {
+        self.root = Some(root.into());
+        self.state = Some(state);
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ExtensionConfigActorKind {
     Workspace,
     Extension,
@@ -3934,13 +4287,17 @@ mod tests {
         RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
         RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
         RendererResumedPayload, ResumeTicket, WindowCreatePayload, WindowCreateResponse,
-        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights,
-        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
+        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
+        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
+        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
+        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
+        WorkspaceIndexSupportedPayload, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
         EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
         EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS,
         LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
-        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
+        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -4902,6 +5259,102 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&empty_policy).expect("empty policy should encode"),
             r#"{"cwd":{"roots":["/tmp/app"]},"environment":{},"filesystem":{},"network":{},"budgets":{"cpuMillis":500,"memoryBytes":67108864,"wallClockMillis":1000,"stdoutBytes":1024,"stderrBytes":1024},"stdio":{"stdout":"capture","stderr":"capture"},"cleanup":{"killProcessTree":true,"removeWorkingDirectory":true}}"#
+        );
+    }
+
+    #[test]
+    fn workspace_index_payloads_serialize_canonically() {
+        let actor =
+            WorkspaceIndexActorPayload::new(WorkspaceIndexActorKind::Workspace, "workspace-1");
+        let grant = serde_json::json!({
+            "kind": "filesystem.read",
+            "roots": ["/workspace/app"],
+            "audit": "always"
+        });
+        let scope = WorkspaceIndexScopePayload::new(
+            "/workspace/app",
+            vec![WorkspaceIndexIgnoreRulePayload::new(
+                "node_modules/**",
+                Some("dependencies".to_string()),
+            )],
+            vec![grant],
+            true,
+        );
+        let open = WorkspaceIndexOpenPayload::new(
+            actor,
+            scope,
+            Some("workspace-index-1".to_string()),
+            Some("trace-open".to_string()),
+        );
+
+        assert_eq!(
+            serde_json::to_string(&open).expect("open payload should encode"),
+            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"scope":{"root":"/workspace/app","ignoreRules":[{"pattern":"node_modules/**","reason":"dependencies"}],"grants":[{"audit":"always","kind":"filesystem.read","roots":["/workspace/app"]}],"watch":true},"indexId":"workspace-index-1","traceId":"trace-open"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&WorkspaceIndexOpenResultPayload::opened(
+                "workspace-index-1",
+                "/workspace/app",
+            ))
+            .expect("open result should encode"),
+            r#"{"indexId":"workspace-index-1","root":"/workspace/app","state":"opened"}"#
+        );
+
+        let refresh = WorkspaceIndexRefreshPayload::new(
+            "workspace-index-1",
+            vec!["/workspace/app/src/main.ts".to_string()],
+            Some("trace-refresh".to_string()),
+        );
+        assert_eq!(
+            serde_json::to_string(&refresh).expect("refresh payload should encode"),
+            r#"{"indexId":"workspace-index-1","changedPaths":["/workspace/app/src/main.ts"],"traceId":"trace-refresh"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&WorkspaceIndexRefreshResultPayload::new(
+                "workspace-index-1",
+                WorkspaceIndexState::Opened,
+                1,
+                2,
+                3,
+            ))
+            .expect("refresh result should encode"),
+            r#"{"indexId":"workspace-index-1","state":"opened","indexed":1,"invalidated":2,"ignored":3}"#
+        );
+
+        let close =
+            WorkspaceIndexClosePayload::new("workspace-index-1", Some("trace-close".to_string()));
+        assert_eq!(
+            serde_json::to_string(&close).expect("close payload should encode"),
+            r#"{"indexId":"workspace-index-1","traceId":"trace-close"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&WorkspaceIndexCloseResultPayload::closed(
+                "workspace-index-1",
+            ))
+            .expect("close result should encode"),
+            r#"{"indexId":"workspace-index-1","closed":true}"#
+        );
+
+        let event = WorkspaceIndexEventPayload::new(
+            1_710_000_000_000,
+            "workspace-index-1",
+            WorkspaceIndexEventPhase::RefreshCompleted,
+        )
+        .with_root("/workspace/app", WorkspaceIndexState::Opened);
+        assert_eq!(
+            serde_json::to_string(&event).expect("event should encode"),
+            r#"{"type":"workspace-index-event","timestamp":1710000000000,"indexId":"workspace-index-1","root":"/workspace/app","phase":"refresh-completed","state":"opened"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&WorkspaceIndexSupportedPayload::unsupported(
+                WORKSPACE_INDEX_UNSUPPORTED_REASON,
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
     }
 

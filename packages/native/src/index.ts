@@ -267,6 +267,29 @@ export {
   type LocalToolRuntimeServiceOptions
 } from "./local-tool-runtime.js"
 export {
+  WorkspaceIndex,
+  WorkspaceIndexClient,
+  WorkspaceIndexHandlersLive,
+  WorkspaceIndexLive,
+  WorkspaceIndexMethodNames,
+  WorkspaceIndexRpcEvents,
+  WorkspaceIndexRpcs,
+  WorkspaceIndexSurface,
+  makeHostWorkspaceIndexRpcRuntime,
+  makeWorkspaceIndexBridgeClientLayer,
+  makeWorkspaceIndexClientLayer,
+  makeWorkspaceIndexMemoryClient,
+  makeWorkspaceIndexServiceLayer,
+  makeWorkspaceIndexUnsupportedClient,
+  type WorkspaceIndexClientApi,
+  type WorkspaceIndexError,
+  type WorkspaceIndexMemoryClientOptions,
+  type WorkspaceIndexRpc,
+  type WorkspaceIndexRpcHandlers,
+  type WorkspaceIndexServiceApi,
+  type WorkspaceIndexServiceOptions
+} from "./workspace-index.js"
+export {
   Dock,
   DockClient,
   DockHandlersLive,
