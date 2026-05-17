@@ -1400,29 +1400,16 @@ mod tests {
 
     #[test]
     fn extension_config_read_routes_response_and_native_event() {
-        let _guard = super::extension_config::EXTENSION_CONFIG_ENV_LOCK
-            .lock()
-            .expect("extension config env lock should not be poisoned");
-        let dir = unique_temp_dir("extension-config-read-route");
-        fs::create_dir_all(&dir).expect("temp dir should be created");
-        let store_path = dir.join("extension-config.json");
-        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE");
-        std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", &store_path);
-
-        let frames = test_router().dispatch_frames_at(
-            request_with_payload(
-                "request-extension-config-read",
-                host_protocol::EXTENSION_CONFIG_READ_METHOD,
-                extension_config_read_payload(),
-            ),
-            1710000000124,
-        );
-
-        match previous_store_path {
-            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", path),
-            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE"),
-        }
-        let _ = fs::remove_dir_all(dir);
+        let frames = with_extension_config_store("extension-config-read-route", || {
+            test_router().dispatch_frames_at(
+                request_with_payload(
+                    "request-extension-config-read",
+                    host_protocol::EXTENSION_CONFIG_READ_METHOD,
+                    extension_config_read_payload(),
+                ),
+                1710000000124,
+            )
+        });
 
         assert_eq!(
             frames,
@@ -1450,6 +1437,143 @@ mod tests {
                         "values": [{ "key": "theme", "value": "light" }],
                         "secrets": [{ "key": "apiKey", "present": false }],
                         "revision": 0
+                    })),
+                    error: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn extension_config_write_routes_response_and_native_event() {
+        let frames = with_extension_config_store("extension-config-write-route", || {
+            test_router().dispatch_frames_at(
+                request_with_payload(
+                    "request-extension-config-write",
+                    host_protocol::EXTENSION_CONFIG_WRITE_METHOD,
+                    extension_config_write_payload(),
+                ),
+                1710000000125,
+            )
+        });
+
+        assert_eq!(
+            frames,
+            vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::EXTENSION_CONFIG_EVENT.to_string(),
+                    timestamp: 1710000000125,
+                    trace_id: "trace-request-extension-config-write".to_string(),
+                    window_id: None,
+                    payload: Some(serde_json::json!({
+                        "type": "extension-config-event",
+                        "timestamp": 1_710_000_000_125_u64,
+                        "extensionId": "extension-1",
+                        "phase": "written",
+                        "keys": ["theme", "apiKey"],
+                        "revision": 1
+                    })),
+                },
+                HostProtocolEnvelope::Response {
+                    id: "request-extension-config-write".to_string(),
+                    timestamp: 1710000000125,
+                    trace_id: "trace-request-extension-config-write".to_string(),
+                    payload: Some(serde_json::json!({
+                        "extensionId": "extension-1",
+                        "writtenKeys": ["theme", "apiKey"],
+                        "revision": 1
+                    })),
+                    error: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn extension_config_reset_routes_response_and_native_event() {
+        let frames = with_extension_config_store("extension-config-reset-route", || {
+            test_router().dispatch_frames_at(
+                request_with_payload(
+                    "request-extension-config-reset",
+                    host_protocol::EXTENSION_CONFIG_RESET_METHOD,
+                    extension_config_reset_payload(),
+                ),
+                1710000000126,
+            )
+        });
+
+        assert_eq!(
+            frames,
+            vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::EXTENSION_CONFIG_EVENT.to_string(),
+                    timestamp: 1710000000126,
+                    trace_id: "trace-request-extension-config-reset".to_string(),
+                    window_id: None,
+                    payload: Some(serde_json::json!({
+                        "type": "extension-config-event",
+                        "timestamp": 1_710_000_000_126_u64,
+                        "extensionId": "extension-1",
+                        "phase": "reset",
+                        "keys": ["theme", "apiKey"],
+                        "revision": 1
+                    })),
+                },
+                HostProtocolEnvelope::Response {
+                    id: "request-extension-config-reset".to_string(),
+                    timestamp: 1710000000126,
+                    trace_id: "trace-request-extension-config-reset".to_string(),
+                    payload: Some(serde_json::json!({
+                        "extensionId": "extension-1",
+                        "resetKeys": ["theme", "apiKey"],
+                        "revision": 1
+                    })),
+                    error: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn extension_config_redact_routes_response_and_native_event() {
+        let frames = with_extension_config_store("extension-config-redact-route", || {
+            test_router().dispatch_frames_at(
+                request_with_payload(
+                    "request-extension-config-redact",
+                    host_protocol::EXTENSION_CONFIG_REDACT_METHOD,
+                    extension_config_read_payload(),
+                ),
+                1710000000127,
+            )
+        });
+
+        assert_eq!(
+            frames,
+            vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::EXTENSION_CONFIG_EVENT.to_string(),
+                    timestamp: 1710000000127,
+                    trace_id: "trace-request-extension-config-redact".to_string(),
+                    window_id: None,
+                    payload: Some(serde_json::json!({
+                        "type": "extension-config-event",
+                        "timestamp": 1_710_000_000_127_u64,
+                        "extensionId": "extension-1",
+                        "phase": "redacted",
+                        "keys": ["theme", "apiKey"]
+                    })),
+                },
+                HostProtocolEnvelope::Response {
+                    id: "request-extension-config-redact".to_string(),
+                    timestamp: 1710000000127,
+                    trace_id: "trace-request-extension-config-redact".to_string(),
+                    payload: Some(serde_json::json!({
+                        "extensionId": "extension-1",
+                        "values": [
+                            { "key": "theme", "value": "light" },
+                            { "key": "apiKey", "value": "<redacted:ExtensionConfigSecret>" }
+                        ],
+                        "redactions": [{ "key": "apiKey", "reason": "secret-field" }]
                     })),
                     error: None,
                 },
@@ -1493,30 +1617,17 @@ mod tests {
 
     #[test]
     fn extension_config_is_supported_reports_store_availability() {
-        let _guard = super::extension_config::EXTENSION_CONFIG_ENV_LOCK
-            .lock()
-            .expect("extension config env lock should not be poisoned");
-        let dir = unique_temp_dir("extension-config-supported-route");
-        fs::create_dir_all(&dir).expect("temp dir should be created");
-        let store_path = dir.join("extension-config.json");
-        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE");
-        std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", &store_path);
-
-        let response = test_router()
-            .dispatch_at(
-                request(
-                    "request-extension-config-supported",
-                    host_protocol::EXTENSION_CONFIG_IS_SUPPORTED_METHOD,
-                ),
-                1710000000126,
-            )
-            .expect("extension config support request should return response");
-
-        match previous_store_path {
-            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", path),
-            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE"),
-        }
-        let _ = fs::remove_dir_all(dir);
+        let response = with_extension_config_store("extension-config-supported-route", || {
+            test_router()
+                .dispatch_at(
+                    request(
+                        "request-extension-config-supported",
+                        host_protocol::EXTENSION_CONFIG_IS_SUPPORTED_METHOD,
+                    ),
+                    1710000000126,
+                )
+                .expect("extension config support request should return response")
+        });
 
         assert_eq!(
             response,
@@ -2003,6 +2114,61 @@ mod tests {
             ],
             "traceId": "trace-extension-config"
         })
+    }
+
+    fn extension_config_write_payload() -> serde_json::Value {
+        serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "extensionId": "extension-1",
+            "fields": [
+                {
+                    "key": "theme",
+                    "valueType": "string",
+                    "secret": false,
+                    "defaultValue": "light"
+                },
+                { "key": "apiKey", "valueType": "string", "secret": true }
+            ],
+            "values": [{ "key": "theme", "value": "dark" }],
+            "secretKeys": ["apiKey"],
+            "traceId": "trace-extension-config"
+        })
+    }
+
+    fn extension_config_reset_payload() -> serde_json::Value {
+        serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "extensionId": "extension-1",
+            "fields": [
+                {
+                    "key": "theme",
+                    "valueType": "string",
+                    "secret": false,
+                    "defaultValue": "light"
+                },
+                { "key": "apiKey", "valueType": "string", "secret": true }
+            ],
+            "keys": ["theme", "apiKey"],
+            "traceId": "trace-extension-config"
+        })
+    }
+
+    fn with_extension_config_store<T>(name: &str, test: impl FnOnce() -> T) -> T {
+        let _guard = super::extension_config::EXTENSION_CONFIG_ENV_LOCK
+            .lock()
+            .expect("extension config env lock should not be poisoned");
+        let dir = unique_temp_dir(name);
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let store_path = dir.join("extension-config.json");
+        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE");
+        std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", &store_path);
+        let result = test();
+        match previous_store_path {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE"),
+        }
+        let _ = fs::remove_dir_all(dir);
+        result
     }
 
     fn extension_package_install_payload() -> serde_json::Value {

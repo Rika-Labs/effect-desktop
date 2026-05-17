@@ -15,9 +15,19 @@ use host_protocol::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{to_value, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::HANDLE;
+#[cfg(windows)]
+use windows_sys::Win32::Storage::FileSystem::{LockFileEx, UnlockFileEx, LOCKFILE_EXCLUSIVE_LOCK};
+#[cfg(windows)]
+use windows_sys::Win32::System::IO::OVERLAPPED;
 
 const STORE_ENV: &str = "EFFECT_DESKTOP_EXTENSION_CONFIG_STORE";
 const STORE_DIR: &str = "effect-desktop";
@@ -347,6 +357,7 @@ fn read_store<T>(
         HostProtocolError::internal("extension config store lock poisoned", operation)
     })?;
     let path = store_path(operation)?;
+    let _store_lock = lock_store_file(&path, operation)?;
     let store = load_store(&path, operation)?;
     Ok(read(&store))
 }
@@ -359,6 +370,7 @@ fn update_store<T>(
         HostProtocolError::internal("extension config store lock poisoned", operation)
     })?;
     let path = store_path(operation)?;
+    let _store_lock = lock_store_file(&path, operation)?;
     let mut store = load_store(&path, operation)?;
     let result = update(&mut store);
     save_store(&path, &store, operation)?;
@@ -370,11 +382,9 @@ fn ensure_store_available(operation: &'static str) -> Result<(), HostProtocolErr
         HostProtocolError::internal("extension config store lock poisoned", operation)
     })?;
     let path = store_path(operation)?;
-    if path.exists() {
-        let _store = load_store(&path, operation)?;
-        return Ok(());
-    }
-    save_store(&path, &ConfigStore::default(), operation)
+    let _store_lock = lock_store_file(&path, operation)?;
+    let store = load_store(&path, operation)?;
+    save_store(&path, &store, operation)
 }
 
 fn load_store(path: &Path, operation: &'static str) -> Result<ConfigStore, HostProtocolError> {
@@ -431,6 +441,105 @@ fn temp_store_path(path: &Path) -> PathBuf {
         .and_then(|name| name.to_str())
         .unwrap_or(STORE_FILE);
     path.with_file_name(format!("{file_name}.{}.tmp", uuid::Uuid::new_v4()))
+}
+
+fn store_lock_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(STORE_FILE);
+    path.with_file_name(format!("{file_name}.lock"))
+}
+
+fn lock_store_file(
+    path: &Path,
+    operation: &'static str,
+) -> Result<StoreFileLockGuard, HostProtocolError> {
+    let lock_path = store_lock_path(path);
+    ensure_parent(&lock_path, operation)?;
+    let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|error| store_error("open lock file for", error, operation))?;
+    lock_file_exclusive(file, operation)
+}
+
+#[cfg(unix)]
+struct StoreFileLockGuard {
+    file: File,
+}
+
+#[cfg(unix)]
+fn lock_file_exclusive(
+    file: File,
+    operation: &'static str,
+) -> Result<StoreFileLockGuard, HostProtocolError> {
+    let status = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+    if status == 0 {
+        return Ok(StoreFileLockGuard { file });
+    }
+
+    Err(HostProtocolError::internal(
+        format!(
+            "failed to lock extension config store: {}",
+            std::io::Error::last_os_error()
+        ),
+        operation,
+    ))
+}
+
+#[cfg(unix)]
+impl Drop for StoreFileLockGuard {
+    fn drop(&mut self) {
+        let _ = unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) };
+    }
+}
+
+#[cfg(windows)]
+struct StoreFileLockGuard {
+    file: File,
+    overlapped: OVERLAPPED,
+}
+
+#[cfg(windows)]
+fn lock_file_exclusive(
+    file: File,
+    operation: &'static str,
+) -> Result<StoreFileLockGuard, HostProtocolError> {
+    let mut overlapped = unsafe { std::mem::zeroed::<OVERLAPPED>() };
+    let handle = file.as_raw_handle() as HANDLE;
+    let status = unsafe {
+        LockFileEx(
+            handle,
+            LOCKFILE_EXCLUSIVE_LOCK,
+            0,
+            u32::MAX,
+            u32::MAX,
+            &mut overlapped,
+        )
+    };
+    if status != 0 {
+        return Ok(StoreFileLockGuard { file, overlapped });
+    }
+
+    Err(HostProtocolError::internal(
+        format!(
+            "failed to lock extension config store: {}",
+            std::io::Error::last_os_error()
+        ),
+        operation,
+    ))
+}
+
+#[cfg(windows)]
+impl Drop for StoreFileLockGuard {
+    fn drop(&mut self) {
+        let handle = self.file.as_raw_handle() as HANDLE;
+        let _ = unsafe { UnlockFileEx(handle, 0, u32::MAX, u32::MAX, &mut self.overlapped) };
+    }
 }
 
 fn store_error(
@@ -709,7 +818,9 @@ fn validate_name(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_supported, read, redact, reset, write, ConfigStore, STORE_ENV};
+    use super::{
+        is_supported, read, redact, reset, write, ConfigStore, STORE_ENV, STORE_UNAVAILABLE_REASON,
+    };
     use host_protocol::HostProtocolError;
     use serde_json::json;
     use std::fs;
@@ -929,6 +1040,30 @@ mod tests {
 
             assert_eq!(payload, Some(json!({ "supported": true })));
         });
+    }
+
+    #[test]
+    fn is_supported_returns_false_when_store_path_is_not_writable_as_file() {
+        let _guard = super::EXTENSION_CONFIG_ENV_LOCK
+            .lock()
+            .expect("extension config env lock should not be poisoned");
+        let dir = unique_temp_dir("unsupported-directory");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let previous = std::env::var_os(STORE_ENV);
+        std::env::set_var(STORE_ENV, &dir);
+
+        let payload = is_supported().expect("support payload should encode");
+
+        restore_store_env(previous);
+        let _ = fs::remove_dir_all(dir);
+
+        assert_eq!(
+            payload,
+            Some(json!({
+                "supported": false,
+                "reason": STORE_UNAVAILABLE_REASON
+            }))
+        );
     }
 
     #[test]

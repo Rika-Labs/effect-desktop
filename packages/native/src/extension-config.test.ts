@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
   type HostProtocolError,
+  type HostProtocolEventEnvelope,
   type HostProtocolRequestEnvelope,
   type SecretBytes,
   makeHostProtocolInternalError,
@@ -19,6 +20,7 @@ import { Cause, Effect, Exit, Stream } from "effect"
 import {
   ExtensionConfig,
   ExtensionConfigClient,
+  type ExtensionConfigClientApi,
   ExtensionConfigSurface,
   type ExtensionConfigSecretStoreApi,
   type ExtensionConfigWriteRequest,
@@ -276,6 +278,92 @@ test("ExtensionConfig rejects malformed values before native transport", async (
   })
 })
 
+test("ExtensionConfig service bridge write sends secret presence without secret bytes", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({
+        kind: "success",
+        payload: { extensionId: "extension-1", writtenKeys: ["theme", "apiKey"], revision: 1 }
+      })
+    },
+    subscribe: () => Stream.empty
+  }
+  const client = bridgeExtensionConfigClient(exchange)
+  const permissions = await configuredPermissions([])
+
+  const written = await Effect.runPromise(
+    Effect.gen(function* () {
+      const config = yield* ExtensionConfig
+      return yield* config.write(writeRequest())
+    }).pipe(
+      Effect.provide(
+        makeExtensionConfigServiceLayer(client, {
+          permissions,
+          secrets: memorySecretStore(),
+          nextTraceId: () => "trace-config"
+        })
+      )
+    )
+  )
+
+  expect(written.writtenKeys).toEqual(["theme", "apiKey"])
+  expect(requests).toHaveLength(1)
+  const [request] = requests
+  if (request === undefined) {
+    throw new Error("bridge write request should be captured")
+  }
+  expect(request.method).toBe("ExtensionConfig.write")
+  expect(request.payload).toMatchObject({
+    extensionId: "extension-1",
+    secretKeys: ["apiKey"],
+    values: [{ key: "theme", value: "dark" }]
+  })
+  expect(JSON.stringify(request)).not.toContain("1,2,3")
+})
+
+test("ExtensionConfig bridge client decodes native lifecycle events", async () => {
+  const nativeEvent: HostProtocolEventEnvelope = {
+    kind: "event",
+    method: "ExtensionConfig.Event",
+    timestamp: 1710000000000,
+    traceId: "trace-extension-config-event",
+    payload: {
+      type: "extension-config-event",
+      timestamp: 1710000000000,
+      extensionId: "extension-1",
+      phase: "written",
+      keys: ["theme", "apiKey"],
+      revision: 1
+    }
+  }
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+    subscribe: (method) => {
+      expect(method).toBe("ExtensionConfig.Event")
+      return Stream.make(nativeEvent)
+    }
+  }
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* ExtensionConfigClient
+    }).pipe(Effect.provide(makeExtensionConfigBridgeClientLayer(exchange)))
+  )
+
+  const event = await Effect.runPromise(client.events().pipe(Stream.runHead))
+
+  expect(event._tag).toBe("Some")
+  if (event._tag === "Some") {
+    expect(event.value).toMatchObject({
+      extensionId: "extension-1",
+      phase: "written",
+      keys: ["theme", "apiKey"],
+      revision: 1
+    })
+  }
+})
+
 test("ExtensionConfig unsupported client exposes typed unsupported failures", async () => {
   const client = makeExtensionConfigUnsupportedClient()
   const supported = await Effect.runPromise(client.isSupported())
@@ -503,6 +591,32 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
     }),
   observe: () => Stream.fromIterable(rows)
 })
+
+const bridgeExtensionConfigClient = (exchange: BridgeClientExchange): ExtensionConfigClientApi => {
+  const layer = makeExtensionConfigBridgeClientLayer(exchange)
+  const withClient = <A, E>(
+    run: (client: ExtensionConfigClientApi) => Effect.Effect<A, E, never>
+  ): Effect.Effect<A, E, never> =>
+    Effect.gen(function* () {
+      const client = yield* ExtensionConfigClient
+      return yield* run(client)
+    }).pipe(Effect.provide(layer))
+
+  return {
+    read: (input) => withClient((client) => client.read(input)),
+    write: (input) => withClient((client) => client.write(input)),
+    reset: (input) => withClient((client) => client.reset(input)),
+    redact: (input) => withClient((client) => client.redact(input)),
+    isSupported: () => withClient((client) => client.isSupported()),
+    events: () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const client = yield* ExtensionConfigClient
+          return client.events()
+        }).pipe(Effect.provide(layer))
+      )
+  }
+}
 
 const expectExitFailure = (
   exit: Exit.Exit<unknown, HostProtocolError>,
