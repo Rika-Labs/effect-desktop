@@ -336,6 +336,29 @@ export {
   type ScopedAccessGrantServiceOptions
 } from "./scoped-access-grant.js"
 export {
+  SelectionContext,
+  SelectionContextClient,
+  SelectionContextHandlersLive,
+  SelectionContextLive,
+  SelectionContextMethodNames,
+  SelectionContextRpcEvents,
+  SelectionContextRpcs,
+  SelectionContextSurface,
+  makeHostSelectionContextRpcRuntime,
+  makeSelectionContextBridgeClientLayer,
+  makeSelectionContextClientLayer,
+  makeSelectionContextMemoryClient,
+  makeSelectionContextServiceLayer,
+  makeSelectionContextUnsupportedClient,
+  type SelectionContextClientApi,
+  type SelectionContextError,
+  type SelectionContextMemoryClientOptions,
+  type SelectionContextRpc,
+  type SelectionContextRpcHandlers,
+  type SelectionContextServiceApi,
+  type SelectionContextServiceOptions
+} from "./selection-context.js"
+export {
   WorkspaceIndex,
   WorkspaceIndexClient,
   WorkspaceIndexHandlersLive,

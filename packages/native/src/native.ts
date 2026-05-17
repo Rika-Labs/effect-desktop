@@ -28,6 +28,7 @@ import { ProtocolSurface } from "./protocol.js"
 import { RealtimeMediaSessionSurface } from "./realtime-media-session.js"
 import { SafeStorageSurface } from "./safe-storage.js"
 import { ScopedAccessGrantSurface } from "./scoped-access-grant.js"
+import { SelectionContextSurface } from "./selection-context.js"
 import { ScreenSurface } from "./screen.js"
 import { ShellSurface } from "./shell.js"
 import { SystemAppearanceSurface } from "./system-appearance.js"
@@ -62,6 +63,7 @@ const BuiltInSurfaces = Object.freeze([
   RealtimeMediaSessionSurface,
   SafeStorageSurface,
   ScopedAccessGrantSurface,
+  SelectionContextSurface,
   ScreenSurface,
   ShellSurface,
   SystemAppearanceSurface,
@@ -102,6 +104,7 @@ const Protocol = ProtocolSurface.selection
 const RealtimeMediaSession = RealtimeMediaSessionSurface.selection
 const SafeStorage = SafeStorageSurface.selection
 const ScopedAccessGrant = ScopedAccessGrantSurface.selection
+const SelectionContext = SelectionContextSurface.selection
 const Screen = ScreenSurface.selection
 const Shell = ShellSurface.selection
 const SystemAppearance = SystemAppearanceSurface.selection
@@ -142,6 +145,7 @@ export const Permissions = Object.freeze({
   realtimeMediaSession: RealtimeMediaSessionSurface.permissions,
   safeStorage: SafeStorageSurface.permissions,
   scopedAccessGrant: ScopedAccessGrantSurface.permissions,
+  selectionContext: SelectionContextSurface.permissions,
   screen: ScreenSurface.permissions,
   shell: ShellSurface.permissions,
   systemAppearance: SystemAppearanceSurface.permissions,
@@ -177,6 +181,7 @@ export const Native = Object.freeze({
   RealtimeMediaSession,
   SafeStorage,
   ScopedAccessGrant,
+  SelectionContext,
   Screen,
   Shell,
   SystemAppearance,

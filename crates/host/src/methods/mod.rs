@@ -10,6 +10,7 @@ mod local_tool_runtime;
 mod menu;
 mod realtime_media_session;
 mod scoped_access_grant;
+mod selection_context;
 mod transactional_file_mutation;
 mod window;
 mod workspace_index;
@@ -414,6 +415,21 @@ impl HostMethodRouter {
             host_protocol::ATTACHMENT_INTAKE_DISPOSE_METHOD => attachment_intake::dispose(payload),
             host_protocol::ATTACHMENT_INTAKE_IS_SUPPORTED_METHOD => {
                 attachment_intake::is_supported()
+            }
+            host_protocol::SELECTION_CONTEXT_READ_SELECTION_METHOD => {
+                selection_context::read_selection(payload)
+            }
+            host_protocol::SELECTION_CONTEXT_READ_DOCUMENT_METHOD => {
+                selection_context::read_document(payload)
+            }
+            host_protocol::SELECTION_CONTEXT_WATCH_FOCUS_METHOD => {
+                selection_context::watch_focus(payload)
+            }
+            host_protocol::SELECTION_CONTEXT_STOP_WATCHING_METHOD => {
+                selection_context::stop_watching(payload)
+            }
+            host_protocol::SELECTION_CONTEXT_IS_SUPPORTED_METHOD => {
+                selection_context::is_supported()
             }
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),

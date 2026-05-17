@@ -50,6 +50,12 @@ pub const ATTACHMENT_INTAKE_INSPECT_METHOD: &str = "AttachmentIntake.inspect";
 pub const ATTACHMENT_INTAKE_DISPOSE_METHOD: &str = "AttachmentIntake.dispose";
 pub const ATTACHMENT_INTAKE_IS_SUPPORTED_METHOD: &str = "AttachmentIntake.isSupported";
 pub const ATTACHMENT_INTAKE_EVENT: &str = "AttachmentIntake.Event";
+pub const SELECTION_CONTEXT_READ_SELECTION_METHOD: &str = "SelectionContext.readSelection";
+pub const SELECTION_CONTEXT_READ_DOCUMENT_METHOD: &str = "SelectionContext.readDocumentContext";
+pub const SELECTION_CONTEXT_WATCH_FOCUS_METHOD: &str = "SelectionContext.watchFocus";
+pub const SELECTION_CONTEXT_STOP_WATCHING_METHOD: &str = "SelectionContext.stopWatching";
+pub const SELECTION_CONTEXT_IS_SUPPORTED_METHOD: &str = "SelectionContext.isSupported";
+pub const SELECTION_CONTEXT_EVENT: &str = "SelectionContext.Event";
 pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
@@ -106,6 +112,7 @@ pub const REALTIME_MEDIA_SESSION_MEDIA_UNAVAILABLE_REASON: &str = "host-media-un
 pub const REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON: &str = "host-media-startup-unverified";
 pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const ATTACHMENT_INTAKE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const SELECTION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -931,6 +938,379 @@ pub struct AttachmentIntakeEventPayload {
     reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SelectionContextActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SelectionContextAccess {
+    Metadata,
+    Content,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SelectionContextDocumentKind {
+    File,
+    BrowserPage,
+    EditorBuffer,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SelectionContextEventPhase {
+    FocusChanged,
+    SelectionChanged,
+    WatchStarted,
+    WatchStopped,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextActorPayload {
+    kind: SelectionContextActorKind,
+    id: String,
+}
+
+impl SelectionContextActorPayload {
+    pub fn new(kind: SelectionContextActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextReadSelectionPayload {
+    actor: SelectionContextActorPayload,
+    access: SelectionContextAccess,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SelectionContextReadSelectionPayload {
+    pub fn new(
+        actor: SelectionContextActorPayload,
+        access: SelectionContextAccess,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            access,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &SelectionContextActorPayload {
+        &self.actor
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextReadDocumentPayload {
+    actor: SelectionContextActorPayload,
+    access: SelectionContextAccess,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SelectionContextReadDocumentPayload {
+    pub fn new(
+        actor: SelectionContextActorPayload,
+        access: SelectionContextAccess,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            access,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &SelectionContextActorPayload {
+        &self.actor
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextWatchFocusPayload {
+    actor: SelectionContextActorPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    watch_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    access: SelectionContextAccess,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SelectionContextWatchFocusPayload {
+    pub fn new(
+        actor: SelectionContextActorPayload,
+        watch_id: Option<String>,
+        owner_scope: Option<String>,
+        access: SelectionContextAccess,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            watch_id,
+            owner_scope,
+            access,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &SelectionContextActorPayload {
+        &self.actor
+    }
+
+    pub fn watch_id(&self) -> Option<&str> {
+        self.watch_id.as_deref()
+    }
+
+    pub fn owner_scope(&self) -> Option<&str> {
+        self.owner_scope.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextStopWatchingPayload {
+    actor: SelectionContextActorPayload,
+    watch_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SelectionContextStopWatchingPayload {
+    pub fn new(
+        actor: SelectionContextActorPayload,
+        watch_id: impl Into<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            watch_id: watch_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &SelectionContextActorPayload {
+        &self.actor
+    }
+
+    pub fn watch_id(&self) -> &str {
+        &self.watch_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextSelectionMetadataPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_application: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mime_type: Option<String>,
+    character_count: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selection_hash: Option<String>,
+}
+
+impl SelectionContextSelectionMetadataPayload {
+    pub fn new(
+        source_application: Option<String>,
+        mime_type: Option<String>,
+        character_count: u64,
+        selection_hash: Option<String>,
+    ) -> Self {
+        Self {
+            source_application,
+            mime_type,
+            character_count,
+            selection_hash,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextDocumentMetadataPayload {
+    document_id: String,
+    kind: SelectionContextDocumentKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    application_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    buffer_id: Option<String>,
+}
+
+impl SelectionContextDocumentMetadataPayload {
+    pub fn new(document_id: impl Into<String>, kind: SelectionContextDocumentKind) -> Self {
+        Self {
+            document_id: document_id.into(),
+            kind,
+            title: None,
+            application_id: None,
+            file_path: None,
+            url: None,
+            buffer_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextReadSelectionResultPayload {
+    metadata: SelectionContextSelectionMetadataPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
+}
+
+impl SelectionContextReadSelectionResultPayload {
+    pub fn new(metadata: SelectionContextSelectionMetadataPayload, text: Option<String>) -> Self {
+        Self { metadata, text }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextReadDocumentResultPayload {
+    metadata: SelectionContextDocumentMetadataPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
+}
+
+impl SelectionContextReadDocumentResultPayload {
+    pub fn new(metadata: SelectionContextDocumentMetadataPayload, text: Option<String>) -> Self {
+        Self { metadata, text }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextWatchFocusResultPayload {
+    watch_id: String,
+    active: bool,
+    access: SelectionContextAccess,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextStopWatchingResultPayload {
+    watch_id: String,
+    stopped: bool,
+}
+
+impl SelectionContextStopWatchingResultPayload {
+    pub fn new(watch_id: impl Into<String>, stopped: bool) -> Self {
+        Self {
+            watch_id: watch_id.into(),
+            stopped,
+        }
+    }
+}
+
+impl SelectionContextWatchFocusResultPayload {
+    pub fn new(watch_id: impl Into<String>, active: bool, access: SelectionContextAccess) -> Self {
+        Self {
+            watch_id: watch_id.into(),
+            active,
+            access,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl SelectionContextSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectionContextEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: SelectionContextEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    watch_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    document: Option<SelectionContextDocumentMetadataPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selection: Option<SelectionContextSelectionMetadataPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl SelectionContextEventPayload {
+    pub fn new(timestamp: u64, phase: SelectionContextEventPhase) -> Self {
+        Self {
+            r#type: "selection-context-event".to_string(),
+            timestamp,
+            phase,
+            watch_id: None,
+            document: None,
+            selection: None,
+            reason: None,
+            message: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
