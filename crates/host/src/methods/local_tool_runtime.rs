@@ -34,6 +34,8 @@ const OUTPUT_DRAIN_GRACE: Duration = Duration::from_millis(250);
 const TERMINATION_GRACE: Duration = Duration::from_millis(50);
 const FORCE_TERMINATION_WAIT: Duration = Duration::from_secs(2);
 const UNBOUNDED_OS_BUDGET: u64 = 9_007_199_254_740_991;
+const OWNED_WORKING_DIRECTORY_BASE: &str = "effect-desktop-local-tool-runtime";
+const OWNED_WORKING_DIRECTORY_MARKER: &str = ".effect-desktop-local-tool-runtime-owner";
 
 pub(crate) type EventPayload = (&'static str, Value);
 pub(crate) type EventfulResponse = Result<(Option<Value>, Vec<EventPayload>), HostProtocolError>;
@@ -54,6 +56,13 @@ struct LocalToolRuntimeSession {
     tool_id: String,
     manifest: LocalToolRuntimeManifestPayload,
     cwd_roots: Vec<PathBuf>,
+    owned_working_directories: Vec<OwnedWorkingDirectory>,
+}
+
+#[derive(Clone)]
+struct OwnedWorkingDirectory {
+    path: PathBuf,
+    marker: String,
 }
 
 struct ProcessOutput {
@@ -359,15 +368,37 @@ pub(crate) fn register_with_event(payload: Option<Value>, timestamp: u64) -> Eve
         .map(ToString::to_string)
         .unwrap_or_else(generate_runtime_id);
     let tool_id = input.manifest().tool_id().to_string();
-    insert_session(
-        runtime_id.clone(),
-        LocalToolRuntimeSession {
-            tool_id: tool_id.clone(),
-            manifest: input.manifest().clone(),
-            cwd_roots,
-        },
-        operation,
-    )?;
+    {
+        let mut runtimes = local_tool_runtimes(operation)?;
+        if runtimes.contains_key(&runtime_id) {
+            return Err(already_exists(runtime_id.clone(), operation));
+        }
+        validate_cwd_roots_available(
+            &cwd_roots,
+            input
+                .manifest()
+                .policy()
+                .cleanup()
+                .remove_working_directory(),
+            &runtimes,
+            operation,
+        )?;
+        let owned_working_directories = prepare_owned_working_directories(
+            input.manifest(),
+            &cwd_roots,
+            &runtime_id,
+            operation,
+        )?;
+        runtimes.insert(
+            runtime_id.clone(),
+            LocalToolRuntimeSession {
+                tool_id: tool_id.clone(),
+                manifest: input.manifest().clone(),
+                cwd_roots,
+                owned_working_directories,
+            },
+        );
+    }
     let result = LocalToolRuntimeRegisterResultPayload::registered(
         runtime_id.clone(),
         tool_id.clone(),
@@ -525,9 +556,9 @@ pub(crate) fn stop_with_event(payload: Option<Value>, timestamp: u64) -> Eventfu
     let operation = host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD;
     validate_stop(&input, operation)?;
     ensure_supported_platform(operation)?;
-    let session = get_session(input.runtime_id(), operation)?;
-    remove_session(input.runtime_id(), operation)?;
+    let session = remove_session(input.runtime_id(), operation)?;
     terminate_active_runs(input.runtime_id(), operation)?;
+    remove_owned_working_directories(&session, operation)?;
     Ok((
         encode_payload(
             LocalToolRuntimeStopResultPayload::stopped(input.runtime_id()),
@@ -641,8 +672,11 @@ pub(crate) fn clear_runtime_resources_for_runtime_ids(
     operation: &'static str,
 ) -> Result<(), HostProtocolError> {
     for runtime_id in runtime_ids {
+        let session = local_tool_runtimes(operation)?.remove(runtime_id);
         terminate_active_runs(runtime_id, operation)?;
-        local_tool_runtimes(operation)?.remove(runtime_id);
+        if let Some(session) = session {
+            remove_owned_working_directories(&session, operation)?;
+        }
     }
     Ok(())
 }
@@ -709,8 +743,6 @@ fn run_command(
         timeout_override,
         started_event,
     } = request;
-    let cwd = canonical_command_cwd(command, session, operation)?;
-    let executable = canonical_executable(command.executable(), operation)?;
     let active_run = reserve_active_run(
         runtime_id.to_string(),
         run_id.clone(),
@@ -730,6 +762,26 @@ fn run_command(
             });
         }
     }
+    let cwd = match canonical_command_cwd(command, session, operation) {
+        Ok(cwd) => cwd,
+        Err(error) => {
+            remove_active_run(runtime_id, &run_id);
+            if let Some(request_id) = request_id {
+                clear_active_run_request(request_id);
+            }
+            return Err(error);
+        }
+    };
+    let executable = match canonical_executable(command.executable(), operation) {
+        Ok(executable) => executable,
+        Err(error) => {
+            remove_active_run(runtime_id, &run_id);
+            if let Some(request_id) = request_id {
+                clear_active_run_request(request_id);
+            }
+            return Err(error);
+        }
+    };
     let spawn = LocalToolSpawn {
         executable: executable.clone(),
         args: command
@@ -948,19 +1000,6 @@ fn local_tool_runtime_event<T: Serialize>(
                 operation,
             )
         })
-}
-
-fn insert_session(
-    runtime_id: String,
-    session: LocalToolRuntimeSession,
-    operation: &'static str,
-) -> Result<(), HostProtocolError> {
-    let mut runtimes = local_tool_runtimes(operation)?;
-    if runtimes.contains_key(&runtime_id) {
-        return Err(already_exists(runtime_id, operation));
-    }
-    runtimes.insert(runtime_id, session);
-    Ok(())
 }
 
 fn reserve_active_run(
@@ -1239,6 +1278,220 @@ fn canonical_executable(
         ));
     }
     fs::canonicalize(path).map_err(|error| map_path_error(executable, error, operation))
+}
+
+fn prepare_owned_working_directories(
+    manifest: &LocalToolRuntimeManifestPayload,
+    cwd_roots: &[PathBuf],
+    runtime_id: &str,
+    operation: &'static str,
+) -> Result<Vec<OwnedWorkingDirectory>, HostProtocolError> {
+    if !manifest.policy().cleanup().remove_working_directory() {
+        return Ok(Vec::new());
+    }
+
+    let base = ensure_owned_working_directory_base(operation)?;
+    let mut owned: Vec<OwnedWorkingDirectory> = Vec::new();
+    for root in cwd_roots {
+        if root == &base || !path_contains_path(&base, root) {
+            return Err(HostProtocolError::unsupported(
+                "local-tool-runtime-working-directory-not-host-owned",
+                operation,
+            ));
+        }
+        if owned.iter().any(|existing| existing.path == *root) {
+            continue;
+        }
+        ensure_cleanup_root_empty(root, operation)?;
+        let marker = format!(
+            "runtimeId={runtime_id}\nownershipToken={}\n",
+            Uuid::new_v4()
+        );
+        fs::write(root.join(OWNED_WORKING_DIRECTORY_MARKER), marker.as_bytes()).map_err(
+            |error| {
+                HostProtocolError::internal(
+                    format!(
+                        "failed to mark local tool working directory {} as host-owned: {error}",
+                        root.display()
+                    ),
+                    operation,
+                )
+            },
+        )?;
+        owned.push(OwnedWorkingDirectory {
+            path: root.clone(),
+            marker,
+        });
+    }
+    Ok(owned)
+}
+
+fn validate_cwd_roots_available(
+    cwd_roots: &[PathBuf],
+    remove_working_directory: bool,
+    runtimes: &RuntimeSessions,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    for root in cwd_roots {
+        for session in runtimes.values() {
+            for existing in &session.owned_working_directories {
+                if path_contains_path(&existing.path, root)
+                    || path_contains_path(root, &existing.path)
+                {
+                    return Err(HostProtocolError::unsupported(
+                        "local-tool-runtime-working-directory-not-empty",
+                        operation,
+                    ));
+                }
+            }
+            if remove_working_directory {
+                for existing in &session.cwd_roots {
+                    if path_contains_path(existing, root) || path_contains_path(root, existing) {
+                        return Err(HostProtocolError::unsupported(
+                            "local-tool-runtime-working-directory-not-empty",
+                            operation,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn remove_owned_working_directories(
+    session: &LocalToolRuntimeSession,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    if session.owned_working_directories.is_empty() {
+        return Ok(());
+    }
+
+    let base = ensure_owned_working_directory_base(operation)?;
+    for directory in &session.owned_working_directories {
+        let root = &directory.path;
+        if !root.exists() {
+            continue;
+        }
+        if root == &base || !path_contains_path(&base, root) {
+            return Err(HostProtocolError::unsupported(
+                "local-tool-runtime-working-directory-not-host-owned",
+                operation,
+            ));
+        }
+        let metadata = fs::symlink_metadata(root)
+            .map_err(|error| map_path_error(root.to_string_lossy().as_ref(), error, operation))?;
+        if is_unsafe_cleanup_directory_entry(&metadata) || !metadata.file_type().is_dir() {
+            return Err(HostProtocolError::unsupported(
+                "local-tool-runtime-working-directory-not-host-owned",
+                operation,
+            ));
+        }
+        let marker = root.join(OWNED_WORKING_DIRECTORY_MARKER);
+        let marker_metadata = fs::symlink_metadata(&marker)
+            .map_err(|error| map_path_error(marker.to_string_lossy().as_ref(), error, operation))?;
+        if is_unsafe_cleanup_directory_entry(&marker_metadata)
+            || !marker_metadata.file_type().is_file()
+        {
+            return Err(HostProtocolError::unsupported(
+                "local-tool-runtime-working-directory-missing-owner-marker",
+                operation,
+            ));
+        }
+        let marker_content = fs::read_to_string(&marker).map_err(|error| {
+            HostProtocolError::internal(
+                format!(
+                    "failed to read local tool working directory marker {}: {error}",
+                    marker.display()
+                ),
+                operation,
+            )
+        })?;
+        if marker_content != directory.marker {
+            return Err(HostProtocolError::unsupported(
+                "local-tool-runtime-working-directory-missing-owner-marker",
+                operation,
+            ));
+        }
+        fs::remove_dir_all(root).map_err(|error| {
+            HostProtocolError::internal(
+                format!(
+                    "failed to remove local tool working directory {}: {error}",
+                    root.display()
+                ),
+                operation,
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn is_unsafe_cleanup_directory_entry(metadata: &fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    is_windows_reparse_point(metadata)
+}
+
+#[cfg(windows)]
+fn is_windows_reparse_point(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_windows_reparse_point(_metadata: &fs::Metadata) -> bool {
+    false
+}
+
+fn ensure_owned_working_directory_base(
+    operation: &'static str,
+) -> Result<PathBuf, HostProtocolError> {
+    let base = std::env::temp_dir().join(OWNED_WORKING_DIRECTORY_BASE);
+    fs::create_dir_all(&base).map_err(|error| {
+        HostProtocolError::internal(
+            format!(
+                "failed to create local tool working directory base {}: {error}",
+                base.display()
+            ),
+            operation,
+        )
+    })?;
+    fs::canonicalize(&base)
+        .map_err(|error| map_path_error(base.to_string_lossy().as_ref(), error, operation))
+}
+
+fn ensure_cleanup_root_empty(
+    root: &Path,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    let mut entries = fs::read_dir(root).map_err(|error| {
+        HostProtocolError::internal(
+            format!(
+                "failed to inspect local tool working directory {}: {error}",
+                root.display()
+            ),
+            operation,
+        )
+    })?;
+    if let Some(entry) = entries.next() {
+        let _ = entry.map_err(|error| {
+            HostProtocolError::internal(
+                format!(
+                    "failed to inspect local tool working directory {}: {error}",
+                    root.display()
+                ),
+                operation,
+            )
+        })?;
+        return Err(HostProtocolError::unsupported(
+            "local-tool-runtime-working-directory-not-empty",
+            operation,
+        ));
+    }
+    Ok(())
 }
 
 fn canonical_dir(
@@ -2228,18 +2481,6 @@ fn validate_register(
             operation,
         ));
     }
-    if input
-        .manifest()
-        .policy()
-        .cleanup()
-        .remove_working_directory()
-    {
-        return Err(HostProtocolError::unsupported(
-            "local-tool-runtime-remove-working-directory-unimplemented",
-            operation,
-        ));
-    }
-
     let mut command_ids = Vec::new();
     for command in input.manifest().commands() {
         validate_identifier(
@@ -2543,8 +2784,9 @@ fn is_shell_metacharacter(value: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        health, is_supported, register, register_with_event, run, run_with_event_sink, stop,
-        RuntimeEventSink, UNBOUNDED_OS_BUDGET,
+        clear_runtime_resources_for_runtime_ids, health, is_supported, register,
+        register_with_event, run, run_with_event_sink, stop, RuntimeEventSink,
+        OWNED_WORKING_DIRECTORY_BASE, OWNED_WORKING_DIRECTORY_MARKER, UNBOUNDED_OS_BUDGET,
     };
     use host_protocol::{HostProtocolEnvelope, HostProtocolError};
     use serde_json::json;
@@ -2949,7 +3191,7 @@ mod tests {
     }
 
     #[test]
-    fn register_rejects_remove_working_directory_until_host_owns_cleanup() {
+    fn register_rejects_remove_working_directory_for_non_owned_root() {
         let root = temp_dir("register-remove-working-directory");
         let mut payload = valid_register_payload(&root, "runtime-remove-working-directory");
         payload["manifest"]["policy"]["cleanup"]["removeWorkingDirectory"] = json!(true);
@@ -2958,10 +3200,149 @@ mod tests {
         assert_eq!(
             error,
             HostProtocolError::unsupported(
-                "local-tool-runtime-remove-working-directory-unimplemented",
+                "local-tool-runtime-working-directory-not-host-owned",
                 host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
             )
         );
+    }
+
+    #[test]
+    fn register_rejects_remove_working_directory_for_non_empty_owned_root() {
+        let root = owned_temp_dir("register-non-empty-working-directory");
+        fs::write(root.join("caller-data.txt"), "do not delete").expect("file should write");
+        let mut payload = valid_register_payload(&root, "runtime-non-empty-working-directory");
+        payload["manifest"]["policy"]["cleanup"]["removeWorkingDirectory"] = json!(true);
+        let error = register(Some(payload)).expect_err("non-empty cleanup root should fail closed");
+
+        assert_eq!(
+            error,
+            HostProtocolError::unsupported(
+                "local-tool-runtime-working-directory-not-empty",
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+            )
+        );
+        assert!(root.join("caller-data.txt").exists());
+    }
+
+    #[test]
+    fn stop_removes_host_owned_working_directory() {
+        let root = owned_temp_dir("stop-remove-working-directory");
+        let mut payload = valid_register_payload(&root, "runtime-stop-remove-working-directory");
+        payload["manifest"]["policy"]["cleanup"]["removeWorkingDirectory"] = json!(true);
+        register(Some(payload)).expect("register should accept owned cleanup root");
+
+        assert!(root.join(OWNED_WORKING_DIRECTORY_MARKER).is_file());
+        stop(Some(
+            json!({ "runtimeId": "runtime-stop-remove-working-directory" }),
+        ))
+        .expect("stop should remove owned working directory");
+
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn runtime_resource_cleanup_removes_host_owned_working_directory() {
+        let root = owned_temp_dir("resource-cleanup-working-directory");
+        let runtime_id = "runtime-resource-cleanup-working-directory";
+        let mut payload = valid_register_payload(&root, runtime_id);
+        payload["manifest"]["policy"]["cleanup"]["removeWorkingDirectory"] = json!(true);
+        register(Some(payload)).expect("register should accept owned cleanup root");
+
+        clear_runtime_resources_for_runtime_ids(
+            &[runtime_id.to_string()],
+            "host.runtime.disconnect",
+        )
+        .expect("resource cleanup should remove owned working directory");
+
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn register_rejects_nested_owned_working_directory_root() {
+        let root = owned_temp_dir("nested-working-directory");
+        let child = root.join("child");
+        let mut payload = valid_register_payload(&root, "runtime-nested-working-directory-parent");
+        payload["manifest"]["policy"]["cleanup"]["removeWorkingDirectory"] = json!(true);
+        register(Some(payload)).expect("parent register should accept owned cleanup root");
+        fs::create_dir_all(&child).expect("child cleanup root should be created");
+        let mut child_payload =
+            valid_register_payload(&child, "runtime-nested-working-directory-child");
+        child_payload["manifest"]["policy"]["cleanup"]["removeWorkingDirectory"] = json!(true);
+
+        let error =
+            register(Some(child_payload)).expect_err("nested cleanup root should fail closed");
+
+        assert_eq!(
+            error,
+            HostProtocolError::unsupported(
+                "local-tool-runtime-working-directory-not-empty",
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+            )
+        );
+        stop(Some(
+            json!({ "runtimeId": "runtime-nested-working-directory-parent" }),
+        ))
+        .expect("parent stop should remove owned working directory");
+    }
+
+    #[test]
+    fn register_rejects_cleanup_root_used_by_active_non_cleanup_runtime() {
+        let root = owned_temp_dir("shared-non-cleanup-working-directory");
+        register(Some(valid_register_payload(
+            &root,
+            "runtime-shared-working-directory-reader",
+        )))
+        .expect("non-cleanup runtime should register");
+        let mut payload = valid_register_payload(&root, "runtime-shared-working-directory-cleaner");
+        payload["manifest"]["policy"]["cleanup"]["removeWorkingDirectory"] = json!(true);
+
+        let error = register(Some(payload))
+            .expect_err("cleanup runtime should not own another runtime cwd root");
+
+        assert_eq!(
+            error,
+            HostProtocolError::unsupported(
+                "local-tool-runtime-working-directory-not-empty",
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+            )
+        );
+        stop(Some(
+            json!({ "runtimeId": "runtime-shared-working-directory-reader" }),
+        ))
+        .expect("non-cleanup runtime should stop");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stop_rejects_replaced_working_directory_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let root = owned_temp_dir("stop-replaced-working-directory");
+        let target = owned_temp_dir("stop-replaced-working-directory-target");
+        fs::write(
+            target.join(OWNED_WORKING_DIRECTORY_MARKER),
+            "runtimeId=target\n",
+        )
+        .expect("target marker should write");
+        let mut payload = valid_register_payload(&root, "runtime-replaced-working-directory");
+        payload["manifest"]["policy"]["cleanup"]["removeWorkingDirectory"] = json!(true);
+        register(Some(payload)).expect("register should accept owned cleanup root");
+        fs::remove_dir_all(&root).expect("registered root should be removable in test");
+        symlink(&target, &root).expect("root symlink should be created");
+
+        let error = stop(Some(
+            json!({ "runtimeId": "runtime-replaced-working-directory" }),
+        ))
+        .expect_err("stop should reject replaced cleanup root");
+
+        assert_eq!(
+            error,
+            HostProtocolError::unsupported(
+                "local-tool-runtime-working-directory-not-host-owned",
+                host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD,
+            )
+        );
+        assert!(target.exists());
     }
 
     #[cfg(unix)]
@@ -3396,6 +3777,14 @@ mod tests {
     fn temp_dir(name: &str) -> PathBuf {
         let path = env::temp_dir().join(format!("effect-desktop-{name}-{}", Uuid::new_v4()));
         fs::create_dir_all(&path).expect("temp dir should be created");
+        path
+    }
+
+    fn owned_temp_dir(name: &str) -> PathBuf {
+        let path = env::temp_dir()
+            .join(OWNED_WORKING_DIRECTORY_BASE)
+            .join(format!("effect-desktop-{name}-{}", Uuid::new_v4()));
+        fs::create_dir_all(&path).expect("owned temp dir should be created");
         path
     }
 
