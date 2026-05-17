@@ -174,6 +174,30 @@ export {
   type EgressPolicyServiceOptions
 } from "./egress-policy.js"
 export {
+  ExtensionConfig,
+  ExtensionConfigClient,
+  ExtensionConfigHandlersLive,
+  ExtensionConfigLive,
+  ExtensionConfigMethodNames,
+  ExtensionConfigRpcEvents,
+  ExtensionConfigRpcs,
+  ExtensionConfigSurface,
+  makeExtensionConfigBridgeClientLayer,
+  makeExtensionConfigClientLayer,
+  makeExtensionConfigMemoryClient,
+  makeExtensionConfigServiceLayer,
+  makeExtensionConfigUnsupportedClient,
+  makeHostExtensionConfigRpcRuntime,
+  type ExtensionConfigClientApi,
+  type ExtensionConfigError,
+  type ExtensionConfigMemoryClientOptions,
+  type ExtensionConfigRpc,
+  type ExtensionConfigRpcHandlers,
+  type ExtensionConfigSecretStoreApi,
+  type ExtensionConfigServiceApi,
+  type ExtensionConfigServiceOptions
+} from "./extension-config.js"
+export {
   ExecutionSandbox,
   ExecutionSandboxClient,
   ExecutionSandboxHandlersLive,

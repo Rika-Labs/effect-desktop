@@ -2,6 +2,7 @@ mod diagnostics_bundle;
 mod dock;
 mod egress_policy;
 mod execution_sandbox;
+mod extension_config;
 pub(crate) mod handshake;
 mod menu;
 mod realtime_media_session;
@@ -110,6 +111,11 @@ impl HostMethodRouter {
             host_protocol::EXECUTION_SANDBOX_IS_SUPPORTED_METHOD => {
                 execution_sandbox::is_supported()
             }
+            host_protocol::EXTENSION_CONFIG_READ_METHOD => extension_config::read(payload),
+            host_protocol::EXTENSION_CONFIG_WRITE_METHOD => extension_config::write(payload),
+            host_protocol::EXTENSION_CONFIG_RESET_METHOD => extension_config::reset(payload),
+            host_protocol::EXTENSION_CONFIG_REDACT_METHOD => extension_config::redact(payload),
+            host_protocol::EXTENSION_CONFIG_IS_SUPPORTED_METHOD => extension_config::is_supported(),
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
                 menu::set_application_menu(&*self.window, payload)
             }
@@ -839,6 +845,95 @@ mod tests {
         );
     }
 
+    #[test]
+    fn extension_config_read_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-extension-config-read",
+                    host_protocol::EXTENSION_CONFIG_READ_METHOD,
+                    extension_config_read_payload(),
+                ),
+                1710000000124,
+            )
+            .expect("extension config request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-extension-config-read".to_string(),
+                timestamp: 1710000000124,
+                trace_id: "trace-request-extension-config-read".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::EXTENSION_CONFIG_UNSUPPORTED_REASON,
+                    host_protocol::EXTENSION_CONFIG_READ_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn extension_config_invalid_payload_returns_invalid_argument_before_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-extension-config-invalid",
+                    host_protocol::EXTENSION_CONFIG_WRITE_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "extensionId": "extension-1",
+                        "fields": [{ "key": "enabled", "valueType": "boolean", "secret": false }],
+                        "values": [{ "key": "enabled", "value": "yes" }]
+                    }),
+                ),
+                1710000000125,
+            )
+            .expect("extension config request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-extension-config-invalid".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-extension-config-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "values.value",
+                    "does not match declared field type",
+                    host_protocol::EXTENSION_CONFIG_WRITE_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn extension_config_is_supported_reports_unimplemented_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-extension-config-supported",
+                    host_protocol::EXTENSION_CONFIG_IS_SUPPORTED_METHOD,
+                ),
+                1710000000126,
+            )
+            .expect("extension config support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-extension-config-supported".to_string(),
+                timestamp: 1710000000126,
+                trace_id: "trace-request-extension-config-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::EXTENSION_CONFIG_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
+    }
+
     fn request(id: &str, method: &str) -> HostProtocolEnvelope {
         request_with_payload(id, method, serde_json::Value::Null)
     }
@@ -896,6 +991,23 @@ mod tests {
             },
             "sandboxId": "sandbox-1",
             "traceId": "trace-sandbox"
+        })
+    }
+
+    fn extension_config_read_payload() -> serde_json::Value {
+        serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "extensionId": "extension-1",
+            "fields": [
+                {
+                    "key": "theme",
+                    "valueType": "string",
+                    "secret": false,
+                    "defaultValue": "light"
+                },
+                { "key": "apiKey", "valueType": "string", "secret": true }
+            ],
+            "traceId": "trace-extension-config"
         })
     }
 

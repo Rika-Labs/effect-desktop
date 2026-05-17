@@ -54,6 +54,12 @@ pub const EXECUTION_SANDBOX_RUN_METHOD: &str = "ExecutionSandbox.run";
 pub const EXECUTION_SANDBOX_DESTROY_METHOD: &str = "ExecutionSandbox.destroy";
 pub const EXECUTION_SANDBOX_IS_SUPPORTED_METHOD: &str = "ExecutionSandbox.isSupported";
 pub const EXECUTION_SANDBOX_EVENT: &str = "ExecutionSandbox.Event";
+pub const EXTENSION_CONFIG_READ_METHOD: &str = "ExtensionConfig.read";
+pub const EXTENSION_CONFIG_WRITE_METHOD: &str = "ExtensionConfig.write";
+pub const EXTENSION_CONFIG_RESET_METHOD: &str = "ExtensionConfig.reset";
+pub const EXTENSION_CONFIG_REDACT_METHOD: &str = "ExtensionConfig.redact";
+pub const EXTENSION_CONFIG_IS_SUPPORTED_METHOD: &str = "ExtensionConfig.isSupported";
+pub const EXTENSION_CONFIG_EVENT: &str = "ExtensionConfig.Event";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
@@ -66,6 +72,7 @@ pub const REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON: &str = "host-adapter-unimpl
 pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1607,6 +1614,464 @@ impl ExecutionSandboxEventPayload {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExtensionConfigActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExtensionConfigValueType {
+    String,
+    Number,
+    Boolean,
+    Json,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExtensionConfigExportPolicy {
+    Diagnostics,
+    Private,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExtensionConfigEventPhase {
+    Read,
+    Written,
+    Reset,
+    Redacted,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigActorPayload {
+    kind: ExtensionConfigActorKind,
+    id: String,
+}
+
+impl ExtensionConfigActorPayload {
+    pub fn new(kind: ExtensionConfigActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn kind(&self) -> ExtensionConfigActorKind {
+        self.kind
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigFieldPayload {
+    key: String,
+    value_type: ExtensionConfigValueType,
+    secret: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    required: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_value: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    export_policy: Option<ExtensionConfigExportPolicy>,
+}
+
+impl ExtensionConfigFieldPayload {
+    pub fn new(key: impl Into<String>, value_type: ExtensionConfigValueType, secret: bool) -> Self {
+        Self {
+            key: key.into(),
+            value_type,
+            secret,
+            required: None,
+            default_value: None,
+            export_policy: None,
+        }
+    }
+
+    pub fn with_default(mut self, value: Value) -> Self {
+        self.default_value = Some(value);
+        self
+    }
+
+    pub fn with_export_policy(mut self, export_policy: ExtensionConfigExportPolicy) -> Self {
+        self.export_policy = Some(export_policy);
+        self
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub fn value_type(&self) -> ExtensionConfigValueType {
+        self.value_type
+    }
+
+    pub fn secret(&self) -> bool {
+        self.secret
+    }
+
+    pub fn default_value(&self) -> Option<&Value> {
+        self.default_value.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigValueEntryPayload {
+    key: String,
+    value: Value,
+}
+
+impl ExtensionConfigValueEntryPayload {
+    pub fn new(key: impl Into<String>, value: Value) -> Self {
+        Self {
+            key: key.into(),
+            value,
+        }
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub fn value(&self) -> &Value {
+        &self.value
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigSecretStatePayload {
+    key: String,
+    present: bool,
+}
+
+impl ExtensionConfigSecretStatePayload {
+    pub fn new(key: impl Into<String>, present: bool) -> Self {
+        Self {
+            key: key.into(),
+            present,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigReadPayload {
+    actor: ExtensionConfigActorPayload,
+    extension_id: String,
+    fields: Vec<ExtensionConfigFieldPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ExtensionConfigReadPayload {
+    pub fn new(
+        actor: ExtensionConfigActorPayload,
+        extension_id: impl Into<String>,
+        fields: Vec<ExtensionConfigFieldPayload>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            extension_id: extension_id.into(),
+            fields,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &ExtensionConfigActorPayload {
+        &self.actor
+    }
+
+    pub fn extension_id(&self) -> &str {
+        &self.extension_id
+    }
+
+    pub fn fields(&self) -> &[ExtensionConfigFieldPayload] {
+        &self.fields
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigWritePayload {
+    actor: ExtensionConfigActorPayload,
+    extension_id: String,
+    fields: Vec<ExtensionConfigFieldPayload>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    values: Vec<ExtensionConfigValueEntryPayload>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    secret_keys: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ExtensionConfigWritePayload {
+    pub fn new(
+        actor: ExtensionConfigActorPayload,
+        extension_id: impl Into<String>,
+        fields: Vec<ExtensionConfigFieldPayload>,
+        values: Vec<ExtensionConfigValueEntryPayload>,
+        secret_keys: Vec<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            extension_id: extension_id.into(),
+            fields,
+            values,
+            secret_keys,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &ExtensionConfigActorPayload {
+        &self.actor
+    }
+
+    pub fn extension_id(&self) -> &str {
+        &self.extension_id
+    }
+
+    pub fn fields(&self) -> &[ExtensionConfigFieldPayload] {
+        &self.fields
+    }
+
+    pub fn values(&self) -> &[ExtensionConfigValueEntryPayload] {
+        &self.values
+    }
+
+    pub fn secret_keys(&self) -> &[String] {
+        &self.secret_keys
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigResetPayload {
+    actor: ExtensionConfigActorPayload,
+    extension_id: String,
+    fields: Vec<ExtensionConfigFieldPayload>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    keys: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ExtensionConfigResetPayload {
+    pub fn new(
+        actor: ExtensionConfigActorPayload,
+        extension_id: impl Into<String>,
+        fields: Vec<ExtensionConfigFieldPayload>,
+        keys: Vec<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            extension_id: extension_id.into(),
+            fields,
+            keys,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &ExtensionConfigActorPayload {
+        &self.actor
+    }
+
+    pub fn extension_id(&self) -> &str {
+        &self.extension_id
+    }
+
+    pub fn fields(&self) -> &[ExtensionConfigFieldPayload] {
+        &self.fields
+    }
+
+    pub fn keys(&self) -> &[String] {
+        &self.keys
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+pub type ExtensionConfigRedactPayload = ExtensionConfigReadPayload;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigReadResultPayload {
+    extension_id: String,
+    values: Vec<ExtensionConfigValueEntryPayload>,
+    secrets: Vec<ExtensionConfigSecretStatePayload>,
+    revision: u64,
+}
+
+impl ExtensionConfigReadResultPayload {
+    pub fn new(
+        extension_id: impl Into<String>,
+        values: Vec<ExtensionConfigValueEntryPayload>,
+        secrets: Vec<ExtensionConfigSecretStatePayload>,
+        revision: u64,
+    ) -> Self {
+        Self {
+            extension_id: extension_id.into(),
+            values,
+            secrets,
+            revision,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigWriteResultPayload {
+    extension_id: String,
+    written_keys: Vec<String>,
+    revision: u64,
+}
+
+impl ExtensionConfigWriteResultPayload {
+    pub fn new(extension_id: impl Into<String>, written_keys: Vec<String>, revision: u64) -> Self {
+        Self {
+            extension_id: extension_id.into(),
+            written_keys,
+            revision,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigResetResultPayload {
+    extension_id: String,
+    reset_keys: Vec<String>,
+    revision: u64,
+}
+
+impl ExtensionConfigResetResultPayload {
+    pub fn new(extension_id: impl Into<String>, reset_keys: Vec<String>, revision: u64) -> Self {
+        Self {
+            extension_id: extension_id.into(),
+            reset_keys,
+            revision,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigRedactionEvidencePayload {
+    key: String,
+    reason: String,
+}
+
+impl ExtensionConfigRedactionEvidencePayload {
+    pub fn new(key: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigRedactResultPayload {
+    extension_id: String,
+    values: Vec<ExtensionConfigValueEntryPayload>,
+    redactions: Vec<ExtensionConfigRedactionEvidencePayload>,
+}
+
+impl ExtensionConfigRedactResultPayload {
+    pub fn new(
+        extension_id: impl Into<String>,
+        values: Vec<ExtensionConfigValueEntryPayload>,
+        redactions: Vec<ExtensionConfigRedactionEvidencePayload>,
+    ) -> Self {
+        Self {
+            extension_id: extension_id.into(),
+            values,
+            redactions,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ExtensionConfigSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionConfigEventPayload {
+    r#type: String,
+    timestamp: u64,
+    extension_id: String,
+    phase: ExtensionConfigEventPhase,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    keys: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    revision: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ExtensionConfigEventPayload {
+    pub fn new(
+        timestamp: u64,
+        extension_id: impl Into<String>,
+        phase: ExtensionConfigEventPhase,
+        keys: Vec<String>,
+        revision: Option<u64>,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            r#type: "extension-config-event".to_string(),
+            timestamp,
+            extension_id: extension_id.into(),
+            phase,
+            keys,
+            revision,
+            reason,
+        }
+    }
+}
+
 impl WindowDestroyPayload {
     pub fn new(window_id: impl Into<String>) -> Self {
         Self {
@@ -2176,7 +2641,13 @@ mod tests {
         ExecutionSandboxEventPhase, ExecutionSandboxFilesystemPolicyPayload,
         ExecutionSandboxNetworkPolicyPayload, ExecutionSandboxPolicyPayload,
         ExecutionSandboxRunPayload, ExecutionSandboxRunStatus, ExecutionSandboxSupportedPayload,
-        HostProtocolEnvelope, HostProtocolError, HostVersionPayload, RealtimeMediaDeviceKind,
+        ExtensionConfigActorKind, ExtensionConfigActorPayload, ExtensionConfigEventPayload,
+        ExtensionConfigEventPhase, ExtensionConfigExportPolicy, ExtensionConfigFieldPayload,
+        ExtensionConfigReadPayload, ExtensionConfigRedactResultPayload,
+        ExtensionConfigRedactionEvidencePayload, ExtensionConfigResetResultPayload,
+        ExtensionConfigSupportedPayload, ExtensionConfigValueEntryPayload,
+        ExtensionConfigValueType, ExtensionConfigWritePayload, HostProtocolEnvelope,
+        HostProtocolError, HostVersionPayload, RealtimeMediaDeviceKind,
         RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
         RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
         RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
@@ -2188,8 +2659,8 @@ mod tests {
         WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights,
         DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
-        EXECUTION_SANDBOX_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
-        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
+        EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
+        HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION, REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -2819,6 +3290,96 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn extension_config_payloads_serialize_canonically() {
+        let actor =
+            ExtensionConfigActorPayload::new(ExtensionConfigActorKind::Extension, "extension-1");
+        let theme =
+            ExtensionConfigFieldPayload::new("theme", ExtensionConfigValueType::String, false)
+                .with_default(serde_json::json!("light"));
+        let secret =
+            ExtensionConfigFieldPayload::new("apiKey", ExtensionConfigValueType::String, true)
+                .with_export_policy(ExtensionConfigExportPolicy::Private);
+        let read = ExtensionConfigReadPayload::new(
+            actor.clone(),
+            "extension-1",
+            vec![theme.clone(), secret.clone()],
+            Some("trace-read".to_string()),
+        );
+
+        assert_eq!(actor.kind(), ExtensionConfigActorKind::Extension);
+        assert_eq!(actor.id(), "extension-1");
+        assert_eq!(read.extension_id(), "extension-1");
+        assert_eq!(
+            serde_json::to_string(&read).expect("read payload should encode"),
+            r#"{"actor":{"kind":"extension","id":"extension-1"},"extensionId":"extension-1","fields":[{"key":"theme","valueType":"string","secret":false,"defaultValue":"light"},{"key":"apiKey","valueType":"string","secret":true,"exportPolicy":"private"}],"traceId":"trace-read"}"#
+        );
+
+        let write = ExtensionConfigWritePayload::new(
+            actor,
+            "extension-1",
+            vec![theme, secret],
+            vec![ExtensionConfigValueEntryPayload::new(
+                "theme",
+                serde_json::json!("dark"),
+            )],
+            vec!["apiKey".to_string()],
+            Some("trace-write".to_string()),
+        );
+        assert_eq!(write.secret_keys(), &["apiKey".to_string()]);
+        assert_eq!(
+            serde_json::to_string(&write).expect("write payload should encode"),
+            r#"{"actor":{"kind":"extension","id":"extension-1"},"extensionId":"extension-1","fields":[{"key":"theme","valueType":"string","secret":false,"defaultValue":"light"},{"key":"apiKey","valueType":"string","secret":true,"exportPolicy":"private"}],"values":[{"key":"theme","value":"dark"}],"secretKeys":["apiKey"],"traceId":"trace-write"}"#
+        );
+
+        let redacted = ExtensionConfigRedactResultPayload::new(
+            "extension-1",
+            vec![ExtensionConfigValueEntryPayload::new(
+                "apiKey",
+                serde_json::json!("<redacted:ExtensionConfigSecret>"),
+            )],
+            vec![ExtensionConfigRedactionEvidencePayload::new(
+                "apiKey",
+                "secret-field",
+            )],
+        );
+        assert_eq!(
+            serde_json::to_string(&redacted).expect("redact result should encode"),
+            r#"{"extensionId":"extension-1","values":[{"key":"apiKey","value":"<redacted:ExtensionConfigSecret>"}],"redactions":[{"key":"apiKey","reason":"secret-field"}]}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&ExtensionConfigResetResultPayload::new(
+                "extension-1",
+                vec!["theme".to_string(), "apiKey".to_string()],
+                2,
+            ))
+            .expect("reset result should encode"),
+            r#"{"extensionId":"extension-1","resetKeys":["theme","apiKey"],"revision":2}"#
+        );
+
+        let event = ExtensionConfigEventPayload::new(
+            1_710_000_000_000,
+            "extension-1",
+            ExtensionConfigEventPhase::Written,
+            vec!["theme".to_string()],
+            Some(1),
+            None,
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("event should encode"),
+            r#"{"type":"extension-config-event","timestamp":1710000000000,"extensionId":"extension-1","phase":"written","keys":["theme"],"revision":1}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&ExtensionConfigSupportedPayload::unsupported(
+                EXTENSION_CONFIG_UNSUPPORTED_REASON,
+            ))
+            .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
     }

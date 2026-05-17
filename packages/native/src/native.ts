@@ -12,6 +12,7 @@ import { DiagnosticsBundleSurface } from "./diagnostics-bundle.js"
 import { DialogSurface } from "./dialog.js"
 import { EgressPolicySurface } from "./egress-policy.js"
 import { ExecutionSandboxSurface } from "./execution-sandbox.js"
+import { ExtensionConfigSurface } from "./extension-config.js"
 import { DockSurface } from "./dock.js"
 import { GlobalShortcutSurface } from "./global-shortcut.js"
 import { MenuSurface } from "./menu.js"
@@ -39,6 +40,7 @@ const BuiltInSurfaces = Object.freeze([
   DialogSurface,
   EgressPolicySurface,
   ExecutionSandboxSurface,
+  ExtensionConfigSurface,
   DockSurface,
   GlobalShortcutSurface,
   MenuSurface,
@@ -72,6 +74,7 @@ const DiagnosticsBundle = DiagnosticsBundleSurface.selection
 const Dialog = DialogSurface.selection
 const EgressPolicy = EgressPolicySurface.selection
 const ExecutionSandbox = ExecutionSandboxSurface.selection
+const ExtensionConfig = ExtensionConfigSurface.selection
 const Dock = DockSurface.selection
 const GlobalShortcut = GlobalShortcutSurface.selection
 const Menu = MenuSurface.selection
@@ -105,6 +108,7 @@ export const Permissions = Object.freeze({
   dialog: DialogSurface.permissions,
   egressPolicy: EgressPolicySurface.permissions,
   executionSandbox: ExecutionSandboxSurface.permissions,
+  extensionConfig: ExtensionConfigSurface.permissions,
   dock: DockSurface.permissions,
   globalShortcut: GlobalShortcutSurface.permissions,
   menu: MenuSurface.permissions,
@@ -133,6 +137,7 @@ export const Native = Object.freeze({
   Dialog,
   EgressPolicy,
   ExecutionSandbox,
+  ExtensionConfig,
   Dock,
   GlobalShortcut,
   Menu,
