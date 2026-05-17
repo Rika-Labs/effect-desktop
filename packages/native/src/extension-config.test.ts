@@ -241,6 +241,51 @@ test("ExtensionConfig read reports missing required values as invalid input", as
   })
 })
 
+test("ExtensionConfig rejects secret field defaults before native transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({
+        kind: "success",
+        payload: { extensionId: "extension-1", values: [], secrets: [], revision: 0 }
+      })
+    },
+    subscribe: () => Stream.empty
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* ExtensionConfigClient
+      return yield* Effect.exit(
+        client.read(
+          new ExtensionConfigReadInput({
+            actor: actor(),
+            extensionId: "extension-1",
+            fields: [
+              new ExtensionConfigField({
+                key: "apiKey",
+                valueType: "string",
+                secret: true,
+                defaultValue: "not-allowed"
+              })
+            ]
+          })
+        )
+      )
+    }).pipe(Effect.provide(makeExtensionConfigBridgeClientLayer(exchange)))
+  )
+
+  expect(requests).toEqual([])
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({
+      tag: "InvalidArgument",
+      operation: "ExtensionConfig.read",
+      field: "fields.defaultValue"
+    })
+  })
+})
+
 test("ExtensionConfig rejects malformed values before native transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange: BridgeClientExchange = {

@@ -67,7 +67,7 @@ The Rust host adapter stores non-secret values and secret-key presence in a dura
 | Windows  | `supported` | Store lives under the user application data. |
 | Linux    | `supported` | Store lives under XDG config or `~/.config`. |
 
-`isSupported` returns `{ supported: true }` when the host can create and decode the store. If the store path is unavailable or corrupt, requests fail with typed host errors instead of silently falling back to memory.
+`isSupported` returns `{ supported: true }` only after the host can lock the store, decode it, write a temporary replacement, and atomically replace the store file. If the store path is unavailable, unwritable, or corrupt, requests fail with typed host errors instead of silently falling back to memory.
 
 ## Testing
 

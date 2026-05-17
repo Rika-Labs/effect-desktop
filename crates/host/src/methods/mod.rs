@@ -12,6 +12,9 @@ mod transactional_file_mutation;
 mod window;
 mod workspace_index;
 
+#[cfg(test)]
+pub(crate) use extension_config::EXTENSION_CONFIG_ENV_LOCK;
+
 use crate::{linux, window::WindowMethodHandler};
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
 use std::sync::{mpsc::Sender, Arc, Mutex};

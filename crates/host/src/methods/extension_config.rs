@@ -1012,6 +1012,35 @@ mod tests {
     }
 
     #[test]
+    fn read_rejects_secret_field_defaults_before_persistence() {
+        with_temp_store("secret-default", || {
+            let error = read(Some(json!({
+                "actor": { "kind": "extension", "id": "extension-1" },
+                "extensionId": "extension-1",
+                "fields": [
+                    {
+                        "key": "apiKey",
+                        "valueType": "string",
+                        "secret": true,
+                        "defaultValue": "not-allowed"
+                    }
+                ],
+                "traceId": "trace-read"
+            })))
+            .expect_err("secret defaults should be rejected");
+
+            assert_eq!(
+                error,
+                HostProtocolError::invalid_argument(
+                    "fields.defaultValue",
+                    "secret fields cannot declare defaults",
+                    host_protocol::EXTENSION_CONFIG_READ_METHOD,
+                )
+            );
+        });
+    }
+
+    #[test]
     fn reset_rejects_unknown_keys_before_persistence() {
         with_temp_store("invalid-reset", || {
             let error = reset(Some(json!({

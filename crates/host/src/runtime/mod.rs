@@ -1548,6 +1548,137 @@ console.log("this is not framed");
     }
 
     #[test]
+    fn framed_runtime_extension_config_requests_use_host_persistence_and_events() {
+        let _guard = crate::methods::EXTENSION_CONFIG_ENV_LOCK
+            .lock()
+            .expect("extension config env lock should not be poisoned");
+        let dir = unique_temp_dir("extension-config-framed-runtime");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let store_path = dir.join("extension-config.json");
+        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE");
+        std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", &store_path);
+        let mut input = Vec::new();
+        {
+            let mut writer = FrameWriter::new(&mut input);
+            for request in [
+                extension_config_request(
+                    "write",
+                    host_protocol::EXTENSION_CONFIG_WRITE_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "extensionId": "extension-1",
+                        "fields": extension_config_fields(),
+                        "values": [{ "key": "theme", "value": "dark" }],
+                        "secretKeys": ["apiKey"],
+                        "traceId": "trace-extension-config"
+                    }),
+                ),
+                extension_config_request(
+                    "read",
+                    host_protocol::EXTENSION_CONFIG_READ_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "extensionId": "extension-1",
+                        "fields": extension_config_fields(),
+                        "traceId": "trace-extension-config"
+                    }),
+                ),
+                extension_config_request(
+                    "redact",
+                    host_protocol::EXTENSION_CONFIG_REDACT_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "extensionId": "extension-1",
+                        "fields": extension_config_fields(),
+                        "traceId": "trace-extension-config"
+                    }),
+                ),
+                extension_config_request(
+                    "reset",
+                    host_protocol::EXTENSION_CONFIG_RESET_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "extensionId": "extension-1",
+                        "fields": extension_config_fields(),
+                        "keys": ["theme", "apiKey"],
+                        "traceId": "trace-extension-config"
+                    }),
+                ),
+            ] {
+                let request_bytes = serde_json::to_vec(&request).expect("request should encode");
+                writer
+                    .send(&request_bytes)
+                    .expect("request frame should encode");
+            }
+        }
+        let mut output = Vec::new();
+
+        super::serve_framed_host_requests(Cursor::new(input), &mut output, &test_router())
+            .expect("extension config frames should dispatch");
+
+        match previous_store_path {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE"),
+        }
+        let _ = fs::remove_dir_all(dir);
+
+        let mut reader = FrameReader::new(Cursor::new(output));
+        let mut frames = Vec::new();
+        while let Some(frame) = reader.recv().expect("response frame should decode") {
+            frames.push(
+                serde_json::from_slice::<HostProtocolEnvelope>(&frame)
+                    .expect("host protocol frame should decode"),
+            );
+        }
+
+        assert_eq!(frames.len(), 8);
+        assert_extension_config_event(&frames[0], "written", Some(1));
+        assert_extension_config_response(
+            &frames[1],
+            "request-extension-config-write",
+            serde_json::json!({
+                "extensionId": "extension-1",
+                "writtenKeys": ["theme", "apiKey"],
+                "revision": 1
+            }),
+        );
+        assert_extension_config_event(&frames[2], "read", Some(1));
+        assert_extension_config_response(
+            &frames[3],
+            "request-extension-config-read",
+            serde_json::json!({
+                "extensionId": "extension-1",
+                "values": [{ "key": "theme", "value": "dark" }],
+                "secrets": [{ "key": "apiKey", "present": true }],
+                "revision": 1
+            }),
+        );
+        assert_extension_config_event(&frames[4], "redacted", None);
+        assert_extension_config_response(
+            &frames[5],
+            "request-extension-config-redact",
+            serde_json::json!({
+                "extensionId": "extension-1",
+                "values": [
+                    { "key": "theme", "value": "dark" },
+                    { "key": "apiKey", "value": "<redacted:ExtensionConfigSecret>" }
+                ],
+                "redactions": [{ "key": "apiKey", "reason": "secret-field" }]
+            }),
+        );
+        assert_extension_config_event(&frames[6], "reset", Some(2));
+        assert_extension_config_response(
+            &frames[7],
+            "request-extension-config-reset",
+            serde_json::json!({
+                "extensionId": "extension-1",
+                "resetKeys": ["theme", "apiKey"],
+                "revision": 2
+            }),
+        );
+    }
+
+    #[test]
     fn child_runtime_round_trips_ping_and_version_after_ready_for_bun_and_node() {
         for executable in runtime_provider_executables() {
             let script = RUNTIME_HANDSHAKE_SCRIPT.replace("__PROTOCOL_VERSION__", PROTOCOL_VERSION);
@@ -1946,6 +2077,84 @@ console.log("this is not framed");
 
     fn test_router() -> HostMethodRouter {
         HostMethodRouter::new(Arc::new(WindowMethodPort::new()))
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("effect-desktop-runtime-{nanos}-{name}"))
+    }
+
+    fn extension_config_fields() -> serde_json::Value {
+        serde_json::json!([
+            {
+                "key": "theme",
+                "valueType": "string",
+                "secret": false,
+                "defaultValue": "light"
+            },
+            { "key": "apiKey", "valueType": "string", "secret": true }
+        ])
+    }
+
+    fn extension_config_request(
+        id: &str,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> HostProtocolEnvelope {
+        HostProtocolEnvelope::Request {
+            id: format!("request-extension-config-{id}"),
+            method: method.to_string(),
+            timestamp: 1710000000000,
+            trace_id: format!("trace-extension-config-{id}"),
+            window_id: None,
+            origin_token: None,
+            payload: Some(payload),
+        }
+    }
+
+    fn assert_extension_config_event(
+        frame: &HostProtocolEnvelope,
+        phase: &str,
+        revision: Option<u64>,
+    ) {
+        let HostProtocolEnvelope::Event {
+            method,
+            payload: Some(payload),
+            ..
+        } = frame
+        else {
+            panic!("expected extension config event frame: {frame:?}");
+        };
+        assert_eq!(method, host_protocol::EXTENSION_CONFIG_EVENT);
+        assert_eq!(payload["phase"], phase);
+        assert_eq!(payload["extensionId"], "extension-1");
+        assert_eq!(payload["keys"], serde_json::json!(["theme", "apiKey"]));
+        match revision {
+            Some(revision) => assert_eq!(payload["revision"], revision),
+            None => assert!(payload.get("revision").is_none()),
+        }
+    }
+
+    fn assert_extension_config_response(
+        frame: &HostProtocolEnvelope,
+        id: &str,
+        expected_payload: serde_json::Value,
+    ) {
+        let HostProtocolEnvelope::Response {
+            id: response_id,
+            payload,
+            error,
+            ..
+        } = frame
+        else {
+            panic!("expected extension config response frame: {frame:?}");
+        };
+        assert_eq!(response_id, id);
+        assert_eq!(payload.as_ref(), Some(&expected_payload));
+        assert_eq!(error, &None);
     }
 
     fn crash_once_runtime_config(count_path: &Path) -> RuntimeConfig {
