@@ -39,8 +39,10 @@ import {
 } from "./contracts/transactional-file-mutation.js"
 
 const Text = new TextEncoder()
-const WORKSPACE_ROOT = path.resolve("workspace", "app")
-const WORKSPACE_FILE = path.join(WORKSPACE_ROOT, "src", "main.ts")
+const testPath = (...segments: string[]): string =>
+  path.resolve(...segments).replaceAll(path.sep, "/")
+const WORKSPACE_ROOT = testPath("workspace", "app")
+const WORKSPACE_FILE = testPath("workspace", "app", "src", "main.ts")
 const initialFiles = (): Record<string, string> => ({ [WORKSPACE_FILE]: "old\n" })
 
 test("TransactionalFileMutation prepares diffs, commits atomically, detects conflicts, emits events, and audits use", async () => {
