@@ -10,6 +10,7 @@ import { ClipboardSurface } from "./clipboard.js"
 import { ContextMenuSurface } from "./context-menu.js"
 import { CrashReporterSurface } from "./crash-reporter.js"
 import { DiagnosticsBundleSurface } from "./diagnostics-bundle.js"
+import { DisplayCaptureSurface } from "./display-capture.js"
 import { DialogSurface } from "./dialog.js"
 import { EgressPolicySurface } from "./egress-policy.js"
 import { ExecutionSandboxSurface } from "./execution-sandbox.js"
@@ -46,6 +47,7 @@ const BuiltInSurfaces = Object.freeze([
   ContextMenuSurface,
   CrashReporterSurface,
   DiagnosticsBundleSurface,
+  DisplayCaptureSurface,
   DialogSurface,
   EgressPolicySurface,
   ExecutionSandboxSurface,
@@ -88,6 +90,7 @@ const Clipboard = ClipboardSurface.selection
 const ContextMenu = ContextMenuSurface.selection
 const CrashReporter = CrashReporterSurface.selection
 const DiagnosticsBundle = DiagnosticsBundleSurface.selection
+const DisplayCapture = DisplayCaptureSurface.selection
 const Dialog = DialogSurface.selection
 const EgressPolicy = EgressPolicySurface.selection
 const ExecutionSandbox = ExecutionSandboxSurface.selection
@@ -130,6 +133,7 @@ export const Permissions = Object.freeze({
   contextMenu: ContextMenuSurface.permissions,
   crashReporter: CrashReporterSurface.permissions,
   diagnosticsBundle: DiagnosticsBundleSurface.permissions,
+  displayCapture: DisplayCaptureSurface.permissions,
   dialog: DialogSurface.permissions,
   egressPolicy: EgressPolicySurface.permissions,
   executionSandbox: ExecutionSandboxSurface.permissions,
@@ -167,6 +171,7 @@ export const Native = Object.freeze({
   ContextMenu,
   CrashReporter,
   DiagnosticsBundle,
+  DisplayCapture,
   Dialog,
   EgressPolicy,
   ExecutionSandbox,

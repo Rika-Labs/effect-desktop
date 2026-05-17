@@ -1,5 +1,6 @@
 mod attachment_intake;
 mod diagnostics_bundle;
+mod display_capture;
 mod dock;
 mod egress_policy;
 mod execution_sandbox;
@@ -444,6 +445,16 @@ impl HostMethodRouter {
             host_protocol::FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD => {
                 focused_application_context::is_supported()
             }
+            host_protocol::DISPLAY_CAPTURE_CAPTURE_DISPLAY_METHOD => {
+                display_capture::capture_display(payload)
+            }
+            host_protocol::DISPLAY_CAPTURE_CAPTURE_WINDOW_METHOD => {
+                display_capture::capture_window(payload)
+            }
+            host_protocol::DISPLAY_CAPTURE_CAPTURE_REGION_METHOD => {
+                display_capture::capture_region(payload)
+            }
+            host_protocol::DISPLAY_CAPTURE_IS_SUPPORTED_METHOD => display_capture::is_supported(),
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
             host_protocol::EXECUTION_SANDBOX_CREATE_METHOD => execution_sandbox::create(payload),
@@ -1055,6 +1066,33 @@ mod tests {
                 payload: Some(serde_json::json!({
                     "supported": false,
                     "reason": host_protocol::FOCUSED_APPLICATION_CONTEXT_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn display_capture_support_dispatches_through_router() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-display-capture-supported",
+                    host_protocol::DISPLAY_CAPTURE_IS_SUPPORTED_METHOD,
+                ),
+                1710000000104,
+            )
+            .expect("display capture support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-display-capture-supported".to_string(),
+                timestamp: 1710000000104,
+                trace_id: "trace-request-display-capture-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::DISPLAY_CAPTURE_UNSUPPORTED_REASON
                 })),
                 error: None,
             }

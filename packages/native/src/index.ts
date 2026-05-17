@@ -382,6 +382,26 @@ export {
   type FocusedApplicationContextServiceOptions
 } from "./focused-application-context.js"
 export {
+  DisplayCapture,
+  DisplayCaptureClient,
+  DisplayCaptureGrantAuthority,
+  DisplayCaptureLive,
+  DisplayCaptureMethodNames,
+  makeDisplayCaptureBridgeClientLayer,
+  makeDisplayCaptureClientLayer,
+  makeDisplayCaptureGrantAuthority,
+  makeDisplayCaptureGrantAuthorityLayer,
+  makeDisplayCaptureMemoryClient,
+  makeDisplayCaptureServiceLayer,
+  makeDisplayCaptureUnsupportedClient,
+  type DisplayCaptureClientApi,
+  type DisplayCaptureError,
+  type DisplayCaptureGrantAuthorityApi,
+  type DisplayCaptureMemoryClientOptions,
+  type DisplayCaptureServiceApi,
+  type DisplayCaptureServiceOptions
+} from "./display-capture.js"
+export {
   WorkspaceIndex,
   WorkspaceIndexClient,
   WorkspaceIndexHandlersLive,

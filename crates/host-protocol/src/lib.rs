@@ -63,6 +63,11 @@ pub const FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD: &str =
 pub const FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD: &str =
     "FocusedApplicationContext.isSupported";
 pub const FOCUSED_APPLICATION_CONTEXT_EVENT: &str = "FocusedApplicationContext.Event";
+pub const DISPLAY_CAPTURE_CAPTURE_DISPLAY_METHOD: &str = "DisplayCapture.captureDisplay";
+pub const DISPLAY_CAPTURE_CAPTURE_WINDOW_METHOD: &str = "DisplayCapture.captureWindow";
+pub const DISPLAY_CAPTURE_CAPTURE_REGION_METHOD: &str = "DisplayCapture.captureRegion";
+pub const DISPLAY_CAPTURE_IS_SUPPORTED_METHOD: &str = "DisplayCapture.isSupported";
+pub const DISPLAY_CAPTURE_EVENT: &str = "DisplayCapture.Event";
 pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
@@ -121,6 +126,7 @@ pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemen
 pub const ATTACHMENT_INTAKE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const SELECTION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const FOCUSED_APPLICATION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const DISPLAY_CAPTURE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -1640,6 +1646,323 @@ impl FocusedApplicationContextEventPayload {
             phase,
             watch_id: None,
             snapshot: None,
+            reason: None,
+            message: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DisplayCaptureActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DisplayCaptureGrantKind {
+    User,
+    Policy,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DisplayCaptureSource {
+    Display,
+    Window,
+    Region,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DisplayCaptureEventPhase {
+    Captured,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureActorPayload {
+    kind: DisplayCaptureActorKind,
+    id: String,
+}
+
+impl DisplayCaptureActorPayload {
+    pub fn new(kind: DisplayCaptureActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureGrantPayload {
+    kind: DisplayCaptureGrantKind,
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl DisplayCaptureGrantPayload {
+    pub fn new(kind: DisplayCaptureGrantKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+            reason: None,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureRegionPayload {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl DisplayCaptureRegionPayload {
+    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    pub fn values(&self) -> (f64, f64, f64, f64) {
+        (self.x, self.y, self.width, self.height)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureTargetPayload {
+    source: DisplayCaptureSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    window_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    region: Option<DisplayCaptureRegionPayload>,
+}
+
+impl DisplayCaptureTargetPayload {
+    pub fn display(display_id: impl Into<String>) -> Self {
+        Self {
+            source: DisplayCaptureSource::Display,
+            display_id: Some(display_id.into()),
+            window_id: None,
+            region: None,
+        }
+    }
+
+    pub fn window(window_id: impl Into<String>) -> Self {
+        Self {
+            source: DisplayCaptureSource::Window,
+            display_id: None,
+            window_id: Some(window_id.into()),
+            region: None,
+        }
+    }
+
+    pub fn region(display_id: impl Into<String>, region: DisplayCaptureRegionPayload) -> Self {
+        Self {
+            source: DisplayCaptureSource::Region,
+            display_id: Some(display_id.into()),
+            window_id: None,
+            region: Some(region),
+        }
+    }
+
+    pub fn source(&self) -> DisplayCaptureSource {
+        self.source
+    }
+
+    pub fn display_id(&self) -> Option<&str> {
+        self.display_id.as_deref()
+    }
+
+    pub fn window_id(&self) -> Option<&str> {
+        self.window_id.as_deref()
+    }
+
+    pub fn region_payload(&self) -> Option<&DisplayCaptureRegionPayload> {
+        self.region.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureRequestPayload {
+    actor: DisplayCaptureActorPayload,
+    grant: DisplayCaptureGrantPayload,
+    target: DisplayCaptureTargetPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DisplayCaptureRequestPayload {
+    pub fn new(
+        actor: DisplayCaptureActorPayload,
+        grant: DisplayCaptureGrantPayload,
+        target: DisplayCaptureTargetPayload,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            grant,
+            target,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &DisplayCaptureActorPayload {
+        &self.actor
+    }
+
+    pub fn grant(&self) -> &DisplayCaptureGrantPayload {
+        &self.grant
+    }
+
+    pub fn target(&self) -> &DisplayCaptureTargetPayload {
+        &self.target
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureImagePayload {
+    mime: String,
+    bytes: Vec<u8>,
+}
+
+impl DisplayCaptureImagePayload {
+    pub fn new(mime: impl Into<String>, bytes: Vec<u8>) -> Self {
+        Self {
+            mime: mime.into(),
+            bytes,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureMetadataPayload {
+    capture_id: String,
+    source: DisplayCaptureSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    window_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    region: Option<DisplayCaptureRegionPayload>,
+    byte_length: u64,
+    observed_at: u64,
+}
+
+impl DisplayCaptureMetadataPayload {
+    pub fn new(
+        capture_id: impl Into<String>,
+        source: DisplayCaptureSource,
+        byte_length: u64,
+        observed_at: u64,
+    ) -> Self {
+        Self {
+            capture_id: capture_id.into(),
+            source,
+            display_id: None,
+            window_id: None,
+            region: None,
+            byte_length,
+            observed_at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureResultPayload {
+    image: DisplayCaptureImagePayload,
+    metadata: DisplayCaptureMetadataPayload,
+}
+
+impl DisplayCaptureResultPayload {
+    pub fn new(image: DisplayCaptureImagePayload, metadata: DisplayCaptureMetadataPayload) -> Self {
+        Self { image, metadata }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl DisplayCaptureSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisplayCaptureEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: DisplayCaptureEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capture_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<DisplayCaptureSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    byte_length: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl DisplayCaptureEventPayload {
+    pub fn new(timestamp: u64, phase: DisplayCaptureEventPhase) -> Self {
+        Self {
+            r#type: "display-capture-event".to_string(),
+            timestamp,
+            phase,
+            capture_id: None,
+            source: None,
+            byte_length: None,
             reason: None,
             message: None,
         }
@@ -6214,26 +6537,31 @@ mod tests {
         DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
         DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
         DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
-        DiagnosticsBundleWriteResultPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
-        EgressPolicyDecisionPayload, EgressPolicyDecisionRecordedEventPayload,
-        EgressPolicyDecisionResultPayload, EgressPolicyDestinationPayload, EgressPolicyOutcome,
-        EgressPolicyProtocol, EgressPolicyRecordPayload, EgressPolicyRecordResultPayload,
-        EgressPolicyRuleEffect, EgressPolicyRulePayload, EgressPolicySupportedPayload,
-        ExecutionSandboxActorKind, ExecutionSandboxActorPayload,
-        ExecutionSandboxBudgetPolicyPayload, ExecutionSandboxCleanupPolicyPayload,
-        ExecutionSandboxCreatePayload, ExecutionSandboxEnvironmentEntryPayload,
-        ExecutionSandboxEventPayload, ExecutionSandboxEventPhase,
-        ExecutionSandboxFilesystemPolicyPayload, ExecutionSandboxNetworkPolicyPayload,
-        ExecutionSandboxPolicyPayload, ExecutionSandboxRunPayload, ExecutionSandboxRunStatus,
-        ExecutionSandboxSupportedPayload, ExtensionConfigActorKind, ExtensionConfigActorPayload,
-        ExtensionConfigEventPayload, ExtensionConfigEventPhase, ExtensionConfigExportPolicy,
-        ExtensionConfigFieldPayload, ExtensionConfigReadPayload,
-        ExtensionConfigRedactResultPayload, ExtensionConfigRedactionEvidencePayload,
-        ExtensionConfigResetResultPayload, ExtensionConfigSupportedPayload,
-        ExtensionConfigValueEntryPayload, ExtensionConfigValueType, ExtensionConfigWritePayload,
-        ExtensionPackageActorKind, ExtensionPackageActorPayload,
-        ExtensionPackageCapabilityDeclarationPayload, ExtensionPackageCompatibilityPayload,
-        ExtensionPackageEventPayload, ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
+        DiagnosticsBundleWriteResultPayload, DisplayCaptureActorKind, DisplayCaptureActorPayload,
+        DisplayCaptureEventPayload, DisplayCaptureEventPhase, DisplayCaptureGrantKind,
+        DisplayCaptureGrantPayload, DisplayCaptureImagePayload, DisplayCaptureMetadataPayload,
+        DisplayCaptureRegionPayload, DisplayCaptureRequestPayload, DisplayCaptureResultPayload,
+        DisplayCaptureSource, DisplayCaptureSupportedPayload, DisplayCaptureTargetPayload,
+        EgressPolicyActorKind, EgressPolicyActorPayload, EgressPolicyDecisionPayload,
+        EgressPolicyDecisionRecordedEventPayload, EgressPolicyDecisionResultPayload,
+        EgressPolicyDestinationPayload, EgressPolicyOutcome, EgressPolicyProtocol,
+        EgressPolicyRecordPayload, EgressPolicyRecordResultPayload, EgressPolicyRuleEffect,
+        EgressPolicyRulePayload, EgressPolicySupportedPayload, ExecutionSandboxActorKind,
+        ExecutionSandboxActorPayload, ExecutionSandboxBudgetPolicyPayload,
+        ExecutionSandboxCleanupPolicyPayload, ExecutionSandboxCreatePayload,
+        ExecutionSandboxEnvironmentEntryPayload, ExecutionSandboxEventPayload,
+        ExecutionSandboxEventPhase, ExecutionSandboxFilesystemPolicyPayload,
+        ExecutionSandboxNetworkPolicyPayload, ExecutionSandboxPolicyPayload,
+        ExecutionSandboxRunPayload, ExecutionSandboxRunStatus, ExecutionSandboxSupportedPayload,
+        ExtensionConfigActorKind, ExtensionConfigActorPayload, ExtensionConfigEventPayload,
+        ExtensionConfigEventPhase, ExtensionConfigExportPolicy, ExtensionConfigFieldPayload,
+        ExtensionConfigReadPayload, ExtensionConfigRedactResultPayload,
+        ExtensionConfigRedactionEvidencePayload, ExtensionConfigResetResultPayload,
+        ExtensionConfigSupportedPayload, ExtensionConfigValueEntryPayload,
+        ExtensionConfigValueType, ExtensionConfigWritePayload, ExtensionPackageActorKind,
+        ExtensionPackageActorPayload, ExtensionPackageCapabilityDeclarationPayload,
+        ExtensionPackageCompatibilityPayload, ExtensionPackageEventPayload,
+        ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
         ExtensionPackageInstallResultPayload, ExtensionPackageManifestPayload,
         ExtensionPackageRemoveResultPayload, ExtensionPackageSourceKind,
         ExtensionPackageSourcePayload, ExtensionPackageSupportedPayload,
@@ -6272,10 +6600,10 @@ mod tests {
         WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
-        DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
-        EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
-        EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS,
-        LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
+        DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, DISPLAY_CAPTURE_UNSUPPORTED_REASON,
+        EGRESS_POLICY_UNSUPPORTED_REASON, EXECUTION_SANDBOX_UNSUPPORTED_REASON,
+        EXTENSION_CONFIG_UNSUPPORTED_REASON, EXTENSION_PACKAGE_UNSUPPORTED_REASON,
+        HOST_PROTOCOL_ERROR_SPECS, LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
         WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
@@ -6767,6 +7095,52 @@ mod tests {
         assert_eq!(
             supported.reason(),
             Some(DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON)
+        );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn display_capture_payloads_serialize_canonically() {
+        let actor =
+            DisplayCaptureActorPayload::new(DisplayCaptureActorKind::Workspace, "workspace-1");
+        let grant = DisplayCaptureGrantPayload::new(DisplayCaptureGrantKind::Policy, "grant-1");
+        let target = DisplayCaptureTargetPayload::region(
+            "display-1",
+            DisplayCaptureRegionPayload::new(1.0, 2.0, 320.0, 240.0),
+        );
+        let request = DisplayCaptureRequestPayload::new(
+            actor,
+            grant,
+            target,
+            Some("trace-display-capture".to_string()),
+        );
+        let image = DisplayCaptureImagePayload::new("image/png", vec![137, 80, 78, 71]);
+        let metadata = DisplayCaptureMetadataPayload::new(
+            "capture-1",
+            DisplayCaptureSource::Region,
+            4,
+            1710000000000,
+        );
+        let result = DisplayCaptureResultPayload::new(image, metadata);
+        let event =
+            DisplayCaptureEventPayload::new(1710000000001, DisplayCaptureEventPhase::Captured);
+        let supported =
+            DisplayCaptureSupportedPayload::unsupported(DISPLAY_CAPTURE_UNSUPPORTED_REASON);
+
+        assert_eq!(
+            serde_json::to_string(&request).expect("request payload should encode"),
+            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"grant":{"kind":"policy","id":"grant-1"},"target":{"source":"region","displayId":"display-1","region":{"x":1.0,"y":2.0,"width":320.0,"height":240.0}},"traceId":"trace-display-capture"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&result).expect("result payload should encode"),
+            r#"{"image":{"mime":"image/png","bytes":[137,80,78,71]},"metadata":{"captureId":"capture-1","source":"region","byteLength":4,"observedAt":1710000000000}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("event payload should encode"),
+            r#"{"type":"display-capture-event","timestamp":1710000000001,"phase":"captured"}"#
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("support payload should encode"),
