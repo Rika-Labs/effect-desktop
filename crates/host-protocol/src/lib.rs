@@ -84,6 +84,9 @@ pub const RESIDENT_LIFECYCLE_DISABLE_METHOD: &str = "ResidentLifecycle.disable";
 pub const RESIDENT_LIFECYCLE_GET_STATE_METHOD: &str = "ResidentLifecycle.getState";
 pub const RESIDENT_LIFECYCLE_IS_SUPPORTED_METHOD: &str = "ResidentLifecycle.isSupported";
 pub const RESIDENT_LIFECYCLE_EVENT: &str = "ResidentLifecycle.Event";
+pub const DISTRIBUTION_PARITY_VERIFY_METHOD: &str = "DistributionParity.verify";
+pub const DISTRIBUTION_PARITY_IS_SUPPORTED_METHOD: &str = "DistributionParity.isSupported";
+pub const DISTRIBUTION_PARITY_EVENT: &str = "DistributionParity.Event";
 pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
@@ -146,6 +149,7 @@ pub const DISPLAY_CAPTURE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented
 pub const TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const ACTIVATION_REGISTRY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RESIDENT_LIFECYCLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const DISTRIBUTION_PARITY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -6352,6 +6356,202 @@ pub enum ExtensionPackageEventPhase {
     Failed,
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DistributionParityEvidenceKind {
+    PackageArtifact,
+    PluginRegistration,
+    Template,
+    Docs,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DistributionParityEvidencePayload {
+    kind: DistributionParityEvidenceKind,
+    id: String,
+    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha256: Option<String>,
+    capabilities: Vec<Value>,
+}
+
+impl DistributionParityEvidencePayload {
+    pub fn new(
+        kind: DistributionParityEvidenceKind,
+        id: impl Into<String>,
+        path: impl Into<String>,
+        sha256: Option<String>,
+        capabilities: Vec<Value>,
+    ) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+            path: path.into(),
+            sha256,
+            capabilities,
+        }
+    }
+
+    pub fn kind(&self) -> &DistributionParityEvidenceKind {
+        &self.kind
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn sha256(&self) -> Option<&str> {
+        self.sha256.as_deref()
+    }
+
+    pub fn capabilities(&self) -> &[Value] {
+        &self.capabilities
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DistributionParityVerifyPayload {
+    package_id: String,
+    version: String,
+    capabilities: Vec<Value>,
+    evidence: Vec<DistributionParityEvidencePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DistributionParityVerifyPayload {
+    pub fn new(
+        package_id: impl Into<String>,
+        version: impl Into<String>,
+        capabilities: Vec<Value>,
+        evidence: Vec<DistributionParityEvidencePayload>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            package_id: package_id.into(),
+            version: version.into(),
+            capabilities,
+            evidence,
+            trace_id,
+        }
+    }
+
+    pub fn package_id(&self) -> &str {
+        &self.package_id
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub fn capabilities(&self) -> &[Value] {
+        &self.capabilities
+    }
+
+    pub fn evidence(&self) -> &[DistributionParityEvidencePayload] {
+        &self.evidence
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DistributionParityVerifyResultPayload {
+    package_id: String,
+    version: String,
+    capability_count: u64,
+    evidence_count: u64,
+}
+
+impl DistributionParityVerifyResultPayload {
+    pub fn new(
+        package_id: impl Into<String>,
+        version: impl Into<String>,
+        capability_count: u64,
+        evidence_count: u64,
+    ) -> Self {
+        Self {
+            package_id: package_id.into(),
+            version: version.into(),
+            capability_count,
+            evidence_count,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DistributionParitySupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl DistributionParitySupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DistributionParityEventPhase {
+    Verified,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DistributionParityEventPayload {
+    #[serde(rename = "type")]
+    event_type: String,
+    timestamp: u64,
+    phase: DistributionParityEventPhase,
+    package_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl DistributionParityEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: DistributionParityEventPhase,
+        package_id: impl Into<String>,
+        version: Option<String>,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            event_type: "distribution-parity-event".to_string(),
+            timestamp,
+            phase,
+            package_id: package_id.into(),
+            version,
+            reason,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExtensionPackageActorPayload {
@@ -7362,26 +7562,29 @@ mod tests {
         DisplayCaptureGrantPayload, DisplayCaptureImagePayload, DisplayCaptureMetadataPayload,
         DisplayCaptureRegionPayload, DisplayCaptureRequestPayload, DisplayCaptureResultPayload,
         DisplayCaptureSource, DisplayCaptureSupportedPayload, DisplayCaptureTargetPayload,
-        EgressPolicyActorKind, EgressPolicyActorPayload, EgressPolicyDecisionPayload,
-        EgressPolicyDecisionRecordedEventPayload, EgressPolicyDecisionResultPayload,
-        EgressPolicyDestinationPayload, EgressPolicyOutcome, EgressPolicyProtocol,
-        EgressPolicyRecordPayload, EgressPolicyRecordResultPayload, EgressPolicyRuleEffect,
-        EgressPolicyRulePayload, EgressPolicySupportedPayload, ExecutionSandboxActorKind,
-        ExecutionSandboxActorPayload, ExecutionSandboxBudgetPolicyPayload,
-        ExecutionSandboxCleanupPolicyPayload, ExecutionSandboxCreatePayload,
-        ExecutionSandboxEnvironmentEntryPayload, ExecutionSandboxEventPayload,
-        ExecutionSandboxEventPhase, ExecutionSandboxFilesystemPolicyPayload,
-        ExecutionSandboxNetworkPolicyPayload, ExecutionSandboxPolicyPayload,
-        ExecutionSandboxRunPayload, ExecutionSandboxRunStatus, ExecutionSandboxSupportedPayload,
-        ExtensionConfigActorKind, ExtensionConfigActorPayload, ExtensionConfigEventPayload,
-        ExtensionConfigEventPhase, ExtensionConfigExportPolicy, ExtensionConfigFieldPayload,
-        ExtensionConfigReadPayload, ExtensionConfigRedactResultPayload,
-        ExtensionConfigRedactionEvidencePayload, ExtensionConfigResetResultPayload,
-        ExtensionConfigSupportedPayload, ExtensionConfigValueEntryPayload,
-        ExtensionConfigValueType, ExtensionConfigWritePayload, ExtensionPackageActorKind,
-        ExtensionPackageActorPayload, ExtensionPackageCapabilityDeclarationPayload,
-        ExtensionPackageCompatibilityPayload, ExtensionPackageEventPayload,
-        ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
+        DistributionParityEventPayload, DistributionParityEventPhase,
+        DistributionParityEvidenceKind, DistributionParityEvidencePayload,
+        DistributionParitySupportedPayload, DistributionParityVerifyPayload,
+        DistributionParityVerifyResultPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
+        EgressPolicyDecisionPayload, EgressPolicyDecisionRecordedEventPayload,
+        EgressPolicyDecisionResultPayload, EgressPolicyDestinationPayload, EgressPolicyOutcome,
+        EgressPolicyProtocol, EgressPolicyRecordPayload, EgressPolicyRecordResultPayload,
+        EgressPolicyRuleEffect, EgressPolicyRulePayload, EgressPolicySupportedPayload,
+        ExecutionSandboxActorKind, ExecutionSandboxActorPayload,
+        ExecutionSandboxBudgetPolicyPayload, ExecutionSandboxCleanupPolicyPayload,
+        ExecutionSandboxCreatePayload, ExecutionSandboxEnvironmentEntryPayload,
+        ExecutionSandboxEventPayload, ExecutionSandboxEventPhase,
+        ExecutionSandboxFilesystemPolicyPayload, ExecutionSandboxNetworkPolicyPayload,
+        ExecutionSandboxPolicyPayload, ExecutionSandboxRunPayload, ExecutionSandboxRunStatus,
+        ExecutionSandboxSupportedPayload, ExtensionConfigActorKind, ExtensionConfigActorPayload,
+        ExtensionConfigEventPayload, ExtensionConfigEventPhase, ExtensionConfigExportPolicy,
+        ExtensionConfigFieldPayload, ExtensionConfigReadPayload,
+        ExtensionConfigRedactResultPayload, ExtensionConfigRedactionEvidencePayload,
+        ExtensionConfigResetResultPayload, ExtensionConfigSupportedPayload,
+        ExtensionConfigValueEntryPayload, ExtensionConfigValueType, ExtensionConfigWritePayload,
+        ExtensionPackageActorKind, ExtensionPackageActorPayload,
+        ExtensionPackageCapabilityDeclarationPayload, ExtensionPackageCompatibilityPayload,
+        ExtensionPackageEventPayload, ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
         ExtensionPackageInstallResultPayload, ExtensionPackageManifestPayload,
         ExtensionPackageRemoveResultPayload, ExtensionPackageSourceKind,
         ExtensionPackageSourcePayload, ExtensionPackageSupportedPayload,
@@ -7432,9 +7635,10 @@ mod tests {
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
         DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, DISPLAY_CAPTURE_UNSUPPORTED_REASON,
-        EGRESS_POLICY_UNSUPPORTED_REASON, EXECUTION_SANDBOX_UNSUPPORTED_REASON,
-        EXTENSION_CONFIG_UNSUPPORTED_REASON, EXTENSION_PACKAGE_UNSUPPORTED_REASON,
-        HOST_PROTOCOL_ERROR_SPECS, LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
+        DISTRIBUTION_PARITY_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
+        EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
+        EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS,
+        LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
         TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
         WORKSPACE_INDEX_UNSUPPORTED_REASON,
@@ -8099,6 +8303,58 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("resident support should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn distribution_parity_payloads_serialize_canonically() {
+        let capability = serde_json::json!({
+            "kind": "filesystem.read",
+            "roots": ["/tmp/extensions"]
+        });
+        let evidence = DistributionParityEvidencePayload::new(
+            DistributionParityEvidenceKind::PackageArtifact,
+            "artifact-1",
+            "dist/desktop/extension-1",
+            Some(
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .to_string(),
+            ),
+            vec![capability.clone()],
+        );
+        let verify = DistributionParityVerifyPayload::new(
+            "extension-1",
+            "1.0.0",
+            vec![capability.clone()],
+            vec![evidence],
+            Some("trace-distribution".to_string()),
+        );
+        let result = DistributionParityVerifyResultPayload::new("extension-1", "1.0.0", 1, 4);
+        let event = DistributionParityEventPayload::new(
+            1710000000000,
+            DistributionParityEventPhase::Verified,
+            "extension-1",
+            Some("1.0.0".to_string()),
+            None,
+        );
+        let supported =
+            DistributionParitySupportedPayload::unsupported(DISTRIBUTION_PARITY_UNSUPPORTED_REASON);
+
+        assert_eq!(
+            serde_json::to_string(&verify).expect("distribution verify should encode"),
+            r#"{"packageId":"extension-1","version":"1.0.0","capabilities":[{"kind":"filesystem.read","roots":["/tmp/extensions"]}],"evidence":[{"kind":"package-artifact","id":"artifact-1","path":"dist/desktop/extension-1","sha256":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","capabilities":[{"kind":"filesystem.read","roots":["/tmp/extensions"]}]}],"traceId":"trace-distribution"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&result).expect("distribution result should encode"),
+            r#"{"packageId":"extension-1","version":"1.0.0","capabilityCount":1,"evidenceCount":4}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("distribution event should encode"),
+            r#"{"type":"distribution-parity-event","timestamp":1710000000000,"phase":"verified","packageId":"extension-1","version":"1.0.0"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("distribution support should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
     }

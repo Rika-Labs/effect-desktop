@@ -2,6 +2,7 @@ mod activation_registry;
 mod attachment_intake;
 mod diagnostics_bundle;
 mod display_capture;
+mod distribution_parity;
 mod dock;
 mod egress_policy;
 mod execution_sandbox;
@@ -46,6 +47,8 @@ type ExtensionConfigHandler =
     fn(Option<serde_json::Value>, u64) -> extension_config::EventfulResponse;
 type ExtensionPackageHandler =
     fn(Option<serde_json::Value>, u64) -> extension_package::EventfulResponse;
+type DistributionParityHandler =
+    fn(Option<serde_json::Value>, u64) -> distribution_parity::EventfulResponse;
 type LocalToolRuntimeHandler =
     fn(Option<serde_json::Value>, u64) -> local_tool_runtime::EventfulResponse;
 type WorkspaceIndexHandler =
@@ -68,6 +71,14 @@ struct ExtensionConfigDispatch {
 }
 
 struct ExtensionPackageDispatch {
+    id: String,
+    trace_id: String,
+    window_id: Option<String>,
+    payload: Option<serde_json::Value>,
+    timestamp: u64,
+}
+
+struct DistributionParityDispatch {
     id: String,
     trace_id: String,
     window_id: Option<String>,
@@ -490,6 +501,21 @@ impl HostMethodRouter {
             host_protocol::RESIDENT_LIFECYCLE_IS_SUPPORTED_METHOD => {
                 resident_lifecycle::is_supported()
             }
+            host_protocol::DISTRIBUTION_PARITY_VERIFY_METHOD => {
+                return self.dispatch_distribution_parity(
+                    DistributionParityDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    distribution_parity::verify_with_event,
+                );
+            }
+            host_protocol::DISTRIBUTION_PARITY_IS_SUPPORTED_METHOD => {
+                distribution_parity::is_supported()
+            }
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
             host_protocol::EXECUTION_SANDBOX_CREATE_METHOD => execution_sandbox::create(payload),
@@ -819,6 +845,36 @@ impl HostMethodRouter {
             Some(payload) => vec![
                 HostProtocolEnvelope::Event {
                     method: host_protocol::EXTENSION_PACKAGE_EVENT.to_string(),
+                    timestamp: request.timestamp,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: Some(payload),
+                },
+                response,
+            ],
+            None => vec![response],
+        }
+    }
+
+    fn dispatch_distribution_parity(
+        &self,
+        request: DistributionParityDispatch,
+        handler: DistributionParityHandler,
+    ) -> Vec<HostProtocolEnvelope> {
+        let (payload, event_payload, error) = handler(request.payload, request.timestamp);
+
+        let response = HostProtocolEnvelope::Response {
+            id: request.id,
+            timestamp: request.timestamp,
+            trace_id: request.trace_id.clone(),
+            payload,
+            error,
+        };
+
+        match event_payload {
+            Some(payload) => vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::DISTRIBUTION_PARITY_EVENT.to_string(),
                     timestamp: request.timestamp,
                     trace_id: request.trace_id,
                     window_id: request.window_id,
@@ -1405,6 +1461,222 @@ mod tests {
 
         let HostProtocolEnvelope::Response { error, .. } = response else {
             panic!("resident lifecycle invalid request should return response");
+        };
+        assert!(matches!(
+            error,
+            Some(HostProtocolError::InvalidArgument { .. })
+        ));
+    }
+
+    #[test]
+    fn distribution_parity_dispatches_through_router() {
+        let capability = serde_json::json!({
+            "kind": "filesystem.read",
+            "roots": ["/tmp/extensions"]
+        });
+        let evidence_root = temp_dir("distribution-parity");
+        let evidence = |kind: &str| {
+            let path = write_evidence_file(&evidence_root, kind, &capability);
+            serde_json::json!({
+                "kind": kind,
+                "id": kind,
+                "path": path,
+                "capabilities": [capability.clone()]
+            })
+        };
+        let frames = test_router().dispatch_frames_at(
+            request_with_payload(
+                "request-distribution-verify",
+                host_protocol::DISTRIBUTION_PARITY_VERIFY_METHOD,
+                serde_json::json!({
+                    "packageId": "extension-1",
+                    "version": "1.0.0",
+                    "capabilities": [capability],
+                    "evidence": [
+                        evidence("package-artifact"),
+                        evidence("plugin-registration"),
+                        evidence("template"),
+                        evidence("docs")
+                    ],
+                    "traceId": "trace-distribution"
+                }),
+            ),
+            1710000000113,
+        );
+
+        assert_eq!(
+            frames,
+            vec![
+                HostProtocolEnvelope::Event {
+                    method: host_protocol::DISTRIBUTION_PARITY_EVENT.to_string(),
+                    timestamp: 1710000000113,
+                    trace_id: "trace-request-distribution-verify".to_string(),
+                    window_id: None,
+                    payload: Some(serde_json::json!({
+                        "type": "distribution-parity-event",
+                        "timestamp": 1710000000113_u64,
+                        "phase": "verified",
+                        "packageId": "extension-1",
+                        "version": "1.0.0"
+                    }))
+                },
+                HostProtocolEnvelope::Response {
+                    id: "request-distribution-verify".to_string(),
+                    timestamp: 1710000000113,
+                    trace_id: "trace-request-distribution-verify".to_string(),
+                    payload: Some(serde_json::json!({
+                        "packageId": "extension-1",
+                        "version": "1.0.0",
+                        "capabilityCount": 1,
+                        "evidenceCount": 4
+                    })),
+                    error: None,
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn distribution_parity_rejects_bad_evidence_digest() {
+        let capability = serde_json::json!({
+            "kind": "filesystem.read",
+            "roots": ["/tmp/extensions"]
+        });
+        let evidence_root = temp_dir("distribution-parity-digest");
+        let evidence_path = write_evidence_file(&evidence_root, "docs", &capability);
+        let frames = test_router().dispatch_frames_at(
+            request_with_payload(
+                "request-distribution-digest-invalid",
+                host_protocol::DISTRIBUTION_PARITY_VERIFY_METHOD,
+                serde_json::json!({
+                    "packageId": "extension-1",
+                    "version": "1.0.0",
+                    "capabilities": [capability],
+                    "evidence": [
+                        {
+                            "kind": "package-artifact",
+                            "id": "artifact",
+                            "path": evidence_path,
+                            "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                            "capabilities": [{ "kind": "filesystem.read", "roots": ["/tmp/extensions"] }]
+                        },
+                        {
+                            "kind": "plugin-registration",
+                            "id": "plugin-registration",
+                            "path": evidence_path,
+                            "capabilities": [{ "kind": "filesystem.read", "roots": ["/tmp/extensions"] }]
+                        },
+                        {
+                            "kind": "template",
+                            "id": "template",
+                            "path": evidence_path,
+                            "capabilities": [{ "kind": "filesystem.read", "roots": ["/tmp/extensions"] }]
+                        },
+                        {
+                            "kind": "docs",
+                            "id": "docs",
+                            "path": evidence_path,
+                            "capabilities": [{ "kind": "filesystem.read", "roots": ["/tmp/extensions"] }]
+                        }
+                    ]
+                }),
+            ),
+            1710000000115,
+        );
+
+        assert_eq!(frames.len(), 2);
+        assert!(matches!(
+            frames.first(),
+            Some(HostProtocolEnvelope::Event { method, .. })
+                if method == host_protocol::DISTRIBUTION_PARITY_EVENT
+        ));
+        let Some(HostProtocolEnvelope::Response { error, .. }) = frames.get(1) else {
+            panic!("distribution parity invalid digest should return response");
+        };
+        assert!(matches!(
+            error,
+            Some(HostProtocolError::InvalidArgument { .. })
+        ));
+    }
+
+    #[test]
+    fn distribution_parity_rejects_mismatched_evidence() {
+        let capability =
+            serde_json::json!({ "kind": "filesystem.read", "roots": ["/tmp/extensions"] });
+        let evidence_root = temp_dir("distribution-parity-invalid");
+        let evidence_path = write_evidence_file(&evidence_root, "artifact", &capability);
+        let frames = test_router().dispatch_frames_at(
+            request_with_payload(
+                "request-distribution-invalid",
+                host_protocol::DISTRIBUTION_PARITY_VERIFY_METHOD,
+                serde_json::json!({
+                    "packageId": "extension-1",
+                    "version": "1.0.0",
+                    "capabilities": [capability],
+                    "evidence": [
+                        {
+                            "kind": "package-artifact",
+                            "id": "artifact",
+                            "path": evidence_path,
+                            "capabilities": [{ "kind": "filesystem.write", "roots": ["/tmp/extensions"] }]
+                        }
+                    ]
+                }),
+            ),
+            1710000000114,
+        );
+
+        let Some(HostProtocolEnvelope::Response { error, .. }) = frames.get(1) else {
+            panic!("distribution parity invalid request should return response");
+        };
+        assert!(matches!(
+            error,
+            Some(HostProtocolError::InvalidArgument { .. })
+        ));
+    }
+
+    #[test]
+    fn distribution_parity_rejects_mismatched_evidence_file_capabilities() {
+        let capability =
+            serde_json::json!({ "kind": "filesystem.read", "roots": ["/tmp/extensions"] });
+        let file_capability =
+            serde_json::json!({ "kind": "filesystem.write", "roots": ["/tmp/extensions"] });
+        let evidence_root = temp_dir("distribution-parity-file-invalid");
+        let evidence_path = write_evidence_file(&evidence_root, "artifact", &file_capability);
+        let evidence = |kind: &str| {
+            let path = if kind == "package-artifact" {
+                evidence_path.clone()
+            } else {
+                write_evidence_file(&evidence_root, kind, &capability)
+            };
+            serde_json::json!({
+                "kind": kind,
+                "id": kind,
+                "path": path,
+                "capabilities": [capability.clone()]
+            })
+        };
+        let frames = test_router().dispatch_frames_at(
+            request_with_payload(
+                "request-distribution-file-invalid",
+                host_protocol::DISTRIBUTION_PARITY_VERIFY_METHOD,
+                serde_json::json!({
+                    "packageId": "extension-1",
+                    "version": "1.0.0",
+                    "capabilities": [capability],
+                    "evidence": [
+                        evidence("package-artifact"),
+                        evidence("plugin-registration"),
+                        evidence("template"),
+                        evidence("docs")
+                    ]
+                }),
+            ),
+            1710000000116,
+        );
+
+        let Some(HostProtocolEnvelope::Response { error, .. }) = frames.get(1) else {
+            panic!("distribution parity file mismatch should return response");
         };
         assert!(matches!(
             error,
@@ -3320,6 +3592,20 @@ mod tests {
         let path = dir.join(format!("{name}.txt"));
         fs::write(&path, bytes).expect("temp file should be written");
         path
+    }
+
+    fn write_evidence_file(root: &Path, name: &str, capability: &serde_json::Value) -> String {
+        let path = root.join(format!("{name}.json"));
+        fs::write(
+            &path,
+            serde_json::json!({
+                "kind": name,
+                "capabilities": [capability.clone()]
+            })
+            .to_string(),
+        )
+        .expect("distribution parity evidence should be written");
+        path.display().to_string()
     }
 
     fn temp_dir(name: &str) -> PathBuf {

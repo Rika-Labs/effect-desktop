@@ -170,6 +170,29 @@ export {
   type DiagnosticsBundleServiceOptions
 } from "./diagnostics-bundle.js"
 export {
+  DistributionParity,
+  DistributionParityClient,
+  DistributionParityHandlersLive,
+  DistributionParityLive,
+  DistributionParityMethodNames,
+  DistributionParityRpcEvents,
+  DistributionParityRpcs,
+  DistributionParitySurface,
+  makeDistributionParityBridgeClientLayer,
+  makeDistributionParityClientLayer,
+  makeDistributionParityMemoryClient,
+  makeDistributionParityServiceLayer,
+  makeDistributionParityUnsupportedClient,
+  makeHostDistributionParityRpcRuntime,
+  type DistributionParityClientApi,
+  type DistributionParityError,
+  type DistributionParityMemoryClientOptions,
+  type DistributionParityRpc,
+  type DistributionParityRpcHandlers,
+  type DistributionParityServiceApi,
+  type DistributionParityServiceOptions
+} from "./distribution-parity.js"
+export {
   DesktopHttpApi,
   DesktopHttpApiHttpServer,
   DesktopHttpApiRoutes,
