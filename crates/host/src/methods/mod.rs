@@ -12,6 +12,7 @@ pub(crate) mod handshake;
 mod local_tool_runtime;
 mod menu;
 mod realtime_media_session;
+mod resident_lifecycle;
 mod scoped_access_grant;
 mod selection_context;
 mod transactional_file_mutation;
@@ -480,6 +481,14 @@ impl HostMethodRouter {
             }
             host_protocol::ACTIVATION_REGISTRY_IS_SUPPORTED_METHOD => {
                 activation_registry::is_supported()
+            }
+            host_protocol::RESIDENT_LIFECYCLE_ENABLE_METHOD => resident_lifecycle::enable(payload),
+            host_protocol::RESIDENT_LIFECYCLE_DISABLE_METHOD => {
+                resident_lifecycle::disable(payload)
+            }
+            host_protocol::RESIDENT_LIFECYCLE_GET_STATE_METHOD => resident_lifecycle::get_state(),
+            host_protocol::RESIDENT_LIFECYCLE_IS_SUPPORTED_METHOD => {
+                resident_lifecycle::is_supported()
             }
             host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
             host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
@@ -1294,6 +1303,108 @@ mod tests {
 
         let HostProtocolEnvelope::Response { error, .. } = response else {
             panic!("activation registry invalid request should return response");
+        };
+        assert!(matches!(
+            error,
+            Some(HostProtocolError::InvalidArgument { .. })
+        ));
+    }
+
+    #[test]
+    fn resident_lifecycle_dispatches_through_router() {
+        let supported = test_router()
+            .dispatch_at(
+                request(
+                    "request-resident-supported",
+                    host_protocol::RESIDENT_LIFECYCLE_IS_SUPPORTED_METHOD,
+                ),
+                1710000000110,
+            )
+            .expect("resident lifecycle support should return response");
+        assert_eq!(
+            supported,
+            HostProtocolEnvelope::Response {
+                id: "request-resident-supported".to_string(),
+                timestamp: 1710000000110,
+                trace_id: "trace-request-resident-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::RESIDENT_LIFECYCLE_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
+
+        let cases = [
+            (
+                "request-resident-enable",
+                host_protocol::RESIDENT_LIFECYCLE_ENABLE_METHOD,
+                Some(serde_json::json!({
+                    "policy": {
+                        "process": "keep-running",
+                        "windows": "close-to-background",
+                        "background": "tray",
+                        "launchAtLogin": true
+                    },
+                    "traceId": "trace-1"
+                })),
+            ),
+            (
+                "request-resident-disable",
+                host_protocol::RESIDENT_LIFECYCLE_DISABLE_METHOD,
+                Some(serde_json::json!({ "traceId": "trace-2" })),
+            ),
+            (
+                "request-resident-state",
+                host_protocol::RESIDENT_LIFECYCLE_GET_STATE_METHOD,
+                None,
+            ),
+        ];
+
+        for (id, method, payload) in cases {
+            let request = match payload {
+                Some(payload) => request_with_payload(id, method, payload),
+                None => request(id, method),
+            };
+            let response = test_router()
+                .dispatch_at(request, 1710000000111)
+                .expect("resident lifecycle request should return response");
+
+            let HostProtocolEnvelope::Response { error, .. } = response else {
+                panic!("resident lifecycle request should return response");
+            };
+            assert!(matches!(
+                error,
+                Some(HostProtocolError::Unsupported {
+                    platform: Some(_),
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn resident_lifecycle_rejects_malformed_before_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-resident-invalid",
+                    host_protocol::RESIDENT_LIFECYCLE_ENABLE_METHOD,
+                    serde_json::json!({
+                        "policy": {
+                            "process": "keep-running",
+                            "windows": "close-to-background",
+                            "background": "tray"
+                        },
+                        "traceId": "trace\u{0}"
+                    }),
+                ),
+                1710000000112,
+            )
+            .expect("resident lifecycle invalid request should return response");
+
+        let HostProtocolEnvelope::Response { error, .. } = response else {
+            panic!("resident lifecycle invalid request should return response");
         };
         assert!(matches!(
             error,

@@ -621,6 +621,29 @@ export {
   type PowerMonitorServiceApi
 } from "./power-monitor.js"
 export {
+  ResidentLifecycle,
+  ResidentLifecycleClient,
+  ResidentLifecycleHandlersLive,
+  ResidentLifecycleLive,
+  ResidentLifecycleMethodNames,
+  ResidentLifecycleRpcEvents,
+  ResidentLifecycleRpcs,
+  ResidentLifecycleSurface,
+  makeHostResidentLifecycleRpcRuntime,
+  makeResidentLifecycleBridgeClientLayer,
+  makeResidentLifecycleClientLayer,
+  makeResidentLifecycleMemoryClient,
+  makeResidentLifecycleServiceLayer,
+  makeResidentLifecycleUnsupportedClient,
+  type ResidentLifecycleClientApi,
+  type ResidentLifecycleError,
+  type ResidentLifecycleMemoryClientOptions,
+  type ResidentLifecycleRpc,
+  type ResidentLifecycleRpcHandlers,
+  type ResidentLifecycleServiceApi,
+  type ResidentLifecycleServiceOptions
+} from "./resident-lifecycle.js"
+export {
   SafeStorage,
   SafeStorageClient,
   SafeStorageHandlersLive,

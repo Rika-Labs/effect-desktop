@@ -79,6 +79,11 @@ pub const ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD: &str =
 pub const ACTIVATION_REGISTRY_LIST_SURFACES_METHOD: &str = "ActivationRegistry.listSurfaces";
 pub const ACTIVATION_REGISTRY_IS_SUPPORTED_METHOD: &str = "ActivationRegistry.isSupported";
 pub const ACTIVATION_REGISTRY_EVENT: &str = "ActivationRegistry.Event";
+pub const RESIDENT_LIFECYCLE_ENABLE_METHOD: &str = "ResidentLifecycle.enable";
+pub const RESIDENT_LIFECYCLE_DISABLE_METHOD: &str = "ResidentLifecycle.disable";
+pub const RESIDENT_LIFECYCLE_GET_STATE_METHOD: &str = "ResidentLifecycle.getState";
+pub const RESIDENT_LIFECYCLE_IS_SUPPORTED_METHOD: &str = "ResidentLifecycle.isSupported";
+pub const RESIDENT_LIFECYCLE_EVENT: &str = "ResidentLifecycle.Event";
 pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
@@ -140,6 +145,7 @@ pub const FOCUSED_APPLICATION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-u
 pub const DISPLAY_CAPTURE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const ACTIVATION_REGISTRY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const RESIDENT_LIFECYCLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -2607,6 +2613,173 @@ impl ActivationRegistryEventPayload {
             actor,
             trace_id,
             permission_context,
+            reason: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResidentLifecycleProcessPolicy {
+    QuitWithLastWindow,
+    KeepRunning,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResidentLifecycleWindowPolicy {
+    QuitOnLastWindow,
+    CloseToBackground,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResidentLifecycleBackgroundAvailability {
+    Disabled,
+    Tray,
+    MenuBar,
+    Headless,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentLifecyclePolicyPayload {
+    process: ResidentLifecycleProcessPolicy,
+    windows: ResidentLifecycleWindowPolicy,
+    background: ResidentLifecycleBackgroundAvailability,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    launch_at_login: Option<bool>,
+}
+
+impl ResidentLifecyclePolicyPayload {
+    pub fn new(
+        process: ResidentLifecycleProcessPolicy,
+        windows: ResidentLifecycleWindowPolicy,
+        background: ResidentLifecycleBackgroundAvailability,
+        launch_at_login: Option<bool>,
+    ) -> Self {
+        Self {
+            process,
+            windows,
+            background,
+            launch_at_login,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentLifecycleEnablePayload {
+    policy: ResidentLifecyclePolicyPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ResidentLifecycleEnablePayload {
+    pub fn new(policy: ResidentLifecyclePolicyPayload) -> Self {
+        Self {
+            policy,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn owner_scope(&self) -> Option<&str> {
+        self.owner_scope.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentLifecycleDisablePayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ResidentLifecycleDisablePayload {
+    pub fn new(trace_id: Option<String>) -> Self {
+        Self { trace_id }
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentLifecycleStatePayload {
+    enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    policy: Option<ResidentLifecyclePolicyPayload>,
+}
+
+impl ResidentLifecycleStatePayload {
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            policy: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentLifecycleSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ResidentLifecycleSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResidentLifecycleEventPhase {
+    Enabled,
+    Disabled,
+    Changed,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentLifecycleEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: ResidentLifecycleEventPhase,
+    state: ResidentLifecycleStatePayload,
+    trace_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ResidentLifecycleEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: ResidentLifecycleEventPhase,
+        state: ResidentLifecycleStatePayload,
+        trace_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "resident-lifecycle-event".to_string(),
+            timestamp,
+            phase,
+            state,
+            trace_id: trace_id.into(),
             reason: None,
         }
     }
@@ -7233,15 +7406,19 @@ mod tests {
         RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
         RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
         RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
-        RendererResumedPayload, ResumeTicket, TransactionalFileMutationActorKind,
-        TransactionalFileMutationActorPayload, TransactionalFileMutationCommitPayload,
-        TransactionalFileMutationCommitResultPayload, TransactionalFileMutationDiffPayload,
-        TransactionalFileMutationEventPayload, TransactionalFileMutationEventPhase,
-        TransactionalFileMutationPreparePayload, TransactionalFileMutationPrepareResultPayload,
-        TransactionalFileMutationRollbackPayload, TransactionalFileMutationRollbackResultPayload,
-        TransactionalFileMutationState, TransactionalFileMutationSupportedPayload,
-        TransientWindowDismissalPolicy, TransientWindowFocusPolicy,
-        TransientWindowRestorationPolicy, TransientWindowRoleActorKind,
+        RendererResumedPayload, ResidentLifecycleBackgroundAvailability,
+        ResidentLifecycleDisablePayload, ResidentLifecycleEnablePayload,
+        ResidentLifecycleEventPayload, ResidentLifecycleEventPhase, ResidentLifecyclePolicyPayload,
+        ResidentLifecycleProcessPolicy, ResidentLifecycleStatePayload,
+        ResidentLifecycleSupportedPayload, ResidentLifecycleWindowPolicy, ResumeTicket,
+        TransactionalFileMutationActorKind, TransactionalFileMutationActorPayload,
+        TransactionalFileMutationCommitPayload, TransactionalFileMutationCommitResultPayload,
+        TransactionalFileMutationDiffPayload, TransactionalFileMutationEventPayload,
+        TransactionalFileMutationEventPhase, TransactionalFileMutationPreparePayload,
+        TransactionalFileMutationPrepareResultPayload, TransactionalFileMutationRollbackPayload,
+        TransactionalFileMutationRollbackResultPayload, TransactionalFileMutationState,
+        TransactionalFileMutationSupportedPayload, TransientWindowDismissalPolicy,
+        TransientWindowFocusPolicy, TransientWindowRestorationPolicy, TransientWindowRoleActorKind,
         TransientWindowRoleActorPayload, TransientWindowRoleEventPayload,
         TransientWindowRoleEventPhase, TransientWindowRoleKind, TransientWindowRoleOpenPayload,
         TransientWindowRolePlacementPayload, TransientWindowRolePointPayload,
@@ -7258,8 +7435,9 @@ mod tests {
         EGRESS_POLICY_UNSUPPORTED_REASON, EXECUTION_SANDBOX_UNSUPPORTED_REASON,
         EXTENSION_CONFIG_UNSUPPORTED_REASON, EXTENSION_PACKAGE_UNSUPPORTED_REASON,
         HOST_PROTOCOL_ERROR_SPECS, LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
-        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
-        TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
+        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
+        TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
+        WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -7884,6 +8062,43 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("activation support should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn resident_lifecycle_payloads_serialize_canonically() {
+        let policy = ResidentLifecyclePolicyPayload::new(
+            ResidentLifecycleProcessPolicy::KeepRunning,
+            ResidentLifecycleWindowPolicy::CloseToBackground,
+            ResidentLifecycleBackgroundAvailability::Tray,
+            Some(true),
+        );
+        let enable = ResidentLifecycleEnablePayload::new(policy);
+        let disable = ResidentLifecycleDisablePayload::new(Some("trace-disable".to_string()));
+        let event = ResidentLifecycleEventPayload::new(
+            1710000000000,
+            ResidentLifecycleEventPhase::Disabled,
+            ResidentLifecycleStatePayload::disabled(),
+            "trace-disable",
+        );
+        let supported =
+            ResidentLifecycleSupportedPayload::unsupported(RESIDENT_LIFECYCLE_UNSUPPORTED_REASON);
+
+        assert_eq!(
+            serde_json::to_string(&enable).expect("resident enable should encode"),
+            r#"{"policy":{"process":"keep-running","windows":"close-to-background","background":"tray","launchAtLogin":true}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&disable).expect("resident disable should encode"),
+            r#"{"traceId":"trace-disable"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("resident event should encode"),
+            r#"{"type":"resident-lifecycle-event","timestamp":1710000000000,"phase":"disabled","state":{"enabled":false},"traceId":"trace-disable"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("resident support should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
     }
