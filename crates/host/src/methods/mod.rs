@@ -3,6 +3,7 @@ mod dock;
 mod egress_policy;
 mod execution_sandbox;
 mod extension_config;
+mod extension_package;
 pub(crate) mod handshake;
 mod menu;
 mod realtime_media_session;
@@ -116,6 +117,13 @@ impl HostMethodRouter {
             host_protocol::EXTENSION_CONFIG_RESET_METHOD => extension_config::reset(payload),
             host_protocol::EXTENSION_CONFIG_REDACT_METHOD => extension_config::redact(payload),
             host_protocol::EXTENSION_CONFIG_IS_SUPPORTED_METHOD => extension_config::is_supported(),
+            host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD => extension_package::install(payload),
+            host_protocol::EXTENSION_PACKAGE_UPDATE_METHOD => extension_package::update(payload),
+            host_protocol::EXTENSION_PACKAGE_REMOVE_METHOD => extension_package::remove(payload),
+            host_protocol::EXTENSION_PACKAGE_LIST_METHOD => extension_package::list(),
+            host_protocol::EXTENSION_PACKAGE_IS_SUPPORTED_METHOD => {
+                extension_package::is_supported()
+            }
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
                 menu::set_application_menu(&*self.window, payload)
             }
@@ -934,6 +942,92 @@ mod tests {
         );
     }
 
+    #[test]
+    fn extension_package_install_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-extension-package-install",
+                    host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
+                    extension_package_install_payload(),
+                ),
+                1710000000127,
+            )
+            .expect("extension package request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-extension-package-install".to_string(),
+                timestamp: 1710000000127,
+                trace_id: "trace-request-extension-package-install".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::EXTENSION_PACKAGE_UNSUPPORTED_REASON,
+                    host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn extension_package_invalid_payload_returns_invalid_argument_before_unsupported() {
+        let mut payload = extension_package_install_payload();
+        payload["manifest"]["entrypoint"] = serde_json::json!("../escape.js");
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-extension-package-invalid",
+                    host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
+                    payload,
+                ),
+                1710000000128,
+            )
+            .expect("extension package request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-extension-package-invalid".to_string(),
+                timestamp: 1710000000128,
+                trace_id: "trace-request-extension-package-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "manifest.entrypoint",
+                    "must stay inside the package",
+                    host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn extension_package_is_supported_reports_unimplemented_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-extension-package-supported",
+                    host_protocol::EXTENSION_PACKAGE_IS_SUPPORTED_METHOD,
+                ),
+                1710000000129,
+            )
+            .expect("extension package support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-extension-package-supported".to_string(),
+                timestamp: 1710000000129,
+                trace_id: "trace-request-extension-package-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::EXTENSION_PACKAGE_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
+    }
+
     fn request(id: &str, method: &str) -> HostProtocolEnvelope {
         request_with_payload(id, method, serde_json::Value::Null)
     }
@@ -1008,6 +1102,38 @@ mod tests {
                 { "key": "apiKey", "valueType": "string", "secret": true }
             ],
             "traceId": "trace-extension-config"
+        })
+    }
+
+    fn extension_package_install_payload() -> serde_json::Value {
+        serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "source": {
+                "kind": "directory",
+                "uri": "file:///tmp/extensions/extension-1",
+                "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "manifest": {
+                "id": "extension-1",
+                "name": "Extension One",
+                "version": "1.0.0",
+                "entrypoint": "dist/main.js",
+                "compatibility": {
+                    "minHostVersion": "1.0.0",
+                    "maxHostVersion": "2.0.0"
+                },
+                "capabilities": [
+                    {
+                        "capability": {
+                            "kind": "filesystem.read",
+                            "roots": ["/tmp/extensions"],
+                            "audit": "always"
+                        },
+                        "reason": "read extension files"
+                    }
+                ]
+            },
+            "traceId": "trace-extension-package"
         })
     }
 

@@ -1,6 +1,6 @@
 ---
 title: Native services
-description: 23 host-backed native capabilities exposed as Effect RPC groups.
+description: 24 host-backed native capabilities exposed as Effect RPC groups.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -86,6 +86,7 @@ Native service authors should use the internal native surface authoring path, no
 | `EgressPolicy`         | Network egress decisions    | [native/egress-policy](reference/native/egress-policy.md)                   |
 | `ExecutionSandbox`     | Isolated execution policy   | [native/execution-sandbox](reference/native/execution-sandbox.md)           |
 | `ExtensionConfig`      | Extension settings          | [native/extension-config](reference/native/extension-config.md)             |
+| `ExtensionPackage`     | Extension package lifecycle | [native/extension-package](reference/native/extension-package.md)           |
 | `GlobalShortcut`       | OS keyboard shortcuts       | [native/global-shortcut](reference/native/global-shortcut.md)               |
 | `Menu`                 | App and window menus        | [native/menu](reference/native/menu.md)                                     |
 | `Notification`         | System notifications        | [native/notification](reference/native/notification.md)                     |

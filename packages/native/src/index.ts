@@ -198,6 +198,29 @@ export {
   type ExtensionConfigServiceOptions
 } from "./extension-config.js"
 export {
+  ExtensionPackage,
+  ExtensionPackageClient,
+  ExtensionPackageHandlersLive,
+  ExtensionPackageLive,
+  ExtensionPackageMethodNames,
+  ExtensionPackageRpcEvents,
+  ExtensionPackageRpcs,
+  ExtensionPackageSurface,
+  makeExtensionPackageBridgeClientLayer,
+  makeExtensionPackageClientLayer,
+  makeExtensionPackageMemoryClient,
+  makeExtensionPackageServiceLayer,
+  makeExtensionPackageUnsupportedClient,
+  makeHostExtensionPackageRpcRuntime,
+  type ExtensionPackageClientApi,
+  type ExtensionPackageError,
+  type ExtensionPackageMemoryClientOptions,
+  type ExtensionPackageRpc,
+  type ExtensionPackageRpcHandlers,
+  type ExtensionPackageServiceApi,
+  type ExtensionPackageServiceOptions
+} from "./extension-package.js"
+export {
   ExecutionSandbox,
   ExecutionSandboxClient,
   ExecutionSandboxHandlersLive,

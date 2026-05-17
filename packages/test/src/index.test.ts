@@ -1945,6 +1945,7 @@ test("native test layers are derived from DesktopRpc surfaces", async () => {
     "EgressPolicy",
     "ExecutionSandbox",
     "ExtensionConfig",
+    "ExtensionPackage",
     "Dock",
     "GlobalShortcut",
     "Menu",

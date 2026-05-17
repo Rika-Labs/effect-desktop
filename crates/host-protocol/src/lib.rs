@@ -60,6 +60,12 @@ pub const EXTENSION_CONFIG_RESET_METHOD: &str = "ExtensionConfig.reset";
 pub const EXTENSION_CONFIG_REDACT_METHOD: &str = "ExtensionConfig.redact";
 pub const EXTENSION_CONFIG_IS_SUPPORTED_METHOD: &str = "ExtensionConfig.isSupported";
 pub const EXTENSION_CONFIG_EVENT: &str = "ExtensionConfig.Event";
+pub const EXTENSION_PACKAGE_INSTALL_METHOD: &str = "ExtensionPackage.install";
+pub const EXTENSION_PACKAGE_UPDATE_METHOD: &str = "ExtensionPackage.update";
+pub const EXTENSION_PACKAGE_REMOVE_METHOD: &str = "ExtensionPackage.remove";
+pub const EXTENSION_PACKAGE_LIST_METHOD: &str = "ExtensionPackage.list";
+pub const EXTENSION_PACKAGE_IS_SUPPORTED_METHOD: &str = "ExtensionPackage.isSupported";
+pub const EXTENSION_PACKAGE_EVENT: &str = "ExtensionPackage.Event";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
@@ -73,6 +79,7 @@ pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemen
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const EXTENSION_PACKAGE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -2072,6 +2079,470 @@ impl ExtensionConfigEventPayload {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExtensionPackageActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExtensionPackageSourceKind {
+    Directory,
+    Archive,
+    Registry,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExtensionPackageEventPhase {
+    Installing,
+    Installed,
+    Updating,
+    Updated,
+    Removing,
+    Removed,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageActorPayload {
+    kind: ExtensionPackageActorKind,
+    id: String,
+}
+
+impl ExtensionPackageActorPayload {
+    pub fn new(kind: ExtensionPackageActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageSourcePayload {
+    kind: ExtensionPackageSourceKind,
+    uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    digest: Option<String>,
+}
+
+impl ExtensionPackageSourcePayload {
+    pub fn new(kind: ExtensionPackageSourceKind, uri: impl Into<String>) -> Self {
+        Self {
+            kind,
+            uri: uri.into(),
+            digest: None,
+        }
+    }
+
+    pub fn with_digest(mut self, digest: impl Into<String>) -> Self {
+        self.digest = Some(digest.into());
+        self
+    }
+
+    pub fn uri(&self) -> &str {
+        &self.uri
+    }
+
+    pub fn digest(&self) -> Option<&str> {
+        self.digest.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageCompatibilityPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    min_host_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_host_version: Option<String>,
+}
+
+impl ExtensionPackageCompatibilityPayload {
+    pub fn new(min_host_version: Option<String>, max_host_version: Option<String>) -> Self {
+        Self {
+            min_host_version,
+            max_host_version,
+        }
+    }
+
+    pub fn min_host_version(&self) -> Option<&str> {
+        self.min_host_version.as_deref()
+    }
+
+    pub fn max_host_version(&self) -> Option<&str> {
+        self.max_host_version.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageCapabilityDeclarationPayload {
+    capability: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ExtensionPackageCapabilityDeclarationPayload {
+    pub fn new(capability: Value) -> Self {
+        Self {
+            capability,
+            reason: None,
+        }
+    }
+
+    pub fn with_reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
+    }
+
+    pub fn capability(&self) -> &Value {
+        &self.capability
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageManifestPayload {
+    id: String,
+    name: String,
+    version: String,
+    entrypoint: String,
+    compatibility: ExtensionPackageCompatibilityPayload,
+    capabilities: Vec<ExtensionPackageCapabilityDeclarationPayload>,
+}
+
+impl ExtensionPackageManifestPayload {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        version: impl Into<String>,
+        entrypoint: impl Into<String>,
+        compatibility: ExtensionPackageCompatibilityPayload,
+        capabilities: Vec<ExtensionPackageCapabilityDeclarationPayload>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            version: version.into(),
+            entrypoint: entrypoint.into(),
+            compatibility,
+            capabilities,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub fn entrypoint(&self) -> &str {
+        &self.entrypoint
+    }
+
+    pub fn compatibility(&self) -> &ExtensionPackageCompatibilityPayload {
+        &self.compatibility
+    }
+
+    pub fn capabilities(&self) -> &[ExtensionPackageCapabilityDeclarationPayload] {
+        &self.capabilities
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageInstallPayload {
+    actor: ExtensionPackageActorPayload,
+    source: ExtensionPackageSourcePayload,
+    manifest: ExtensionPackageManifestPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ExtensionPackageInstallPayload {
+    pub fn new(
+        actor: ExtensionPackageActorPayload,
+        source: ExtensionPackageSourcePayload,
+        manifest: ExtensionPackageManifestPayload,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            source,
+            manifest,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &ExtensionPackageActorPayload {
+        &self.actor
+    }
+
+    pub fn source(&self) -> &ExtensionPackageSourcePayload {
+        &self.source
+    }
+
+    pub fn manifest(&self) -> &ExtensionPackageManifestPayload {
+        &self.manifest
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageUpdatePayload {
+    actor: ExtensionPackageActorPayload,
+    source: ExtensionPackageSourcePayload,
+    manifest: ExtensionPackageManifestPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ExtensionPackageUpdatePayload {
+    pub fn new(
+        actor: ExtensionPackageActorPayload,
+        source: ExtensionPackageSourcePayload,
+        manifest: ExtensionPackageManifestPayload,
+        expected_version: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            source,
+            manifest,
+            expected_version,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &ExtensionPackageActorPayload {
+        &self.actor
+    }
+
+    pub fn source(&self) -> &ExtensionPackageSourcePayload {
+        &self.source
+    }
+
+    pub fn manifest(&self) -> &ExtensionPackageManifestPayload {
+        &self.manifest
+    }
+
+    pub fn expected_version(&self) -> Option<&str> {
+        self.expected_version.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageRemovePayload {
+    actor: ExtensionPackageActorPayload,
+    package_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl ExtensionPackageRemovePayload {
+    pub fn new(
+        actor: ExtensionPackageActorPayload,
+        package_id: impl Into<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            package_id: package_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &ExtensionPackageActorPayload {
+        &self.actor
+    }
+
+    pub fn package_id(&self) -> &str {
+        &self.package_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageStatePayload {
+    package_id: String,
+    manifest: ExtensionPackageManifestPayload,
+    source: ExtensionPackageSourcePayload,
+    revision: u64,
+}
+
+impl ExtensionPackageStatePayload {
+    pub fn new(
+        package_id: impl Into<String>,
+        manifest: ExtensionPackageManifestPayload,
+        source: ExtensionPackageSourcePayload,
+        revision: u64,
+    ) -> Self {
+        Self {
+            package_id: package_id.into(),
+            manifest,
+            source,
+            revision,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageInstallResultPayload {
+    package_id: String,
+    version: String,
+    revision: u64,
+    registered_capabilities: Vec<Value>,
+}
+
+impl ExtensionPackageInstallResultPayload {
+    pub fn new(
+        package_id: impl Into<String>,
+        version: impl Into<String>,
+        revision: u64,
+        registered_capabilities: Vec<Value>,
+    ) -> Self {
+        Self {
+            package_id: package_id.into(),
+            version: version.into(),
+            revision,
+            registered_capabilities,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageUpdateResultPayload {
+    package_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    previous_version: Option<String>,
+    version: String,
+    revision: u64,
+    registered_capabilities: Vec<Value>,
+}
+
+impl ExtensionPackageUpdateResultPayload {
+    pub fn new(
+        package_id: impl Into<String>,
+        previous_version: Option<String>,
+        version: impl Into<String>,
+        revision: u64,
+        registered_capabilities: Vec<Value>,
+    ) -> Self {
+        Self {
+            package_id: package_id.into(),
+            previous_version,
+            version: version.into(),
+            revision,
+            registered_capabilities,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageRemoveResultPayload {
+    package_id: String,
+    removed: bool,
+    revision: u64,
+}
+
+impl ExtensionPackageRemoveResultPayload {
+    pub fn new(package_id: impl Into<String>, removed: bool, revision: u64) -> Self {
+        Self {
+            package_id: package_id.into(),
+            removed,
+            revision,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageListResultPayload {
+    packages: Vec<ExtensionPackageStatePayload>,
+}
+
+impl ExtensionPackageListResultPayload {
+    pub fn new(packages: Vec<ExtensionPackageStatePayload>) -> Self {
+        Self { packages }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ExtensionPackageSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExtensionPackageEventPayload {
+    r#type: String,
+    timestamp: u64,
+    package_id: String,
+    phase: ExtensionPackageEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    revision: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ExtensionPackageEventPayload {
+    pub fn new(
+        timestamp: u64,
+        package_id: impl Into<String>,
+        phase: ExtensionPackageEventPhase,
+        version: Option<String>,
+        revision: Option<u64>,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            r#type: "extension-package-event".to_string(),
+            timestamp,
+            package_id: package_id.into(),
+            phase,
+            version,
+            revision,
+            reason,
+        }
+    }
+}
+
 impl WindowDestroyPayload {
     pub fn new(window_id: impl Into<String>) -> Self {
         Self {
@@ -2646,21 +3117,28 @@ mod tests {
         ExtensionConfigReadPayload, ExtensionConfigRedactResultPayload,
         ExtensionConfigRedactionEvidencePayload, ExtensionConfigResetResultPayload,
         ExtensionConfigSupportedPayload, ExtensionConfigValueEntryPayload,
-        ExtensionConfigValueType, ExtensionConfigWritePayload, HostProtocolEnvelope,
-        HostProtocolError, HostVersionPayload, RealtimeMediaDeviceKind,
-        RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
-        RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
-        RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
-        RealtimeMediaSessionIdentityPayload, RealtimeMediaSessionInterruptPayload,
-        RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
-        RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
-        RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
-        RendererResumedPayload, ResumeTicket, WindowCreatePayload, WindowCreateResponse,
-        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights,
-        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
+        ExtensionConfigValueType, ExtensionConfigWritePayload, ExtensionPackageActorKind,
+        ExtensionPackageActorPayload, ExtensionPackageCapabilityDeclarationPayload,
+        ExtensionPackageCompatibilityPayload, ExtensionPackageEventPayload,
+        ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
+        ExtensionPackageInstallResultPayload, ExtensionPackageManifestPayload,
+        ExtensionPackageRemoveResultPayload, ExtensionPackageSourceKind,
+        ExtensionPackageSourcePayload, ExtensionPackageSupportedPayload,
+        ExtensionPackageUpdateResultPayload, HostProtocolEnvelope, HostProtocolError,
+        HostVersionPayload, RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
+        RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
+        RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
+        RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
+        RealtimeMediaSessionInterruptPayload, RealtimeMediaSessionSelectDevicePayload,
+        RealtimeMediaSessionState, RealtimeMediaSessionStateEventPayload,
+        RealtimeMediaSessionSupportedPayload, RendererResumeDeniedPayload,
+        RendererResumeDeniedReason, RendererResumePayload, RendererResumedPayload, ResumeTicket,
+        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowTitleBarStyle,
+        WindowTrafficLights, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
         EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
-        HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION, REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
+        EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, PROTOCOL_VERSION,
+        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -3378,6 +3856,101 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ExtensionConfigSupportedPayload::unsupported(
                 EXTENSION_CONFIG_UNSUPPORTED_REASON,
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn extension_package_payloads_serialize_canonically() {
+        let actor =
+            ExtensionPackageActorPayload::new(ExtensionPackageActorKind::Extension, "extension-1");
+        let source = ExtensionPackageSourcePayload::new(
+            ExtensionPackageSourceKind::Directory,
+            "file:///tmp/extensions/extension-1",
+        )
+        .with_digest("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        let compatibility = ExtensionPackageCompatibilityPayload::new(
+            Some("1.0.0".to_string()),
+            Some("2.0.0".to_string()),
+        );
+        let capability = serde_json::json!({
+            "kind": "filesystem.read",
+            "roots": ["/tmp/extensions"],
+            "audit": "always"
+        });
+        let declaration = ExtensionPackageCapabilityDeclarationPayload::new(capability.clone())
+            .with_reason("read extension files");
+        let manifest = ExtensionPackageManifestPayload::new(
+            "extension-1",
+            "Extension One",
+            "1.0.0",
+            "dist/main.js",
+            compatibility,
+            vec![declaration],
+        );
+        let install = ExtensionPackageInstallPayload::new(
+            actor,
+            source,
+            manifest,
+            Some("trace-install".to_string()),
+        );
+
+        assert_eq!(
+            serde_json::to_string(&install).expect("install payload should encode"),
+            r#"{"actor":{"kind":"extension","id":"extension-1"},"source":{"kind":"directory","uri":"file:///tmp/extensions/extension-1","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"manifest":{"id":"extension-1","name":"Extension One","version":"1.0.0","entrypoint":"dist/main.js","compatibility":{"minHostVersion":"1.0.0","maxHostVersion":"2.0.0"},"capabilities":[{"capability":{"audit":"always","kind":"filesystem.read","roots":["/tmp/extensions"]},"reason":"read extension files"}]},"traceId":"trace-install"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&ExtensionPackageInstallResultPayload::new(
+                "extension-1",
+                "1.0.0",
+                1,
+                vec![capability.clone()],
+            ))
+            .expect("install result should encode"),
+            r#"{"packageId":"extension-1","version":"1.0.0","revision":1,"registeredCapabilities":[{"audit":"always","kind":"filesystem.read","roots":["/tmp/extensions"]}]}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&ExtensionPackageUpdateResultPayload::new(
+                "extension-1",
+                Some("1.0.0".to_string()),
+                "1.1.0",
+                2,
+                vec![capability],
+            ))
+            .expect("update result should encode"),
+            r#"{"packageId":"extension-1","previousVersion":"1.0.0","version":"1.1.0","revision":2,"registeredCapabilities":[{"audit":"always","kind":"filesystem.read","roots":["/tmp/extensions"]}]}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&ExtensionPackageRemoveResultPayload::new(
+                "extension-1",
+                true,
+                3,
+            ))
+            .expect("remove result should encode"),
+            r#"{"packageId":"extension-1","removed":true,"revision":3}"#
+        );
+
+        let event = ExtensionPackageEventPayload::new(
+            1_710_000_000_000,
+            "extension-1",
+            ExtensionPackageEventPhase::Installed,
+            Some("1.0.0".to_string()),
+            Some(1),
+            None,
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("event should encode"),
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"installed","version":"1.0.0","revision":1}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&ExtensionPackageSupportedPayload::unsupported(
+                EXTENSION_PACKAGE_UNSUPPORTED_REASON,
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
