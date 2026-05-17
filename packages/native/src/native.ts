@@ -18,6 +18,7 @@ import { ExtensionConfigSurface } from "./extension-config.js"
 import { ExtensionPackageSurface } from "./extension-package.js"
 import { FocusedApplicationContextSurface } from "./focused-application-context.js"
 import { LocalToolRuntimeSurface } from "./local-tool-runtime.js"
+import { TransientWindowRoleSurface } from "./transient-window-role.js"
 import { TransactionalFileMutationSurface } from "./transactional-file-mutation.js"
 import { WorkspaceIndexSurface } from "./workspace-index.js"
 import { DockSurface } from "./dock.js"
@@ -55,6 +56,7 @@ const BuiltInSurfaces = Object.freeze([
   ExtensionPackageSurface,
   FocusedApplicationContextSurface,
   LocalToolRuntimeSurface,
+  TransientWindowRoleSurface,
   TransactionalFileMutationSurface,
   WorkspaceIndexSurface,
   DockSurface,
@@ -98,6 +100,7 @@ const ExtensionConfig = ExtensionConfigSurface.selection
 const ExtensionPackage = ExtensionPackageSurface.selection
 const FocusedApplicationContext = FocusedApplicationContextSurface.selection
 const LocalToolRuntime = LocalToolRuntimeSurface.selection
+const TransientWindowRole = TransientWindowRoleSurface.selection
 const TransactionalFileMutation = TransactionalFileMutationSurface.selection
 const WorkspaceIndex = WorkspaceIndexSurface.selection
 const Dock = DockSurface.selection
@@ -141,6 +144,7 @@ export const Permissions = Object.freeze({
   extensionPackage: ExtensionPackageSurface.permissions,
   focusedApplicationContext: FocusedApplicationContextSurface.permissions,
   localToolRuntime: LocalToolRuntimeSurface.permissions,
+  transientWindowRole: TransientWindowRoleSurface.permissions,
   transactionalFileMutation: TransactionalFileMutationSurface.permissions,
   workspaceIndex: WorkspaceIndexSurface.permissions,
   dock: DockSurface.permissions,
@@ -179,6 +183,7 @@ export const Native = Object.freeze({
   ExtensionPackage,
   FocusedApplicationContext,
   LocalToolRuntime,
+  TransientWindowRole,
   TransactionalFileMutation,
   WorkspaceIndex,
   Dock,

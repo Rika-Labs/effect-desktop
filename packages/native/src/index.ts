@@ -244,6 +244,29 @@ export {
   type ExtensionPackageServiceOptions
 } from "./extension-package.js"
 export {
+  makeHostTransientWindowRoleRpcRuntime,
+  makeTransientWindowRoleBridgeClientLayer,
+  makeTransientWindowRoleClientLayer,
+  makeTransientWindowRoleMemoryClient,
+  makeTransientWindowRoleServiceLayer,
+  makeTransientWindowRoleUnsupportedClient,
+  TransientWindowRole,
+  TransientWindowRoleClient,
+  TransientWindowRoleHandlersLive,
+  TransientWindowRoleLive,
+  TransientWindowRoleMethodNames,
+  TransientWindowRoleRpcEvents,
+  TransientWindowRoleRpcs,
+  TransientWindowRoleSurface,
+  type TransientWindowRoleClientApi,
+  type TransientWindowRoleError,
+  type TransientWindowRoleMemoryClientOptions,
+  type TransientWindowRoleRpc,
+  type TransientWindowRoleRpcHandlers,
+  type TransientWindowRoleServiceApi,
+  type TransientWindowRoleServiceOptions
+} from "./transient-window-role.js"
+export {
   ExecutionSandbox,
   ExecutionSandboxClient,
   ExecutionSandboxHandlersLive,

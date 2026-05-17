@@ -68,6 +68,11 @@ pub const DISPLAY_CAPTURE_CAPTURE_WINDOW_METHOD: &str = "DisplayCapture.captureW
 pub const DISPLAY_CAPTURE_CAPTURE_REGION_METHOD: &str = "DisplayCapture.captureRegion";
 pub const DISPLAY_CAPTURE_IS_SUPPORTED_METHOD: &str = "DisplayCapture.isSupported";
 pub const DISPLAY_CAPTURE_EVENT: &str = "DisplayCapture.Event";
+pub const TRANSIENT_WINDOW_ROLE_OPEN_METHOD: &str = "TransientWindowRole.open";
+pub const TRANSIENT_WINDOW_ROLE_REPOSITION_METHOD: &str = "TransientWindowRole.reposition";
+pub const TRANSIENT_WINDOW_ROLE_DISMISS_METHOD: &str = "TransientWindowRole.dismiss";
+pub const TRANSIENT_WINDOW_ROLE_IS_SUPPORTED_METHOD: &str = "TransientWindowRole.isSupported";
+pub const TRANSIENT_WINDOW_ROLE_EVENT: &str = "TransientWindowRole.Event";
 pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
@@ -127,6 +132,7 @@ pub const ATTACHMENT_INTAKE_UNSUPPORTED_REASON: &str = "host-adapter-unimplement
 pub const SELECTION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const FOCUSED_APPLICATION_CONTEXT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const DISPLAY_CAPTURE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -1963,6 +1969,382 @@ impl DisplayCaptureEventPayload {
             capture_id: None,
             source: None,
             byte_length: None,
+            reason: None,
+            message: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransientWindowRoleActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransientWindowRoleKind {
+    Launcher,
+    Palette,
+    Popover,
+    UtilityPanel,
+    CompanionWindow,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransientWindowFocusPolicy {
+    TakeFocus,
+    PreserveFocus,
+    RestorePrevious,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransientWindowDismissalPolicy {
+    Manual,
+    Blur,
+    Escape,
+    InteractOutside,
+    Transient,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransientWindowZOrderPolicy {
+    Normal,
+    Floating,
+    AlwaysOnTop,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransientWindowRestorationPolicy {
+    None,
+    RestoreFocus,
+    RestoreOwner,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransientWindowRoleEventPhase {
+    Opened,
+    Repositioned,
+    Dismissed,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRoleActorPayload {
+    kind: TransientWindowRoleActorKind,
+    id: String,
+}
+
+impl TransientWindowRoleActorPayload {
+    pub fn new(kind: TransientWindowRoleActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRolePointPayload {
+    x: f64,
+    y: f64,
+}
+
+impl TransientWindowRolePointPayload {
+    pub fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
+    }
+
+    pub fn values(&self) -> (f64, f64) {
+        (self.x, self.y)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransientWindowRolePlacementKind {
+    Centered,
+    Point,
+    OwnerRelative,
+    DisplayRelative,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRolePlacementPayload {
+    kind: TransientWindowRolePlacementKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_window_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    point: Option<TransientWindowRolePointPayload>,
+}
+
+impl TransientWindowRolePlacementPayload {
+    pub fn point(point: TransientWindowRolePointPayload) -> Self {
+        Self {
+            kind: TransientWindowRolePlacementKind::Point,
+            owner_window_id: None,
+            display_id: None,
+            point: Some(point),
+        }
+    }
+
+    pub fn kind(&self) -> &TransientWindowRolePlacementKind {
+        &self.kind
+    }
+
+    pub fn owner_window_id(&self) -> Option<&str> {
+        self.owner_window_id.as_deref()
+    }
+
+    pub fn display_id(&self) -> Option<&str> {
+        self.display_id.as_deref()
+    }
+
+    pub fn point_payload(&self) -> Option<&TransientWindowRolePointPayload> {
+        self.point.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRolePolicyPayload {
+    role: TransientWindowRoleKind,
+    focus: TransientWindowFocusPolicy,
+    dismissal: TransientWindowDismissalPolicy,
+    z_order: TransientWindowZOrderPolicy,
+    placement: TransientWindowRolePlacementPayload,
+    restoration: TransientWindowRestorationPolicy,
+}
+
+impl TransientWindowRolePolicyPayload {
+    pub fn new(
+        role: TransientWindowRoleKind,
+        focus: TransientWindowFocusPolicy,
+        dismissal: TransientWindowDismissalPolicy,
+        z_order: TransientWindowZOrderPolicy,
+        placement: TransientWindowRolePlacementPayload,
+        restoration: TransientWindowRestorationPolicy,
+    ) -> Self {
+        Self {
+            role,
+            focus,
+            dismissal,
+            z_order,
+            placement,
+            restoration,
+        }
+    }
+
+    pub fn placement(&self) -> &TransientWindowRolePlacementPayload {
+        &self.placement
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRoleResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl TransientWindowRoleResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "transient-window-role".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn owner_scope(&self) -> &str {
+        &self.owner_scope
+    }
+
+    pub fn state(&self) -> &str {
+        &self.state
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRoleOpenPayload {
+    actor: TransientWindowRoleActorPayload,
+    role_id: String,
+    policy: TransientWindowRolePolicyPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl TransientWindowRoleOpenPayload {
+    pub fn new(
+        actor: TransientWindowRoleActorPayload,
+        role_id: impl Into<String>,
+        policy: TransientWindowRolePolicyPayload,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            role_id: role_id.into(),
+            policy,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &TransientWindowRoleActorPayload {
+        &self.actor
+    }
+
+    pub fn role_id(&self) -> &str {
+        &self.role_id
+    }
+
+    pub fn policy(&self) -> &TransientWindowRolePolicyPayload {
+        &self.policy
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRoleHandlePayload {
+    actor: TransientWindowRoleActorPayload,
+    handle: TransientWindowRoleResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl TransientWindowRoleHandlePayload {
+    pub fn new(
+        actor: TransientWindowRoleActorPayload,
+        handle: TransientWindowRoleResourcePayload,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            handle,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &TransientWindowRoleActorPayload {
+        &self.actor
+    }
+
+    pub fn handle(&self) -> &TransientWindowRoleResourcePayload {
+        &self.handle
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRoleRepositionPayload {
+    actor: TransientWindowRoleActorPayload,
+    handle: TransientWindowRoleResourcePayload,
+    placement: TransientWindowRolePlacementPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl TransientWindowRoleRepositionPayload {
+    pub fn actor(&self) -> &TransientWindowRoleActorPayload {
+        &self.actor
+    }
+
+    pub fn handle(&self) -> &TransientWindowRoleResourcePayload {
+        &self.handle
+    }
+
+    pub fn placement(&self) -> &TransientWindowRolePlacementPayload {
+        &self.placement
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRoleSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl TransientWindowRoleSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransientWindowRoleEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: TransientWindowRoleEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl TransientWindowRoleEventPayload {
+    pub fn new(timestamp: u64, phase: TransientWindowRoleEventPhase) -> Self {
+        Self {
+            r#type: "transient-window-role-event".to_string(),
+            timestamp,
+            phase,
+            role_id: None,
             reason: None,
             message: None,
         }
@@ -6593,11 +6975,17 @@ mod tests {
         TransactionalFileMutationPreparePayload, TransactionalFileMutationPrepareResultPayload,
         TransactionalFileMutationRollbackPayload, TransactionalFileMutationRollbackResultPayload,
         TransactionalFileMutationState, TransactionalFileMutationSupportedPayload,
-        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowTitleBarStyle,
-        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
-        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
-        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
-        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        TransientWindowDismissalPolicy, TransientWindowFocusPolicy,
+        TransientWindowRestorationPolicy, TransientWindowRoleActorKind,
+        TransientWindowRoleActorPayload, TransientWindowRoleEventPayload,
+        TransientWindowRoleEventPhase, TransientWindowRoleKind, TransientWindowRoleOpenPayload,
+        TransientWindowRolePlacementPayload, TransientWindowRolePointPayload,
+        TransientWindowRolePolicyPayload, TransientWindowRoleSupportedPayload,
+        TransientWindowZOrderPolicy, WindowCreatePayload, WindowCreateResponse,
+        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
+        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
+        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
+        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, DISPLAY_CAPTURE_UNSUPPORTED_REASON,
@@ -6605,7 +6993,7 @@ mod tests {
         EXTENSION_CONFIG_UNSUPPORTED_REASON, EXTENSION_PACKAGE_UNSUPPORTED_REASON,
         HOST_PROTOCOL_ERROR_SPECS, LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
-        WORKSPACE_INDEX_UNSUPPORTED_REASON,
+        TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -7141,6 +7529,51 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&event).expect("event payload should encode"),
             r#"{"type":"display-capture-event","timestamp":1710000000001,"phase":"captured"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&supported).expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn transient_window_role_payloads_serialize_canonically() {
+        let actor = TransientWindowRoleActorPayload::new(
+            TransientWindowRoleActorKind::Workspace,
+            "workspace-1",
+        );
+        let placement = TransientWindowRolePlacementPayload::point(
+            TransientWindowRolePointPayload::new(20.0, 40.0),
+        );
+        let policy = TransientWindowRolePolicyPayload::new(
+            TransientWindowRoleKind::Palette,
+            TransientWindowFocusPolicy::TakeFocus,
+            TransientWindowDismissalPolicy::Escape,
+            TransientWindowZOrderPolicy::Floating,
+            placement,
+            TransientWindowRestorationPolicy::RestoreFocus,
+        );
+        let request = TransientWindowRoleOpenPayload::new(
+            actor,
+            "palette-1",
+            policy,
+            Some("trace-transient-window-role".to_string()),
+        );
+        let event = TransientWindowRoleEventPayload::new(
+            1710000000001,
+            TransientWindowRoleEventPhase::Opened,
+        );
+        let supported = TransientWindowRoleSupportedPayload::unsupported(
+            TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
+        );
+
+        assert_eq!(
+            serde_json::to_string(&request).expect("request payload should encode"),
+            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"roleId":"palette-1","policy":{"role":"palette","focus":"take-focus","dismissal":"escape","zOrder":"floating","placement":{"kind":"point","point":{"x":20.0,"y":40.0}},"restoration":"restore-focus"},"traceId":"trace-transient-window-role"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("event payload should encode"),
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"opened"}"#
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("support payload should encode"),
