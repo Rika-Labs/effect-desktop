@@ -710,7 +710,7 @@ test("ProductionChecker flags unguarded unsupported Dock progress usage", async 
   ])
 })
 
-test("ProductionChecker flags unguarded realtime media session usage", async () => {
+test("ProductionChecker flags unguarded partial realtime media session usage", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({
       config: {},

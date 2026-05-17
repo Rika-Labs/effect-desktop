@@ -14,17 +14,40 @@ mod workspace_index;
 
 use crate::{linux, window::WindowMethodHandler};
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
-use std::sync::Arc;
+use std::sync::{mpsc::Sender, Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+type RealtimeMediaHandler = fn(
+    &str,
+    Option<serde_json::Value>,
+    u64,
+    Option<&str>,
+    Option<Sender<HostProtocolEnvelope>>,
+    Option<Sender<realtime_media_session::SessionKey>>,
+) -> realtime_media_session::EventfulResponse;
+
+struct RealtimeMediaDispatch {
+    id: String,
+    trace_id: String,
+    window_id: Option<String>,
+    payload: Option<serde_json::Value>,
+    timestamp: u64,
+}
 
 #[derive(Clone)]
 pub(crate) struct HostMethodRouter {
     window: Arc<dyn WindowMethodHandler>,
+    runtime_event_sender: Arc<Mutex<Option<Sender<HostProtocolEnvelope>>>>,
+    runtime_session_failure_sender: Arc<Mutex<Option<Sender<realtime_media_session::SessionKey>>>>,
 }
 
 impl HostMethodRouter {
     pub(crate) fn new(window: Arc<dyn WindowMethodHandler>) -> Self {
-        Self { window }
+        Self {
+            window,
+            runtime_event_sender: Arc::new(Mutex::new(None)),
+            runtime_session_failure_sender: Arc::new(Mutex::new(None)),
+        }
     }
 
     pub(crate) fn dispatch_frames(
@@ -32,6 +55,72 @@ impl HostMethodRouter {
         envelope: HostProtocolEnvelope,
     ) -> Vec<HostProtocolEnvelope> {
         self.dispatch_frames_at(envelope, timestamp_millis())
+    }
+
+    fn dispatch_cancel(&self, envelope: &HostProtocolEnvelope) -> Result<(), String> {
+        let HostProtocolEnvelope::Cancel {
+            id, resource_id, ..
+        } = envelope
+        else {
+            return Ok(());
+        };
+        realtime_media_session::close_session_for_cancel(
+            id.as_deref(),
+            resource_id.as_deref(),
+            "host.runtime.cancel",
+        )
+        .map_err(|error| format!("{error:?}"))
+    }
+
+    pub(crate) fn clear_runtime_resources(&self) -> Result<(), String> {
+        realtime_media_session::close_all_sessions("host.runtime.disconnect")
+            .map_err(|error| format!("{error:?}"))
+    }
+
+    pub(crate) fn install_runtime_event_sender(
+        &self,
+        sender: Sender<HostProtocolEnvelope>,
+    ) -> Result<(), String> {
+        *self
+            .runtime_event_sender
+            .lock()
+            .map_err(|_| "runtime event sender lock poisoned".to_string())? = Some(sender);
+        Ok(())
+    }
+
+    pub(crate) fn clear_runtime_event_sender(&self) -> Result<(), String> {
+        *self
+            .runtime_event_sender
+            .lock()
+            .map_err(|_| "runtime event sender lock poisoned".to_string())? = None;
+        Ok(())
+    }
+
+    pub(crate) fn install_runtime_session_failure_sender(
+        &self,
+        sender: Sender<realtime_media_session::SessionKey>,
+    ) -> Result<(), String> {
+        *self
+            .runtime_session_failure_sender
+            .lock()
+            .map_err(|_| "runtime session failure sender lock poisoned".to_string())? =
+            Some(sender);
+        Ok(())
+    }
+
+    pub(crate) fn clear_runtime_session_failure_sender(&self) -> Result<(), String> {
+        *self
+            .runtime_session_failure_sender
+            .lock()
+            .map_err(|_| "runtime session failure sender lock poisoned".to_string())? = None;
+        Ok(())
+    }
+
+    pub(crate) fn handle_realtime_media_session_failure(
+        &self,
+        key: realtime_media_session::SessionKey,
+    ) {
+        realtime_media_session::handle_session_failure(key);
     }
 
     #[cfg(test)]
@@ -50,6 +139,11 @@ impl HostMethodRouter {
         envelope: HostProtocolEnvelope,
         timestamp: u64,
     ) -> Vec<HostProtocolEnvelope> {
+        if matches!(envelope, HostProtocolEnvelope::Cancel { .. }) {
+            let _ = self.dispatch_cancel(&envelope);
+            return Vec::new();
+        }
+
         let HostProtocolEnvelope::Request {
             id,
             method,
@@ -96,7 +190,27 @@ impl HostMethodRouter {
             host_protocol::HOST_PING_METHOD => Ok(None),
             host_protocol::HOST_VERSION_METHOD => Ok(Some(handshake::version_payload())),
             host_protocol::WINDOW_CREATE_METHOD => window::create(&*self.window, payload),
-            host_protocol::WINDOW_DESTROY_METHOD => window::destroy(&*self.window, payload),
+            host_protocol::WINDOW_DESTROY_METHOD => {
+                let destroy_payload = payload.clone();
+                let result = window::destroy(&*self.window, payload);
+                if result.is_ok() {
+                    if let Some(window_id) = decode_window_destroy_id(destroy_payload) {
+                        if let Err(error) = realtime_media_session::close_sessions_for_window(
+                            &window_id,
+                            host_protocol::WINDOW_DESTROY_METHOD,
+                        ) {
+                            return vec![HostProtocolEnvelope::Response {
+                                id,
+                                timestamp,
+                                trace_id,
+                                payload: None,
+                                error: Some(error),
+                            }];
+                        }
+                    }
+                }
+                result
+            }
             host_protocol::DOCK_SET_BADGE_COUNT_METHOD => {
                 dock::set_badge_count(&*self.window, payload)
             }
@@ -129,16 +243,52 @@ impl HostMethodRouter {
             }
             host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD => linux::safe_storage_is_available(),
             host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD => {
-                realtime_media_session::open(payload)
+                return self.dispatch_realtime_media_session(
+                    RealtimeMediaDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    realtime_media_session::open_with_events,
+                );
             }
             host_protocol::REALTIME_MEDIA_SESSION_CLOSE_METHOD => {
-                realtime_media_session::close(payload)
+                return self.dispatch_realtime_media_session(
+                    RealtimeMediaDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    realtime_media_session::close_with_events,
+                );
             }
             host_protocol::REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD => {
-                realtime_media_session::select_device(payload)
+                return self.dispatch_realtime_media_session(
+                    RealtimeMediaDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    realtime_media_session::select_device_with_events,
+                );
             }
             host_protocol::REALTIME_MEDIA_SESSION_INTERRUPT_METHOD => {
-                realtime_media_session::interrupt(payload)
+                return self.dispatch_realtime_media_session(
+                    RealtimeMediaDispatch {
+                        id,
+                        trace_id,
+                        window_id,
+                        payload,
+                        timestamp,
+                    },
+                    realtime_media_session::interrupt_with_events,
+                );
             }
             host_protocol::REALTIME_MEDIA_SESSION_IS_SUPPORTED_METHOD => {
                 realtime_media_session::is_supported()
@@ -218,6 +368,49 @@ impl HostMethodRouter {
             error,
         }]
     }
+
+    fn dispatch_realtime_media_session(
+        &self,
+        request: RealtimeMediaDispatch,
+        handler: RealtimeMediaHandler,
+    ) -> Vec<HostProtocolEnvelope> {
+        let (payload, events, error) = match handler(
+            &request.id,
+            request.payload,
+            request.timestamp,
+            request.window_id.as_deref(),
+            self.runtime_event_sender
+                .lock()
+                .ok()
+                .and_then(|sender| sender.clone()),
+            self.runtime_session_failure_sender
+                .lock()
+                .ok()
+                .and_then(|sender| sender.clone()),
+        ) {
+            Ok((payload, events)) => (payload, events, None),
+            Err(error) => (None, Vec::new(), Some(error)),
+        };
+
+        let mut frames = events
+            .into_iter()
+            .map(|(event_method, payload)| HostProtocolEnvelope::Event {
+                method: event_method.to_string(),
+                timestamp: request.timestamp,
+                trace_id: request.trace_id.clone(),
+                window_id: request.window_id.clone(),
+                payload: Some(payload),
+            })
+            .collect::<Vec<_>>();
+        frames.push(HostProtocolEnvelope::Response {
+            id: request.id,
+            timestamp: request.timestamp,
+            trace_id: request.trace_id.clone(),
+            payload,
+            error,
+        });
+        frames
+    }
 }
 
 fn timestamp_millis() -> u64 {
@@ -227,6 +420,14 @@ fn timestamp_millis() -> u64 {
         .as_millis()
         .try_into()
         .expect("timestamp milliseconds should fit in u64")
+}
+
+fn decode_window_destroy_id(payload: Option<serde_json::Value>) -> Option<String> {
+    payload
+        .and_then(|payload| {
+            serde_json::from_value::<host_protocol::WindowDestroyPayload>(payload).ok()
+        })
+        .map(|payload| payload.window_id().to_string())
 }
 
 #[cfg(test)]
@@ -574,12 +775,12 @@ mod tests {
     }
 
     #[test]
-    fn realtime_media_session_known_methods_return_typed_unsupported() {
+    fn realtime_media_session_known_methods_route_to_host_adapter() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
-                    "request-realtime-media-open",
-                    host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
+                    "request-realtime-media-close",
+                    host_protocol::REALTIME_MEDIA_SESSION_CLOSE_METHOD,
                     serde_json::json!({
                         "profileId": "profile-1",
                         "sessionId": "session-1"
@@ -587,21 +788,27 @@ mod tests {
                 ),
                 1710000000113,
             )
-            .expect("realtime media request should return response");
+            .expect("realtime media close should return response");
 
-        assert_eq!(
-            response,
+        match response {
             HostProtocolEnvelope::Response {
-                id: "request-realtime-media-open".to_string(),
-                timestamp: 1710000000113,
-                trace_id: "trace-request-realtime-media-open".to_string(),
+                id,
+                timestamp,
+                trace_id,
                 payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON,
-                    host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
-                )),
+                error: Some(error),
+            } => {
+                assert_eq!(id, "request-realtime-media-close");
+                assert_eq!(timestamp, 1710000000113);
+                assert_eq!(trace_id, "trace-request-realtime-media-close");
+                if cfg!(target_os = "macos") {
+                    assert_eq!(error.tag(), "NotFound");
+                } else {
+                    assert_eq!(error.tag(), "Unsupported");
+                }
             }
-        );
+            other => panic!("unexpected realtime media close response: {other:?}"),
+        }
     }
 
     #[test]
@@ -629,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn realtime_media_session_is_supported_reports_unimplemented_adapter() {
+    fn realtime_media_session_is_supported_reports_runtime_probe_result() {
         let response = test_router()
             .dispatch_at(
                 request(
@@ -640,19 +847,31 @@ mod tests {
             )
             .expect("realtime media support request should return response");
 
-        assert_eq!(
-            response,
+        match response {
             HostProtocolEnvelope::Response {
-                id: "request-realtime-media-supported".to_string(),
-                timestamp: 1710000000115,
-                trace_id: "trace-request-realtime-media-supported".to_string(),
-                payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON
-                })),
+                id,
+                timestamp,
+                trace_id,
+                payload: Some(payload),
                 error: None,
+            } => {
+                assert_eq!(id, "request-realtime-media-supported");
+                assert_eq!(timestamp, 1710000000115);
+                assert_eq!(trace_id, "trace-request-realtime-media-supported");
+                assert!(payload
+                    .get("supported")
+                    .and_then(serde_json::Value::as_bool)
+                    .is_some());
+                if payload.get("supported") == Some(&serde_json::Value::Bool(false)) {
+                    assert!(matches!(
+                        payload.get("reason").and_then(serde_json::Value::as_str),
+                        Some(host_protocol::REALTIME_MEDIA_SESSION_MEDIA_UNAVAILABLE_REASON)
+                            | Some(host_protocol::REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON)
+                    ));
+                }
             }
-        );
+            other => panic!("unexpected realtime media support response: {other:?}"),
+        }
     }
 
     #[test]

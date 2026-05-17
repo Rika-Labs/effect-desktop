@@ -6,6 +6,7 @@ import {
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -31,13 +32,15 @@ import {
 
 const Surface = "RealtimeMediaSession"
 const UnsupportedReason = "host-adapter-unimplemented"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const RuntimeVerifiedSupportReason = "host-media-runtime-verified"
+const StartupUnverifiedSupportReason = "host-media-startup-unverified"
+const RuntimeVerifiedSupport = NativeSurface.support.partial(RuntimeVerifiedSupportReason, {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+    { platform: "macos", status: "partial", reason: RuntimeVerifiedSupportReason },
+    { platform: "windows", status: "unsupported", reason: StartupUnverifiedSupportReason },
+    { platform: "linux", status: "unsupported", reason: StartupUnverifiedSupportReason }
   ]
-})
+}) satisfies RpcSupportMetadata
 
 export type RealtimeMediaSessionError = HostProtocolError
 
@@ -455,12 +458,27 @@ const realtimeMediaSessionClientFromRpcClient = (
     events: (input) =>
       Stream.unwrap(
         validateRealtimeMediaSessionIdentity(input, "RealtimeMediaSession.events").pipe(
-          Effect.map((valid) =>
-            subscribeRealtimeMediaSessionEvent(exchange).pipe(
-              Stream.filter(
-                (event) =>
-                  event.profileId === valid.profileId && event.sessionId === valid.sessionId
-              )
+          Effect.flatMap((valid) =>
+            runRealtimeMediaSessionRpc(
+              client["RealtimeMediaSession.isSupported"](undefined),
+              "RealtimeMediaSession.isSupported"
+            ).pipe(
+              Effect.map((support) => {
+                if (!support.supported) {
+                  return Stream.fail(
+                    unsupportedError(
+                      "RealtimeMediaSession.events",
+                      support.reason ?? UnsupportedReason
+                    )
+                  )
+                }
+                return subscribeRealtimeMediaSessionEvent(exchange).pipe(
+                  Stream.filter(
+                    (event) =>
+                      event.profileId === valid.profileId && event.sessionId === valid.sessionId
+                  )
+                )
+              })
             )
           )
         )
@@ -540,10 +558,13 @@ const failOr = <A>(
 ): Effect.Effect<A, RealtimeMediaSessionError, never> =>
   error === undefined ? effect : Effect.fail(error)
 
-const unsupportedError = (operation: string): HostProtocolUnsupportedError =>
+const unsupportedError = (
+  operation: string,
+  reason: string = UnsupportedReason
+): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
-    reason: UnsupportedReason,
+    reason,
     message: `unsupported RealtimeMediaSession method: ${operation}`,
     operation,
     recoverable: false
@@ -559,7 +580,7 @@ function realtimeMediaSessionRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: RuntimeVerifiedSupport
   })
 }
 

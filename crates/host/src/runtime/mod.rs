@@ -864,29 +864,86 @@ fn serve_framed_host_requests<R, W>(
 ) -> Result<()>
 where
     R: Read,
-    W: Write,
+    W: Write + Send,
 {
     let mut reader = FrameReader::new(reader);
-    let mut writer = FrameWriter::new(writer);
+    let (outgoing_tx, outgoing_rx) = mpsc::channel::<HostProtocolEnvelope>();
+    let (session_failure_tx, session_failure_rx) = mpsc::channel();
+    method_router
+        .install_runtime_event_sender(outgoing_tx.clone())
+        .map_err(|error| anyhow::anyhow!("failed to install runtime event sender: {error}"))?;
+    method_router
+        .install_runtime_session_failure_sender(session_failure_tx.clone())
+        .map_err(|error| {
+            anyhow::anyhow!("failed to install runtime session failure sender: {error}")
+        })?;
 
-    while let Some(frame) = reader.recv().context(format!(
-        "failed to read runtime protocol frame after {RUNTIME_READY_EVENT}"
-    ))? {
-        let envelope: HostProtocolEnvelope = serde_json::from_slice(&frame).context(format!(
-            "failed to decode host protocol frame after {RUNTIME_READY_EVENT}"
-        ))?;
+    let result = thread::scope(|scope| -> Result<()> {
+        let writer_thread = scope.spawn(move || -> Result<()> {
+            let mut writer = FrameWriter::new(writer);
+            while let Ok(frame) = outgoing_rx.recv() {
+                let frame = serde_json::to_vec(&frame).context(format!(
+                    "failed to encode host protocol response after {RUNTIME_READY_EVENT}"
+                ))?;
+                writer.send(&frame).context(format!(
+                    "failed to write host protocol response after {RUNTIME_READY_EVENT}"
+                ))?;
+            }
+            Ok(())
+        });
+        let failure_router = method_router.clone();
+        let failure_thread = scope.spawn(move || {
+            while let Ok(key) = session_failure_rx.recv() {
+                failure_router.handle_realtime_media_session_failure(key);
+            }
+        });
 
-        for frame in method_router.dispatch_frames(envelope) {
-            let frame = serde_json::to_vec(&frame).context(format!(
-                "failed to encode host protocol response after {RUNTIME_READY_EVENT}"
-            ))?;
-            writer.send(&frame).context(format!(
-                "failed to write host protocol response after {RUNTIME_READY_EVENT}"
-            ))?;
-        }
-    }
+        let read_result = (|| -> Result<()> {
+            while let Some(frame) = reader.recv().context(format!(
+                "failed to read runtime protocol frame after {RUNTIME_READY_EVENT}"
+            ))? {
+                let envelope: HostProtocolEnvelope = serde_json::from_slice(&frame).context(
+                    format!("failed to decode host protocol frame after {RUNTIME_READY_EVENT}"),
+                )?;
 
-    Ok(())
+                for frame in method_router.dispatch_frames(envelope) {
+                    outgoing_tx.send(frame).context(format!(
+                        "failed to queue host protocol response after {RUNTIME_READY_EVENT}"
+                    ))?;
+                }
+            }
+
+            Ok(())
+        })();
+
+        let clear_failure_sender = method_router
+            .clear_runtime_session_failure_sender()
+            .map_err(|error| {
+                anyhow::anyhow!("failed to clear runtime session failure sender: {error}")
+            });
+        let clear_sender = method_router
+            .clear_runtime_event_sender()
+            .map_err(|error| anyhow::anyhow!("failed to clear runtime event sender: {error}"));
+        let cleanup = method_router.clear_runtime_resources().map_err(|error| {
+            anyhow::anyhow!("failed to clear host runtime resources after disconnect: {error}")
+        });
+        drop(session_failure_tx);
+        drop(outgoing_tx);
+        let failure_result = failure_thread
+            .join()
+            .map_err(|_| anyhow::anyhow!("runtime session failure thread panicked"));
+        let write_result = writer_thread
+            .join()
+            .unwrap_or_else(|_| Err(anyhow::anyhow!("runtime frame writer thread panicked")));
+
+        read_result
+            .and(clear_failure_sender)
+            .and(clear_sender)
+            .and(cleanup)
+            .and(failure_result)
+            .and(write_result)
+    });
+    result
 }
 
 fn trim_line_end(line: &mut String) {

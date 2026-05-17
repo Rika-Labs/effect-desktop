@@ -149,10 +149,7 @@ test("RealtimeMediaSession bridge client sends typed envelopes and decodes event
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = realtimeMediaSessionExchange(requests, (request) => ({
     kind: "success",
-    payload:
-      request.method === "RealtimeMediaSession.isSupported"
-        ? { supported: false, reason: "host-adapter-unimplemented" }
-        : undefined
+    payload: request.method === "RealtimeMediaSession.isSupported" ? { supported: true } : undefined
   }))
 
   const result = await Effect.runPromise(
@@ -183,8 +180,7 @@ test("RealtimeMediaSession bridge client sends typed envelopes and decodes event
 
   expect(result.supported).toEqual(
     new RealtimeMediaSessionSupportedResult({
-      supported: false,
-      reason: "host-adapter-unimplemented"
+      supported: true
     })
   )
   expect(Array.from(result.interruption)).toEqual([
@@ -202,8 +198,43 @@ test("RealtimeMediaSession bridge client sends typed envelopes and decodes event
       "RealtimeMediaSession.selectDevice",
       { profileId: "p1", sessionId: "s1", kind: "speaker", deviceId: "speaker-1" }
     ],
+    ["RealtimeMediaSession.isSupported", null],
     ["RealtimeMediaSession.close", { profileId: "p1", sessionId: "s1" }]
   ])
+})
+
+test("RealtimeMediaSession bridge event streams fail typed unsupported when host startup is unverified", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = realtimeMediaSessionExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "RealtimeMediaSession.isSupported"
+        ? { supported: false, reason: "host-media-startup-unverified" }
+        : undefined
+  }))
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const media = yield* RealtimeMediaSession
+      return yield* Effect.exit(
+        media.events({ profileId: "p1", sessionId: "s1" }).pipe(Stream.take(1), Stream.runCollect)
+      )
+    }).pipe(
+      Effect.provide(
+        Layer.provide(RealtimeMediaSessionLive, makeRealtimeMediaSessionBridgeClientLayer(exchange))
+      )
+    )
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toMatchObject({
+      tag: "Unsupported",
+      reason: "host-media-startup-unverified",
+      operation: "RealtimeMediaSession.events"
+    })
+  }
 })
 
 test("RealtimeMediaSession bridge client rejects malformed input before native transport", async () => {
@@ -235,7 +266,7 @@ test("RealtimeMediaSession bridge client rejects malformed input before native t
   }
 })
 
-test("NativeCapabilities reports realtime media privileged operations as unsupported", async () => {
+test("NativeCapabilities reports realtime media privileged operations as runtime-verified partial support", async () => {
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
@@ -248,15 +279,15 @@ test("NativeCapabilities reports realtime media privileged operations as unsuppo
   )
 
   expect(exit.support).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
+    status: "partial",
+    reason: "host-media-runtime-verified",
     platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+      { platform: "macos", status: "partial", reason: "host-media-runtime-verified" },
+      { platform: "windows", status: "unsupported", reason: "host-media-startup-unverified" },
+      { platform: "linux", status: "unsupported", reason: "host-media-startup-unverified" }
     ]
   })
-  expect(Exit.isFailure(exit.requireOpen)).toBe(true)
+  expect(Exit.isSuccess(exit.requireOpen)).toBe(true)
 })
 
 const realtimeMediaSessionExchange = (

@@ -92,6 +92,8 @@ pub const RENDERER_RESUME_DENIED_EVENT: &str = "renderer.resume.denied";
 pub const DEFAULT_RECONNECT_WINDOW_MS: u64 = 30_000;
 pub const DEFAULT_MAX_BACKFILL_EVENTS: u64 = 1_024;
 pub const REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const REALTIME_MEDIA_SESSION_MEDIA_UNAVAILABLE_REASON: &str = "host-media-unavailable";
+pub const REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON: &str = "host-media-startup-unverified";
 pub const DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EGRESS_POLICY_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const EXECUTION_SANDBOX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -376,6 +378,13 @@ pub struct RealtimeMediaSessionSupportedPayload {
 }
 
 impl RealtimeMediaSessionSupportedPayload {
+    pub fn available() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,

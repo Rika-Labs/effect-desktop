@@ -32,7 +32,11 @@ export const RealtimeMediaInterruptionReason = Schema.Literals([
 ])
 export type RealtimeMediaInterruptionReason = typeof RealtimeMediaInterruptionReason.Type
 
-export const RealtimeMediaSessionSupportReason = Schema.Literals(["host-adapter-unimplemented"])
+export const RealtimeMediaSessionSupportReason = Schema.Literals([
+  "host-adapter-unimplemented",
+  "host-media-unavailable",
+  "host-media-startup-unverified"
+])
 export type RealtimeMediaSessionSupportReason = typeof RealtimeMediaSessionSupportReason.Type
 
 export class RealtimeMediaSessionIdentity extends Schema.Class<RealtimeMediaSessionIdentity>(

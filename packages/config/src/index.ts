@@ -1395,10 +1395,10 @@ const APPENDIX_K_SOURCE_CAPABILITIES: readonly SourceCapability[] = [
   { primitive: "Dock", method: "setProgress", support: "unsupported" },
   { primitive: "Dock", method: "setMenu", support: "unsupported" },
   { primitive: "Dock", method: "setJumpList", support: "unsupported" },
-  { primitive: "RealtimeMediaSession", method: "open", support: "unsupported" },
-  { primitive: "RealtimeMediaSession", method: "close", support: "unsupported" },
-  { primitive: "RealtimeMediaSession", method: "selectDevice", support: "unsupported" },
-  { primitive: "RealtimeMediaSession", method: "interrupt", support: "unsupported" }
+  { primitive: "RealtimeMediaSession", method: "open", support: "partial" },
+  { primitive: "RealtimeMediaSession", method: "close", support: "partial" },
+  { primitive: "RealtimeMediaSession", method: "selectDevice", support: "partial" },
+  { primitive: "RealtimeMediaSession", method: "interrupt", support: "partial" }
 ]
 
 const formatLocation = (location: ProductionCheckLocation): string => {
