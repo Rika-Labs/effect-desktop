@@ -267,6 +267,29 @@ export {
   type LocalToolRuntimeServiceOptions
 } from "./local-tool-runtime.js"
 export {
+  TransactionalFileMutation,
+  TransactionalFileMutationClient,
+  TransactionalFileMutationHandlersLive,
+  TransactionalFileMutationLive,
+  TransactionalFileMutationMethodNames,
+  TransactionalFileMutationRpcEvents,
+  TransactionalFileMutationRpcs,
+  TransactionalFileMutationSurface,
+  makeHostTransactionalFileMutationRpcRuntime,
+  makeTransactionalFileMutationBridgeClientLayer,
+  makeTransactionalFileMutationClientLayer,
+  makeTransactionalFileMutationMemoryClient,
+  makeTransactionalFileMutationServiceLayer,
+  makeTransactionalFileMutationUnsupportedClient,
+  type TransactionalFileMutationClientApi,
+  type TransactionalFileMutationError,
+  type TransactionalFileMutationMemoryClientOptions,
+  type TransactionalFileMutationRpc,
+  type TransactionalFileMutationRpcHandlers,
+  type TransactionalFileMutationServiceApi,
+  type TransactionalFileMutationServiceOptions
+} from "./transactional-file-mutation.js"
+export {
   WorkspaceIndex,
   WorkspaceIndexClient,
   WorkspaceIndexHandlersLive,

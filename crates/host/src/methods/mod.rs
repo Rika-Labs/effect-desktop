@@ -8,6 +8,7 @@ pub(crate) mod handshake;
 mod local_tool_runtime;
 mod menu;
 mod realtime_media_session;
+mod transactional_file_mutation;
 mod window;
 mod workspace_index;
 
@@ -139,6 +140,18 @@ impl HostMethodRouter {
             host_protocol::WORKSPACE_INDEX_REFRESH_METHOD => workspace_index::refresh(payload),
             host_protocol::WORKSPACE_INDEX_CLOSE_METHOD => workspace_index::close(payload),
             host_protocol::WORKSPACE_INDEX_IS_SUPPORTED_METHOD => workspace_index::is_supported(),
+            host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD => {
+                transactional_file_mutation::prepare(payload)
+            }
+            host_protocol::TRANSACTIONAL_FILE_MUTATION_COMMIT_METHOD => {
+                transactional_file_mutation::commit(payload)
+            }
+            host_protocol::TRANSACTIONAL_FILE_MUTATION_ROLLBACK_METHOD => {
+                transactional_file_mutation::rollback(payload)
+            }
+            host_protocol::TRANSACTIONAL_FILE_MUTATION_IS_SUPPORTED_METHOD => {
+                transactional_file_mutation::is_supported()
+            }
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
                 menu::set_application_menu(&*self.window, payload)
             }
@@ -1215,6 +1228,92 @@ mod tests {
         );
     }
 
+    #[test]
+    fn transactional_file_mutation_prepare_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-file-mutation-prepare",
+                    host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD,
+                    transactional_file_mutation_prepare_payload(),
+                ),
+                1710000000136,
+            )
+            .expect("transactional file mutation request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-file-mutation-prepare".to_string(),
+                timestamp: 1710000000136,
+                trace_id: "trace-request-file-mutation-prepare".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
+                    host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn transactional_file_mutation_invalid_payload_returns_invalid_argument_before_unsupported() {
+        let mut payload = transactional_file_mutation_prepare_payload();
+        payload["path"] = serde_json::json!("workspace/app/src/main.ts");
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-file-mutation-invalid",
+                    host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD,
+                    payload,
+                ),
+                1710000000137,
+            )
+            .expect("transactional file mutation request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-file-mutation-invalid".to_string(),
+                timestamp: 1710000000137,
+                trace_id: "trace-request-file-mutation-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "path",
+                    "must be an absolute path",
+                    host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn transactional_file_mutation_is_supported_reports_unimplemented_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-file-mutation-supported",
+                    host_protocol::TRANSACTIONAL_FILE_MUTATION_IS_SUPPORTED_METHOD,
+                ),
+                1710000000138,
+            )
+            .expect("transactional file mutation support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-file-mutation-supported".to_string(),
+                timestamp: 1710000000138,
+                trace_id: "trace-request-file-mutation-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON
+                })),
+                error: None,
+            }
+        );
+    }
+
     fn request(id: &str, method: &str) -> HostProtocolEnvelope {
         request_with_payload(id, method, serde_json::Value::Null)
     }
@@ -1393,6 +1492,17 @@ mod tests {
             },
             "indexId": "workspace-index-1",
             "traceId": "trace-workspace-index"
+        })
+    }
+
+    fn transactional_file_mutation_prepare_payload() -> serde_json::Value {
+        serde_json::json!({
+            "actor": { "kind": "workspace", "id": "workspace-1" },
+            "path": "/workspace/app/src/main.ts",
+            "replacementBytes": [110, 101, 120, 116, 10],
+            "expectedSourceHash": "fnv1a-source",
+            "mutationId": "file-mutation-1",
+            "traceId": "trace-file-mutation"
         })
     }
 

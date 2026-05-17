@@ -77,6 +77,12 @@ pub const WORKSPACE_INDEX_REFRESH_METHOD: &str = "WorkspaceIndex.refresh";
 pub const WORKSPACE_INDEX_CLOSE_METHOD: &str = "WorkspaceIndex.close";
 pub const WORKSPACE_INDEX_IS_SUPPORTED_METHOD: &str = "WorkspaceIndex.isSupported";
 pub const WORKSPACE_INDEX_EVENT: &str = "WorkspaceIndex.Event";
+pub const TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD: &str = "TransactionalFileMutation.prepare";
+pub const TRANSACTIONAL_FILE_MUTATION_COMMIT_METHOD: &str = "TransactionalFileMutation.commit";
+pub const TRANSACTIONAL_FILE_MUTATION_ROLLBACK_METHOD: &str = "TransactionalFileMutation.rollback";
+pub const TRANSACTIONAL_FILE_MUTATION_IS_SUPPORTED_METHOD: &str =
+    "TransactionalFileMutation.isSupported";
+pub const TRANSACTIONAL_FILE_MUTATION_EVENT: &str = "TransactionalFileMutation.Event";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
@@ -93,6 +99,7 @@ pub const EXTENSION_CONFIG_UNSUPPORTED_REASON: &str = "host-adapter-unimplemente
 pub const EXTENSION_PACKAGE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 fn default_true() -> bool {
     true
@@ -2764,6 +2771,348 @@ impl WorkspaceIndexEventPayload {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum TransactionalFileMutationActorKind {
+    Workspace,
+    Extension,
+    Tool,
+    Process,
+    Native,
+    App,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransactionalFileMutationState {
+    Prepared,
+    Committing,
+    Committed,
+    RollingBack,
+    RolledBack,
+    Conflicted,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransactionalFileMutationEventPhase {
+    Prepared,
+    CommitStarted,
+    Committed,
+    RollbackStarted,
+    RolledBack,
+    Conflicted,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationActorPayload {
+    kind: TransactionalFileMutationActorKind,
+    id: String,
+}
+
+impl TransactionalFileMutationActorPayload {
+    pub fn new(kind: TransactionalFileMutationActorKind, id: impl Into<String>) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationDiffPayload {
+    format: String,
+    text: String,
+    additions: u64,
+    deletions: u64,
+}
+
+impl TransactionalFileMutationDiffPayload {
+    pub fn unified(text: impl Into<String>, additions: u64, deletions: u64) -> Self {
+        Self {
+            format: "unified".to_string(),
+            text: text.into(),
+            additions,
+            deletions,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationPreparePayload {
+    actor: TransactionalFileMutationActorPayload,
+    path: String,
+    replacement_bytes: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_source_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mutation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl TransactionalFileMutationPreparePayload {
+    pub fn new(
+        actor: TransactionalFileMutationActorPayload,
+        path: impl Into<String>,
+        replacement_bytes: Vec<u8>,
+        expected_source_hash: Option<String>,
+        mutation_id: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            path: path.into(),
+            replacement_bytes,
+            expected_source_hash,
+            mutation_id,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &TransactionalFileMutationActorPayload {
+        &self.actor
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn expected_source_hash(&self) -> Option<&str> {
+        self.expected_source_hash.as_deref()
+    }
+
+    pub fn mutation_id(&self) -> Option<&str> {
+        self.mutation_id.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationPrepareResultPayload {
+    mutation_id: String,
+    path: String,
+    state: TransactionalFileMutationState,
+    source_hash: String,
+    replacement_hash: String,
+    diff: TransactionalFileMutationDiffPayload,
+}
+
+impl TransactionalFileMutationPrepareResultPayload {
+    pub fn prepared(
+        mutation_id: impl Into<String>,
+        path: impl Into<String>,
+        source_hash: impl Into<String>,
+        replacement_hash: impl Into<String>,
+        diff: TransactionalFileMutationDiffPayload,
+    ) -> Self {
+        Self {
+            mutation_id: mutation_id.into(),
+            path: path.into(),
+            state: TransactionalFileMutationState::Prepared,
+            source_hash: source_hash.into(),
+            replacement_hash: replacement_hash.into(),
+            diff,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationCommitPayload {
+    actor: TransactionalFileMutationActorPayload,
+    mutation_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_source_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl TransactionalFileMutationCommitPayload {
+    pub fn new(
+        actor: TransactionalFileMutationActorPayload,
+        mutation_id: impl Into<String>,
+        expected_source_hash: Option<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            mutation_id: mutation_id.into(),
+            expected_source_hash,
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &TransactionalFileMutationActorPayload {
+        &self.actor
+    }
+
+    pub fn mutation_id(&self) -> &str {
+        &self.mutation_id
+    }
+
+    pub fn expected_source_hash(&self) -> Option<&str> {
+        self.expected_source_hash.as_deref()
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationCommitResultPayload {
+    mutation_id: String,
+    path: String,
+    state: TransactionalFileMutationState,
+    committed: bool,
+}
+
+impl TransactionalFileMutationCommitResultPayload {
+    pub fn committed(mutation_id: impl Into<String>, path: impl Into<String>) -> Self {
+        Self {
+            mutation_id: mutation_id.into(),
+            path: path.into(),
+            state: TransactionalFileMutationState::Committed,
+            committed: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationRollbackPayload {
+    actor: TransactionalFileMutationActorPayload,
+    mutation_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl TransactionalFileMutationRollbackPayload {
+    pub fn new(
+        actor: TransactionalFileMutationActorPayload,
+        mutation_id: impl Into<String>,
+        trace_id: Option<String>,
+    ) -> Self {
+        Self {
+            actor,
+            mutation_id: mutation_id.into(),
+            trace_id,
+        }
+    }
+
+    pub fn actor(&self) -> &TransactionalFileMutationActorPayload {
+        &self.actor
+    }
+
+    pub fn mutation_id(&self) -> &str {
+        &self.mutation_id
+    }
+
+    pub fn trace_id(&self) -> Option<&str> {
+        self.trace_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationRollbackResultPayload {
+    mutation_id: String,
+    path: String,
+    state: TransactionalFileMutationState,
+    rolled_back: bool,
+}
+
+impl TransactionalFileMutationRollbackResultPayload {
+    pub fn rolled_back(mutation_id: impl Into<String>, path: impl Into<String>) -> Self {
+        Self {
+            mutation_id: mutation_id.into(),
+            path: path.into(),
+            state: TransactionalFileMutationState::RolledBack,
+            rolled_back: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl TransactionalFileMutationSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransactionalFileMutationEventPayload {
+    r#type: String,
+    timestamp: u64,
+    mutation_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    phase: TransactionalFileMutationEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<TransactionalFileMutationState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    replacement_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diff: Option<TransactionalFileMutationDiffPayload>,
+}
+
+impl TransactionalFileMutationEventPayload {
+    pub fn new(
+        timestamp: u64,
+        mutation_id: impl Into<String>,
+        phase: TransactionalFileMutationEventPhase,
+    ) -> Self {
+        Self {
+            r#type: "transactional-file-mutation-event".to_string(),
+            timestamp,
+            mutation_id: mutation_id.into(),
+            path: None,
+            phase,
+            state: None,
+            source_hash: None,
+            replacement_hash: None,
+            diff: None,
+        }
+    }
+
+    pub fn with_file(
+        mut self,
+        path: impl Into<String>,
+        state: TransactionalFileMutationState,
+    ) -> Self {
+        self.path = Some(path.into());
+        self.state = Some(state);
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ExtensionConfigActorKind {
     Workspace,
     Extension,
@@ -4286,18 +4635,26 @@ mod tests {
         RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
         RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
         RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
-        RendererResumedPayload, ResumeTicket, WindowCreatePayload, WindowCreateResponse,
-        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
-        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
-        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
-        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        RendererResumedPayload, ResumeTicket, TransactionalFileMutationActorKind,
+        TransactionalFileMutationActorPayload, TransactionalFileMutationCommitPayload,
+        TransactionalFileMutationCommitResultPayload, TransactionalFileMutationDiffPayload,
+        TransactionalFileMutationEventPayload, TransactionalFileMutationEventPhase,
+        TransactionalFileMutationPreparePayload, TransactionalFileMutationPrepareResultPayload,
+        TransactionalFileMutationRollbackPayload, TransactionalFileMutationRollbackResultPayload,
+        TransactionalFileMutationState, TransactionalFileMutationSupportedPayload,
+        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowTitleBarStyle,
+        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
+        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
+        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
         EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
         EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS,
         LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
-        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
+        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
+        WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -5352,6 +5709,106 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&WorkspaceIndexSupportedPayload::unsupported(
                 WORKSPACE_INDEX_UNSUPPORTED_REASON,
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn transactional_file_mutation_payloads_serialize_canonically() {
+        let actor = TransactionalFileMutationActorPayload::new(
+            TransactionalFileMutationActorKind::Workspace,
+            "workspace-1",
+        );
+        let prepare = TransactionalFileMutationPreparePayload::new(
+            actor.clone(),
+            "/workspace/app/src/main.ts",
+            b"next\n".to_vec(),
+            Some("fnv1a-source".to_string()),
+            Some("file-mutation-1".to_string()),
+            Some("trace-prepare".to_string()),
+        );
+        assert_eq!(
+            serde_json::to_string(&prepare).expect("prepare payload should encode"),
+            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"path":"/workspace/app/src/main.ts","replacementBytes":[110,101,120,116,10],"expectedSourceHash":"fnv1a-source","mutationId":"file-mutation-1","traceId":"trace-prepare"}"#
+        );
+
+        let diff = TransactionalFileMutationDiffPayload::unified(
+            "--- /workspace/app/src/main.ts\n+++ /workspace/app/src/main.ts",
+            1,
+            1,
+        );
+        assert_eq!(
+            serde_json::to_string(&TransactionalFileMutationPrepareResultPayload::prepared(
+                "file-mutation-1",
+                "/workspace/app/src/main.ts",
+                "fnv1a-source",
+                "fnv1a-next",
+                diff,
+            ))
+            .expect("prepare result should encode"),
+            r#"{"mutationId":"file-mutation-1","path":"/workspace/app/src/main.ts","state":"prepared","sourceHash":"fnv1a-source","replacementHash":"fnv1a-next","diff":{"format":"unified","text":"--- /workspace/app/src/main.ts\n+++ /workspace/app/src/main.ts","additions":1,"deletions":1}}"#
+        );
+
+        let commit = TransactionalFileMutationCommitPayload::new(
+            actor.clone(),
+            "file-mutation-1",
+            Some("fnv1a-source".to_string()),
+            Some("trace-commit".to_string()),
+        );
+        assert_eq!(
+            serde_json::to_string(&commit).expect("commit payload should encode"),
+            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"mutationId":"file-mutation-1","expectedSourceHash":"fnv1a-source","traceId":"trace-commit"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&TransactionalFileMutationCommitResultPayload::committed(
+                "file-mutation-1",
+                "/workspace/app/src/main.ts",
+            ))
+            .expect("commit result should encode"),
+            r#"{"mutationId":"file-mutation-1","path":"/workspace/app/src/main.ts","state":"committed","committed":true}"#
+        );
+
+        let rollback = TransactionalFileMutationRollbackPayload::new(
+            actor,
+            "file-mutation-1",
+            Some("trace-rollback".to_string()),
+        );
+        assert_eq!(
+            serde_json::to_string(&rollback).expect("rollback payload should encode"),
+            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"mutationId":"file-mutation-1","traceId":"trace-rollback"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(
+                &TransactionalFileMutationRollbackResultPayload::rolled_back(
+                    "file-mutation-1",
+                    "/workspace/app/src/main.ts",
+                )
+            )
+            .expect("rollback result should encode"),
+            r#"{"mutationId":"file-mutation-1","path":"/workspace/app/src/main.ts","state":"rolled-back","rolledBack":true}"#
+        );
+
+        let event = TransactionalFileMutationEventPayload::new(
+            1_710_000_000_000,
+            "file-mutation-1",
+            TransactionalFileMutationEventPhase::Committed,
+        )
+        .with_file(
+            "/workspace/app/src/main.ts",
+            TransactionalFileMutationState::Committed,
+        );
+        assert_eq!(
+            serde_json::to_string(&event).expect("event should encode"),
+            r#"{"type":"transactional-file-mutation-event","timestamp":1710000000000,"mutationId":"file-mutation-1","path":"/workspace/app/src/main.ts","phase":"committed","state":"committed"}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&TransactionalFileMutationSupportedPayload::unsupported(
+                TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#

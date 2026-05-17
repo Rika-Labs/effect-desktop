@@ -1947,6 +1947,7 @@ test("native test layers are derived from DesktopRpc surfaces", async () => {
     "ExtensionConfig",
     "ExtensionPackage",
     "LocalToolRuntime",
+    "TransactionalFileMutation",
     "WorkspaceIndex",
     "Dock",
     "GlobalShortcut",
