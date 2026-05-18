@@ -143,6 +143,7 @@ pub const UPDATER_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const CRASH_REPORTER_START_METHOD: &str = "CrashReporter.start";
 pub const CRASH_REPORTER_RECORD_BREADCRUMB_METHOD: &str = "CrashReporter.recordBreadcrumb";
 pub const CRASH_REPORTER_FLUSH_METHOD: &str = "CrashReporter.flush";
+pub const CRASH_REPORTER_GET_REPORTS_METHOD: &str = "CrashReporter.getReports";
 pub const CRASH_REPORTER_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const POWER_MONITOR_IS_SUPPORTED_METHOD: &str = "PowerMonitor.isSupported";
 pub const POWER_MONITOR_SUSPEND_EVENT: &str = "PowerMonitor.Suspend";
@@ -2640,6 +2641,70 @@ impl CrashReporterFlushPayload {
 
     pub fn flushed(&self) -> u64 {
         self.flushed
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CrashReporterReportPayload {
+    report_id: String,
+    artifact_path: String,
+    created_at: u64,
+    size_bytes: u64,
+    uploaded: bool,
+}
+
+impl CrashReporterReportPayload {
+    pub fn new(
+        report_id: impl Into<String>,
+        artifact_path: impl Into<String>,
+        created_at: u64,
+        size_bytes: u64,
+        uploaded: bool,
+    ) -> Self {
+        Self {
+            report_id: report_id.into(),
+            artifact_path: artifact_path.into(),
+            created_at,
+            size_bytes,
+            uploaded,
+        }
+    }
+
+    pub fn report_id(&self) -> &str {
+        &self.report_id
+    }
+
+    pub fn artifact_path(&self) -> &str {
+        &self.artifact_path
+    }
+
+    pub fn created_at(&self) -> u64 {
+        self.created_at
+    }
+
+    pub fn size_bytes(&self) -> u64 {
+        self.size_bytes
+    }
+
+    pub fn uploaded(&self) -> bool {
+        self.uploaded
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CrashReporterGetReportsPayload {
+    reports: Vec<CrashReporterReportPayload>,
+}
+
+impl CrashReporterGetReportsPayload {
+    pub fn new(reports: Vec<CrashReporterReportPayload>) -> Self {
+        Self { reports }
+    }
+
+    pub fn reports(&self) -> &[CrashReporterReportPayload] {
+        &self.reports
     }
 }
 
@@ -10901,7 +10966,8 @@ mod tests {
         AutostartStatusPayload, CanonicalPathPayload, ClipboardCapabilityPayload,
         ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
         ClipboardSupportedPayload, ClipboardTextPayload, CrashReporterBreadcrumbPayload,
-        CrashReporterFlushPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
+        CrashReporterFlushPayload, CrashReporterGetReportsPayload, CrashReporterReportPayload,
+        CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
         DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
         DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
         DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
@@ -11914,6 +11980,26 @@ mod tests {
             r#"{"flushed":3}"#
         );
 
+        let report = CrashReporterReportPayload::new(
+            "crash-1",
+            "/tmp/effect-desktop/crash-1.json",
+            1710000000000,
+            4096,
+            false,
+        );
+        assert_eq!(report.report_id(), "crash-1");
+        assert_eq!(report.artifact_path(), "/tmp/effect-desktop/crash-1.json");
+        assert_eq!(report.created_at(), 1710000000000);
+        assert_eq!(report.size_bytes(), 4096);
+        assert!(!report.uploaded());
+
+        let reports = CrashReporterGetReportsPayload::new(vec![report]);
+        assert_eq!(reports.reports().len(), 1);
+        assert_eq!(
+            serde_json::to_string(&reports).expect("crash reporter reports should encode"),
+            r#"{"reports":[{"reportId":"crash-1","artifactPath":"/tmp/effect-desktop/crash-1.json","createdAt":1710000000000,"sizeBytes":4096,"uploaded":false}]}"#
+        );
+
         assert_eq!(
             CRASH_REPORTER_UNSUPPORTED_REASON,
             "host-adapter-unimplemented"
@@ -11927,6 +12013,12 @@ mod tests {
         )
         .expect_err("excess crash reporter start field should be rejected");
         assert!(error.to_string().contains("unknown field `submitUrl`"));
+
+        let error = serde_json::from_str::<CrashReporterGetReportsPayload>(
+            r#"{"reports":[],"uploadToken":"secret"}"#,
+        )
+        .expect_err("excess crash reporter getReports field should be rejected");
+        assert!(error.to_string().contains("unknown field `uploadToken`"));
     }
 
     #[test]

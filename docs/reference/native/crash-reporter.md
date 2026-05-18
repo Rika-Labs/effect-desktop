@@ -19,9 +19,10 @@ storage, permission enforcement, and report inspection are implemented.
 
 | Method             | Payload                   | Success                    | Runtime support |
 | ------------------ | ------------------------- | -------------------------- | --------------- |
-| `start`            | `{ enabled?: boolean }`    | `void`                     | unsupported     |
+| `start`            | `{ enabled?: boolean }`   | `void`                     | unsupported     |
 | `recordBreadcrumb` | `CrashReporterBreadcrumb` | `void`                     | unsupported     |
 | `flush`            | `void`                    | `{ flushed: number >= 0 }` | unsupported     |
+| `getReports`       | `void`                    | `{ reports: Report[] }`    | unsupported     |
 
 ## Types
 
@@ -29,6 +30,10 @@ storage, permission enforcement, and report inspection are implemented.
 `details`, and optional `timestamp`.
 
 `CrashReporterStartOptions` — `{ enabled?: boolean }`.
+
+`CrashReporterReport` — local crash artifact metadata with `reportId`,
+`artifactPath`, `createdAt`, `sizeBytes`, and `uploaded`. The production host
+does not populate this until durable crash artifact storage exists.
 
 ## Errors
 

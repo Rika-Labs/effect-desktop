@@ -888,7 +888,8 @@ const expectedUpdaterMethods: Array<(typeof UpdaterMethodNames)[number]> = [
 const expectedCrashReporterMethods: Array<(typeof CrashReporterMethodNames)[number]> = [
   "start",
   "recordBreadcrumb",
-  "flush"
+  "flush",
+  "getReports"
 ]
 
 const expectedPowerMonitorMethods: Array<(typeof PowerMonitorMethodNames)[number]> = ["isSupported"]
@@ -5648,12 +5649,14 @@ test("CrashReporter memory client requires start and flushes recorded breadcrumb
       yield* reporter.start()
       yield* reporter.recordBreadcrumb({ category: "user", message: "clicked save" })
       const flush = yield* reporter.flush()
-      return { flush, notStartedExit }
+      const reports = yield* reporter.getReports()
+      return { flush, notStartedExit, reports }
     }).pipe(Effect.provide(makeCrashReporterServiceLayer(client)))
   )
 
   expectExitFailure(result.notStartedExit, (error) => hasErrorTag(error, "InvalidState"))
   expect(result.flush.flushed).toBe(1)
+  expect(result.reports.reports).toEqual([])
 })
 
 test("CrashReporter memory client drains breadcrumbs after flush", async () => {
@@ -5732,7 +5735,12 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = crashReporterExchange(requests, (request) => ({
     kind: "success",
-    payload: request.method === "CrashReporter.flush" ? { flushed: 0 } : undefined
+    payload:
+      request.method === "CrashReporter.flush"
+        ? { flushed: 0 }
+        : request.method === "CrashReporter.getReports"
+          ? { reports: [] }
+          : undefined
   }))
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -5744,7 +5752,8 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
         details: { authorization: "Bearer abc" }
       })
       const flush = yield* reporter.flush()
-      return { flush }
+      const reports = yield* reporter.getReports()
+      return { flush, reports }
     }).pipe(
       Effect.provide(
         Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
@@ -5754,6 +5763,7 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
   )
 
   expect(result.flush.flushed).toBe(0)
+  expect(result.reports.reports).toEqual([])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["CrashReporter.start", {}],
     [
@@ -5765,7 +5775,8 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
         timestamp
       }
     ],
-    ["CrashReporter.flush", null]
+    ["CrashReporter.flush", null],
+    ["CrashReporter.getReports", null]
   ])
 })
 
@@ -5820,6 +5831,78 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
 
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
     expect(requests.map((request) => request.method)).toEqual(["CrashReporter.flush"])
+  }
+})
+
+test("CrashReporter bridge client rejects invalid report timestamps as InvalidOutput", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = crashReporterExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "CrashReporter.getReports"
+        ? {
+            reports: [
+              {
+                reportId: "crash-1",
+                artifactPath: "/tmp/crash-1.json",
+                createdAt: -1,
+                sizeBytes: 1,
+                uploaded: false
+              }
+            ]
+          }
+        : undefined
+  }))
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const reporter = yield* CrashReporter
+      return yield* Effect.exit(reporter.getReports())
+    }).pipe(
+      Effect.provide(Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)))
+    )
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expect(requests.map((request) => request.method)).toEqual(["CrashReporter.getReports"])
+})
+
+test("CrashReporter bridge client rejects control bytes in report metadata as InvalidOutput", async () => {
+  const cases = [
+    { reportId: "crash\n1", artifactPath: "/tmp/crash-1.json" },
+    { reportId: "crash-1", artifactPath: `/tmp/crash${String.fromCharCode(0)}1.json` }
+  ]
+
+  for (const report of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const exchange = crashReporterExchange(requests, (request) => ({
+      kind: "success",
+      payload:
+        request.method === "CrashReporter.getReports"
+          ? {
+              reports: [
+                {
+                  ...report,
+                  createdAt: 1_710_000_000_000,
+                  sizeBytes: 1,
+                  uploaded: false
+                }
+              ]
+            }
+          : undefined
+    }))
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const reporter = yield* CrashReporter
+        return yield* Effect.exit(reporter.getReports())
+      }).pipe(
+        Effect.provide(
+          Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
+        )
+      )
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    expect(requests.map((request) => request.method)).toEqual(["CrashReporter.getReports"])
   }
 })
 

@@ -253,6 +253,7 @@ export {
   type CrashReporterBreadcrumb,
   type CrashReporterClientApi,
   type CrashReporterError,
+  type CrashReporterReport,
   type CrashReporterRpc,
   type CrashReporterRpcHandlers,
   type CrashReporterServiceApi,

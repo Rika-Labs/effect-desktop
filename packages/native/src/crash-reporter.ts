@@ -19,6 +19,8 @@ import { NativeSurface } from "./native-surface.js"
 import {
   CrashReporterBreadcrumbInput,
   CrashReporterFlushResult,
+  CrashReporterReport as CrashReporterReportSchema,
+  CrashReporterGetReportsResult,
   CrashReporterStartInput
 } from "./contracts/crash-reporter.js"
 
@@ -27,6 +29,8 @@ export type CrashReporterError = HostProtocolError
 export type CrashReporterStartOptions = Schema.Schema.Type<typeof CrashReporterStartInput>
 
 export type CrashReporterBreadcrumb = Schema.Schema.Type<typeof CrashReporterBreadcrumbInput>
+
+export type CrashReporterReport = Schema.Schema.Type<typeof CrashReporterReportSchema>
 
 const UnsupportedReason = "host-adapter-unimplemented"
 
@@ -56,6 +60,12 @@ export const CrashReporterFlush = crashReporterRpc(
   CrashReporterFlushResult,
   P.nativeInvoke({ primitive: "CrashReporter", methods: ["flush"] })
 )
+export const CrashReporterGetReports = crashReporterRpc(
+  "getReports",
+  Schema.Void,
+  CrashReporterGetReportsResult,
+  P.nativeInvoke({ primitive: "CrashReporter", methods: ["getReports"] })
+)
 export const CrashReporterRpcEvents = Object.freeze({})
 
 export type CrashReporterRpcEvents = typeof CrashReporterRpcEvents
@@ -63,7 +73,8 @@ export type CrashReporterRpcEvents = typeof CrashReporterRpcEvents
 const CrashReporterRpcGroup = RpcGroup.make(
   CrashReporterStart,
   CrashReporterRecordBreadcrumb,
-  CrashReporterFlush
+  CrashReporterFlush,
+  CrashReporterGetReports
 )
 
 export const CrashReporterRpcs: RpcGroup.RpcGroup<CrashReporterRpc> = CrashReporterRpcGroup
@@ -71,7 +82,8 @@ export const CrashReporterRpcs: RpcGroup.RpcGroup<CrashReporterRpc> = CrashRepor
 export const CrashReporterMethodNames = Object.freeze([
   "start",
   "recordBreadcrumb",
-  "flush"
+  "flush",
+  "getReports"
 ] as const)
 
 export interface CrashReporterClientApi {
@@ -82,6 +94,7 @@ export interface CrashReporterClientApi {
     breadcrumb: CrashReporterBreadcrumb
   ) => Effect.Effect<void, CrashReporterError, never>
   readonly flush: () => Effect.Effect<CrashReporterFlushResult, CrashReporterError, never>
+  readonly getReports: () => Effect.Effect<CrashReporterGetReportsResult, CrashReporterError, never>
 }
 
 export class CrashReporterClient extends Context.Service<
@@ -100,7 +113,8 @@ export class CrashReporter extends Context.Service<CrashReporter, CrashReporterS
       return CrashReporter.of({
         start: (options) => client.start(options),
         recordBreadcrumb: (breadcrumb) => client.recordBreadcrumb(breadcrumb),
-        flush: () => client.flush()
+        flush: () => client.flush(),
+        getReports: () => client.getReports()
       } satisfies CrashReporterServiceApi)
     })
   )
@@ -141,6 +155,11 @@ export const CrashReporterHandlersLive = CrashReporterRpcGroup.toLayer({
     Effect.gen(function* () {
       const reporter = yield* CrashReporter
       return yield* reporter.flush()
+    }),
+  "CrashReporter.getReports": () =>
+    Effect.gen(function* () {
+      const reporter = yield* CrashReporter
+      return yield* reporter.getReports()
     })
 })
 
@@ -202,7 +221,8 @@ export const makeCrashReporterMemoryClient = (): Effect.Effect<
             return yield* Effect.fail(notStartedError("CrashReporter.flush"))
           }
           return new CrashReporterFlushResult({ flushed: drained.length })
-        })
+        }),
+      getReports: () => Effect.succeed(new CrashReporterGetReportsResult({ reports: [] }))
     } satisfies CrashReporterClientApi)
   })
 
@@ -233,7 +253,9 @@ const crashReporterClientFromRpcClient = (
         )
       ),
     flush: () =>
-      runCrashReporterRpc(client["CrashReporter.flush"](undefined), "CrashReporter.flush")
+      runCrashReporterRpc(client["CrashReporter.flush"](undefined), "CrashReporter.flush"),
+    getReports: () =>
+      runCrashReporterRpc(client["CrashReporter.getReports"](undefined), "CrashReporter.getReports")
   } satisfies CrashReporterClientApi)
 
 interface CrashReporterState {
@@ -250,7 +272,7 @@ function crashReporterRpc<
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
+    endpoint: method === "getReports" ? "query" : "mutation",
     support: CrashReporterSupport
   })
 }

@@ -614,6 +614,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(crash_reporter::flush),
     ),
     route(
+        host_protocol::CRASH_REPORTER_GET_REPORTS_METHOD,
+        HostMethodDispatcher::Payload(crash_reporter::get_reports),
+    ),
+    route(
         host_protocol::POWER_MONITOR_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(power_monitor::is_supported),
     ),
@@ -4322,6 +4326,33 @@ mod tests {
                 error: Some(HostProtocolError::unsupported(
                     host_protocol::CRASH_REPORTER_UNSUPPORTED_REASON,
                     host_protocol::CRASH_REPORTER_START_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn crash_reporter_get_reports_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-crash-reporter-get-reports",
+                    host_protocol::CRASH_REPORTER_GET_REPORTS_METHOD,
+                ),
+                1710000000112,
+            )
+            .expect("crash reporter getReports should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-crash-reporter-get-reports".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-crash-reporter-get-reports".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::CRASH_REPORTER_UNSUPPORTED_REASON,
+                    host_protocol::CRASH_REPORTER_GET_REPORTS_METHOD,
                 )),
             }
         );

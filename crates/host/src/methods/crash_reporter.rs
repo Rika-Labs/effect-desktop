@@ -45,6 +45,13 @@ pub(crate) fn flush(payload: Option<Value>) -> Result<Option<Value>, HostProtoco
     Err(unsupported(host_protocol::CRASH_REPORTER_FLUSH_METHOD))
 }
 
+pub(crate) fn get_reports(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    reject_unexpected_payload(payload, host_protocol::CRASH_REPORTER_GET_REPORTS_METHOD)?;
+    Err(unsupported(
+        host_protocol::CRASH_REPORTER_GET_REPORTS_METHOD,
+    ))
+}
+
 fn decode_payload<T: DeserializeOwned>(
     payload: Option<Value>,
     operation: &'static str,
@@ -118,7 +125,7 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{flush, record_breadcrumb, start};
+    use super::{flush, get_reports, record_breadcrumb, start};
     use host_protocol::HostProtocolError;
     use serde_json::json;
 
@@ -151,6 +158,13 @@ mod tests {
                 host_protocol::CRASH_REPORTER_FLUSH_METHOD,
             )
         );
+        assert_eq!(
+            get_reports(None).expect_err("get reports"),
+            HostProtocolError::unsupported(
+                host_protocol::CRASH_REPORTER_UNSUPPORTED_REASON,
+                host_protocol::CRASH_REPORTER_GET_REPORTS_METHOD,
+            )
+        );
     }
 
     #[test]
@@ -172,6 +186,14 @@ mod tests {
                 "payload",
                 "must be omitted",
                 host_protocol::CRASH_REPORTER_FLUSH_METHOD,
+            )
+        );
+        assert_eq!(
+            get_reports(Some(json!({}))).expect_err("payload"),
+            HostProtocolError::invalid_argument(
+                "payload",
+                "must be omitted",
+                host_protocol::CRASH_REPORTER_GET_REPORTS_METHOD,
             )
         );
     }
