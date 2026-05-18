@@ -51,6 +51,9 @@ pub const WINDOW_FOCUS_METHOD: &str = "Window.focus";
 pub const WINDOW_GET_BOUNDS_METHOD: &str = "Window.getBounds";
 pub const WINDOW_SET_BOUNDS_METHOD: &str = "Window.setBounds";
 pub const WINDOW_CENTER_METHOD: &str = "Window.center";
+pub const WINDOW_SET_TITLE_METHOD: &str = "Window.setTitle";
+pub const WINDOW_SET_RESIZABLE_METHOD: &str = "Window.setResizable";
+pub const WINDOW_SET_DECORATIONS_METHOD: &str = "Window.setDecorations";
 pub const WINDOW_MINIMIZE_METHOD: &str = "Window.minimize";
 pub const WINDOW_MAXIMIZE_METHOD: &str = "Window.maximize";
 pub const WINDOW_RESTORE_METHOD: &str = "Window.restore";
@@ -2762,6 +2765,78 @@ impl WindowSetBoundsPayload {
 
     pub fn bounds(&self) -> &WindowBoundsPayload {
         &self.bounds
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetTitlePayload {
+    window_id: String,
+    title: String,
+}
+
+impl WindowSetTitlePayload {
+    pub fn new(window_id: impl Into<String>, title: impl Into<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+            title: title.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetResizablePayload {
+    window_id: String,
+    resizable: bool,
+}
+
+impl WindowSetResizablePayload {
+    pub fn new(window_id: impl Into<String>, resizable: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            resizable,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn resizable(&self) -> bool {
+        self.resizable
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetDecorationsPayload {
+    window_id: String,
+    decorations: bool,
+}
+
+impl WindowSetDecorationsPayload {
+    pub fn new(window_id: impl Into<String>, decorations: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            decorations,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn decorations(&self) -> bool {
+        self.decorations
     }
 }
 
@@ -10490,7 +10565,8 @@ mod tests {
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
         UpdaterStatusPayload, UpdaterStatusState, WindowBoundsPayload, WindowCreatePayload,
         WindowCreateResponse, WindowDestroyPayload, WindowSetBoundsPayload,
-        WindowSetFullscreenPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+        WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetResizablePayload,
+        WindowSetTitlePayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
         WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
         WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
         WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
@@ -11513,6 +11589,32 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&set_bounds).expect("window set bounds payload should encode"),
             r#"{"windowId":"window-1","bounds":{"x":10.0,"y":20.0,"width":640.0,"height":480.0}}"#
+        );
+
+        let set_title = WindowSetTitlePayload::new("window-1", "Main");
+        assert_eq!(set_title.window_id(), "window-1");
+        assert_eq!(set_title.title(), "Main");
+        assert_eq!(
+            serde_json::to_string(&set_title).expect("window set title payload should encode"),
+            r#"{"windowId":"window-1","title":"Main"}"#
+        );
+
+        let set_resizable = WindowSetResizablePayload::new("window-1", false);
+        assert_eq!(set_resizable.window_id(), "window-1");
+        assert!(!set_resizable.resizable());
+        assert_eq!(
+            serde_json::to_string(&set_resizable)
+                .expect("window set resizable payload should encode"),
+            r#"{"windowId":"window-1","resizable":false}"#
+        );
+
+        let set_decorations = WindowSetDecorationsPayload::new("window-1", true);
+        assert_eq!(set_decorations.window_id(), "window-1");
+        assert!(set_decorations.decorations());
+        assert_eq!(
+            serde_json::to_string(&set_decorations)
+                .expect("window set decorations payload should encode"),
+            r#"{"windowId":"window-1","decorations":true}"#
         );
 
         let set_fullscreen = WindowSetFullscreenPayload::new("window-1", true);

@@ -14,7 +14,10 @@ import {
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_TITLE_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -90,6 +93,27 @@ export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>
   bounds: WindowBoundsPayload
 }) {}
 
+export class WindowSetTitlePayload extends Schema.Class<WindowSetTitlePayload>(
+  "WindowSetTitlePayload"
+)({
+  windowId: Schema.NonEmptyString,
+  title: Schema.String
+}) {}
+
+export class WindowSetResizablePayload extends Schema.Class<WindowSetResizablePayload>(
+  "WindowSetResizablePayload"
+)({
+  windowId: Schema.NonEmptyString,
+  resizable: Schema.Boolean
+}) {}
+
+export class WindowSetDecorationsPayload extends Schema.Class<WindowSetDecorationsPayload>(
+  "WindowSetDecorationsPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  decorations: Schema.Boolean
+}) {}
+
 export class WindowSetFullscreenPayload extends Schema.Class<WindowSetFullscreenPayload>(
   "WindowSetFullscreenPayload"
 )({
@@ -140,6 +164,18 @@ export interface HostWindowClient {
     bounds: WindowBoundsInput
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly setTitle: (
+    windowId: string,
+    title: string
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setResizable: (
+    windowId: string,
+    resizable: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setDecorations: (
+    windowId: string,
+    decorations: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
   readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
@@ -207,6 +243,30 @@ export const makeHostWindowClient = (
       }),
     center: (windowId) =>
       sendWindowLifecycleCommand(windowId, WINDOW_CENTER_METHOD, exchange, resolved),
+    setTitle: (windowId, title) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetTitlePayload(windowId, title)
+        const request = yield* makeRequest(WINDOW_SET_TITLE_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    setResizable: (windowId, resizable) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetResizablePayload(windowId, resizable)
+        const request = yield* makeRequest(WINDOW_SET_RESIZABLE_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    setDecorations: (windowId, decorations) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetDecorationsPayload(windowId, decorations)
+        const request = yield* makeRequest(WINDOW_SET_DECORATIONS_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     minimize: (windowId) =>
       sendWindowLifecycleCommand(windowId, WINDOW_MINIMIZE_METHOD, exchange, resolved),
     maximize: (windowId) =>
@@ -291,6 +351,11 @@ const decodeUnknownWindowCreateResponse = Schema.decodeUnknownSync(WindowCreateR
 const decodeUnknownWindowDestroyPayload = Schema.decodeUnknownSync(WindowDestroyPayload)
 const decodeUnknownWindowBoundsPayload = Schema.decodeUnknownSync(WindowBoundsPayload)
 const decodeUnknownWindowSetBoundsPayload = Schema.decodeUnknownSync(WindowSetBoundsPayload)
+const decodeUnknownWindowSetTitlePayload = Schema.decodeUnknownSync(WindowSetTitlePayload)
+const decodeUnknownWindowSetResizablePayload = Schema.decodeUnknownSync(WindowSetResizablePayload)
+const decodeUnknownWindowSetDecorationsPayload = Schema.decodeUnknownSync(
+  WindowSetDecorationsPayload
+)
 const decodeUnknownWindowSetFullscreenPayload = Schema.decodeUnknownSync(WindowSetFullscreenPayload)
 const decodeUnknownWindowStatePayload = Schema.decodeUnknownSync(WindowStatePayload)
 
@@ -326,6 +391,34 @@ const encodeSetBoundsPayload = (
   Effect.try({
     try: () => decodeUnknownWindowSetBoundsPayload({ windowId, bounds }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_BOUNDS_METHOD)
+  })
+
+const encodeSetTitlePayload = (
+  windowId: string,
+  title: string
+): Effect.Effect<WindowSetTitlePayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowSetTitlePayload({ windowId, title }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_TITLE_METHOD)
+  })
+
+const encodeSetResizablePayload = (
+  windowId: string,
+  resizable: boolean
+): Effect.Effect<WindowSetResizablePayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowSetResizablePayload({ windowId, resizable }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_RESIZABLE_METHOD)
+  })
+
+const encodeSetDecorationsPayload = (
+  windowId: string,
+  decorations: boolean
+): Effect.Effect<WindowSetDecorationsPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetDecorationsPayload({ windowId, decorations }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_DECORATIONS_METHOD)
   })
 
 const encodeSetFullscreenPayload = (

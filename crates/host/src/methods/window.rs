@@ -5,7 +5,9 @@
 use crate::window::{WindowCreateRequest, WindowMethodHandler};
 use host_protocol::{
     HostProtocolError, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowDestroyPayload, WindowSetBoundsPayload, WindowSetFullscreenPayload, WindowStatePayload,
+    WindowDestroyPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
+    WindowSetFullscreenPayload, WindowSetResizablePayload, WindowSetTitlePayload,
+    WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -85,6 +87,36 @@ pub(crate) fn center(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_CENTER_METHOD)?;
     handler.center(payload.window_id())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_title(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_title_payload(payload)?;
+    handler.set_title(payload.window_id(), payload.title())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_resizable(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_resizable_payload(payload)?;
+    handler.set_resizable(payload.window_id(), payload.resizable())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_decorations(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_decorations_payload(payload)?;
+    handler.set_decorations(payload.window_id(), payload.decorations())?;
 
     Ok(None)
 }
@@ -243,6 +275,113 @@ fn decode_set_bounds_payload(payload: Value) -> Result<WindowSetBoundsPayload, H
             "payload",
             "bounds size must be finite and positive",
             host_protocol::WINDOW_SET_BOUNDS_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_title_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetTitlePayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_title_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_TITLE_METHOD
+            ),
+            host_protocol::WINDOW_SET_TITLE_METHOD,
+        )),
+    }
+}
+
+fn decode_set_title_payload(payload: Value) -> Result<WindowSetTitlePayload, HostProtocolError> {
+    let payload: WindowSetTitlePayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_SET_TITLE_METHOD,
+        )
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_TITLE_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_resizable_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetResizablePayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_resizable_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_RESIZABLE_METHOD
+            ),
+            host_protocol::WINDOW_SET_RESIZABLE_METHOD,
+        )),
+    }
+}
+
+fn decode_set_resizable_payload(
+    payload: Value,
+) -> Result<WindowSetResizablePayload, HostProtocolError> {
+    let payload: WindowSetResizablePayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_SET_RESIZABLE_METHOD,
+        )
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_RESIZABLE_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_decorations_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetDecorationsPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_decorations_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_DECORATIONS_METHOD
+            ),
+            host_protocol::WINDOW_SET_DECORATIONS_METHOD,
+        )),
+    }
+}
+
+fn decode_set_decorations_payload(
+    payload: Value,
+) -> Result<WindowSetDecorationsPayload, HostProtocolError> {
+    let payload: WindowSetDecorationsPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_DECORATIONS_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_DECORATIONS_METHOD,
         ));
     }
     Ok(payload)

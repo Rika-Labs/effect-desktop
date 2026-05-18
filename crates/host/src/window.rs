@@ -82,6 +82,21 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
 
     fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
+    fn set_title(&self, window_id: &str, title: &str)
+        -> std::result::Result<(), HostProtocolError>;
+
+    fn set_resizable(
+        &self,
+        window_id: &str,
+        resizable: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_decorations(
+        &self,
+        window_id: &str,
+        decorations: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
     fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
     fn maximize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
@@ -228,6 +243,21 @@ enum WindowCommand {
     },
     Center {
         window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTitle {
+        window_id: String,
+        title: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetResizable {
+        window_id: String,
+        resizable: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetDecorations {
+        window_id: String,
+        decorations: bool,
         reply: Sender<WindowCommandReply>,
     },
     Minimize {
@@ -663,6 +693,51 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CENTER_METHOD)
+    }
+
+    fn set_title(
+        &self,
+        window_id: &str,
+        title: &str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTitle {
+            window_id: window_id.to_string(),
+            title: title.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_TITLE_METHOD)
+    }
+
+    fn set_resizable(
+        &self,
+        window_id: &str,
+        resizable: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetResizable {
+            window_id: window_id.to_string(),
+            resizable,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_RESIZABLE_METHOD)
+    }
+
+    fn set_decorations(
+        &self,
+        window_id: &str,
+        decorations: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetDecorations {
+            window_id: window_id.to_string(),
+            decorations,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_DECORATIONS_METHOD)
     }
 
     fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
@@ -1346,6 +1421,54 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn set_title(
+        &self,
+        window_id: &str,
+        title: &str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_TITLE_METHOD,
+            ));
+        };
+
+        resources._window.set_title(title);
+        Ok(())
+    }
+
+    fn set_resizable(
+        &self,
+        window_id: &str,
+        resizable: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_RESIZABLE_METHOD,
+            ));
+        };
+
+        resources._window.set_resizable(resizable);
+        Ok(())
+    }
+
+    fn set_decorations(
+        &self,
+        window_id: &str,
+        decorations: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_DECORATIONS_METHOD,
+            ));
+        };
+
+        resources._window.set_decorations(decorations);
+        Ok(())
+    }
+
     fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
@@ -1903,6 +2026,39 @@ impl WindowRegistry {
             WindowCommand::Center { window_id, reply } => {
                 let result = self
                     .center(&window_id)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTitle {
+                window_id,
+                title,
+                reply,
+            } => {
+                let result = self
+                    .set_title(&window_id, &title)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetResizable {
+                window_id,
+                resizable,
+                reply,
+            } => {
+                let result = self
+                    .set_resizable(&window_id, resizable)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetDecorations {
+                window_id,
+                decorations,
+                reply,
+            } => {
+                let result = self
+                    .set_decorations(&window_id, decorations)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other

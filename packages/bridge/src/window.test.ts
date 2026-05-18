@@ -17,7 +17,10 @@ import {
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_TITLE_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
@@ -163,6 +166,37 @@ test("host window client requests Window.getBounds, Window.setBounds, and Window
       { windowId: "window-1", bounds: { x: 30, y: 40, width: 800, height: 600 } }
     ],
     [WINDOW_CENTER_METHOD, { windowId: "window-1" }]
+  ])
+})
+
+test("host window client requests mutable chrome commands", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests), {
+    nextRequestId: nextId([
+      "request-window-set-title",
+      "request-window-set-resizable",
+      "request-window-set-decorations"
+    ]),
+    nextTraceId: nextId([
+      "trace-window-set-title",
+      "trace-window-set-resizable",
+      "trace-window-set-decorations"
+    ]),
+    now: nextNumber([1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018])
+  })
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* client.setTitle("window-1", "Renamed")
+      yield* client.setResizable("window-1", false)
+      yield* client.setDecorations("window-1", true)
+    })
+  )
+
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_SET_TITLE_METHOD, { windowId: "window-1", title: "Renamed" }],
+    [WINDOW_SET_RESIZABLE_METHOD, { windowId: "window-1", resizable: false }],
+    [WINDOW_SET_DECORATIONS_METHOD, { windowId: "window-1", decorations: true }]
   ])
 })
 

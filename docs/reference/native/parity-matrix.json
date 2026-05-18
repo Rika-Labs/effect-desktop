@@ -4143,9 +4143,39 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setDecorations",
+      "surface": "Window",
+      "method": "setDecorations",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.setFullscreen",
       "surface": "Window",
       "method": "setFullscreen",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setResizable",
+      "surface": "Window",
+      "method": "setResizable",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setTitle",
+      "surface": "Window",
+      "method": "setTitle",
       "capability": "native",
       "support": {
         "status": "supported"
@@ -4204,10 +4234,10 @@
     }
   ],
   "summary": {
-    "total": 210,
-    "routed": 188,
+    "total": 213,
+    "routed": 191,
     "missing": 22,
-    "supported": 92,
+    "supported": 95,
     "partial": 22,
     "unsupported": 96
   }

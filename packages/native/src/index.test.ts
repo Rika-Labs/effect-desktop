@@ -19,7 +19,10 @@ import {
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_TITLE_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolHostUnavailableError,
   RpcCapability,
@@ -688,6 +691,9 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "getBounds",
   "setBounds",
   "center",
+  "setTitle",
+  "setResizable",
+  "setDecorations",
   "minimize",
   "maximize",
   "restore",
@@ -7389,6 +7395,9 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.getBounds"]
     void client["Window.setBounds"]
     void client["Window.center"]
+    void client["Window.setTitle"]
+    void client["Window.setResizable"]
+    void client["Window.setDecorations"]
     void client["Window.minimize"]
     void client["Window.maximize"]
     void client["Window.restore"]
@@ -7405,6 +7414,9 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.getBounds",
     "Window.setBounds",
     "Window.center",
+    "Window.setTitle",
+    "Window.setResizable",
+    "Window.setDecorations",
     "Window.minimize",
     "Window.maximize",
     "Window.restore",
@@ -7435,6 +7447,9 @@ test("Window service delegates through a substitutable WindowClient port", async
       }),
     setBounds: (_window, bounds) => recordVoid(calls, `setBounds:${bounds.width}x${bounds.height}`),
     center: () => recordVoid(calls, "center"),
+    setTitle: (_window, title) => recordVoid(calls, `setTitle:${title}`),
+    setResizable: (_window, resizable) => recordVoid(calls, `setResizable:${resizable}`),
+    setDecorations: (_window, decorations) => recordVoid(calls, `setDecorations:${decorations}`),
     minimize: () => recordVoid(calls, "minimize"),
     maximize: () => recordVoid(calls, "maximize"),
     restore: () => recordVoid(calls, "restore"),
@@ -7459,6 +7474,9 @@ test("Window service delegates through a substitutable WindowClient port", async
         new WindowBounds({ x: bounds.x, y: bounds.y, width: 800, height: 600 })
       )
       yield* window.center(created)
+      yield* window.setTitle(created, "Renamed")
+      yield* window.setResizable(created, false)
+      yield* window.setDecorations(created, true)
       yield* window.minimize(created)
       yield* window.maximize(created)
       yield* window.setFullscreen(created, true)
@@ -7483,6 +7501,9 @@ test("Window service delegates through a substitutable WindowClient port", async
     "getBounds",
     "setBounds:800x600",
     "center",
+    "setTitle:Renamed",
+    "setResizable:false",
+    "setDecorations:true",
     "minimize",
     "maximize",
     "setFullscreen:true",
@@ -7526,6 +7547,9 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "get-bounds-request",
       "set-bounds-request",
       "center-request",
+      "set-title-request",
+      "set-resizable-request",
+      "set-decorations-request",
       "minimize-request",
       "maximize-request",
       "set-fullscreen-request",
@@ -7541,6 +7565,9 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "get-bounds-trace",
       "set-bounds-trace",
       "center-trace",
+      "set-title-trace",
+      "set-resizable-trace",
+      "set-decorations-trace",
       "minimize-trace",
       "maximize-trace",
       "set-fullscreen-trace",
@@ -7551,7 +7578,8 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     now: nextNumber([
       1_710_000_000_000, 1_710_000_000_001, 1_710_000_000_002, 1_710_000_000_003, 1_710_000_000_004,
       1_710_000_000_005, 1_710_000_000_006, 1_710_000_000_007, 1_710_000_000_008, 1_710_000_000_009,
-      1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012
+      1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
+      1_710_000_000_015
     ])
   })
   const program = Effect.gen(function* () {
@@ -7574,6 +7602,9 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       new WindowBounds({ x: 30, y: 40, width: bounds.width, height: bounds.height })
     )
     yield* window.center(created)
+    yield* window.setTitle(created, "Renamed")
+    yield* window.setResizable(created, false)
+    yield* window.setDecorations(created, true)
     yield* window.minimize(created)
     yield* window.maximize(created)
     yield* window.setFullscreen(created, true)
@@ -7653,6 +7684,27 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       WINDOW_CENTER_METHOD,
       {
         windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_SET_TITLE_METHOD,
+      {
+        windowId: "host-window-1",
+        title: "Renamed"
+      }
+    ],
+    [
+      WINDOW_SET_RESIZABLE_METHOD,
+      {
+        windowId: "host-window-1",
+        resizable: false
+      }
+    ],
+    [
+      WINDOW_SET_DECORATIONS_METHOD,
+      {
+        windowId: "host-window-1",
+        decorations: true
       }
     ],
     [
@@ -9378,6 +9430,9 @@ const noopWindowClient: WindowClientApi = {
   getBounds: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
   setBounds: () => Effect.void,
   center: () => Effect.void,
+  setTitle: () => Effect.void,
+  setResizable: () => Effect.void,
+  setDecorations: () => Effect.void,
   minimize: () => Effect.void,
   maximize: () => Effect.void,
   restore: () => Effect.void,

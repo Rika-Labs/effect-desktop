@@ -36,11 +36,14 @@ import {
   WindowBoundsInput,
   type WindowBoundsType,
   type WindowCreateOptions,
+  WindowDecorationsInput,
   WindowFullscreenInput,
   type WindowHandle,
   WindowHandleInput,
+  WindowResizableInput,
   WindowResource,
-  WindowState
+  WindowState,
+  WindowTitleInput
 } from "./contracts/window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type WindowError = HostProtocolError
@@ -93,6 +96,24 @@ export const WindowCenter = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["center"] })
 )
+export const WindowSetTitle = windowRpc(
+  "setTitle",
+  WindowTitleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setTitle"] })
+)
+export const WindowSetResizable = windowRpc(
+  "setResizable",
+  WindowResizableInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setResizable"] })
+)
+export const WindowSetDecorations = windowRpc(
+  "setDecorations",
+  WindowDecorationsInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setDecorations"] })
+)
 export const WindowMinimize = windowRpc(
   "minimize",
   WindowHandleInput,
@@ -134,6 +155,9 @@ const makeWindowRpcGroup = () =>
     WindowGetBounds,
     WindowSetBounds,
     WindowCenter,
+    WindowSetTitle,
+    WindowSetResizable,
+    WindowSetDecorations,
     WindowMinimize,
     WindowMaximize,
     WindowRestore,
@@ -164,6 +188,9 @@ export const WindowMethodNames = Object.freeze([
   "getBounds",
   "setBounds",
   "center",
+  "setTitle",
+  "setResizable",
+  "setDecorations",
   "minimize",
   "maximize",
   "restore",
@@ -183,6 +210,18 @@ export interface WindowClientApi {
     bounds: WindowBoundsType
   ) => Effect.Effect<void, WindowError, never>
   readonly center: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly setTitle: (
+    window: WindowHandle,
+    title: string
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setResizable: (
+    window: WindowHandle,
+    resizable: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setDecorations: (
+    window: WindowHandle,
+    decorations: boolean
+  ) => Effect.Effect<void, WindowError, never>
   readonly minimize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly maximize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly restore: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
@@ -268,6 +307,21 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       yield* window.center(input.window)
     }),
+  "Window.setTitle": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setTitle(input.window, input.title)
+    }),
+  "Window.setResizable": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setResizable(input.window, input.resizable)
+    }),
+  "Window.setDecorations": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setDecorations(input.window, input.decorations)
+    }),
   "Window.minimize": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -338,6 +392,9 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     getBounds: (window) => client.getBounds(window),
     setBounds: (window, bounds) => client.setBounds(window, bounds),
     center: (window) => client.center(window),
+    setTitle: (window, title) => client.setTitle(window, title),
+    setResizable: (window, resizable) => client.setResizable(window, resizable),
+    setDecorations: (window, decorations) => client.setDecorations(window, decorations),
     minimize: (window) => client.minimize(window),
     maximize: (window) => client.maximize(window),
     restore: (window) => client.restore(window),
@@ -398,6 +455,25 @@ function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
         yield* runWindowRpc(client["Window.setBounds"](decoded), "Window.setBounds")
       }),
     center: (window) => runWindowHandleRpc(client, "Window.center", window),
+    setTitle: (window, title) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowTitleInput(window, title, "Window.setTitle")
+        yield* runWindowRpc(client["Window.setTitle"](decoded), "Window.setTitle")
+      }),
+    setResizable: (window, resizable) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowResizableInput(window, resizable, "Window.setResizable")
+        yield* runWindowRpc(client["Window.setResizable"](decoded), "Window.setResizable")
+      }),
+    setDecorations: (window, decorations) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowDecorationsInput(
+          window,
+          decorations,
+          "Window.setDecorations"
+        )
+        yield* runWindowRpc(client["Window.setDecorations"](decoded), "Window.setDecorations")
+      }),
     minimize: (window) => runWindowHandleRpc(client, "Window.minimize", window),
     maximize: (window) => runWindowHandleRpc(client, "Window.maximize", window),
     restore: (window) => runWindowHandleRpc(client, "Window.restore", window),
@@ -452,6 +528,42 @@ const decodeWindowBoundsInput = (
   operation: string
 ): Effect.Effect<WindowBoundsInput, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowBoundsInput)({ window, bounds }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowTitleInput = (
+  window: WindowHandle,
+  title: string,
+  operation: string
+): Effect.Effect<WindowTitleInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowTitleInput)({ window, title }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowResizableInput = (
+  window: WindowHandle,
+  resizable: boolean,
+  operation: string
+): Effect.Effect<WindowResizableInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowResizableInput)({ window, resizable }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowDecorationsInput = (
+  window: WindowHandle,
+  decorations: boolean,
+  operation: string
+): Effect.Effect<WindowDecorationsInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowDecorationsInput)(
+    { window, decorations },
+    StrictParseOptions
+  ).pipe(
     Effect.mapError((error) =>
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
@@ -629,6 +741,33 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.center")
         yield* host.center(window.id)
+      }),
+    "Window.setTitle": (input: WindowTitleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setTitle"
+        )
+        yield* host.setTitle(window.id, input.title)
+      }),
+    "Window.setResizable": (input: WindowResizableInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setResizable"
+        )
+        yield* host.setResizable(window.id, input.resizable)
+      }),
+    "Window.setDecorations": (input: WindowDecorationsInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setDecorations"
+        )
+        yield* host.setDecorations(window.id, input.decorations)
       }),
     "Window.minimize": (input: WindowHandleInput) =>
       Effect.gen(function* () {

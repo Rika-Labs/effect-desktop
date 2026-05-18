@@ -85,6 +85,20 @@ export class WindowTitleInput extends Schema.Class<WindowTitleInput>("WindowTitl
   title: Schema.String
 }) {}
 
+export class WindowResizableInput extends Schema.Class<WindowResizableInput>(
+  "WindowResizableInput"
+)({
+  window: WindowResource,
+  resizable: Schema.Boolean
+}) {}
+
+export class WindowDecorationsInput extends Schema.Class<WindowDecorationsInput>(
+  "WindowDecorationsInput"
+)({
+  window: WindowResource,
+  decorations: Schema.Boolean
+}) {}
+
 export class WindowSizeInput extends Schema.Class<WindowSizeInput>("WindowSizeInput")({
   window: WindowResource,
   width: PositiveFiniteNumber,

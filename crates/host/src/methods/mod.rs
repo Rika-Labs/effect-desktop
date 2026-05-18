@@ -312,6 +312,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::center),
     ),
     route(
+        host_protocol::WINDOW_SET_TITLE_METHOD,
+        HostMethodDispatcher::Window(window::set_title),
+    ),
+    route(
+        host_protocol::WINDOW_SET_RESIZABLE_METHOD,
+        HostMethodDispatcher::Window(window::set_resizable),
+    ),
+    route(
+        host_protocol::WINDOW_SET_DECORATIONS_METHOD,
+        HostMethodDispatcher::Window(window::set_decorations),
+    ),
+    route(
         host_protocol::WINDOW_MINIMIZE_METHOD,
         HostMethodDispatcher::Window(window::minimize),
     ),
@@ -3231,6 +3243,55 @@ mod tests {
     }
 
     #[test]
+    fn window_chrome_methods_route_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+
+        for (id, method, payload) in [
+            (
+                "request-window-set-title",
+                host_protocol::WINDOW_SET_TITLE_METHOD,
+                serde_json::json!({ "windowId": "window-1", "title": "Main" }),
+            ),
+            (
+                "request-window-set-resizable",
+                host_protocol::WINDOW_SET_RESIZABLE_METHOD,
+                serde_json::json!({ "windowId": "window-1", "resizable": false }),
+            ),
+            (
+                "request-window-set-decorations",
+                host_protocol::WINDOW_SET_DECORATIONS_METHOD,
+                serde_json::json!({ "windowId": "window-1", "decorations": true }),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000112)
+                .expect("window chrome request should return response");
+
+            assert_eq!(
+                response,
+                HostProtocolEnvelope::Response {
+                    id: id.to_string(),
+                    timestamp: 1710000000112,
+                    trace_id: format!("trace-{id}"),
+                    payload: None,
+                    error: None,
+                }
+            );
+        }
+
+        assert_eq!(
+            fake.titles(),
+            vec![("window-1".to_string(), "Main".to_string())]
+        );
+        assert_eq!(fake.resizable(), vec![("window-1".to_string(), false)]);
+        assert_eq!(fake.decorations(), vec![("window-1".to_string(), true)]);
+    }
+
+    #[test]
     fn window_state_methods_route_to_window_handler() {
         let fake = Arc::new(FakeWindowHandler::new(
             Ok(WindowCreateResponse::new("window-unused")),
@@ -5876,6 +5937,9 @@ mod tests {
         shown: Mutex<Vec<String>>,
         hidden: Mutex<Vec<String>>,
         focused: Mutex<Vec<String>>,
+        titles: Mutex<Vec<(String, String)>>,
+        resizable: Mutex<Vec<(String, bool)>>,
+        decorations: Mutex<Vec<(String, bool)>>,
         minimized: Mutex<Vec<String>>,
         maximized: Mutex<Vec<String>>,
         restored: Mutex<Vec<String>>,
@@ -5895,6 +5959,9 @@ mod tests {
                 shown: Mutex::new(Vec::new()),
                 hidden: Mutex::new(Vec::new()),
                 focused: Mutex::new(Vec::new()),
+                titles: Mutex::new(Vec::new()),
+                resizable: Mutex::new(Vec::new()),
+                decorations: Mutex::new(Vec::new()),
                 minimized: Mutex::new(Vec::new()),
                 maximized: Mutex::new(Vec::new()),
                 restored: Mutex::new(Vec::new()),
@@ -5935,6 +6002,27 @@ mod tests {
             self.focused
                 .lock()
                 .expect("fake focused requests should lock")
+                .clone()
+        }
+
+        fn titles(&self) -> Vec<(String, String)> {
+            self.titles
+                .lock()
+                .expect("fake titles requests should lock")
+                .clone()
+        }
+
+        fn resizable(&self) -> Vec<(String, bool)> {
+            self.resizable
+                .lock()
+                .expect("fake resizable requests should lock")
+                .clone()
+        }
+
+        fn decorations(&self) -> Vec<(String, bool)> {
+            self.decorations
+                .lock()
+                .expect("fake decorations requests should lock")
                 .clone()
         }
 
@@ -6020,6 +6108,34 @@ mod tests {
         }
 
         fn center(&self, _window_id: &str) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_title(&self, window_id: &str, title: &str) -> Result<(), HostProtocolError> {
+            self.titles
+                .lock()
+                .expect("fake titles requests should lock")
+                .push((window_id.to_string(), title.to_string()));
+            Ok(())
+        }
+
+        fn set_resizable(&self, window_id: &str, resizable: bool) -> Result<(), HostProtocolError> {
+            self.resizable
+                .lock()
+                .expect("fake resizable requests should lock")
+                .push((window_id.to_string(), resizable));
+            Ok(())
+        }
+
+        fn set_decorations(
+            &self,
+            window_id: &str,
+            decorations: bool,
+        ) -> Result<(), HostProtocolError> {
+            self.decorations
+                .lock()
+                .expect("fake decorations requests should lock")
+                .push((window_id.to_string(), decorations));
             Ok(())
         }
 
