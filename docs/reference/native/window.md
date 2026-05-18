@@ -65,6 +65,11 @@ Window lookup is backed by host-routed native methods. `getCurrent` returns the 
 
 `Window.create({ parent })` creates a child or owned window at host creation time. The parent must be a fresh `WindowHandle` from the same runtime; stale or unknown handles fail before host transport. The bridge sends the host `parentWindowId`, and the native host applies Tao's creation-time ownership where supported: macOS uses the parent `NSWindow`; Windows uses an owned window relationship. Hosts without a Tao parent/owner primitive return `Unsupported` when a parent is requested. Closing a known parent through `Window.close` closes registered children before destroying the parent so resource scopes and `windowClosed` events are deterministic in tests and host-backed runtimes.
 
+This is not a complete modal ownership API. Effect Desktop does not yet expose a
+`WindowOwnership` service, runtime `setParent`, modal enable/disable, owner
+lookup, parent/child relationship query, or a host event stream dedicated to
+ownership changes.
+
 Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, mutable titlebar style, vibrancy, shadows, transparency, traffic lights, skip-taskbar, badge, flash, blur, simple fullscreen, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
 
 ## Errors
