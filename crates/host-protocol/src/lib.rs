@@ -11295,9 +11295,9 @@ mod tests {
             .to_string()
             .contains("missing field `activationReason`"));
         assert_eq!(
-            serde_json::to_string(&AppOpenFileEventPayload::new("README.md"))
+            serde_json::to_string(&AppOpenFileEventPayload::new("/tmp/README.md"))
                 .expect("open file event should encode"),
-            r#"{"path":"README.md"}"#
+            r#"{"path":"/tmp/README.md"}"#
         );
         assert_eq!(
             serde_json::to_string(&AppOpenUrlEventPayload::new("effect-desktop://open"))

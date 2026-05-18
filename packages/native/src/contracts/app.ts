@@ -37,6 +37,29 @@ const isAppUrl = (value: string): boolean => {
 const AppUrl = PrintableNonEmptyString.check(
   Schema.makeFilter((value) => isAppUrl(value) || "must be a valid URL")
 )
+const AppOpenFilePath = PrintableNonEmptyString.check(
+  Schema.makeFilter(
+    (value) => isSafeAbsolutePlatformPath(value) || "must be an absolute path without dot segments"
+  )
+)
+
+const WindowsDriveAbsolutePathPattern = /^[A-Za-z]:[\\/]/u
+const WindowsUncAbsolutePathPattern = /^\\\\[^\\/]+\\[^\\/]+(?:[\\/]|$)/u
+
+const isSafeAbsolutePlatformPath = (value: string): boolean => {
+  if (value.startsWith("/")) {
+    return !hasDotPathSegment(value, /\/+/u)
+  }
+
+  if (WindowsDriveAbsolutePathPattern.test(value) || WindowsUncAbsolutePathPattern.test(value)) {
+    return !hasDotPathSegment(value, /[\\/]+/u)
+  }
+
+  return false
+}
+
+const hasDotPathSegment = (value: string, separator: RegExp): boolean =>
+  value.split(separator).some((segment) => segment === "." || segment === "..")
 
 export class AppQuitInput extends Schema.Class<AppQuitInput>("AppQuitInput")({
   exitCode: Schema.optionalKey(PortableExitCode)
@@ -77,8 +100,7 @@ export class AppSecondInstanceEvent extends Schema.Class<AppSecondInstanceEvent>
 }) {}
 
 export class AppOpenFileEvent extends Schema.Class<AppOpenFileEvent>("AppOpenFileEvent")({
-  // eslint-disable-next-line no-control-regex
-  path: Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00]*$/))
+  path: AppOpenFilePath
 }) {}
 
 export class AppOpenUrlEvent extends Schema.Class<AppOpenUrlEvent>("AppOpenUrlEvent")({

@@ -1079,7 +1079,7 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
     }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
   )
 
-  expect(Array.from(result.openFiles)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
+  expect(Array.from(result.openFiles)).toEqual([new AppOpenFileEvent({ path: "/tmp/README.md" })])
   expect(requests).toEqual([])
 })
 
@@ -1098,7 +1098,7 @@ test("App bridge client decodes event streams without host requests", async () =
               timestamp: 1710000000400,
               traceId: "event-trace",
               method,
-              payload: { path: "README.md" }
+              payload: { path: "/tmp/README.md" }
             })
           )
         : Stream.empty
@@ -1114,7 +1114,7 @@ test("App bridge client decodes event streams without host requests", async () =
     app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
   )
 
-  expect(Array.from(eventResult)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
+  expect(Array.from(eventResult)).toEqual([new AppOpenFileEvent({ path: "/tmp/README.md" })])
   expect(requests).toEqual([])
 })
 
@@ -1122,7 +1122,7 @@ test("App bridge client rejects lifecycle events with excess fields as InvalidOu
   const cases = [
     {
       method: "App.onOpenFile",
-      payload: { path: "README.md", ignoredByRenderer: true }
+      payload: { path: "/tmp/README.md", ignoredByRenderer: true }
     },
     {
       method: "App.onOpenUrl",
@@ -1191,7 +1191,7 @@ test("App bridge client rejects event envelopes for the wrong method", async () 
           timestamp: 1710000000401,
           traceId: "event-trace",
           method: "App.onOpenUrl",
-          payload: { path: "README.md" }
+          payload: { path: "/tmp/README.md" }
         })
       )
   }
@@ -1219,7 +1219,7 @@ test("App bridge client decodes second-instance activation reasons", async () =>
               method,
               payload: {
                 activationReason: "open-file",
-                argv: ["app", "README.md"],
+                argv: ["app", "/tmp/README.md"],
                 cwd: "/repo",
                 traceId: "trace-second"
               }
@@ -1238,7 +1238,7 @@ test("App bridge client decodes second-instance activation reasons", async () =>
   expect(Array.from(events)).toEqual([
     new AppSecondInstanceEvent({
       activationReason: "open-file",
-      argv: ["app", "README.md"],
+      argv: ["app", "/tmp/README.md"],
       cwd: "/repo",
       traceId: "trace-second"
     })
@@ -1393,11 +1393,65 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
   expectExitFailure(beforeQuitExit, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
-test("App bridge client rejects empty or NUL-bearing onOpenFile paths as InvalidOutput", async () => {
+test("App bridge client accepts safe absolute onOpenFile paths", async () => {
+  const cases = [
+    "/tmp/README.md",
+    "/tmp/a\\..\\b",
+    "C:\\tmp\\README.md",
+    "\\\\server\\share\\README.md"
+  ] as const
+
+  for (const path of cases) {
+    const exchange: BridgeClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "App.onOpenFile"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000400,
+                traceId: "event-trace",
+                method,
+                payload: { path }
+              })
+            )
+          : Stream.empty
+    }
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const app = yield* App
+        return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AppLive,
+            makeAppBridgeClientLayer(exchange, {
+              nextRequestId: nextId(["unused"]),
+              nextTraceId: nextId(["unused"]),
+              now: nextNumber([1710000000000])
+            })
+          )
+        )
+      )
+    )
+
+    expect(Array.from(result)).toEqual([new AppOpenFileEvent({ path })])
+  }
+})
+
+test("App bridge client rejects unsafe onOpenFile paths as InvalidOutput", async () => {
   const NUL = String.fromCharCode(0)
   const cases: ReadonlyArray<{ readonly payload: unknown }> = [
     { payload: { path: "" } },
-    { payload: { path: `/tmp/a${NUL}b` } }
+    { payload: { path: `/tmp/a${NUL}b` } },
+    { payload: { path: "relative.txt" } },
+    { payload: { path: "/tmp/../secret.txt" } },
+    { payload: { path: "C:relative.txt" } },
+    { payload: { path: "C:\\tmp\\..\\secret.txt" } },
+    { payload: { path: "\\\\" } },
+    { payload: { path: "\\\\server" } },
+    { payload: { path: "\\\\server\\share\\.." } }
   ]
 
   for (const { payload } of cases) {
@@ -9470,7 +9524,7 @@ test("AppEventRouter sends firstResponder events to the focused window only", as
 
       yield* router.publish({
         event: "onOpenFile",
-        payload: { path: "README.md" },
+        payload: { path: "/tmp/README.md" },
         route: firstResponderRoute
       })
       yield* Effect.sleep("10 millis")
@@ -9483,7 +9537,7 @@ test("AppEventRouter sends firstResponder events to the focused window only", as
   expect(Array.from(result)).toEqual([
     {
       event: "onOpenFile",
-      payload: { path: "README.md" },
+      payload: { path: "/tmp/README.md" },
       windowId: "window-2",
       ownerScope: "window:window-2"
     }
@@ -10655,7 +10709,7 @@ const appClient = (calls: string[]): AppClientApi => ({
         traceId: "trace"
       })
     ),
-  onOpenFile: () => Stream.make(new AppOpenFileEvent({ path: "README.md" })),
+  onOpenFile: () => Stream.make(new AppOpenFileEvent({ path: "/tmp/README.md" })),
   onOpenUrl: () => Stream.make(new AppOpenUrlEvent({ url: "effect-desktop://open" })),
   onBeforeQuit: () => Stream.make(new AppBeforeQuitEvent({ traceId: "trace" }))
 })
@@ -11346,7 +11400,7 @@ const appExchange = (
             timestamp: 1710000000100,
             traceId: "event-trace",
             method,
-            payload: { path: "README.md" }
+            payload: { path: "/tmp/README.md" }
           })
         )
       : Stream.empty

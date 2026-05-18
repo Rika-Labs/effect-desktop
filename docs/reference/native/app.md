@@ -40,6 +40,10 @@ and rejects dangerous schemes before application code receives the event:
 `about:`, `blob:`, `data:`, `file:`, `javascript:`, `vbscript:`, and
 `view-source:`.
 
+`onOpenFile` requires an absolute platform path with no ASCII control
+characters and no `.` or `..` path segments before application code receives
+the event.
+
 ## Errors
 
 `AppError` is the host protocol error union. Until the host adapter is
