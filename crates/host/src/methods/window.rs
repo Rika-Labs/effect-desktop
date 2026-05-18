@@ -28,6 +28,36 @@ pub(crate) fn destroy(
     Ok(None)
 }
 
+pub(crate) fn show(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_window_payload(payload, host_protocol::WINDOW_SHOW_METHOD)?;
+    handler.show(payload.window_id())?;
+
+    Ok(None)
+}
+
+pub(crate) fn hide(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_window_payload(payload, host_protocol::WINDOW_HIDE_METHOD)?;
+    handler.hide(payload.window_id())?;
+
+    Ok(None)
+}
+
+pub(crate) fn focus(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_window_payload(payload, host_protocol::WINDOW_FOCUS_METHOD)?;
+    handler.focus(payload.window_id())?;
+
+    Ok(None)
+}
+
 fn decode_optional_create_payload(
     payload: Option<Value>,
 ) -> Result<WindowCreatePayload, HostProtocolError> {
@@ -40,12 +70,19 @@ fn decode_optional_create_payload(
 fn decode_required_destroy_payload(
     payload: Option<Value>,
 ) -> Result<WindowDestroyPayload, HostProtocolError> {
+    decode_required_window_payload(payload, host_protocol::WINDOW_DESTROY_METHOD)
+}
+
+fn decode_required_window_payload(
+    payload: Option<Value>,
+    operation: &'static str,
+) -> Result<WindowDestroyPayload, HostProtocolError> {
     match payload {
-        Some(payload) => decode_destroy_payload(payload),
+        Some(payload) => decode_window_payload(payload, operation),
         None => Err(HostProtocolError::invalid_argument(
             "payload",
-            format!("{} requires payload", host_protocol::WINDOW_DESTROY_METHOD),
-            host_protocol::WINDOW_DESTROY_METHOD,
+            format!("{operation} requires payload"),
+            operation,
         )),
     }
 }
@@ -60,14 +97,21 @@ fn decode_create_payload(payload: Value) -> Result<WindowCreatePayload, HostProt
     })
 }
 
-fn decode_destroy_payload(payload: Value) -> Result<WindowDestroyPayload, HostProtocolError> {
-    serde_json::from_value(payload).map_err(|error| {
-        HostProtocolError::invalid_argument(
+fn decode_window_payload(
+    payload: Value,
+    operation: &'static str,
+) -> Result<WindowDestroyPayload, HostProtocolError> {
+    let payload: WindowDestroyPayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument("payload", error.to_string(), operation)
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
             "payload",
-            error.to_string(),
-            host_protocol::WINDOW_DESTROY_METHOD,
-        )
-    })
+            "windowId must be non-empty",
+            operation,
+        ));
+    }
+    Ok(payload)
 }
 
 fn encode_create_response(payload: WindowCreateResponse) -> Result<Value, HostProtocolError> {

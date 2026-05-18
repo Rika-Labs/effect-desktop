@@ -10,6 +10,9 @@ import {
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  WINDOW_FOCUS_METHOD,
+  WINDOW_HIDE_METHOD,
+  WINDOW_SHOW_METHOD,
   makeHostProtocolHostUnavailableError,
   RpcCapability,
   rpcSupport,
@@ -666,7 +669,13 @@ const nativePermissionTagList = (
   )
 }
 
-const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = ["create", "close"]
+const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
+  "create",
+  "close",
+  "show",
+  "hide",
+  "focus"
+]
 
 const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
   "getInfo",
@@ -7356,12 +7365,19 @@ test("WindowRpcs declares only callable Window methods", () => {
   ): void => {
     void client["Window.create"]
     void client["Window.close"]
-    // @ts-expect-error non-callable RPCs are absent from Window clients
     void client["Window.show"]
+    void client["Window.hide"]
+    void client["Window.focus"]
   }
   void assertSupportedWindowClient
-  expect(supportedWindowMethods).toEqual(["Window.create", "Window.close"])
-  expect(WindowRpcs.requests.has("Window.show")).toBe(false)
+  expect(supportedWindowMethods).toEqual([
+    "Window.create",
+    "Window.close",
+    "Window.show",
+    "Window.hide",
+    "Window.focus"
+  ])
+  expect(WindowRpcs.requests.has("Window.show")).toBe(true)
   expect("spec" in WindowRpcs).toBe(false)
   expect("events" in WindowRpcs).toBe(false)
 })
@@ -7374,13 +7390,19 @@ test("Window service delegates through a substitutable WindowClient port", async
         calls.push(`create:${input?.title ?? ""}`)
         return windowHandle
       }),
-    close: () => recordVoid(calls, "close")
+    close: () => recordVoid(calls, "close"),
+    show: () => recordVoid(calls, "show"),
+    hide: () => recordVoid(calls, "hide"),
+    focus: () => recordVoid(calls, "focus")
   }
 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const window = yield* Window
       const created = yield* window.create({ title: "Main" })
+      yield* window.show(created)
+      yield* window.hide(created)
+      yield* window.focus(created)
       yield* window.close(created)
 
       return { created }
@@ -7388,7 +7410,7 @@ test("Window service delegates through a substitutable WindowClient port", async
   )
 
   expect(result.created).toEqual(windowHandle)
-  expect(calls).toEqual(["create:Main", "close"])
+  expect(calls).toEqual(["create:Main", "show", "hide", "focus", "close"])
 })
 
 test("Window service can be composed from a separately provided WindowClient", async () => {
@@ -7417,9 +7439,23 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
   const requests: HostProtocolRequestEnvelope[] = []
   const registry = await Effect.runPromise(makeResourceRegistry())
   const rpcExchange = makeWindowRpcExchange(windowExchange(requests), registry, {
-    nextRequestId: nextId(["create-request", "destroy-request"]),
-    nextTraceId: nextId(["create-trace", "destroy-trace"]),
-    now: nextNumber([1710000000000, 1710000000001])
+    nextRequestId: nextId([
+      "create-request",
+      "show-request",
+      "hide-request",
+      "focus-request",
+      "destroy-request"
+    ]),
+    nextTraceId: nextId([
+      "create-trace",
+      "show-trace",
+      "hide-trace",
+      "focus-trace",
+      "destroy-trace"
+    ]),
+    now: nextNumber([
+      1_710_000_000_000, 1_710_000_000_001, 1_710_000_000_002, 1_710_000_000_003, 1_710_000_000_004
+    ])
   })
   const program = Effect.gen(function* () {
     const window = yield* Window
@@ -7432,6 +7468,9 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       trafficLights: { x: 12, y: 13 }
     })
     const duringLifetime = yield* registry.list()
+    yield* window.show(created)
+    yield* window.hide(created)
+    yield* window.focus(created)
     yield* window.close(created)
     const afterClose = yield* registry.list()
 
@@ -7461,6 +7500,24 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
         titleBarStyle: "hiddenInset",
         vibrancy: "windowBackground",
         trafficLights: { x: 12, y: 13 }
+      }
+    ],
+    [
+      WINDOW_SHOW_METHOD,
+      {
+        windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_HIDE_METHOD,
+      {
+        windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_FOCUS_METHOD,
+      {
+        windowId: "host-window-1"
       }
     ],
     [
@@ -7931,16 +7988,16 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
     Effect.gen(function* () {
       const client = yield* WindowClient
       const malformedInputExit = yield* Effect.exit(
-        client.close({
+        client.show({
           ...windowHandle,
           // @ts-expect-error intentionally malformed handle id exercises runtime decoding.
           id: ""
         })
       )
-      const unknownExit = yield* Effect.exit(client.close(windowHandle))
+      const unknownExit = yield* Effect.exit(client.focus(windowHandle))
       const created = yield* client.create({})
       const staleExit = yield* Effect.exit(
-        client.close({
+        client.hide({
           ...created,
           generation: created.generation + 1
         })
@@ -7954,15 +8011,15 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
   expectExitFailure(
     result.malformedInputExit,
     (error) =>
-      error instanceof HostProtocolInvalidArgumentError && error.operation === "Window.close"
+      error instanceof HostProtocolInvalidArgumentError && error.operation === "Window.show"
   )
   expectExitFailure(
     result.unknownExit,
-    (error) => error instanceof HostProtocolNotFoundError && error.operation === "Window.close"
+    (error) => error instanceof HostProtocolNotFoundError && error.operation === "Window.focus"
   )
   expectExitFailure(
     result.staleExit,
-    (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.close"
+    (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.hide"
   )
   expectExitFailure(
     result.repeatedCloseExit,
@@ -8013,7 +8070,9 @@ test("host WindowClient adapter exposes only supported callable methods", async 
 
   expect("create" in client).toBe(true)
   expect("close" in client).toBe(true)
-  expect("show" in client).toBe(false)
+  expect("show" in client).toBe(true)
+  expect("hide" in client).toBe(true)
+  expect("focus" in client).toBe(true)
   expect("setVibrancy" in client).toBe(false)
 })
 
@@ -9143,7 +9202,10 @@ const dockClient = (calls: string[]): DockClientApi => ({
 
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
-  close: () => Effect.void
+  close: () => Effect.void,
+  show: () => Effect.void,
+  hide: () => Effect.void,
+  focus: () => Effect.void
 }
 
 const handleFor = (id: string): WindowHandle => ({
@@ -9664,9 +9726,7 @@ const makeWindowRpcExchange = (
       BridgeClientExchange["request"]
     >
 
-  return {
-    request
-  }
+  return { request }
 }
 
 const rpcMethodNames = (

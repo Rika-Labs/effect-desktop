@@ -365,7 +365,10 @@ const makeWindowScenario = (
           next.delete(window.id)
           return next
         })
-      })
+      }),
+    show: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    hide: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    focus: (_window): Effect.Effect<void, WindowError, never> => Effect.void
   } satisfies WindowServiceApi)
 
 function testNativeSurface(surface: {

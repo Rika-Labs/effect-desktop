@@ -646,7 +646,7 @@
     {
       "name": "HostWindowClient",
       "kind": "interface",
-      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "HostWindowClientOptions",
@@ -1067,6 +1067,21 @@
       "name": "WINDOW_DESTROY_METHOD",
       "kind": "value",
       "signature": "const WINDOW_DESTROY_METHOD: \"Window.destroy\""
+    },
+    {
+      "name": "WINDOW_FOCUS_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_FOCUS_METHOD: \"Window.focus\""
+    },
+    {
+      "name": "WINDOW_HIDE_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_HIDE_METHOD: \"Window.hide\""
+    },
+    {
+      "name": "WINDOW_SHOW_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SHOW_METHOD: \"Window.show\""
     },
     {
       "name": "WindowCreateInput",

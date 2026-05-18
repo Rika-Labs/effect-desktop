@@ -288,6 +288,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::create),
     ),
     route(
+        host_protocol::WINDOW_SHOW_METHOD,
+        HostMethodDispatcher::Window(window::show),
+    ),
+    route(
+        host_protocol::WINDOW_HIDE_METHOD,
+        HostMethodDispatcher::Window(window::hide),
+    ),
+    route(
+        host_protocol::WINDOW_FOCUS_METHOD,
+        HostMethodDispatcher::Window(window::focus),
+    ),
+    route(
         host_protocol::WINDOW_DESTROY_METHOD,
         HostMethodDispatcher::WindowDestroy,
     ),
@@ -3038,6 +3050,80 @@ mod tests {
     }
 
     #[test]
+    fn window_lifecycle_methods_route_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+
+        for (id, method) in [
+            ("request-window-show", host_protocol::WINDOW_SHOW_METHOD),
+            ("request-window-hide", host_protocol::WINDOW_HIDE_METHOD),
+            ("request-window-focus", host_protocol::WINDOW_FOCUS_METHOD),
+        ] {
+            let response = router
+                .dispatch_at(
+                    request_with_payload(
+                        id,
+                        method,
+                        serde_json::json!({
+                            "windowId": "window-1"
+                        }),
+                    ),
+                    1710000000108,
+                )
+                .expect("window lifecycle request should return response");
+
+            assert_eq!(
+                response,
+                HostProtocolEnvelope::Response {
+                    id: id.to_string(),
+                    timestamp: 1710000000108,
+                    trace_id: format!("trace-{id}"),
+                    payload: None,
+                    error: None,
+                }
+            );
+        }
+
+        assert_eq!(fake.shown(), vec!["window-1".to_string()]);
+        assert_eq!(fake.hidden(), vec!["window-1".to_string()]);
+        assert_eq!(fake.focused(), vec!["window-1".to_string()]);
+    }
+
+    #[test]
+    fn window_lifecycle_invalid_payload_returns_invalid_argument() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-show-invalid",
+                    host_protocol::WINDOW_SHOW_METHOD,
+                    serde_json::json!({
+                        "windowId": ""
+                    }),
+                ),
+                1710000000109,
+            )
+            .expect("window show should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-show-invalid".to_string(),
+                timestamp: 1710000000109,
+                trace_id: "trace-request-window-show-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "payload",
+                    "windowId must be non-empty",
+                    host_protocol::WINDOW_SHOW_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
     fn dock_set_badge_text_routes_to_window_handler() {
         let fake = Arc::new(FakeWindowHandler::new(
             Ok(WindowCreateResponse::new("window-unused")),
@@ -5601,6 +5687,9 @@ mod tests {
         create_result: Result<WindowCreateResponse, HostProtocolError>,
         destroy_result: Result<(), HostProtocolError>,
         created: Mutex<Vec<WindowCreateRequest>>,
+        shown: Mutex<Vec<String>>,
+        hidden: Mutex<Vec<String>>,
+        focused: Mutex<Vec<String>>,
         dock_badge_labels: Mutex<Vec<Option<String>>>,
     }
 
@@ -5613,6 +5702,9 @@ mod tests {
                 create_result,
                 destroy_result,
                 created: Mutex::new(Vec::new()),
+                shown: Mutex::new(Vec::new()),
+                hidden: Mutex::new(Vec::new()),
+                focused: Mutex::new(Vec::new()),
                 dock_badge_labels: Mutex::new(Vec::new()),
             }
         }
@@ -5628,6 +5720,27 @@ mod tests {
             self.dock_badge_labels
                 .lock()
                 .expect("fake dock badge labels should lock")
+                .clone()
+        }
+
+        fn shown(&self) -> Vec<String> {
+            self.shown
+                .lock()
+                .expect("fake shown requests should lock")
+                .clone()
+        }
+
+        fn hidden(&self) -> Vec<String> {
+            self.hidden
+                .lock()
+                .expect("fake hidden requests should lock")
+                .clone()
+        }
+
+        fn focused(&self) -> Vec<String> {
+            self.focused
+                .lock()
+                .expect("fake focused requests should lock")
                 .clone()
         }
     }
@@ -5646,6 +5759,30 @@ mod tests {
 
         fn destroy(&self, _window_id: &str) -> Result<(), HostProtocolError> {
             self.destroy_result.clone()
+        }
+
+        fn show(&self, window_id: &str) -> Result<(), HostProtocolError> {
+            self.shown
+                .lock()
+                .expect("fake shown requests should lock")
+                .push(window_id.to_string());
+            Ok(())
+        }
+
+        fn hide(&self, window_id: &str) -> Result<(), HostProtocolError> {
+            self.hidden
+                .lock()
+                .expect("fake hidden requests should lock")
+                .push(window_id.to_string());
+            Ok(())
+        }
+
+        fn focus(&self, window_id: &str) -> Result<(), HostProtocolError> {
+            self.focused
+                .lock()
+                .expect("fake focused requests should lock")
+                .push(window_id.to_string());
+            Ok(())
         }
 
         fn set_dock_badge_label(

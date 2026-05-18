@@ -4,6 +4,9 @@ import {
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   WINDOW_CREATE_METHOD,
+  WINDOW_FOCUS_METHOD,
+  WINDOW_HIDE_METHOD,
+  WINDOW_SHOW_METHOD,
   WINDOW_DESTROY_METHOD,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -84,6 +87,9 @@ export interface HostWindowClient {
   readonly create: (
     input?: WindowCreateInput
   ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never>
+  readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
 }
 
@@ -116,6 +122,12 @@ export const makeHostWindowClient = (
 
         return yield* decodeCreateResponse(response.payload)
       }),
+    show: (windowId) =>
+      sendWindowLifecycleCommand(windowId, WINDOW_SHOW_METHOD, exchange, resolved),
+    hide: (windowId) =>
+      sendWindowLifecycleCommand(windowId, WINDOW_HIDE_METHOD, exchange, resolved),
+    focus: (windowId) =>
+      sendWindowLifecycleCommand(windowId, WINDOW_FOCUS_METHOD, exchange, resolved),
     destroy: (windowId) =>
       Effect.gen(function* () {
         const payload = yield* encodeDestroyPayload(windowId)
@@ -126,6 +138,18 @@ export const makeHostWindowClient = (
       })
   }
 }
+
+const sendWindowLifecycleCommand = (
+  windowId: string,
+  method: string,
+  exchange: HostWindowExchange,
+  options: ResolvedHostWindowClientOptions
+): Effect.Effect<void, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    const payload = yield* encodeWindowIdPayload(windowId, method)
+    const request = yield* makeRequest(method, options, payload)
+    yield* requireSuccess(yield* requireMatchingResponse(request, yield* exchange.request(request)))
+  })
 
 const requireMatchingResponse = (
   request: HostProtocolRequestEnvelope,
@@ -178,6 +202,15 @@ const encodeDestroyPayload = (
   Effect.try({
     try: () => decodeUnknownWindowDestroyPayload({ windowId }, StrictParseOptions),
     catch: (error) => invalidArgument("windowId", error, WINDOW_DESTROY_METHOD)
+  })
+
+const encodeWindowIdPayload = (
+  windowId: string,
+  method: string
+): Effect.Effect<WindowDestroyPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowDestroyPayload({ windowId }, StrictParseOptions),
+    catch: (error) => invalidArgument("windowId", error, method)
   })
 
 const decodeCreateResponse = (

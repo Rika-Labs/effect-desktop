@@ -63,6 +63,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
 
     fn destroy(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
+    fn show(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn hide(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn focus(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
     fn set_dock_badge_label(
         &self,
         label: Option<String>,
@@ -169,6 +175,18 @@ enum WindowCommand {
         window_id: String,
         reply: Sender<WindowCommandReply>,
     },
+    Show {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    Hide {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    Focus {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
     SetDockBadgeLabel {
         label: Option<String>,
         operation: &'static str,
@@ -242,6 +260,7 @@ type WindowCommandReply = std::result::Result<WindowCommandResponse, HostProtoco
 enum WindowCommandResponse {
     Created(WindowCreateResponse),
     Destroyed,
+    WindowUpdated,
     DockBadgeLabelSet,
     DockAttentionRequested,
     DockMenuSet,
@@ -350,6 +369,32 @@ impl WindowMethodPort {
             }
         }
     }
+
+    fn expect_window_void_response(
+        &self,
+        reply: Receiver<WindowCommandReply>,
+        operation: &'static str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        match self.recv_reply(reply)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+                "window lifecycle command received unrelated response",
+                operation,
+            )),
+        }
+    }
 }
 
 impl WindowMethodHandler for WindowMethodPort {
@@ -383,6 +428,10 @@ impl WindowMethodHandler for WindowMethodPort {
             )),
             WindowCommandResponse::Destroyed => Err(HostProtocolError::internal(
                 "window create received destroy response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
+            WindowCommandResponse::WindowUpdated => Err(HostProtocolError::internal(
+                "window create received lifecycle response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
             WindowCommandResponse::TrayCreated(_)
@@ -427,6 +476,10 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window destroy received create response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
+            WindowCommandResponse::WindowUpdated => Err(HostProtocolError::internal(
+                "window destroy received lifecycle response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
             WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
             | WindowCommandResponse::TrayDestroyed
@@ -438,6 +491,36 @@ impl WindowMethodHandler for WindowMethodPort {
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
         }
+    }
+
+    fn show(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Show {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SHOW_METHOD)
+    }
+
+    fn hide(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Hide {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_HIDE_METHOD)
+    }
+
+    fn focus(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Focus {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_FOCUS_METHOD)
     }
 
     fn set_dock_badge_label(
@@ -456,6 +539,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::DockBadgeLabelSet => Ok(()),
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
@@ -483,6 +567,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::DockAttentionRequested => Ok(()),
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
@@ -513,6 +598,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::DockMenuSet => Ok(()),
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::MenuSet
@@ -543,6 +629,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::MenuSet => Ok(()),
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::DockAttentionRequested
@@ -575,6 +662,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::MenuSet => Ok(()),
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::DockAttentionRequested
@@ -951,6 +1039,43 @@ impl WindowRegistry {
             event = WINDOW_DESTROYED_EVENT,
             window_id, "host window destroyed"
         );
+        Ok(())
+    }
+
+    fn show(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        self.set_visible(window_id, true, host_protocol::WINDOW_SHOW_METHOD)
+    }
+
+    fn hide(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        self.set_visible(window_id, false, host_protocol::WINDOW_HIDE_METHOD)
+    }
+
+    fn focus(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_FOCUS_METHOD,
+            ));
+        };
+
+        resources._window.set_focus();
+        Ok(())
+    }
+
+    fn set_visible(
+        &self,
+        window_id: &str,
+        visible: bool,
+        operation: &'static str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                operation,
+            ));
+        };
+
+        resources._window.set_visible(visible);
         Ok(())
     }
 
@@ -1373,6 +1498,30 @@ impl WindowRegistry {
                     WindowLifecycleEvent::Other
                 }
             }
+            WindowCommand::Show { window_id, reply } => {
+                let result = self.show(&window_id);
+                send_window_command_reply(
+                    reply,
+                    result.map(|()| WindowCommandResponse::WindowUpdated),
+                );
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::Hide { window_id, reply } => {
+                let result = self.hide(&window_id);
+                send_window_command_reply(
+                    reply,
+                    result.map(|()| WindowCommandResponse::WindowUpdated),
+                );
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::Focus { window_id, reply } => {
+                let result = self.focus(&window_id);
+                send_window_command_reply(
+                    reply,
+                    result.map(|()| WindowCommandResponse::WindowUpdated),
+                );
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::SetDockBadgeLabel {
                 label,
                 operation,
@@ -1513,6 +1662,7 @@ fn unexpected_tray_response(
     let message = match response {
         WindowCommandResponse::Created(_) => "tray command received window create response",
         WindowCommandResponse::Destroyed => "tray command received window destroy response",
+        WindowCommandResponse::WindowUpdated => "tray command received window lifecycle response",
         WindowCommandResponse::DockBadgeLabelSet => "tray command received dock badge response",
         WindowCommandResponse::DockAttentionRequested => {
             "tray command received dock attention response"
@@ -1537,6 +1687,7 @@ fn unexpected_screen_response(
     let message = match response {
         WindowCommandResponse::Created(_) => "screen command received window create response",
         WindowCommandResponse::Destroyed => "screen command received window destroy response",
+        WindowCommandResponse::WindowUpdated => "screen command received window lifecycle response",
         WindowCommandResponse::DockBadgeLabelSet => "screen command received dock badge response",
         WindowCommandResponse::DockAttentionRequested => {
             "screen command received dock attention response"

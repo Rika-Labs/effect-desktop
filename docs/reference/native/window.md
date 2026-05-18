@@ -1,6 +1,6 @@
 ---
 title: Window (native)
-description: Native window lifecycle — create, close, restore.
+description: Native window lifecycle — create, show, hide, focus, close.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Window`
 
-Native window lifecycle. The runtime calls `Window.create` to open windows; the renderer calls through `useDesktop(WindowSupportedRpcs)` or the React adapter's `useCreateWindowMutation` / `useCloseWindowMutation`.
+Native window lifecycle. The runtime calls `Window.create` to open windows; the renderer calls through `useDesktop(WindowSupportedRpcs)` or the React adapter's window mutations.
 
 ## Import
 
@@ -31,12 +31,15 @@ import {
 
 ## Methods
 
-| Method   | Payload               | Success        | Description              |
-| -------- | --------------------- | -------------- | ------------------------ |
-| `create` | `WindowCreateOptions` | `WindowHandle` | Open a native window.    |
-| `close`  | `WindowHandle`        | `void`         | Destroy a native window. |
+| Method   | Payload               | Success        | Description                   |
+| -------- | --------------------- | -------------- | ----------------------------- |
+| `create` | `WindowCreateOptions` | `WindowHandle` | Open a native window.         |
+| `show`   | `WindowHandle`        | `void`         | Make an existing window show. |
+| `hide`   | `WindowHandle`        | `void`         | Hide an existing window.      |
+| `focus`  | `WindowHandle`        | `void`         | Request focus for a window.   |
+| `close`  | `WindowHandle`        | `void`         | Destroy a native window.      |
 
-`WindowMethodNames = ["create", "close"]`. Additional methods (focus, hide, maximize) are reserved for future phases — `WindowSupportedRpcs` only contains what's currently callable.
+`WindowMethodNames = ["create", "close", "show", "hide", "focus"]`. Blur and a separate close-vs-destroy host lifecycle remain reserved for later phases because the Tao host currently exposes `set_visible`, `set_focus`, and destruction, but not a portable blur primitive.
 
 ## Errors
 

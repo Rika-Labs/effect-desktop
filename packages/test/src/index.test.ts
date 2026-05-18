@@ -2120,7 +2120,10 @@ test("native capability programs run unchanged through Live, Client, and Test la
 test("native test layers are derived from DesktopRpc surfaces", async () => {
   expect(TestNativeSurfaces.map((surface) => surface.tag)).toEqual([
     "ActivationRegistry",
+    "AppMetadata",
     "App",
+    "Association",
+    "Autostart",
     "AttachmentIntake",
     "Clipboard",
     "ContextMenu",
@@ -2147,6 +2150,7 @@ test("native test layers are derived from DesktopRpc surfaces", async () => {
     "PowerMonitor",
     "Protocol",
     "RealtimeMediaSession",
+    "RecentDocuments",
     "ResidentLifecycle",
     "SafeStorage",
     "ScopedAccessGrant",

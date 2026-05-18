@@ -158,7 +158,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
     ]
   })
-  expect(result.hasWindowShow).toBe(false)
+  expect(result.hasWindowShow).toBe(true)
 })
 
 test("NativeCapabilities derives support metadata from selected native layers only", async () => {

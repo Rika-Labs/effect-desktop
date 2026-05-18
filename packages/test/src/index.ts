@@ -32,6 +32,9 @@ import {
   HostProtocolUnsupportedError,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  WINDOW_FOCUS_METHOD,
+  WINDOW_HIDE_METHOD,
+  WINDOW_SHOW_METHOD,
   hostProtocolErrorRecoverableDefault,
   makeHostProtocolInvalidStateError,
   makeHostHandshakeClient,
@@ -202,6 +205,12 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           nextWindowId += 1
         } else if (request.method === WINDOW_DESTROY_METHOD) {
           windows.delete(yield* readWindowId(request.payload, request.method))
+        } else if (
+          request.method === WINDOW_SHOW_METHOD ||
+          request.method === WINDOW_HIDE_METHOD ||
+          request.method === WINDOW_FOCUS_METHOD
+        ) {
+          yield* readWindowId(request.payload, request.method)
         }
 
         const timestamp = yield* currentTimeMillis(options.now)
@@ -761,7 +770,10 @@ export const runHeadless = <A, E, R>(
             windowResources.delete(windowId)
             yield* rawWindow.destroy(windowId)
             yield* handle.dispose()
-          })
+          }),
+        show: (windowId) => rawWindow.show(windowId),
+        hide: (windowId) => rawWindow.hide(windowId),
+        focus: (windowId) => rawWindow.focus(windowId)
       }
     }
 
@@ -844,6 +856,16 @@ const defaultFixture = (method: string): HeadlessFixture => {
       return () => ({ protocolVersion: HOST_PROTOCOL_VERSION })
     case WINDOW_CREATE_METHOD:
       return () => DEFAULT_WINDOW_CREATE_PAYLOAD
+    case WINDOW_SHOW_METHOD:
+    case WINDOW_HIDE_METHOD:
+    case WINDOW_FOCUS_METHOD:
+      return (request, state) =>
+        Effect.gen(function* () {
+          const windowId = yield* readWindowId(request.payload, request.method)
+          if (!state.windows.has(windowId)) {
+            return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
+          }
+        })
     case WINDOW_DESTROY_METHOD:
       return (request, state) =>
         Effect.gen(function* () {

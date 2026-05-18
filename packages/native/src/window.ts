@@ -8,6 +8,7 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  makeHostProtocolInvalidStateError,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   makeStaleHandleError,
@@ -50,8 +51,27 @@ export const WindowClose = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["close"] })
 )
+export const WindowShow = windowRpc(
+  "show",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["show"] })
+)
+export const WindowHide = windowRpc(
+  "hide",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["hide"] })
+)
+export const WindowFocus = windowRpc(
+  "focus",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["focus"] })
+)
 
-const makeWindowRpcGroup = () => RpcGroup.make(WindowCreate, WindowClose)
+const makeWindowRpcGroup = () =>
+  RpcGroup.make(WindowCreate, WindowClose, WindowShow, WindowHide, WindowFocus)
 
 const WindowRpcGroup = makeWindowRpcGroup()
 
@@ -67,11 +87,20 @@ export type WindowBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId
 
 type WindowRpcClient = DesktopRpcClient<WindowSupportedRpc>
 
-export const WindowMethodNames = Object.freeze(["create", "close"] as const)
+export const WindowMethodNames = Object.freeze([
+  "create",
+  "close",
+  "show",
+  "hide",
+  "focus"
+] as const)
 
 export interface WindowClientApi {
   readonly create: (input: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
   readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly show: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly hide: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly focus: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
 }
 
 export class WindowClient extends Context.Service<WindowClient, WindowClientApi>()(
@@ -118,6 +147,21 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
     Effect.gen(function* () {
       const window = yield* Window
       yield* window.close(input.window)
+    }),
+  "Window.show": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.show(input.window)
+    }),
+  "Window.hide": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.hide(input.window)
+    }),
+  "Window.focus": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.focus(input.window)
     })
 })
 
@@ -125,7 +169,8 @@ export const WindowSurface = NativeSurface.make("Window", WindowRpcGroup, {
   service: WindowClient,
   capabilities: WindowMethodNames,
   handlers: WindowHandlersLive,
-  client: windowClientFromRpcClient
+  client: (client) => windowClientFromRpcClient(client),
+  bridgeClient: (client, _exchange) => windowClientFromRpcClient(client)
 })
 
 export const makeHostWindowRpcRuntime = (
@@ -156,7 +201,10 @@ export interface WindowPosition {
 const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
   const service: WindowServiceApi = {
     create: (input) => client.create(input ?? {}),
-    close: (window) => client.close(window)
+    close: (window) => client.close(window),
+    show: (window) => client.show(window),
+    hide: (window) => client.hide(window),
+    focus: (window) => client.focus(window)
   }
 
   return Object.freeze(service)
@@ -196,9 +244,29 @@ function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
           )
         )
         yield* runWindowRpc(client["Window.close"](decoded), "Window.close")
-      })
+      }),
+    show: (window) => runWindowHandleRpc(client, "Window.show", window),
+    hide: (window) => runWindowHandleRpc(client, "Window.hide", window),
+    focus: (window) => runWindowHandleRpc(client, "Window.focus", window)
   } satisfies WindowClientApi)
 }
+
+const runWindowHandleRpc = (
+  client: WindowRpcClient,
+  operation: "Window.show" | "Window.hide" | "Window.focus",
+  window: WindowHandle
+): Effect.Effect<void, WindowError, never> =>
+  Effect.gen(function* () {
+    const decoded = yield* Schema.decodeUnknownEffect(WindowHandleInput)(
+      { window },
+      StrictParseOptions
+    ).pipe(
+      Effect.mapError((error) =>
+        makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+      )
+    )
+    yield* runWindowRpc(client[operation](decoded), operation)
+  })
 
 const decodeWindowHandle = (
   input: unknown,
@@ -294,9 +362,66 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           yield* options.appEventRouter.windowClosed(window.id)
         }
         yield* registry.closeScope(window.ownerScope)
+      }),
+    "Window.show": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.show")
+        yield* host.show(window.id)
+      }),
+    "Window.hide": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.hide")
+        yield* host.hide(window.id)
+      }),
+    "Window.focus": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.focus")
+        yield* host.focus(window.id)
+        if (options.appEventRouter !== undefined) {
+          yield* options.appEventRouter
+            .windowFocused(window.id)
+            .pipe(
+              Effect.mapError((error) =>
+                makeHostProtocolInvalidStateError(error.windowId, "focused", "Window.focus")
+              )
+            )
+        }
       })
   }
 }
+
+const assertKnownFreshWindow = (
+  input: WindowHandleInput,
+  knownWindowIds: ReadonlySet<string>,
+  operation: string
+): Effect.Effect<{ readonly window: WindowHandle }, WindowError, ResourceRegistry> =>
+  Effect.gen(function* () {
+    const registry = yield* ResourceRegistry
+    const { window } = input
+    const resourceId = window.id
+    if (!knownWindowIds.has(window.id)) {
+      return yield* Effect.fail(makeHostProtocolNotFoundError(`Window:${window.id}`, operation))
+    }
+
+    const existing = yield* registry.get(resourceId)
+    if (Option.isNone(existing)) {
+      return yield* Effect.fail(makeStaleHandleError(operation, window, window.generation + 1))
+    }
+
+    yield* registry
+      .assertFresh({
+        kind: window.kind,
+        generation: window.generation,
+        ownerScope: window.ownerScope,
+        state: window.state,
+        id: resourceId
+      })
+      .pipe(
+        Effect.mapError((error) => makeStaleHandleError(operation, window, error.actualGeneration))
+      )
+
+    return { window }
+  })
 
 const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOptions => {
   return {

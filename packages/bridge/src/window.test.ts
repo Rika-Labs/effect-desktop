@@ -8,6 +8,9 @@ import {
   HostProtocolResponseEnvelope,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  WINDOW_FOCUS_METHOD,
+  WINDOW_HIDE_METHOD,
+  WINDOW_SHOW_METHOD,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   type HostProtocolRequestEnvelope,
@@ -96,6 +99,29 @@ test("host window client requests Window.destroy", async () => {
   ])
 })
 
+test("host window client requests Window.show, Window.hide, and Window.focus", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests), {
+    nextRequestId: nextId(["request-window-show", "request-window-hide", "request-window-focus"]),
+    nextTraceId: nextId(["trace-window-show", "trace-window-hide", "trace-window-focus"]),
+    now: nextNumber([1710000000010, 1710000000011, 1710000000012])
+  })
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* client.show("window-1")
+      yield* client.hide("window-1")
+      yield* client.focus("window-1")
+    })
+  )
+
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_SHOW_METHOD, { windowId: "window-1" }],
+    [WINDOW_HIDE_METHOD, { windowId: "window-1" }],
+    [WINDOW_FOCUS_METHOD, { windowId: "window-1" }]
+  ])
+})
+
 test("host window client rejects invalid create bounds before crossing the host boundary", async () => {
   const invalidInputs: ReadonlyArray<unknown> = [
     { width: 0 },
@@ -123,6 +149,25 @@ test("host window client rejects empty destroy window ids before crossing the ho
 
   await expectEffectFailure(
     client.destroy(""),
+    (error) => error instanceof HostProtocolInvalidArgumentError
+  )
+  expect(requests).toEqual([])
+})
+
+test("host window client rejects empty lifecycle window ids before crossing the host boundary", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests))
+
+  await expectEffectFailure(
+    client.show(""),
+    (error) => error instanceof HostProtocolInvalidArgumentError
+  )
+  await expectEffectFailure(
+    client.hide(""),
+    (error) => error instanceof HostProtocolInvalidArgumentError
+  )
+  await expectEffectFailure(
+    client.focus(""),
     (error) => error instanceof HostProtocolInvalidArgumentError
   )
   expect(requests).toEqual([])
@@ -290,3 +335,27 @@ const fixedClock = (timestamp: number): Clock.Clock => ({
   currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
   sleep: () => Effect.yieldNow
 })
+
+const nextId = (values: ReadonlyArray<string>): (() => string) => {
+  let index = 0
+  return () => {
+    const value = values[index]
+    if (value === undefined) {
+      throw new Error("next id exhausted")
+    }
+    index += 1
+    return value
+  }
+}
+
+const nextNumber = (values: ReadonlyArray<number>): (() => number) => {
+  let index = 0
+  return () => {
+    const value = values[index]
+    if (value === undefined) {
+      throw new Error("next number exhausted")
+    }
+    index += 1
+    return value
+  }
+}

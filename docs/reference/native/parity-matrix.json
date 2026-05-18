@@ -4053,6 +4053,36 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.focus",
+      "surface": "Window",
+      "method": "focus",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.hide",
+      "surface": "Window",
+      "method": "hide",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.show",
+      "surface": "Window",
+      "method": "show",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "WorkspaceIndex.close",
       "surface": "WorkspaceIndex",
       "method": "close",
@@ -4094,10 +4124,10 @@
     }
   ],
   "summary": {
-    "total": 199,
-    "routed": 177,
+    "total": 202,
+    "routed": 180,
     "missing": 22,
-    "supported": 81,
+    "supported": 84,
     "partial": 22,
     "unsupported": 96
   }
