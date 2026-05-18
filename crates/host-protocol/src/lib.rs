@@ -67,6 +67,7 @@ pub const WINDOW_RESTORE_METHOD: &str = "Window.restore";
 pub const WINDOW_SET_FULLSCREEN_METHOD: &str = "Window.setFullscreen";
 pub const WINDOW_GET_STATE_METHOD: &str = "Window.getState";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
+pub const WINDOW_EVENT: &str = "Window.Event";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
 pub const DOCK_SET_BADGE_TEXT_METHOD: &str = "Dock.setBadgeText";
 pub const DOCK_SET_MENU_METHOD: &str = "Dock.setMenu";
@@ -2753,6 +2754,88 @@ impl WindowListResponse {
 
     pub fn windows(&self) -> &[WindowLookupResponse] {
         &self.windows
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WindowRegistryEventPhase {
+    Opened,
+    Focused,
+    Closed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowRegistryEventPayload {
+    #[serde(rename = "type")]
+    type_name: String,
+    phase: WindowRegistryEventPhase,
+    window_id: String,
+    terminal: bool,
+}
+
+impl WindowRegistryEventPayload {
+    pub fn new(window_id: impl Into<String>, phase: WindowRegistryEventPhase) -> Self {
+        let terminal = matches!(phase, WindowRegistryEventPhase::Closed);
+        Self {
+            type_name: "window-registry-event".to_string(),
+            phase,
+            window_id: window_id.into(),
+            terminal,
+        }
+    }
+
+    pub fn type_name(&self) -> &str {
+        &self.type_name
+    }
+
+    pub fn phase(&self) -> &WindowRegistryEventPhase {
+        &self.phase
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn terminal(&self) -> bool {
+        self.terminal
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawWindowRegistryEventPayload {
+    #[serde(rename = "type")]
+    type_name: String,
+    phase: WindowRegistryEventPhase,
+    window_id: String,
+    terminal: bool,
+}
+
+impl<'de> Deserialize<'de> for WindowRegistryEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawWindowRegistryEventPayload::deserialize(deserializer)?;
+        if raw.type_name != "window-registry-event" {
+            return Err(de::Error::custom(
+                "window registry event type must be window-registry-event",
+            ));
+        }
+        let expected_terminal = matches!(raw.phase, WindowRegistryEventPhase::Closed);
+        if raw.terminal != expected_terminal {
+            return Err(de::Error::custom(
+                "window registry event terminal must match phase",
+            ));
+        }
+        Ok(Self {
+            type_name: raw.type_name,
+            phase: raw.phase,
+            window_id: raw.window_id,
+            terminal: raw.terminal,
+        })
     }
 }
 
@@ -10722,14 +10805,14 @@ mod tests {
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
         UpdaterStatusPayload, UpdaterStatusState, WindowAttentionType, WindowBoundsPayload,
         WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowListResponse,
-        WindowLookupResponse, WindowProgressState, WindowRequestAttentionPayload,
-        WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
-        WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
-        WindowSetTitlePayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
-        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
-        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
-        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
-        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowLookupResponse, WindowProgressState, WindowRegistryEventPayload,
+        WindowRegistryEventPhase, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
+        WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
+        WindowSetProgressPayload, WindowSetResizablePayload, WindowSetTitlePayload,
+        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
+        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
+        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
+        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
         CLIPBOARD_UNSUPPORTED_REASON, CRASH_REPORTER_UNSUPPORTED_REASON,
@@ -11775,6 +11858,63 @@ mod tests {
         .expect_err("excess window list response fields must fail");
         assert!(
             error.to_string().contains("unknown field `unknown`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn window_registry_event_payload_serializes_canonically() {
+        let opened = WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::Opened);
+        assert_eq!(opened.type_name(), "window-registry-event");
+        assert_eq!(opened.window_id(), "window-1");
+        assert_eq!(opened.phase(), &WindowRegistryEventPhase::Opened);
+        assert!(!opened.terminal());
+        assert_eq!(
+            serde_json::to_string(&opened).expect("window opened event should encode"),
+            r#"{"type":"window-registry-event","phase":"opened","windowId":"window-1","terminal":false}"#
+        );
+
+        let closed = WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::Closed);
+        assert!(closed.terminal());
+        assert_eq!(
+            serde_json::to_string(&closed).expect("window closed event should encode"),
+            r#"{"type":"window-registry-event","phase":"closed","windowId":"window-1","terminal":true}"#
+        );
+    }
+
+    #[test]
+    fn window_registry_event_payload_rejects_unknown_fields() {
+        let error = serde_json::from_str::<WindowRegistryEventPayload>(
+            r#"{"type":"window-registry-event","phase":"closed","windowId":"window-1","terminal":true,"unknown":true}"#,
+        )
+        .expect_err("excess window registry event fields must fail");
+        assert!(
+            error.to_string().contains("unknown field `unknown`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn window_registry_event_payload_rejects_invalid_invariants() {
+        let error = serde_json::from_str::<WindowRegistryEventPayload>(
+            r#"{"type":"not-window-registry-event","phase":"closed","windowId":"window-1","terminal":true}"#,
+        )
+        .expect_err("invalid window registry event type must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("window registry event type must be window-registry-event"),
+            "unexpected error: {error}"
+        );
+
+        let error = serde_json::from_str::<WindowRegistryEventPayload>(
+            r#"{"type":"window-registry-event","phase":"opened","windowId":"window-1","terminal":true}"#,
+        )
+        .expect_err("invalid terminal flag must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("window registry event terminal must match phase"),
             "unexpected error: {error}"
         );
     }

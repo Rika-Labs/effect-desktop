@@ -50,7 +50,8 @@ use crate::{
     linux,
     window::{
         clear_screen_runtime_event_state, clear_tray_runtime_event_state,
-        install_screen_event_sender, WindowMethodHandler,
+        clear_window_runtime_event_state, install_screen_event_sender, install_window_event_sender,
+        WindowMethodHandler,
     },
 };
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
@@ -1320,6 +1321,7 @@ impl HostMethodRouter {
 
     pub(crate) fn clear_runtime_resources(&self) -> Result<(), String> {
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
+        clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_tray_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         self.window
             .clear_runtime_trays()
@@ -1340,6 +1342,7 @@ impl HostMethodRouter {
         sender: Sender<HostProtocolEnvelope>,
     ) -> Result<(), String> {
         install_screen_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
+        install_window_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         *self
             .runtime_event_sender
             .lock()
@@ -1348,6 +1351,8 @@ impl HostMethodRouter {
     }
 
     pub(crate) fn clear_runtime_event_sender(&self) -> Result<(), String> {
+        clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
+        clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         *self
             .runtime_event_sender
             .lock()

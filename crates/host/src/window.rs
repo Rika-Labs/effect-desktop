@@ -9,8 +9,8 @@ use host_protocol::{
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
     ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
     WindowAttentionType, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowListResponse, WindowLookupResponse, WindowProgressState, WindowSetProgressPayload,
-    WindowStatePayload,
+    WindowListResponse, WindowLookupResponse, WindowProgressState, WindowRegistryEventPayload,
+    WindowRegistryEventPhase, WindowSetProgressPayload, WindowStatePayload,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -473,6 +473,8 @@ static TRAY_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> 
 static TRAY_EVENT_HANDLES: LazyLock<Mutex<HashMap<String, TrayResourcePayload>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static SCREEN_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
+    LazyLock::new(|| Mutex::new(None));
+static WINDOW_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
     LazyLock::new(|| Mutex::new(None));
 
 impl WindowMethodPort {
@@ -1575,6 +1577,15 @@ impl WindowRegistry {
             self.parent_window_id_by_child_id
                 .insert(window_id.clone(), parent_window_id);
         }
+        if let Err(error) = emit_window_registry_event(&window_id, WindowRegistryEventPhase::Opened)
+        {
+            warn!(
+                event = "host.window.event_emit_failed",
+                error = ?error,
+                window_id,
+                "failed to emit window opened event"
+            );
+        }
 
         Ok(WindowCreateResponse::new(window_id))
     }
@@ -1593,8 +1604,20 @@ impl WindowRegistry {
                 window_id = destroyed_window_id,
                 "host window destroyed"
             );
+            if let Err(error) =
+                emit_window_registry_event(&destroyed_window_id, WindowRegistryEventPhase::Closed)
+            {
+                warn!(
+                    event = "host.window.event_emit_failed",
+                    error = ?error,
+                    window_id = destroyed_window_id,
+                    "failed to emit window closed event"
+                );
+            }
         }
-        self.select_fallback_focus();
+        if let Some(focused_window_id) = self.select_fallback_focus() {
+            self.emit_focused_window_event(&focused_window_id);
+        }
         Ok(())
     }
 
@@ -1619,19 +1642,20 @@ impl WindowRegistry {
         }
     }
 
-    fn select_fallback_focus(&mut self) {
+    fn select_fallback_focus(&mut self) -> Option<String> {
         if self
             .focused_window_id
             .as_ref()
             .is_some_and(|window_id| self.windows.contains_key(window_id))
         {
-            return;
+            return None;
         }
         self.focused_window_id = self
             .window_order
             .iter()
             .find(|window_id| self.windows.contains_key(window_id.as_str()))
             .cloned();
+        self.focused_window_id.clone()
     }
 
     fn remove_window_tree(&mut self, window_id: &str) -> Vec<String> {
@@ -1693,6 +1717,56 @@ impl WindowRegistry {
         };
         if self.windows.contains_key(&window_id) {
             self.track_window_focused(&window_id);
+            if let Err(error) =
+                emit_window_registry_event(&window_id, WindowRegistryEventPhase::Focused)
+            {
+                warn!(
+                    event = "host.window.event_emit_failed",
+                    error = ?error,
+                    window_id,
+                    "failed to emit native window focused event"
+                );
+            }
+        }
+    }
+
+    fn native_window_close_requested(&mut self, native_window_id: WindowId) {
+        let Some(window_id) = self.window_id_by_native_id.get(&native_window_id).cloned() else {
+            return;
+        };
+        self.window_id_by_native_id.remove(&native_window_id);
+        for destroyed_window_id in self.remove_window_tree(&window_id) {
+            info!(
+                event = WINDOW_DESTROYED_EVENT,
+                window_id = destroyed_window_id,
+                source = "close-requested",
+                "host window destroyed"
+            );
+            if let Err(error) =
+                emit_window_registry_event(&destroyed_window_id, WindowRegistryEventPhase::Closed)
+            {
+                warn!(
+                    event = "host.window.event_emit_failed",
+                    error = ?error,
+                    window_id = destroyed_window_id,
+                    "failed to emit native window closed event"
+                );
+            }
+        }
+        if let Some(focused_window_id) = self.select_fallback_focus() {
+            self.emit_focused_window_event(&focused_window_id);
+        }
+    }
+
+    fn emit_focused_window_event(&self, window_id: &str) {
+        if let Err(error) = emit_window_registry_event(window_id, WindowRegistryEventPhase::Focused)
+        {
+            warn!(
+                event = "host.window.event_emit_failed",
+                error = ?error,
+                window_id,
+                "failed to emit fallback window focused event"
+            );
         }
     }
 
@@ -2994,11 +3068,35 @@ pub(crate) fn install_screen_event_sender(
     Ok(())
 }
 
+pub(crate) fn install_window_event_sender(
+    sender: Sender<HostProtocolEnvelope>,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut current = WINDOW_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "window event sender mutex poisoned",
+            "host.runtime.window.connect",
+        )
+    })?;
+    *current = Some(sender);
+    Ok(())
+}
+
 pub(crate) fn clear_screen_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
     let mut sender = SCREEN_EVENT_SENDER.lock().map_err(|_| {
         HostProtocolError::internal(
             "screen event sender mutex poisoned",
             "host.runtime.screen.disconnect",
+        )
+    })?;
+    *sender = None;
+    Ok(())
+}
+
+pub(crate) fn clear_window_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
+    let mut sender = WINDOW_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "window event sender mutex poisoned",
+            "host.runtime.window.disconnect",
         )
     })?;
     *sender = None;
@@ -3016,6 +3114,40 @@ fn screen_event_sender(
                 "host.runtime.screen.event",
             )
         })
+}
+
+fn window_event_sender(
+) -> std::result::Result<Option<Sender<HostProtocolEnvelope>>, HostProtocolError> {
+    WINDOW_EVENT_SENDER
+        .lock()
+        .map(|sender| sender.clone())
+        .map_err(|_| {
+            HostProtocolError::internal(
+                "window event sender mutex poisoned",
+                "host.runtime.window.event",
+            )
+        })
+}
+
+fn emit_window_registry_event(
+    window_id: &str,
+    phase: WindowRegistryEventPhase,
+) -> std::result::Result<(), HostProtocolError> {
+    let Some(sender) = window_event_sender()? else {
+        return Ok(());
+    };
+    let payload = serde_json::to_value(WindowRegistryEventPayload::new(window_id, phase)).map_err(
+        |error| HostProtocolError::invalid_output(host_protocol::WINDOW_EVENT, error.to_string()),
+    )?;
+    sender
+        .send(HostProtocolEnvelope::Event {
+            method: host_protocol::WINDOW_EVENT.to_string(),
+            timestamp: timestamp_millis(),
+            trace_id: format!("window-event-{}", Uuid::now_v7()),
+            window_id: Some(window_id.to_string()),
+            payload: Some(payload),
+        })
+        .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
 }
 
 fn timestamp_millis() -> u64 {
@@ -3437,6 +3569,14 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
                 registry.track_native_window_focused(window_id);
                 WindowLifecycleEvent::Other
             }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                registry.native_window_close_requested(window_id);
+                WindowLifecycleEvent::CloseRequested
+            }
             event if is_screen_displays_changed_event(&event) => {
                 if let Err(error) = registry.emit_screen_displays_changed(target) {
                     warn!(
@@ -3573,18 +3713,24 @@ mod tests {
     #[cfg(target_os = "linux")]
     use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
-        control_flow_for_lifecycle_event, control_flow_for_window_state,
+        clear_window_runtime_event_state, control_flow_for_lifecycle_event,
+        control_flow_for_window_state, emit_window_registry_event, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
         lifecycle_for_create_result, smoke_deadline_for_mode, unsupported_screen,
         validate_positive_finite, RunMode, WindowCommand, WindowCommandResponse,
-        WindowCreateRequest, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
+        WindowCreateRequest, WindowId, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
         WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
     };
-    use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
+    use host_protocol::{
+        HostProtocolEnvelope, HostProtocolError, WindowCreatePayload, WindowCreateResponse,
+        WindowRegistryEventPhase,
+    };
     use std::collections::HashSet;
-    use std::sync::mpsc;
+    use std::sync::{mpsc, Mutex};
     use std::thread;
     use std::time::Instant;
+
+    static WINDOW_EVENT_TEST_LOCK: Mutex<()> = Mutex::new(());
     use tao::dpi::PhysicalSize;
     use tao::event::WindowEvent;
     use tao::event_loop::ControlFlow;
@@ -3749,6 +3895,95 @@ mod tests {
         };
 
         assert!(is_screen_displays_changed_window_event(&event));
+    }
+
+    #[test]
+    fn window_registry_events_encode_to_runtime_sender() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (sender, receiver) = mpsc::channel();
+        install_window_event_sender(sender).expect("window event sender should install");
+
+        emit_window_registry_event("window-1", WindowRegistryEventPhase::Closed)
+            .expect("window event should emit");
+
+        let event = receiver
+            .recv()
+            .expect("window event receiver should receive event");
+        clear_window_runtime_event_state().expect("window event sender should clear");
+
+        let HostProtocolEnvelope::Event {
+            method,
+            window_id,
+            payload,
+            ..
+        } = event
+        else {
+            panic!("expected window registry event envelope");
+        };
+        assert_eq!(method, host_protocol::WINDOW_EVENT);
+        assert_eq!(window_id.as_deref(), Some("window-1"));
+        assert_eq!(
+            payload.expect("window event should include payload"),
+            serde_json::json!({
+                "type": "window-registry-event",
+                "phase": "closed",
+                "windowId": "window-1",
+                "terminal": true
+            })
+        );
+    }
+
+    #[test]
+    fn native_close_requested_removes_lookup_and_emits_terminal_event() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (sender, receiver) = mpsc::channel();
+        install_window_event_sender(sender).expect("window event sender should install");
+        // SAFETY: The dummy id stays inside registry bookkeeping and is never passed to Tao.
+        let native_window_id = unsafe { WindowId::dummy() };
+        let mut registry = WindowRegistry::new();
+        registry
+            .window_id_by_native_id
+            .insert(native_window_id, "window-1".to_string());
+        registry.window_order.push("window-1".to_string());
+        registry.focused_window_id = Some("window-1".to_string());
+
+        registry.native_window_close_requested(native_window_id);
+
+        assert!(!registry
+            .window_id_by_native_id
+            .contains_key(&native_window_id));
+        assert!(registry.window_order.is_empty());
+        assert_eq!(registry.focused_window_id, None);
+        let event = receiver
+            .recv()
+            .expect("window event receiver should receive close event");
+        clear_window_runtime_event_state().expect("window event sender should clear");
+        assert!(receiver.try_recv().is_err());
+
+        let HostProtocolEnvelope::Event {
+            method,
+            window_id,
+            payload,
+            ..
+        } = event
+        else {
+            panic!("expected window registry event envelope");
+        };
+        assert_eq!(method, host_protocol::WINDOW_EVENT);
+        assert_eq!(window_id.as_deref(), Some("window-1"));
+        assert_eq!(
+            payload.expect("window event should include payload"),
+            serde_json::json!({
+                "type": "window-registry-event",
+                "phase": "closed",
+                "windowId": "window-1",
+                "terminal": true
+            })
+        );
     }
 
     #[test]
