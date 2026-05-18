@@ -305,6 +305,26 @@ mod tests {
     }
 
     #[test]
+    fn run_decodes_valid_payload_then_returns_typed_unsupported() {
+        let error = run(Some(json!({
+            "sandboxId": "sandbox-1",
+            "command": "/usr/bin/node",
+            "args": ["--version"],
+            "runId": "run-1",
+            "traceId": "trace-run"
+        })))
+        .expect_err("host should be unsupported");
+
+        assert_eq!(
+            error,
+            HostProtocolError::unsupported(
+                host_protocol::EXECUTION_SANDBOX_UNSUPPORTED_REASON,
+                host_protocol::EXECUTION_SANDBOX_RUN_METHOD
+            )
+        );
+    }
+
+    #[test]
     fn run_rejects_shell_metacharacters_before_unsupported() {
         let error = run(Some(json!({
             "sandboxId": "sandbox-1",
@@ -324,6 +344,23 @@ mod tests {
 
         assert!(
             matches!(error, HostProtocolError::InvalidArgument { field, .. } if field == "sandboxId")
+        );
+    }
+
+    #[test]
+    fn destroy_decodes_valid_payload_then_returns_typed_unsupported() {
+        let error = destroy(Some(json!({
+            "sandboxId": "sandbox-1",
+            "traceId": "trace-destroy"
+        })))
+        .expect_err("host should be unsupported");
+
+        assert_eq!(
+            error,
+            HostProtocolError::unsupported(
+                host_protocol::EXECUTION_SANDBOX_UNSUPPORTED_REASON,
+                host_protocol::EXECUTION_SANDBOX_DESTROY_METHOD
+            )
         );
     }
 

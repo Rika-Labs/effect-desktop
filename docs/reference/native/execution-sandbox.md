@@ -52,6 +52,7 @@ The service audits permission use and denial. `create` checks filesystem and net
 ## Support
 
 The current Rust host adapter is intentionally fail-closed while OS isolation adapters are not implemented.
+Production OS isolation is tracked in [issue #1406](https://github.com/Rika-Labs/effect-desktop/issues/1406).
 
 | Platform | Status        | Reason                       |
 | -------- | ------------- | ---------------------------- |
