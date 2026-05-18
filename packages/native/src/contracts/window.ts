@@ -160,6 +160,13 @@ export class WindowAlwaysOnTopInput extends Schema.Class<WindowAlwaysOnTopInput>
   alwaysOnTop: Schema.Boolean
 }) {}
 
+export class WindowSkipTaskbarInput extends Schema.Class<WindowSkipTaskbarInput>(
+  "WindowSkipTaskbarInput"
+)({
+  window: WindowResource,
+  skipTaskbar: Schema.Boolean
+}) {}
+
 export class WindowProgressInput extends Schema.Class<WindowProgressInput>("WindowProgressInput")({
   window: WindowResource,
   state: Schema.optionalKey(WindowProgressStateLiteral),

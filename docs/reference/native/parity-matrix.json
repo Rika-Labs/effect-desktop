@@ -4265,6 +4265,32 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setSkipTaskbar",
+      "surface": "Window",
+      "method": "setSkipTaskbar",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "skip-taskbar-macos-unsupported",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "skip-taskbar-macos-unsupported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.setTitle",
       "surface": "Window",
       "method": "setTitle",
@@ -4364,11 +4390,11 @@
     }
   ],
   "summary": {
-    "total": 226,
-    "routed": 204,
+    "total": 227,
+    "routed": 205,
     "missing": 22,
     "supported": 108,
-    "partial": 23,
+    "partial": 24,
     "unsupported": 95
   }
 }

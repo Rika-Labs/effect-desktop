@@ -490,6 +490,7 @@ const makeHostWindowClient = (overrides: Partial<HostWindowClient> = {}): HostWi
   setDecorations: () => Effect.void,
   setTrafficLights: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
+  setSkipTaskbar: () => Effect.void,
   setProgress: () => Effect.void,
   requestAttention: () => Effect.void,
   cancelAttention: () => Effect.void,

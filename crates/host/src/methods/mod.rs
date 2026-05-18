@@ -334,6 +334,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::set_always_on_top),
     ),
     route(
+        host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
+        HostMethodDispatcher::Window(window::set_skip_taskbar),
+    ),
+    route(
         host_protocol::WINDOW_SET_PROGRESS_METHOD,
         HostMethodDispatcher::Window(window::set_progress),
     ),
@@ -3558,6 +3562,11 @@ mod tests {
                 serde_json::json!({ "windowId": "window-1", "alwaysOnTop": true }),
             ),
             (
+                "request-window-set-skip-taskbar",
+                host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
+                serde_json::json!({ "windowId": "window-1", "skipTaskbar": true }),
+            ),
+            (
                 "request-window-set-progress",
                 host_protocol::WINDOW_SET_PROGRESS_METHOD,
                 serde_json::json!({
@@ -3595,6 +3604,7 @@ mod tests {
         }
 
         assert_eq!(fake.always_on_top(), vec![("window-1".to_string(), true)]);
+        assert_eq!(fake.skip_taskbar(), vec![("window-1".to_string(), true)]);
         assert_eq!(
             fake.progress(),
             vec![host_protocol::WindowSetProgressPayload::new(
@@ -6411,6 +6421,7 @@ mod tests {
         resizable: Mutex<Vec<(String, bool)>>,
         decorations: Mutex<Vec<(String, bool)>>,
         always_on_top: Mutex<Vec<(String, bool)>>,
+        skip_taskbar: Mutex<Vec<(String, bool)>>,
         progress: Mutex<Vec<host_protocol::WindowSetProgressPayload>>,
         attention: Mutex<Vec<(String, host_protocol::WindowAttentionType)>>,
         attention_cancellations: Mutex<Vec<String>>,
@@ -6438,6 +6449,7 @@ mod tests {
                 resizable: Mutex::new(Vec::new()),
                 decorations: Mutex::new(Vec::new()),
                 always_on_top: Mutex::new(Vec::new()),
+                skip_taskbar: Mutex::new(Vec::new()),
                 progress: Mutex::new(Vec::new()),
                 attention: Mutex::new(Vec::new()),
                 attention_cancellations: Mutex::new(Vec::new()),
@@ -6516,6 +6528,13 @@ mod tests {
             self.always_on_top
                 .lock()
                 .expect("fake always on top requests should lock")
+                .clone()
+        }
+
+        fn skip_taskbar(&self) -> Vec<(String, bool)> {
+            self.skip_taskbar
+                .lock()
+                .expect("fake skip taskbar requests should lock")
                 .clone()
         }
 
@@ -6700,6 +6719,18 @@ mod tests {
                 .lock()
                 .expect("fake always on top requests should lock")
                 .push((window_id.to_string(), always_on_top));
+            Ok(())
+        }
+
+        fn set_skip_taskbar(
+            &self,
+            window_id: &str,
+            skip_taskbar: bool,
+        ) -> Result<(), HostProtocolError> {
+            self.skip_taskbar
+                .lock()
+                .expect("fake skip taskbar requests should lock")
+                .push((window_id.to_string(), skip_taskbar));
             Ok(())
         }
 

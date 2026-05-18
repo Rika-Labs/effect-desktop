@@ -130,6 +130,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         always_on_top: bool,
     ) -> std::result::Result<(), HostProtocolError>;
 
+    fn set_skip_taskbar(
+        &self,
+        window_id: &str,
+        skip_taskbar: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
     fn set_progress(
         &self,
         window_id: &str,
@@ -331,6 +337,11 @@ enum WindowCommand {
     SetAlwaysOnTop {
         window_id: String,
         always_on_top: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetSkipTaskbar {
+        window_id: String,
+        skip_taskbar: bool,
         reply: Sender<WindowCommandReply>,
     },
     SetProgress {
@@ -945,6 +956,21 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD)
+    }
+
+    fn set_skip_taskbar(
+        &self,
+        window_id: &str,
+        skip_taskbar: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetSkipTaskbar {
+            window_id: window_id.to_string(),
+            skip_taskbar,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD)
     }
 
     fn set_progress(
@@ -2032,6 +2058,21 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn set_skip_taskbar(
+        &self,
+        window_id: &str,
+        skip_taskbar: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
+            ));
+        };
+
+        set_skip_taskbar(&resources._window, skip_taskbar)
+    }
+
     fn set_progress(
         &self,
         window_id: &str,
@@ -2789,6 +2830,17 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::SetSkipTaskbar {
+                window_id,
+                skip_taskbar,
+                reply,
+            } => {
+                let result = self
+                    .set_skip_taskbar(&window_id, skip_taskbar)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::SetProgress {
                 window_id,
                 progress,
@@ -3099,6 +3151,47 @@ fn tao_window_state(window: &Window) -> WindowStatePayload {
         window.is_maximized(),
         window.fullscreen().is_some(),
     )
+}
+
+#[cfg(windows)]
+fn set_skip_taskbar(
+    window: &Window,
+    skip_taskbar: bool,
+) -> std::result::Result<(), HostProtocolError> {
+    use tao::platform::windows::WindowExtWindows;
+
+    WindowExtWindows::set_skip_taskbar(window, skip_taskbar).map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to set skip taskbar: {error}"),
+            host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
+        )
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn set_skip_taskbar(
+    window: &Window,
+    skip_taskbar: bool,
+) -> std::result::Result<(), HostProtocolError> {
+    use tao::platform::unix::WindowExtUnix;
+
+    WindowExtUnix::set_skip_taskbar(window, skip_taskbar).map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to set skip taskbar: {error}"),
+            host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
+        )
+    })
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn set_skip_taskbar(
+    _window: &Window,
+    _skip_taskbar: bool,
+) -> std::result::Result<(), HostProtocolError> {
+    Err(HostProtocolError::unsupported(
+        "skip-taskbar is only supported on Windows and Linux",
+        host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
+    ))
 }
 
 fn to_tao_progress_state(state: WindowProgressState) -> ProgressState {

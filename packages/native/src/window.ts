@@ -57,6 +57,7 @@ import {
   WindowResizableInput,
   WindowRequestAttentionInput,
   WindowResource,
+  WindowSkipTaskbarInput,
   WindowState,
   WindowStateEvent,
   WindowSubscribeEventsResult,
@@ -73,6 +74,18 @@ const WindowTrafficLightsSupport = NativeSurface.support.partial(
       { platform: "macos", status: "supported" },
       { platform: "windows", status: "unsupported", reason: WindowTrafficLightsMacosOnlyReason },
       { platform: "linux", status: "unsupported", reason: WindowTrafficLightsMacosOnlyReason }
+    ]
+  }
+) satisfies RpcSupportMetadata
+const WindowSkipTaskbarMacosUnsupportedReason = "skip-taskbar-macos-unsupported"
+
+const WindowSkipTaskbarSupport = NativeSurface.support.partial(
+  WindowSkipTaskbarMacosUnsupportedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: WindowSkipTaskbarMacosUnsupportedReason },
+      { platform: "windows", status: "supported" },
+      { platform: "linux", status: "supported" }
     ]
   }
 ) satisfies RpcSupportMetadata
@@ -194,6 +207,13 @@ export const WindowSetAlwaysOnTop = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["setAlwaysOnTop"] })
 )
+export const WindowSetSkipTaskbar = windowRpc(
+  "setSkipTaskbar",
+  WindowSkipTaskbarInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setSkipTaskbar"] }),
+  WindowSkipTaskbarSupport
+)
 export const WindowSetProgress = windowRpc(
   "setProgress",
   WindowProgressInput,
@@ -264,6 +284,7 @@ const makeWindowRpcGroup = () =>
     WindowSetDecorations,
     WindowSetTrafficLights,
     WindowSetAlwaysOnTop,
+    WindowSetSkipTaskbar,
     WindowSetProgress,
     WindowRequestAttention,
     WindowCancelAttention,
@@ -313,6 +334,7 @@ export const WindowMethodNames = Object.freeze([
   "setDecorations",
   "setTrafficLights",
   "setAlwaysOnTop",
+  "setSkipTaskbar",
   "setProgress",
   "requestAttention",
   "cancelAttention",
@@ -367,6 +389,10 @@ export interface WindowClientApi {
   readonly setAlwaysOnTop: (
     window: WindowHandle,
     alwaysOnTop: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setSkipTaskbar: (
+    window: WindowHandle,
+    skipTaskbar: boolean
   ) => Effect.Effect<void, WindowError, never>
   readonly setProgress: (
     window: WindowHandle,
@@ -528,6 +554,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       yield* window.setAlwaysOnTop(input.window, input.alwaysOnTop)
     }),
+  "Window.setSkipTaskbar": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setSkipTaskbar(input.window, input.skipTaskbar)
+    }),
   "Window.setProgress": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -623,6 +654,7 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     setDecorations: (window, decorations) => client.setDecorations(window, decorations),
     setTrafficLights: (window, trafficLights) => client.setTrafficLights(window, trafficLights),
     setAlwaysOnTop: (window, alwaysOnTop) => client.setAlwaysOnTop(window, alwaysOnTop),
+    setSkipTaskbar: (window, skipTaskbar) => client.setSkipTaskbar(window, skipTaskbar),
     setProgress: (window, input) => client.setProgress(window, input),
     requestAttention: (window, requestType) => client.requestAttention(window, requestType),
     cancelAttention: (window) => client.cancelAttention(window),
@@ -755,6 +787,15 @@ function windowClientFromRpcClient(
           "Window.setAlwaysOnTop"
         )
         yield* runWindowRpc(client["Window.setAlwaysOnTop"](decoded), "Window.setAlwaysOnTop")
+      }),
+    setSkipTaskbar: (window, skipTaskbar) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowSkipTaskbarInput(
+          window,
+          skipTaskbar,
+          "Window.setSkipTaskbar"
+        )
+        yield* runWindowRpc(client["Window.setSkipTaskbar"](decoded), "Window.setSkipTaskbar")
       }),
     setProgress: (window, input) =>
       Effect.gen(function* () {
@@ -907,6 +948,20 @@ const decodeWindowAlwaysOnTopInput = (
 ): Effect.Effect<WindowAlwaysOnTopInput, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowAlwaysOnTopInput)(
     { window, alwaysOnTop },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowSkipTaskbarInput = (
+  window: WindowHandle,
+  skipTaskbar: boolean,
+  operation: string
+): Effect.Effect<WindowSkipTaskbarInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowSkipTaskbarInput)(
+    { window, skipTaskbar },
     StrictParseOptions
   ).pipe(
     Effect.mapError((error) =>
@@ -1380,6 +1435,15 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           "Window.setAlwaysOnTop"
         )
         yield* host.setAlwaysOnTop(window.id, input.alwaysOnTop)
+      }),
+    "Window.setSkipTaskbar": (input: WindowSkipTaskbarInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setSkipTaskbar"
+        )
+        yield* host.setSkipTaskbar(window.id, input.skipTaskbar)
       }),
     "Window.setProgress": (input: WindowProgressInput) =>
       Effect.gen(function* () {

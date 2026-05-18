@@ -8,8 +8,8 @@ use host_protocol::{
     WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
     WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
     WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
-    WindowSetResizablePayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
-    WindowStatePayload,
+    WindowSetResizablePayload, WindowSetSkipTaskbarPayload, WindowSetTitlePayload,
+    WindowSetTrafficLightsPayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -188,6 +188,16 @@ pub(crate) fn set_always_on_top(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_always_on_top_payload(payload)?;
     handler.set_always_on_top(payload.window_id(), payload.always_on_top())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_skip_taskbar(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_skip_taskbar_payload(payload)?;
+    handler.set_skip_taskbar(payload.window_id(), payload.skip_taskbar())?;
 
     Ok(None)
 }
@@ -617,6 +627,43 @@ fn decode_set_always_on_top_payload(
             "payload",
             "windowId must be non-empty",
             host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_skip_taskbar_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetSkipTaskbarPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_skip_taskbar_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD
+            ),
+            host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
+        )),
+    }
+}
+
+fn decode_set_skip_taskbar_payload(
+    payload: Value,
+) -> Result<WindowSetSkipTaskbarPayload, HostProtocolError> {
+    let payload: WindowSetSkipTaskbarPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
         ));
     }
     Ok(payload)

@@ -30,6 +30,7 @@ import {
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_SKIP_TASKBAR_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
   WINDOW_SHOW_METHOD,
@@ -339,22 +340,27 @@ test("host window client requests attention and z-order commands", async () => {
   const client = makeHostWindowClient(windowExchange(requests), {
     nextRequestId: nextId([
       "request-window-set-always-on-top",
+      "request-window-set-skip-taskbar",
       "request-window-set-progress",
       "request-window-request-attention",
       "request-window-cancel-attention"
     ]),
     nextTraceId: nextId([
       "trace-window-set-always-on-top",
+      "trace-window-set-skip-taskbar",
       "trace-window-set-progress",
       "trace-window-request-attention",
       "trace-window-cancel-attention"
     ]),
-    now: nextNumber([1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024])
+    now: nextNumber([
+      1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024, 1_710_000_000_025
+    ])
   })
 
   await Effect.runPromise(
     Effect.gen(function* () {
       yield* client.setAlwaysOnTop("window-1", true)
+      yield* client.setSkipTaskbar("window-1", true)
       yield* client.setProgress("window-1", {
         state: "normal",
         progress: 42,
@@ -367,6 +373,7 @@ test("host window client requests attention and z-order commands", async () => {
 
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [WINDOW_SET_ALWAYS_ON_TOP_METHOD, { windowId: "window-1", alwaysOnTop: true }],
+    [WINDOW_SET_SKIP_TASKBAR_METHOD, { windowId: "window-1", skipTaskbar: true }],
     [
       WINDOW_SET_PROGRESS_METHOD,
       { windowId: "window-1", state: "normal", progress: 42, desktopFilename: "app.desktop" }

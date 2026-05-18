@@ -62,6 +62,7 @@ pub const WINDOW_SET_RESIZABLE_METHOD: &str = "Window.setResizable";
 pub const WINDOW_SET_DECORATIONS_METHOD: &str = "Window.setDecorations";
 pub const WINDOW_SET_TRAFFIC_LIGHTS_METHOD: &str = "Window.setTrafficLights";
 pub const WINDOW_SET_ALWAYS_ON_TOP_METHOD: &str = "Window.setAlwaysOnTop";
+pub const WINDOW_SET_SKIP_TASKBAR_METHOD: &str = "Window.setSkipTaskbar";
 pub const WINDOW_SET_PROGRESS_METHOD: &str = "Window.setProgress";
 pub const WINDOW_REQUEST_ATTENTION_METHOD: &str = "Window.requestAttention";
 pub const WINDOW_CANCEL_ATTENTION_METHOD: &str = "Window.cancelAttention";
@@ -3438,6 +3439,30 @@ impl WindowSetAlwaysOnTopPayload {
 
     pub fn always_on_top(&self) -> bool {
         self.always_on_top
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetSkipTaskbarPayload {
+    window_id: String,
+    skip_taskbar: bool,
+}
+
+impl WindowSetSkipTaskbarPayload {
+    pub fn new(window_id: impl Into<String>, skip_taskbar: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            skip_taskbar,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn skip_taskbar(&self) -> bool {
+        self.skip_taskbar
     }
 }
 
@@ -11262,11 +11287,12 @@ mod tests {
         WindowRegistryEventPayload, WindowRegistryEventPhase, WindowRequestAttentionPayload,
         WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
         WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
-        WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowStateEventPayload,
-        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
-        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
-        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
-        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowSetSkipTaskbarPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
+        WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
+        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
+        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
         CLIPBOARD_UNSUPPORTED_REASON, CRASH_REPORTER_UNSUPPORTED_REASON,
@@ -12575,6 +12601,15 @@ mod tests {
             serde_json::to_string(&set_always_on_top)
                 .expect("window set always on top payload should encode"),
             r#"{"windowId":"window-1","alwaysOnTop":true}"#
+        );
+
+        let set_skip_taskbar = WindowSetSkipTaskbarPayload::new("window-1", true);
+        assert_eq!(set_skip_taskbar.window_id(), "window-1");
+        assert!(set_skip_taskbar.skip_taskbar());
+        assert_eq!(
+            serde_json::to_string(&set_skip_taskbar)
+                .expect("window set skip taskbar payload should encode"),
+            r#"{"windowId":"window-1","skipTaskbar":true}"#
         );
 
         let set_progress = WindowSetProgressPayload::new(

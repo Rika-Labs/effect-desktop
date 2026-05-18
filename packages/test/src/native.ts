@@ -414,6 +414,7 @@ const makeWindowScenario = (
     setTrafficLights: (_window, _trafficLights): Effect.Effect<void, WindowError, never> =>
       Effect.void,
     setAlwaysOnTop: (_window, _alwaysOnTop): Effect.Effect<void, WindowError, never> => Effect.void,
+    setSkipTaskbar: (_window, _skipTaskbar): Effect.Effect<void, WindowError, never> => Effect.void,
     setProgress: (_window, _input): Effect.Effect<void, WindowError, never> => Effect.void,
     requestAttention: (_window, _requestType): Effect.Effect<void, WindowError, never> =>
       Effect.void,

@@ -27,6 +27,7 @@ import {
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_SKIP_TASKBAR_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
   WINDOW_SHOW_METHOD,
@@ -200,6 +201,13 @@ export class WindowSetAlwaysOnTopPayload extends Schema.Class<WindowSetAlwaysOnT
   alwaysOnTop: Schema.Boolean
 }) {}
 
+export class WindowSetSkipTaskbarPayload extends Schema.Class<WindowSetSkipTaskbarPayload>(
+  "WindowSetSkipTaskbarPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  skipTaskbar: Schema.Boolean
+}) {}
+
 export class WindowSetProgressPayload extends Schema.Class<WindowSetProgressPayload>(
   "WindowSetProgressPayload"
 )({
@@ -302,6 +310,10 @@ export interface HostWindowClient {
   readonly setAlwaysOnTop: (
     windowId: string,
     alwaysOnTop: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setSkipTaskbar: (
+    windowId: string,
+    skipTaskbar: boolean
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly setProgress: (
     windowId: string,
@@ -453,6 +465,14 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
+    setSkipTaskbar: (windowId, skipTaskbar) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetSkipTaskbarPayload(windowId, skipTaskbar)
+        const request = yield* makeRequest(WINDOW_SET_SKIP_TASKBAR_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     setProgress: (windowId, input) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetProgressPayload(windowId, input)
@@ -573,6 +593,9 @@ const decodeUnknownWindowSetTrafficLightsPayload = Schema.decodeUnknownSync(
 const decodeUnknownWindowSetAlwaysOnTopPayload = Schema.decodeUnknownSync(
   WindowSetAlwaysOnTopPayload
 )
+const decodeUnknownWindowSetSkipTaskbarPayload = Schema.decodeUnknownSync(
+  WindowSetSkipTaskbarPayload
+)
 const decodeUnknownWindowSetProgressPayload = Schema.decodeUnknownSync(WindowSetProgressPayload)
 const decodeUnknownWindowRequestAttentionPayload = Schema.decodeUnknownSync(
   WindowRequestAttentionPayload
@@ -670,6 +693,16 @@ const encodeSetAlwaysOnTopPayload = (
     try: () =>
       decodeUnknownWindowSetAlwaysOnTopPayload({ windowId, alwaysOnTop }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_ALWAYS_ON_TOP_METHOD)
+  })
+
+const encodeSetSkipTaskbarPayload = (
+  windowId: string,
+  skipTaskbar: boolean
+): Effect.Effect<WindowSetSkipTaskbarPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetSkipTaskbarPayload({ windowId, skipTaskbar }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_SKIP_TASKBAR_METHOD)
   })
 
 const encodeSetProgressPayload = (

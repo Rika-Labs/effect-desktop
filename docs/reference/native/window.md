@@ -31,36 +31,37 @@ import {
 
 ## Methods
 
-| Method             | Payload                       | Success            | Description                                        |
-| ------------------ | ----------------------------- | ------------------ | -------------------------------------------------- |
-| `create`           | `WindowCreateOptions`         | `WindowHandle`     | Open a native window.                              |
-| `show`             | `WindowHandle`                | `void`             | Make an existing window show.                      |
-| `hide`             | `WindowHandle`                | `void`             | Hide an existing window.                           |
-| `focus`            | `WindowHandle`                | `void`             | Request focus for a window.                        |
-| `getCurrent`       | `void`                        | `WindowHandle`     | Read the focused window tracked by the runtime.    |
-| `getById`          | `WindowLookupInput`           | `WindowHandle`     | Read a tracked window by native window id.         |
-| `list`             | `void`                        | `WindowListResult` | List tracked open windows in creation order.       |
-| `getBounds`        | `WindowHandle`                | `WindowBounds`     | Read logical window bounds.                        |
-| `setBounds`        | `WindowBoundsInput`           | `void`             | Move and resize a window.                          |
-| `center`           | `WindowHandle`                | `void`             | Center in the current display.                     |
-| `centerOnDisplay`  | `WindowDisplayInput`          | `void`             | Center in a specific display's bounds.             |
-| `setTitle`         | `WindowTitleInput`            | `void`             | Set the window title.                              |
-| `setResizable`     | `WindowResizableInput`        | `void`             | Enable or disable user resizing.                   |
-| `setDecorations`   | `WindowDecorationsInput`      | `void`             | Enable or disable native window decorations.       |
-| `setTrafficLights` | `WindowTrafficLightsInput`    | `void`             | Move macOS traffic-light controls.                 |
-| `setAlwaysOnTop`   | `WindowAlwaysOnTopInput`      | `void`             | Enable or disable always-on-top z-order.           |
-| `setProgress`      | `WindowProgressInput`         | `void`             | Set host task progress state for the window.       |
-| `requestAttention` | `WindowRequestAttentionInput` | `void`             | Ask the OS to draw attention to a window.          |
-| `cancelAttention`  | `WindowHandle`                | `void`             | Cancel a pending attention request where possible. |
-| `minimize`         | `WindowHandle`                | `void`             | Minimize a window.                                 |
-| `maximize`         | `WindowHandle`                | `void`             | Maximize a window.                                 |
-| `restore`          | `WindowHandle`                | `void`             | Clear minimized, maximized, and fullscreen state.  |
-| `setFullscreen`    | `WindowFullscreenInput`       | `void`             | Enter or exit borderless fullscreen.               |
-| `getState`         | `WindowHandle`                | `WindowState`      | Read minimized, maximized, and fullscreen state.   |
-| `close`            | `WindowHandle`                | `void`             | Compatibility name for `destroy`.                  |
-| `destroy`          | `WindowHandle`                | `void`             | Destroy a native window and close its scope.       |
+| Method             | Payload                       | Success            | Description                                           |
+| ------------------ | ----------------------------- | ------------------ | ----------------------------------------------------- |
+| `create`           | `WindowCreateOptions`         | `WindowHandle`     | Open a native window.                                 |
+| `show`             | `WindowHandle`                | `void`             | Make an existing window show.                         |
+| `hide`             | `WindowHandle`                | `void`             | Hide an existing window.                              |
+| `focus`            | `WindowHandle`                | `void`             | Request focus for a window.                           |
+| `getCurrent`       | `void`                        | `WindowHandle`     | Read the focused window tracked by the runtime.       |
+| `getById`          | `WindowLookupInput`           | `WindowHandle`     | Read a tracked window by native window id.            |
+| `list`             | `void`                        | `WindowListResult` | List tracked open windows in creation order.          |
+| `getBounds`        | `WindowHandle`                | `WindowBounds`     | Read logical window bounds.                           |
+| `setBounds`        | `WindowBoundsInput`           | `void`             | Move and resize a window.                             |
+| `center`           | `WindowHandle`                | `void`             | Center in the current display.                        |
+| `centerOnDisplay`  | `WindowDisplayInput`          | `void`             | Center in a specific display's bounds.                |
+| `setTitle`         | `WindowTitleInput`            | `void`             | Set the window title.                                 |
+| `setResizable`     | `WindowResizableInput`        | `void`             | Enable or disable user resizing.                      |
+| `setDecorations`   | `WindowDecorationsInput`      | `void`             | Enable or disable native window decorations.          |
+| `setTrafficLights` | `WindowTrafficLightsInput`    | `void`             | Move macOS traffic-light controls.                    |
+| `setAlwaysOnTop`   | `WindowAlwaysOnTopInput`      | `void`             | Enable or disable always-on-top z-order.              |
+| `setSkipTaskbar`   | `WindowSkipTaskbarInput`      | `void`             | Hide or show a window in the taskbar where supported. |
+| `setProgress`      | `WindowProgressInput`         | `void`             | Set host task progress state for the window.          |
+| `requestAttention` | `WindowRequestAttentionInput` | `void`             | Ask the OS to draw attention to a window.             |
+| `cancelAttention`  | `WindowHandle`                | `void`             | Cancel a pending attention request where possible.    |
+| `minimize`         | `WindowHandle`                | `void`             | Minimize a window.                                    |
+| `maximize`         | `WindowHandle`                | `void`             | Maximize a window.                                    |
+| `restore`          | `WindowHandle`                | `void`             | Clear minimized, maximized, and fullscreen state.     |
+| `setFullscreen`    | `WindowFullscreenInput`       | `void`             | Enter or exit borderless fullscreen.                  |
+| `getState`         | `WindowHandle`                | `WindowState`      | Read minimized, maximized, and fullscreen state.      |
+| `close`            | `WindowHandle`                | `void`             | Compatibility name for `destroy`.                     |
+| `destroy`          | `WindowHandle`                | `void`             | Destroy a native window and close its scope.          |
 
-`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getBounds", "setBounds", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setAlwaysOnTop", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights` is macOS-only and returns typed `Unsupported` on other hosts. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
+`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getBounds", "setBounds", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setAlwaysOnTop", "setSkipTaskbar", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights` is macOS-only and returns typed `Unsupported` on other hosts. `setSkipTaskbar` is supported on Windows and Linux and returns typed `Unsupported` on macOS. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
 The placement surface is not complete. `getBounds`, `setBounds`, and `center`
 are host-routed logical-coordinate operations. `centerOnDisplay` uses the host's
@@ -88,10 +89,10 @@ subscribers can compare the event payload with a follow-up read. macOS simple
 fullscreen is not modeled separately from borderless fullscreen.
 
 The z-order and attention surface is not complete Electron-style window chrome.
-Effect Desktop does not yet expose window-scoped skip-taskbar, badge, flash, or
-attention lifecycle events, and the existing progress and attention controls
-must be treated as host-routed best-effort operations with platform-specific
-scope limits.
+Effect Desktop exposes `setSkipTaskbar` on Windows and Linux, but does not yet
+expose macOS skip-taskbar behavior, window-scoped badge, flash, or attention
+lifecycle events. Existing progress and attention controls must be treated as
+host-routed best-effort operations with platform-specific scope limits.
 
 Window lookup is backed by host-routed native methods. `getCurrent` returns the focused tracked window, `getById` returns a tracked open window by id, and `list` returns tracked open windows in host creation order. The runtime validates host lookup results against its live `ResourceRegistry` handles, so a destroyed window is removed from lookup before `Window.destroy` or compatibility `Window.close` completes.
 
@@ -110,7 +111,7 @@ This is not a complete modal ownership API. Effect Desktop does not yet expose a
 lookup, parent/child relationship query, or a host event stream dedicated to
 ownership changes.
 
-Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, mutable titlebar style, vibrancy, shadows, transparency, portable traffic-light placement beyond macOS, skip-taskbar, badge, flash, blur, simple fullscreen, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
+Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, mutable titlebar style, vibrancy, shadows, transparency, portable traffic-light placement beyond macOS, macOS skip-taskbar behavior, badge, flash, blur, simple fullscreen, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
 
 ## Errors
 

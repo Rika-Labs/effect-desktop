@@ -26,6 +26,14 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
     ]
   })
   expect(rpcSupport(request("Window.setAlwaysOnTop"))).toEqual({ status: "supported" })
+  expect(rpcSupport(request("Window.setSkipTaskbar"))).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "unsupported" },
+      { platform: "windows", status: "supported" },
+      { platform: "linux", status: "supported" }
+    ]
+  })
   expect(rpcSupport(request("Window.setProgress"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.requestAttention"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.cancelAttention"))).toEqual({ status: "supported" })

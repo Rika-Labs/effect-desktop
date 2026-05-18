@@ -30,6 +30,7 @@ import {
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_SKIP_TASKBAR_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
   WINDOW_SHOW_METHOD,
@@ -741,6 +742,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "setDecorations",
   "setTrafficLights",
   "setAlwaysOnTop",
+  "setSkipTaskbar",
   "setProgress",
   "requestAttention",
   "cancelAttention",
@@ -8121,6 +8123,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setDecorations",
     "Window.setTrafficLights",
     "Window.setAlwaysOnTop",
+    "Window.setSkipTaskbar",
     "Window.setProgress",
     "Window.requestAttention",
     "Window.cancelAttention",
@@ -8153,6 +8156,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.setDecorations"]
     void client["Window.setTrafficLights"]
     void client["Window.setAlwaysOnTop"]
+    void client["Window.setSkipTaskbar"]
     void client["Window.setProgress"]
     void client["Window.requestAttention"]
     void client["Window.cancelAttention"]
@@ -8183,6 +8187,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setDecorations",
     "Window.setTrafficLights",
     "Window.setAlwaysOnTop",
+    "Window.setSkipTaskbar",
     "Window.setProgress",
     "Window.requestAttention",
     "Window.cancelAttention",
@@ -8287,6 +8292,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     setTrafficLights: (_window, trafficLights) =>
       recordVoid(calls, `setTrafficLights:${trafficLights.x},${trafficLights.y}`),
     setAlwaysOnTop: (_window, alwaysOnTop) => recordVoid(calls, `setAlwaysOnTop:${alwaysOnTop}`),
+    setSkipTaskbar: (_window, skipTaskbar) => recordVoid(calls, `setSkipTaskbar:${skipTaskbar}`),
     setProgress: (_window, input) => recordVoid(calls, `setProgress:${input.progress ?? ""}`),
     requestAttention: (_window, requestType) =>
       recordVoid(calls, `requestAttention:${requestType}`),
@@ -8334,6 +8340,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.setDecorations(created, true)
       yield* window.setTrafficLights(created, { x: 12, y: 13 })
       yield* window.setAlwaysOnTop(created, true)
+      yield* window.setSkipTaskbar(created, true)
       yield* window.setProgress(created, { state: "normal", progress: 42 })
       yield* window.requestAttention(created, "critical")
       yield* window.cancelAttention(created)
@@ -8381,6 +8388,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "setDecorations:true",
     "setTrafficLights:12,13",
     "setAlwaysOnTop:true",
+    "setSkipTaskbar:true",
     "setProgress:42",
     "requestAttention:critical",
     "cancelAttention",
@@ -8434,6 +8442,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-decorations-request",
       "set-traffic-lights-request",
       "set-always-on-top-request",
+      "set-skip-taskbar-request",
       "set-progress-request",
       "request-attention-request",
       "cancel-attention-request",
@@ -8458,6 +8467,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-decorations-trace",
       "set-traffic-lights-trace",
       "set-always-on-top-trace",
+      "set-skip-taskbar-trace",
       "set-progress-trace",
       "request-attention-trace",
       "cancel-attention-trace",
@@ -8473,7 +8483,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       1_710_000_000_005, 1_710_000_000_006, 1_710_000_000_007, 1_710_000_000_008, 1_710_000_000_009,
       1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
       1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019,
-      1_710_000_000_020, 1_710_000_000_021
+      1_710_000_000_020, 1_710_000_000_021, 1_710_000_000_022
     ])
   })
   const program = Effect.gen(function* () {
@@ -8502,6 +8512,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     yield* window.setDecorations(created, true)
     yield* window.setTrafficLights(created, { x: 12, y: 13 })
     yield* window.setAlwaysOnTop(created, true)
+    yield* window.setSkipTaskbar(created, true)
     yield* window.setProgress(created, {
       state: "normal",
       progress: 42,
@@ -8634,6 +8645,13 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       {
         windowId: "host-window-1",
         alwaysOnTop: true
+      }
+    ],
+    [
+      WINDOW_SET_SKIP_TASKBAR_METHOD,
+      {
+        windowId: "host-window-1",
+        skipTaskbar: true
       }
     ],
     [
@@ -11628,6 +11646,7 @@ const noopWindowClient: WindowClientApi = {
   setDecorations: () => Effect.void,
   setTrafficLights: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
+  setSkipTaskbar: () => Effect.void,
   setProgress: () => Effect.void,
   requestAttention: () => Effect.void,
   cancelAttention: () => Effect.void,
