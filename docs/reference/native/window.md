@@ -66,6 +66,12 @@ is mutable through the host. Effect Desktop does not yet expose a
 transparency controls, mutable traffic-light placement, or a platform support
 matrix for those chrome features.
 
+The state surface has command and read support, but not a dedicated state-change
+event stream. `minimize`, `maximize`, `restore`, `setFullscreen`, and `getState`
+are host-routed; Effect Desktop does not yet expose events that prove state
+transitions agree with reads, and macOS simple fullscreen is not modeled
+separately from borderless fullscreen.
+
 The z-order and attention surface is not complete Electron-style window chrome.
 Effect Desktop does not yet expose window-scoped skip-taskbar, badge, flash, or
 attention lifecycle events, and the existing progress and attention controls
