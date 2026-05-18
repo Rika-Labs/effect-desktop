@@ -149,6 +149,25 @@ export {
   type NativeSurfaceSelection
 } from "./native.js"
 export {
+  makeHostNativeFileSystemRpcRuntime,
+  makeNativeFileSystemBridgeClientLayer,
+  makeNativeFileSystemClientLayer,
+  makeNativeFileSystemServiceLayer,
+  NativeFileSystem,
+  NativeFileSystemClient,
+  NativeFileSystemHandlersLive,
+  NativeFileSystemLive,
+  NativeFileSystemMethodNames,
+  NativeFileSystemRpcEvents,
+  NativeFileSystemRpcs,
+  NativeFileSystemSurface,
+  type NativeFileSystemClientApi,
+  type NativeFileSystemError,
+  type NativeFileSystemRpc,
+  type NativeFileSystemRpcHandlers,
+  type NativeFileSystemServiceApi
+} from "./native-file-system.js"
+export {
   classifyNativeBoundaryError,
   decodeNativeBoundaryError,
   encodeNativeBoundaryError,

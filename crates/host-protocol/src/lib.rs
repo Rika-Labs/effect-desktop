@@ -38,6 +38,12 @@ pub const RECENT_DOCUMENTS_ADD_METHOD: &str = "RecentDocuments.add";
 pub const RECENT_DOCUMENTS_CLEAR_METHOD: &str = "RecentDocuments.clear";
 pub const RECENT_DOCUMENTS_LIST_METHOD: &str = "RecentDocuments.list";
 pub const RECENT_DOCUMENTS_EVENT: &str = "RecentDocuments.Event";
+pub const NATIVE_FILE_SYSTEM_OPEN_METHOD: &str = "NativeFileSystem.open";
+pub const NATIVE_FILE_SYSTEM_STAT_METHOD: &str = "NativeFileSystem.stat";
+pub const NATIVE_FILE_SYSTEM_WATCH_METHOD: &str = "NativeFileSystem.watch";
+pub const NATIVE_FILE_SYSTEM_STOP_WATCHING_METHOD: &str = "NativeFileSystem.stopWatching";
+pub const NATIVE_FILE_SYSTEM_IS_SUPPORTED_METHOD: &str = "NativeFileSystem.isSupported";
+pub const NATIVE_FILE_SYSTEM_EVENT: &str = "NativeFileSystem.Event";
 pub const AUTOSTART_IS_ENABLED_METHOD: &str = "Autostart.isEnabled";
 pub const AUTOSTART_ENABLE_METHOD: &str = "Autostart.enable";
 pub const AUTOSTART_DISABLE_METHOD: &str = "Autostart.disable";
@@ -299,6 +305,7 @@ pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-u
 pub const APP_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const ASSOCIATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RECENT_DOCUMENTS_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const AUTOSTART_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const CLIPBOARD_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRAY_UNSUPPORTED_REASON: &str = "host-tray-unavailable";
@@ -778,6 +785,295 @@ impl RecentDocumentsEventPayload {
             phase,
             path,
             reason,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NativeFileSystemEntryKindPayload {
+    File,
+    Directory,
+    Symlink,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NativeFileSystemOpenModePayload {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NativeFileSystemEventPhasePayload {
+    WatchStarted,
+    Changed,
+    Removed,
+    Failed,
+    WatchStopped,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl NativeFileSystemResourcePayload {
+    pub fn handle(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "native-file-system-handle".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+
+    pub fn watch(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "native-file-system-watch".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemOpenPayload {
+    path: CanonicalPathPayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<NativeFileSystemOpenModePayload>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    handle_id: Option<String>,
+}
+
+impl NativeFileSystemOpenPayload {
+    pub fn new(
+        path: CanonicalPathPayload,
+        mode: Option<NativeFileSystemOpenModePayload>,
+        handle_id: Option<String>,
+    ) -> Self {
+        Self {
+            path,
+            mode,
+            handle_id,
+        }
+    }
+
+    pub fn path(&self) -> &CanonicalPathPayload {
+        &self.path
+    }
+
+    pub fn handle_id(&self) -> Option<&str> {
+        self.handle_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemStatPayload {
+    path: CanonicalPathPayload,
+}
+
+impl NativeFileSystemStatPayload {
+    pub fn new(path: CanonicalPathPayload) -> Self {
+        Self { path }
+    }
+
+    pub fn path(&self) -> &CanonicalPathPayload {
+        &self.path
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemWatchPayload {
+    path: CanonicalPathPayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recursive: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    watch_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+}
+
+impl NativeFileSystemWatchPayload {
+    pub fn new(
+        path: CanonicalPathPayload,
+        recursive: Option<bool>,
+        watch_id: Option<String>,
+        owner_scope: Option<String>,
+    ) -> Self {
+        Self {
+            path,
+            recursive,
+            watch_id,
+            owner_scope,
+        }
+    }
+
+    pub fn path(&self) -> &CanonicalPathPayload {
+        &self.path
+    }
+
+    pub fn watch_id(&self) -> Option<&str> {
+        self.watch_id.as_deref()
+    }
+
+    pub fn owner_scope(&self) -> Option<&str> {
+        self.owner_scope.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemStopWatchingPayload {
+    watch_id: String,
+}
+
+impl NativeFileSystemStopWatchingPayload {
+    pub fn new(watch_id: impl Into<String>) -> Self {
+        Self {
+            watch_id: watch_id.into(),
+        }
+    }
+
+    pub fn watch_id(&self) -> &str {
+        &self.watch_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemMetadataPayload {
+    path: CanonicalPathPayload,
+    kind: NativeFileSystemEntryKindPayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    modified_millis: Option<u64>,
+}
+
+impl NativeFileSystemMetadataPayload {
+    pub fn new(path: CanonicalPathPayload, kind: NativeFileSystemEntryKindPayload) -> Self {
+        Self {
+            path,
+            kind,
+            size_bytes: None,
+            modified_millis: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemOpenResultPayload {
+    handle: NativeFileSystemResourcePayload,
+    metadata: NativeFileSystemMetadataPayload,
+}
+
+impl NativeFileSystemOpenResultPayload {
+    pub fn new(
+        handle: NativeFileSystemResourcePayload,
+        metadata: NativeFileSystemMetadataPayload,
+    ) -> Self {
+        Self { handle, metadata }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemWatchResultPayload {
+    watch: NativeFileSystemResourcePayload,
+    path: CanonicalPathPayload,
+    recursive: bool,
+}
+
+impl NativeFileSystemWatchResultPayload {
+    pub fn new(
+        watch: NativeFileSystemResourcePayload,
+        path: CanonicalPathPayload,
+        recursive: bool,
+    ) -> Self {
+        Self {
+            watch,
+            path,
+            recursive,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemStopWatchingResultPayload {
+    watch_id: String,
+    stopped: bool,
+}
+
+impl NativeFileSystemStopWatchingResultPayload {
+    pub fn new(watch_id: impl Into<String>, stopped: bool) -> Self {
+        Self {
+            watch_id: watch_id.into(),
+            stopped,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemSupportedPayload {
+    supported: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl NativeFileSystemSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeFileSystemEventPayload {
+    r#type: String,
+    timestamp: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    watch_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    path: Option<CanonicalPathPayload>,
+    phase: NativeFileSystemEventPhasePayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl NativeFileSystemEventPayload {
+    pub fn new(timestamp: u64, phase: NativeFileSystemEventPhasePayload) -> Self {
+        Self {
+            r#type: "native-file-system-event".to_string(),
+            timestamp,
+            watch_id: None,
+            path: None,
+            phase,
+            reason: None,
         }
     }
 }
@@ -10703,6 +10999,13 @@ mod tests {
         LocalToolRuntimeRunPayload, LocalToolRuntimeRunResultPayload, LocalToolRuntimeRunStatus,
         LocalToolRuntimeStdioMode, LocalToolRuntimeStdioPolicyPayload,
         LocalToolRuntimeStopResultPayload, LocalToolRuntimeSupportedPayload,
+        NativeFileSystemEntryKindPayload, NativeFileSystemEventPayload,
+        NativeFileSystemEventPhasePayload, NativeFileSystemMetadataPayload,
+        NativeFileSystemOpenModePayload, NativeFileSystemOpenPayload,
+        NativeFileSystemOpenResultPayload, NativeFileSystemResourcePayload,
+        NativeFileSystemStatPayload, NativeFileSystemStopWatchingPayload,
+        NativeFileSystemStopWatchingResultPayload, NativeFileSystemSupportedPayload,
+        NativeFileSystemWatchPayload, NativeFileSystemWatchResultPayload,
         NotificationActionEventPayload, NotificationActionPayload, NotificationClickEventPayload,
         NotificationPermissionPayload, NotificationPermissionStatePayload,
         NotificationResourcePayload, NotificationShowPayload, NotificationSupportedPayload,
@@ -10763,7 +11066,8 @@ mod tests {
         DISTRIBUTION_PARITY_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
         EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
         EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, JOB_UNSUPPORTED_REASON,
-        LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
+        LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON,
+        NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
         TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
         TRAY_UNSUPPORTED_REASON, UPDATER_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
@@ -11082,6 +11386,108 @@ mod tests {
         )
         .expect_err("unknown recent document event phase should be rejected");
         assert!(error.to_string().contains("unknown variant `changed`"));
+    }
+
+    #[test]
+    fn native_file_system_payloads_encode_current_contract() {
+        assert_eq!(
+            serde_json::to_string(&NativeFileSystemOpenPayload::new(
+                CanonicalPathPayload::new("/tmp/report.txt"),
+                Some(NativeFileSystemOpenModePayload::Read),
+                Some("handle-1".to_string()),
+            ))
+            .expect("native filesystem open should encode"),
+            r#"{"path":{"path":"/tmp/report.txt"},"mode":"read","handleId":"handle-1"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeFileSystemStatPayload::new(
+                CanonicalPathPayload::new("/tmp/report.txt")
+            ))
+            .expect("native filesystem stat should encode"),
+            r#"{"path":{"path":"/tmp/report.txt"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeFileSystemWatchPayload::new(
+                CanonicalPathPayload::new("/tmp"),
+                Some(true),
+                Some("watch-1".to_string()),
+                Some("workspace:workspace-1".to_string()),
+            ))
+            .expect("native filesystem watch should encode"),
+            r#"{"path":{"path":"/tmp"},"recursive":true,"watchId":"watch-1","ownerScope":"workspace:workspace-1"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeFileSystemStopWatchingPayload::new("watch-1"))
+                .expect("native filesystem stop watch should encode"),
+            r#"{"watchId":"watch-1"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeFileSystemOpenResultPayload::new(
+                NativeFileSystemResourcePayload::handle(
+                    "handle-1",
+                    0,
+                    "native-file-system:handle-1",
+                ),
+                NativeFileSystemMetadataPayload::new(
+                    CanonicalPathPayload::new("/tmp/report.txt"),
+                    NativeFileSystemEntryKindPayload::File,
+                ),
+            ))
+            .expect("native filesystem open result should encode"),
+            r#"{"handle":{"kind":"native-file-system-handle","id":"handle-1","generation":0,"ownerScope":"native-file-system:handle-1","state":"open"},"metadata":{"path":{"path":"/tmp/report.txt"},"kind":"file"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeFileSystemWatchResultPayload::new(
+                NativeFileSystemResourcePayload::watch("watch-1", 0, "workspace:workspace-1"),
+                CanonicalPathPayload::new("/tmp"),
+                true,
+            ))
+            .expect("native filesystem watch result should encode"),
+            r#"{"watch":{"kind":"native-file-system-watch","id":"watch-1","generation":0,"ownerScope":"workspace:workspace-1","state":"open"},"path":{"path":"/tmp"},"recursive":true}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeFileSystemStopWatchingResultPayload::new(
+                "watch-1", true,
+            ))
+            .expect("native filesystem stop result should encode"),
+            r#"{"watchId":"watch-1","stopped":true}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeFileSystemSupportedPayload::unsupported(
+                NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON,
+            ))
+            .expect("native filesystem support should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeFileSystemEventPayload::new(
+                1710000000000,
+                NativeFileSystemEventPhasePayload::Failed,
+            ))
+            .expect("native filesystem event should encode"),
+            r#"{"type":"native-file-system-event","timestamp":1710000000000,"phase":"failed"}"#
+        );
+    }
+
+    #[test]
+    fn native_file_system_payloads_reject_excess_fields() {
+        let error = serde_json::from_str::<NativeFileSystemOpenPayload>(
+            r#"{"path":{"path":"/tmp/report.txt"},"x":true}"#,
+        )
+        .expect_err("excess native filesystem field should be rejected");
+        assert!(error.to_string().contains("unknown field `x`"));
+
+        let error = serde_json::from_str::<NativeFileSystemWatchPayload>(
+            r#"{"path":{"path":"/tmp"},"recursive":true,"unknown":true}"#,
+        )
+        .expect_err("excess native filesystem watch field should be rejected");
+        assert!(error.to_string().contains("unknown field `unknown`"));
+
+        let error = serde_json::from_str::<NativeFileSystemEventPayload>(
+            r#"{"type":"native-file-system-event","timestamp":1710000000000,"phase":"started"}"#,
+        )
+        .expect_err("unknown native filesystem event phase should be rejected");
+        assert!(error.to_string().contains("unknown variant `started`"));
     }
 
     #[test]

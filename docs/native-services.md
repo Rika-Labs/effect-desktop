@@ -92,6 +92,7 @@ Native service authors should use the internal native surface authoring path, no
 | `WorkspaceIndex`            | Workspace index sessions          | [native/workspace-index](reference/native/workspace-index.md)                         |
 | `GlobalShortcut`            | OS keyboard shortcuts             | [native/global-shortcut](reference/native/global-shortcut.md)                         |
 | `Menu`                      | App and window menus              | [native/menu](reference/native/menu.md)                                               |
+| `NativeFileSystem`          | Filesystem handles and watches    | [native/native-file-system](reference/native/native-file-system.md)                   |
 | `Notification`              | System notifications              | [native/notification](reference/native/notification.md)                               |
 | `Path`                      | Platform path lookup              | [native/path](reference/native/path.md)                                               |
 | `Protocol`                  | App protocol routing              | [native/protocol](reference/native/protocol.md)                                       |

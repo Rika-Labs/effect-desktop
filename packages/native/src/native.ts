@@ -24,6 +24,7 @@ import { ExtensionPackageSurface } from "./extension-package.js"
 import { FocusedApplicationContextSurface } from "./focused-application-context.js"
 import { JobSurface } from "./job.js"
 import { LocalToolRuntimeSurface } from "./local-tool-runtime.js"
+import { NativeFileSystemSurface } from "./native-file-system.js"
 import { TransientWindowRoleSurface } from "./transient-window-role.js"
 import { TransactionalFileMutationSurface } from "./transactional-file-mutation.js"
 import { WorkspaceIndexSurface } from "./workspace-index.js"
@@ -70,6 +71,7 @@ const BuiltInSurfaces = Object.freeze([
   FocusedApplicationContextSurface,
   JobSurface,
   LocalToolRuntimeSurface,
+  NativeFileSystemSurface,
   TransientWindowRoleSurface,
   TransactionalFileMutationSurface,
   WorkspaceIndexSurface,
@@ -122,6 +124,7 @@ const ExtensionPackage = ExtensionPackageSurface.selection
 const FocusedApplicationContext = FocusedApplicationContextSurface.selection
 const Job = JobSurface.selection
 const LocalToolRuntime = LocalToolRuntimeSurface.selection
+const NativeFileSystem = NativeFileSystemSurface.selection
 const TransientWindowRole = TransientWindowRoleSurface.selection
 const TransactionalFileMutation = TransactionalFileMutationSurface.selection
 const WorkspaceIndex = WorkspaceIndexSurface.selection
@@ -174,6 +177,7 @@ export const Permissions = Object.freeze({
   focusedApplicationContext: FocusedApplicationContextSurface.permissions,
   job: JobSurface.permissions,
   localToolRuntime: LocalToolRuntimeSurface.permissions,
+  nativeFileSystem: NativeFileSystemSurface.permissions,
   transientWindowRole: TransientWindowRoleSurface.permissions,
   transactionalFileMutation: TransactionalFileMutationSurface.permissions,
   workspaceIndex: WorkspaceIndexSurface.permissions,
@@ -221,6 +225,7 @@ export const Native = Object.freeze({
   FocusedApplicationContext,
   Job,
   LocalToolRuntime,
+  NativeFileSystem,
   TransientWindowRole,
   TransactionalFileMutation,
   WorkspaceIndex,

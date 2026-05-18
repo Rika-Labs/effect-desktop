@@ -20,6 +20,7 @@ pub(crate) mod handshake;
 mod job;
 mod local_tool_runtime;
 mod menu;
+mod native_file_system;
 mod notification;
 mod path;
 mod power_monitor;
@@ -947,6 +948,26 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::WORKSPACE_INDEX_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(workspace_index::is_supported),
+    ),
+    route(
+        host_protocol::NATIVE_FILE_SYSTEM_OPEN_METHOD,
+        HostMethodDispatcher::Payload(native_file_system::open),
+    ),
+    route(
+        host_protocol::NATIVE_FILE_SYSTEM_STAT_METHOD,
+        HostMethodDispatcher::Payload(native_file_system::stat),
+    ),
+    route(
+        host_protocol::NATIVE_FILE_SYSTEM_WATCH_METHOD,
+        HostMethodDispatcher::Payload(native_file_system::watch),
+    ),
+    route(
+        host_protocol::NATIVE_FILE_SYSTEM_STOP_WATCHING_METHOD,
+        HostMethodDispatcher::Payload(native_file_system::stop_watching),
+    ),
+    route(
+        host_protocol::NATIVE_FILE_SYSTEM_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(native_file_system::is_supported),
     ),
     route(
         host_protocol::SCOPED_ACCESS_GRANT_GRANT_METHOD,
@@ -5747,6 +5768,96 @@ mod tests {
                 timestamp: 1710000000135,
                 trace_id: "trace-request-workspace-index-supported".to_string(),
                 payload: Some(serde_json::json!({ "supported": true })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn native_file_system_methods_route_to_fail_closed_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-native-file-system-open",
+                    host_protocol::NATIVE_FILE_SYSTEM_OPEN_METHOD,
+                    serde_json::json!({
+                        "path": { "path": "/tmp/report.txt" },
+                        "mode": "read"
+                    }),
+                ),
+                1710000000136,
+            )
+            .expect("native filesystem request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-native-file-system-open".to_string(),
+                timestamp: 1710000000136,
+                trace_id: "trace-request-native-file-system-open".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON,
+                    host_protocol::NATIVE_FILE_SYSTEM_OPEN_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn native_file_system_invalid_payload_returns_invalid_argument_before_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-native-file-system-invalid",
+                    host_protocol::NATIVE_FILE_SYSTEM_WATCH_METHOD,
+                    serde_json::json!({
+                        "path": { "path": "workspace/app" },
+                        "watchId": "watch-1"
+                    }),
+                ),
+                1710000000137,
+            )
+            .expect("native filesystem request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-native-file-system-invalid".to_string(),
+                timestamp: 1710000000137,
+                trace_id: "trace-request-native-file-system-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "path",
+                    "must be an absolute path",
+                    host_protocol::NATIVE_FILE_SYSTEM_WATCH_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn native_file_system_is_supported_reports_unsupported_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-native-file-system-supported",
+                    host_protocol::NATIVE_FILE_SYSTEM_IS_SUPPORTED_METHOD,
+                ),
+                1710000000138,
+            )
+            .expect("native filesystem support request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-native-file-system-supported".to_string(),
+                timestamp: 1710000000138,
+                trace_id: "trace-request-native-file-system-supported".to_string(),
+                payload: Some(serde_json::json!({
+                    "supported": false,
+                    "reason": host_protocol::NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON
+                })),
                 error: None,
             }
         );

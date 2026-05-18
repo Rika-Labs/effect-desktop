@@ -161,6 +161,12 @@ import {
   MenuLive,
   MenuMethodNames,
   MenuSurface,
+  NativeFileSystem,
+  NativeFileSystemLive,
+  NativeFileSystemMethodNames,
+  NativeFileSystemRpcEvents,
+  NativeFileSystemRpcs,
+  NativeFileSystemSurface,
   Notification,
   NotificationHandlersLive,
   NotificationRpcs,
@@ -270,6 +276,7 @@ import {
   makeSystemAppearanceServiceLayer,
   makeUpdaterServiceLayer,
   makeMenuServiceLayer,
+  makeNativeFileSystemServiceLayer,
   makeNotificationServiceLayer,
   makePathServiceLayer,
   makeProtocolServiceLayer,
@@ -291,6 +298,7 @@ import {
   type DockClientApi,
   type GlobalShortcutClientApi,
   type MenuClientApi,
+  type NativeFileSystemClientApi,
   type NotificationClientApi,
   type PathClientApi,
   type ProtocolClientApi,
@@ -315,6 +323,10 @@ import { makeDialogBridgeClientLayer, makeHostDialogRpcRuntime } from "./dialog.
 import { makeDockBridgeClientLayer } from "./dock.js"
 import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
 import { makeMenuBridgeClientLayer } from "./menu.js"
+import {
+  makeHostNativeFileSystemRpcRuntime,
+  makeNativeFileSystemBridgeClientLayer
+} from "./native-file-system.js"
 import {
   makeHostNotificationRpcRuntime,
   makeNotificationBridgeClientLayer
@@ -366,6 +378,12 @@ import {
   GlobalShortcutSupportedResult,
   MenuActivatedEvent,
   MenuTemplate,
+  NativeFileSystemEvent,
+  NativeFileSystemMetadata,
+  NativeFileSystemOpenResult,
+  NativeFileSystemStopWatchingResult,
+  NativeFileSystemSupportedResult,
+  NativeFileSystemWatchResult,
   NotificationActionEvent,
   NotificationClickEvent,
   NotificationPermissionResult,
@@ -475,6 +493,7 @@ test("native services expose canonical static layers", () => {
   expect(ExecutionSandboxLive).toBe(ExecutionSandbox.layer)
   expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
   expect(MenuLive).toBe(Menu.layer)
+  expect(NativeFileSystemLive).toBe(NativeFileSystem.layer)
   expect(NotificationLive).toBe(Notification.layer)
   expect(PathLive).toBe(Path.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
@@ -527,6 +546,8 @@ test("native capability selections come from their surfaces", () => {
   expect(Native.Clipboard).toBe(ClipboardSurface.selection)
   expect(Native.Dialog).toBe(DialogSurface.selection)
   expect(Native.ExecutionSandbox).toBe(ExecutionSandboxSurface.selection)
+  expect(Native.NativeFileSystem).toBe(NativeFileSystemSurface.selection)
+  expect("isSupported" in Native.Permissions.nativeFileSystem).toBe(false)
   expect(Native.Permissions.clipboard.readText).toEqual(ClipboardSurface.permissions.readText)
   expect("isSupported" in Native.Clipboard).toBe(false)
   expect("getInfo" in Native.App).toBe(false)
@@ -838,6 +859,14 @@ const expectedRecentDocumentsMethods: Array<(typeof RecentDocumentsMethodNames)[
   "add",
   "clear",
   "list"
+]
+
+const expectedNativeFileSystemMethods: Array<(typeof NativeFileSystemMethodNames)[number]> = [
+  "open",
+  "stat",
+  "watch",
+  "stopWatching",
+  "isSupported"
 ]
 
 const expectedSafeStorageMethods: Array<(typeof SafeStorageMethodNames)[number]> = [
@@ -5058,6 +5087,332 @@ test("RecentDocuments service propagates unsupported platform and host failure",
         recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
       )
     }).pipe(Effect.provide(makeRecentDocumentsServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+})
+
+test("NativeFileSystemRpcs declares the native filesystem method and event surface", () => {
+  expect([...NativeFileSystemMethodNames]).toEqual(expectedNativeFileSystemMethods)
+  expect(Array.from(NativeFileSystemRpcs.requests.keys())).toEqual([
+    "NativeFileSystem.open",
+    "NativeFileSystem.stat",
+    "NativeFileSystem.watch",
+    "NativeFileSystem.stopWatching",
+    "NativeFileSystem.isSupported"
+  ])
+  expect(rpcMethodNames("NativeFileSystem", NativeFileSystemRpcs)).toEqual(
+    expectedNativeFileSystemMethods
+  )
+  expect(Object.keys(NativeFileSystemRpcEvents)).toEqual(["Event"])
+})
+
+test("NativeFileSystem service delegates through a substitutable NativeFileSystemClient port", async () => {
+  const calls: string[] = []
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* NativeFileSystem
+      const opened = yield* filesystem.open({
+        path: new CanonicalPath({ path: "/tmp/report.txt" }),
+        mode: "read"
+      })
+      const metadata = yield* filesystem.stat({
+        path: new CanonicalPath({ path: "/tmp/report.txt" })
+      })
+      const watch = yield* filesystem.watch({
+        path: new CanonicalPath({ path: "/tmp" }),
+        recursive: true,
+        watchId: "watch-1",
+        ownerScope: "workspace:workspace-1"
+      })
+      const stopped = yield* filesystem.stopWatching({ watchId: "watch-1" })
+      const support = yield* filesystem.isSupported()
+      const events = yield* filesystem.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { events, metadata, opened, stopped, support, watch }
+    }).pipe(Effect.provide(makeNativeFileSystemServiceLayer(nativeFileSystemClient(calls))))
+  )
+
+  expect(result.opened).toEqual(nativeFileSystemOpenResult("handle-1"))
+  expect(result.metadata).toEqual(nativeFileSystemMetadata("/tmp/report.txt"))
+  expect(result.watch).toEqual(nativeFileSystemWatchResult("watch-1"))
+  expect(result.stopped).toEqual(
+    new NativeFileSystemStopWatchingResult({ watchId: "watch-1", stopped: true })
+  )
+  expect(result.support).toEqual(
+    new NativeFileSystemSupportedResult({
+      supported: false,
+      reason: "host-adapter-unimplemented"
+    })
+  )
+  expect(Array.from(result.events)).toEqual([
+    new NativeFileSystemEvent({
+      type: "native-file-system-event",
+      timestamp: 1710000000100,
+      watchId: "watch-1",
+      path: new CanonicalPath({ path: "/tmp/report.txt" }),
+      phase: "changed"
+    })
+  ])
+  expect(calls).toEqual([
+    "open:/tmp/report.txt:read",
+    "stat:/tmp/report.txt",
+    "watch:/tmp:true",
+    "stopWatching:watch-1",
+    "isSupported",
+    "events"
+  ])
+})
+
+test("NativeFileSystem bridge client sends typed host envelopes and decodes events and results", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = nativeFileSystemExchange(requests, (request) => {
+    if (request.method === "NativeFileSystem.open") {
+      return {
+        kind: "success",
+        payload: {
+          handle: nativeFileSystemHandlePayload("handle-1"),
+          metadata: { path: { path: "/tmp/report.txt" }, kind: "file" }
+        }
+      }
+    }
+    if (request.method === "NativeFileSystem.stat") {
+      return { kind: "success", payload: { path: { path: "/tmp/report.txt" }, kind: "file" } }
+    }
+    if (request.method === "NativeFileSystem.watch") {
+      return {
+        kind: "success",
+        payload: {
+          watch: nativeFileSystemWatchPayload("watch-1"),
+          path: { path: "/tmp" },
+          recursive: true
+        }
+      }
+    }
+    if (request.method === "NativeFileSystem.stopWatching") {
+      return { kind: "success", payload: { watchId: "watch-1", stopped: true } }
+    }
+    return {
+      kind: "success",
+      payload: { supported: false, reason: "host-adapter-unimplemented" }
+    }
+  })
+
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* NativeFileSystem
+      const opened = yield* filesystem.open({
+        path: new CanonicalPath({ path: "/tmp/report.txt" }),
+        mode: "read"
+      })
+      const metadata = yield* filesystem.stat({
+        path: new CanonicalPath({ path: "/tmp/report.txt" })
+      })
+      const watch = yield* filesystem.watch({
+        path: new CanonicalPath({ path: "/tmp" }),
+        recursive: true,
+        watchId: "watch-1"
+      })
+      const stopped = yield* filesystem.stopWatching({ watchId: "watch-1" })
+      const support = yield* filesystem.isSupported()
+      const events = yield* filesystem.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { events, metadata, opened, stopped, support, watch }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(NativeFileSystemLive, makeNativeFileSystemBridgeClientLayer(exchange))
+      )
+    )
+  )
+
+  expect(result.opened).toEqual(nativeFileSystemOpenResult("handle-1"))
+  expect(result.metadata).toEqual(nativeFileSystemMetadata("/tmp/report.txt"))
+  expect(result.watch).toEqual(nativeFileSystemWatchResult("watch-1"))
+  expect(result.stopped).toEqual(
+    new NativeFileSystemStopWatchingResult({ watchId: "watch-1", stopped: true })
+  )
+  expect(result.support).toEqual(
+    new NativeFileSystemSupportedResult({
+      supported: false,
+      reason: "host-adapter-unimplemented"
+    })
+  )
+  expect(Array.from(result.events)).toEqual([
+    new NativeFileSystemEvent({
+      type: "native-file-system-event",
+      timestamp: 1710000000100,
+      watchId: "watch-1",
+      path: new CanonicalPath({ path: "/tmp/report.txt" }),
+      phase: "changed"
+    })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["NativeFileSystem.open", { path: { path: "/tmp/report.txt" }, mode: "read" }],
+    ["NativeFileSystem.stat", { path: { path: "/tmp/report.txt" } }],
+    ["NativeFileSystem.watch", { path: { path: "/tmp" }, recursive: true, watchId: "watch-1" }],
+    ["NativeFileSystem.stopWatching", { watchId: "watch-1" }],
+    ["NativeFileSystem.isSupported", null]
+  ])
+})
+
+test("NativeFileSystem bridge client rejects invalid inputs before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* NativeFileSystem
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          NativeFileSystemLive,
+          makeNativeFileSystemBridgeClientLayer(
+            nativeFileSystemExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exits = await Effect.runPromise(
+    Effect.all([
+      Effect.exit(client.open({ path: { path: "" } })),
+      Effect.exit(client.stat({ path: { path: "relative.txt" } })),
+      Effect.exit(client.watch({ path: { path: "/tmp/bad\u0000path" } })),
+      Effect.exit(client.stopWatching({ watchId: "" }))
+    ])
+  )
+
+  for (const exit of exits) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  expect(requests).toEqual([])
+})
+
+test("native host RPC runtime denies protected NativeFileSystem calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostNativeFileSystemRpcRuntime(
+    {
+      "NativeFileSystem.open": (input) =>
+        Effect.sync(() => {
+          calls.push(`open:${input.path.path}`)
+          return nativeFileSystemOpenResult("handle-1")
+        }),
+      "NativeFileSystem.stat": () => Effect.succeed(nativeFileSystemMetadata("/tmp/report.txt")),
+      "NativeFileSystem.watch": () => Effect.succeed(nativeFileSystemWatchResult("watch-1")),
+      "NativeFileSystem.stopWatching": () =>
+        Effect.succeed(
+          new NativeFileSystemStopWatchingResult({ watchId: "watch-1", stopped: true })
+        ),
+      "NativeFileSystem.isSupported": () =>
+        Effect.succeed(
+          new NativeFileSystemSupportedResult({
+            supported: false,
+            reason: "host-adapter-unimplemented"
+          })
+        )
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "native-file-system-denied",
+          method: "NativeFileSystem.open",
+          timestamp: 1710000000000,
+          traceId: "trace-native-file-system-denied",
+          payload: { path: { path: "/tmp/report.txt" }, mode: "read" }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("native host RPC runtime lets permission-free NativeFileSystem support calls pass through", async () => {
+  const runtime = makeHostNativeFileSystemRpcRuntime(
+    {
+      "NativeFileSystem.open": () => Effect.succeed(nativeFileSystemOpenResult("handle-1")),
+      "NativeFileSystem.stat": () => Effect.succeed(nativeFileSystemMetadata("/tmp/report.txt")),
+      "NativeFileSystem.watch": () => Effect.succeed(nativeFileSystemWatchResult("watch-1")),
+      "NativeFileSystem.stopWatching": () =>
+        Effect.succeed(
+          new NativeFileSystemStopWatchingResult({ watchId: "watch-1", stopped: true })
+        ),
+      "NativeFileSystem.isSupported": () =>
+        Effect.succeed(
+          new NativeFileSystemSupportedResult({
+            supported: false,
+            reason: "host-adapter-unimplemented"
+          })
+        )
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "native-file-system-supported",
+          method: "NativeFileSystem.isSupported",
+          timestamp: 1710000000000,
+          traceId: "trace-native-file-system-supported",
+          payload: null
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("success")
+  if (response.kind === "success") {
+    expect(response.payload).toEqual({
+      supported: false,
+      reason: "host-adapter-unimplemented"
+    })
+  }
+})
+
+test("NativeFileSystem service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-adapter-unimplemented",
+    message: "unsupported NativeFileSystem.open",
+    operation: "NativeFileSystem.open",
+    recoverable: false
+  })
+  const unsupportedClient: NativeFileSystemClientApi = {
+    ...nativeFileSystemClient([]),
+    open: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: NativeFileSystemClientApi = {
+    ...nativeFileSystemClient([]),
+    open: () => Effect.fail(makeHostProtocolHostUnavailableError("NativeFileSystem.open"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* NativeFileSystem
+      return yield* Effect.exit(
+        filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+      )
+    }).pipe(Effect.provide(makeNativeFileSystemServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* NativeFileSystem
+      return yield* Effect.exit(
+        filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+      )
+    }).pipe(Effect.provide(makeNativeFileSystemServiceLayer(hostFailureClient)))
   )
 
   expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -10214,6 +10569,85 @@ const recentDocumentsClient = (calls: string[]): RecentDocumentsClientApi => ({
     })
 })
 
+const nativeFileSystemClient = (calls: string[]): NativeFileSystemClientApi => ({
+  open: (input) =>
+    Effect.sync(() => {
+      calls.push(`open:${input.path.path}:${input.mode ?? "read"}`)
+      return nativeFileSystemOpenResult("handle-1")
+    }),
+  stat: (input) =>
+    Effect.sync(() => {
+      calls.push(`stat:${input.path.path}`)
+      return nativeFileSystemMetadata(input.path.path)
+    }),
+  watch: (input) =>
+    Effect.sync(() => {
+      calls.push(`watch:${input.path.path}:${input.recursive ?? false}`)
+      return nativeFileSystemWatchResult(input.watchId ?? "watch-1")
+    }),
+  stopWatching: (input) =>
+    Effect.sync(() => {
+      calls.push(`stopWatching:${input.watchId}`)
+      return new NativeFileSystemStopWatchingResult({ watchId: input.watchId, stopped: true })
+    }),
+  isSupported: () =>
+    Effect.sync(() => {
+      calls.push("isSupported")
+      return new NativeFileSystemSupportedResult({
+        supported: false,
+        reason: "host-adapter-unimplemented"
+      })
+    }),
+  events: () =>
+    Stream.sync(() => {
+      calls.push("events")
+      return new NativeFileSystemEvent({
+        type: "native-file-system-event",
+        timestamp: 1710000000100,
+        watchId: "watch-1",
+        path: new CanonicalPath({ path: "/tmp/report.txt" }),
+        phase: "changed"
+      })
+    })
+})
+
+const nativeFileSystemHandlePayload = (id: string) =>
+  ({
+    kind: "native-file-system-handle",
+    id: resourceId(id),
+    generation: 0,
+    ownerScope: `native-file-system:${id}`,
+    state: "open"
+  }) as const
+
+const nativeFileSystemWatchPayload = (id: string) =>
+  ({
+    kind: "native-file-system-watch",
+    id: resourceId(id),
+    generation: 0,
+    ownerScope: "workspace:workspace-1",
+    state: "open"
+  }) as const
+
+const nativeFileSystemMetadata = (path: string): NativeFileSystemMetadata =>
+  new NativeFileSystemMetadata({
+    path: new CanonicalPath({ path }),
+    kind: "file"
+  })
+
+const nativeFileSystemOpenResult = (id: string): NativeFileSystemOpenResult =>
+  new NativeFileSystemOpenResult({
+    handle: nativeFileSystemHandlePayload(id),
+    metadata: nativeFileSystemMetadata("/tmp/report.txt")
+  })
+
+const nativeFileSystemWatchResult = (id: string): NativeFileSystemWatchResult =>
+  new NativeFileSystemWatchResult({
+    watch: nativeFileSystemWatchPayload(id),
+    path: new CanonicalPath({ path: "/tmp" }),
+    recursive: true
+  })
+
 const webViewClient = (calls: string[]): WebViewClientApi => ({
   create: (input) =>
     Effect.sync(() => {
@@ -10815,6 +11249,34 @@ const recentDocumentsExchange = (
             traceId: "event-trace",
             method,
             payload: { phase: "document-added", path: { path: "/tmp/report.txt" } }
+          })
+        )
+      : Stream.empty
+})
+
+const nativeFileSystemExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "NativeFileSystem.Event"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000100,
+            traceId: "event-trace",
+            method,
+            payload: {
+              type: "native-file-system-event",
+              timestamp: 1710000000100,
+              watchId: "watch-1",
+              path: { path: "/tmp/report.txt" },
+              phase: "changed"
+            }
           })
         )
       : Stream.empty
