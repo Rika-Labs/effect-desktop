@@ -624,7 +624,25 @@
       "method": "bindCommand",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
       "hostStatus": "missing"
     },
@@ -634,7 +652,25 @@
       "method": "buildFromTemplate",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
       "hostStatus": "missing"
     },
@@ -644,7 +680,25 @@
       "method": "show",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
       "hostStatus": "missing"
     },
@@ -1758,7 +1812,25 @@
       "method": "bindCommand",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
       "hostStatus": "missing"
     },
@@ -1768,7 +1840,25 @@
       "method": "capability",
       "capability": "none",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
       "hostStatus": "missing"
     },
@@ -1778,7 +1868,25 @@
       "method": "clear",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
       "hostStatus": "missing"
     },
@@ -3581,8 +3689,8 @@
     "total": 187,
     "routed": 142,
     "missing": 45,
-    "supported": 91,
+    "supported": 85,
     "partial": 22,
-    "unsupported": 74
+    "unsupported": 80
   }
 }

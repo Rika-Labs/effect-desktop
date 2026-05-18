@@ -8,7 +8,7 @@ effect_version: 4
 
 # `ContextMenu`
 
-Context menu support. The TypeScript service, bridge contracts, and command-binding lifecycle are present today, but the Rust host does not yet route context-menu display, template construction, bind registration, or activation events.
+Context menu support. The TypeScript service, bridge contracts, and command-binding lifecycle are present today, but the Rust host does not yet route context-menu display, template construction, bind registration, or activation events. Direct `ContextMenu.*` RPC capability metadata therefore reports `host-adapter-unimplemented` until a host adapter owns those routes.
 
 ## Methods
 

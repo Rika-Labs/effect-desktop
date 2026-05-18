@@ -48,6 +48,17 @@ import {
 import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const HostAdapterUnimplementedReason = "host-adapter-unimplemented"
+const MenuHostUnsupportedSupport = NativeSurface.support.unsupported(
+  HostAdapterUnimplementedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: HostAdapterUnimplementedReason },
+      { platform: "windows", status: "unsupported", reason: HostAdapterUnimplementedReason },
+      { platform: "linux", status: "unsupported", reason: HostAdapterUnimplementedReason }
+    ]
+  }
+)
 export type MenuError = HostProtocolError
 export type MenuCommandBindingError = MenuError | CommandRegistryError
 
@@ -417,12 +428,16 @@ function menuRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+  const support =
+    method === "setApplicationMenu" || method === "setWindowMenu"
+      ? NativeSurface.support.supported
+      : MenuHostUnsupportedSupport
   return NativeSurface.rpc("Menu", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support
   })
 }
 

@@ -41,6 +41,17 @@ import {
 import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const HostAdapterUnimplementedReason = "host-adapter-unimplemented"
+const ContextMenuHostUnsupportedSupport = NativeSurface.support.unsupported(
+  HostAdapterUnimplementedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: HostAdapterUnimplementedReason },
+      { platform: "windows", status: "unsupported", reason: HostAdapterUnimplementedReason },
+      { platform: "linux", status: "unsupported", reason: HostAdapterUnimplementedReason }
+    ]
+  }
+)
 
 export type ContextMenuError = HostProtocolError
 export type ContextMenuCommandBindingError = ContextMenuError | CommandRegistryError
@@ -324,7 +335,7 @@ function contextMenuRpc<
     success: Schema.Void,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: ContextMenuHostUnsupportedSupport
   })
 }
 

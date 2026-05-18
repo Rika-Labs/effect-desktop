@@ -42,9 +42,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Clipboard`                 | `writeHtml`                 | `unsupported` | `Clipboard.writeHtml`                     | `routed`    |
 | `Clipboard`                 | `writeImage`                | `unsupported` | `Clipboard.writeImage`                    | `routed`    |
 | `Clipboard`                 | `writeText`                 | `unsupported` | `Clipboard.writeText`                     | `routed`    |
-| `ContextMenu`               | `bindCommand`               | `supported`   | `ContextMenu.bindCommand`                 | `missing`   |
-| `ContextMenu`               | `buildFromTemplate`         | `supported`   | `ContextMenu.buildFromTemplate`           | `missing`   |
-| `ContextMenu`               | `show`                      | `supported`   | `ContextMenu.show`                        | `missing`   |
+| `ContextMenu`               | `bindCommand`               | `unsupported` | `ContextMenu.bindCommand`                 | `missing`   |
+| `ContextMenu`               | `buildFromTemplate`         | `unsupported` | `ContextMenu.buildFromTemplate`           | `missing`   |
+| `ContextMenu`               | `show`                      | `unsupported` | `ContextMenu.show`                        | `missing`   |
 | `CrashReporter`             | `flush`                     | `unsupported` | `CrashReporter.flush`                     | `missing`   |
 | `CrashReporter`             | `recordBreadcrumb`          | `unsupported` | `CrashReporter.recordBreadcrumb`          | `missing`   |
 | `CrashReporter`             | `start`                     | `unsupported` | `CrashReporter.start`                     | `missing`   |
@@ -111,9 +111,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `LocalToolRuntime`          | `register`                  | `supported`   | `LocalToolRuntime.register`               | `routed`    |
 | `LocalToolRuntime`          | `run`                       | `supported`   | `LocalToolRuntime.run`                    | `routed`    |
 | `LocalToolRuntime`          | `stop`                      | `supported`   | `LocalToolRuntime.stop`                   | `routed`    |
-| `Menu`                      | `bindCommand`               | `supported`   | `Menu.bindCommand`                        | `missing`   |
-| `Menu`                      | `capability`                | `supported`   | `Menu.capability`                         | `missing`   |
-| `Menu`                      | `clear`                     | `supported`   | `Menu.clear`                              | `missing`   |
+| `Menu`                      | `bindCommand`               | `unsupported` | `Menu.bindCommand`                        | `missing`   |
+| `Menu`                      | `capability`                | `unsupported` | `Menu.capability`                         | `missing`   |
+| `Menu`                      | `clear`                     | `unsupported` | `Menu.clear`                              | `missing`   |
 | `Menu`                      | `setApplicationMenu`        | `supported`   | `Menu.setApplicationMenu`                 | `routed`    |
 | `Menu`                      | `setWindowMenu`             | `supported`   | `Menu.setWindowMenu`                      | `routed`    |
 | `Notification`              | `close`                     | `partial`     | `Notification.close`                      | `routed`    |

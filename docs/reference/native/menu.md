@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Menu`
 
-App and window menus. Menu items can bind to command ids registered with `CommandRegistry` through the TypeScript service, but the Rust host currently routes only application/window menu installation. Real native menu activation events and host-backed `bindCommand` are not wired yet.
+App and window menus. Menu items can bind to command ids registered with `CommandRegistry` through the TypeScript service when a substitutable client provides activation events, but the Rust host currently routes only application/window menu installation. Real native menu activation events, `clear`, `capability`, and host-backed `bindCommand` are not wired yet.
 
 ## Import
 
@@ -29,7 +29,7 @@ import { Menu, MenuError, MenuRpcs, Native } from "@effect-desktop/native"
 
 `MenuTemplate` is `{ items }`. Items use `{ type: "item", id, label, commandId?, accelerator? }`; submenus use `{ type: "submenu", id, label, items }`; separators use `{ type: "separator" }`.
 
-`setApplicationMenu` and `setWindowMenu` are routed by the Rust host. `clear`, `bindCommand`, `capability`, and `Menu.Activated` are TypeScript/bridge contracts today; completing #1366 requires native host routes and activation events for app and window menus.
+`setApplicationMenu` and `setWindowMenu` are routed by the Rust host and report supported capability metadata. `clear`, `bindCommand`, `capability`, and `Menu.Activated` are TypeScript/bridge contracts today and report `host-adapter-unimplemented` in capability metadata until native host routes and activation events exist.
 
 ## Errors
 

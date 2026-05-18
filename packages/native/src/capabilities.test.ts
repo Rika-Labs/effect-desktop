@@ -26,12 +26,16 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       const appQuit = yield* capabilities.support("App.quit")
       const globalShortcutRegister = yield* capabilities.support("GlobalShortcut.register")
       const webViewCreate = yield* capabilities.support("WebView.create")
+      const menuClear = yield* capabilities.support("Menu.clear")
+      const contextMenuShow = yield* capabilities.support("ContextMenu.show")
       return {
         create,
         appQuit,
         dockBadge,
         globalShortcutRegister,
         webViewCreate,
+        menuClear,
+        contextMenuShow,
         updaterInstall,
         crashReporterStart,
         powerMonitorIsSupported,
@@ -78,6 +82,24 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     ]
   })
   expect(result.webViewCreate).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.menuClear).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.contextMenuShow).toEqual({
     status: "unsupported",
     reason: "host-adapter-unimplemented",
     platforms: [
