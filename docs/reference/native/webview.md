@@ -26,10 +26,10 @@ subresource inspection, response-header mutation, blocking, redirects, or
 request audit.
 
 Navigation controls are not host-backed today. The TypeScript bridge declares
-`create`, `loadRoute`, `loadUrl`, `reload`, `goBack`, and `goForward`, but the
-Rust host has no routed `WebView.*` navigation methods, scoped WebView resource
-registry, `stop` command, history-state contract, or typed navigation lifecycle
-event stream.
+`create`, `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, `goForward`, and
+`getNavigationState`, but the Rust host has no routed `WebView.*` navigation
+methods, scoped WebView resource registry, or typed navigation lifecycle event
+stream.
 
 Navigation and popup policy is not host-backed today. `setNavigationPolicy` is
 declared in the TypeScript bridge contract, but the Rust host does not route
@@ -98,8 +98,10 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 | `loadRoute`           | `{ webview, route }`         | `void`                   |
 | `loadUrl`             | `{ webview, url }`           | `void`                   |
 | `reload`              | `{ webview }`                | `void`                   |
+| `stop`                | `{ webview }`                | `void`                   |
 | `goBack`              | `{ webview }`                | `void`                   |
 | `goForward`           | `{ webview }`                | `void`                   |
+| `getNavigationState`  | `{ webview }`                | navigation state         |
 | `captureScreenshot`   | `{ webview }`                | screenshot data          |
 | `setNavigationPolicy` | `{ webview, policy }`        | `void`                   |
 | `capability`          | `{ name, platform?, mode? }` | `{ supported: boolean }` |

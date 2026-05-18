@@ -3866,6 +3866,34 @@
       "hostStatus": "missing"
     },
     {
+      "tag": "WebView.getNavigationState",
+      "surface": "WebView",
+      "method": "getNavigationState",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
       "tag": "WebView.goBack",
       "surface": "WebView",
       "method": "goBack",
@@ -4009,6 +4037,34 @@
       "tag": "WebView.setNavigationPolicy",
       "surface": "WebView",
       "method": "setNavigationPolicy",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.stop",
+      "surface": "WebView",
+      "method": "stop",
       "capability": "native",
       "support": {
         "status": "unsupported",
@@ -4400,11 +4456,11 @@
     }
   ],
   "summary": {
-    "total": 228,
+    "total": 230,
     "routed": 206,
-    "missing": 22,
+    "missing": 24,
     "supported": 109,
     "partial": 24,
-    "unsupported": 95
+    "unsupported": 97
   }
 }

@@ -774,8 +774,10 @@ const expectedWebViewMethods: Array<(typeof WebViewMethodNames)[number]> = [
   "loadRoute",
   "loadUrl",
   "reload",
+  "stop",
   "goBack",
   "goForward",
+  "getNavigationState",
   "captureScreenshot",
   "setNavigationPolicy",
   "capability",
@@ -1878,8 +1880,10 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       yield* webview.loadRoute(created, "/settings")
       yield* webview.loadUrl(created, "https://example.com")
       yield* webview.reload(created)
+      yield* webview.stop(created)
       yield* webview.goBack(created)
       yield* webview.goForward(created)
+      const navigationState = yield* webview.getNavigationState(created)
       const screenshot = yield* webview.captureScreenshot(created)
       yield* webview.setNavigationPolicy(created, {
         allowedOrigins: ["app://localhost"],
@@ -1889,11 +1893,16 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
       yield* webview.destroy(created)
 
-      return { blocked, created, linuxAutofill, screenshot }
+      return { blocked, created, linuxAutofill, navigationState, screenshot }
     }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
   )
 
   expect(result.created).toMatchObject(webviewHandle)
+  expect(result.navigationState).toEqual({
+    canGoBack: true,
+    canGoForward: false,
+    loading: false
+  })
   expect(result.screenshot.bytes).toEqual(new Uint8Array([1, 2, 3]))
   expect(result.linuxAutofill).toBe(false)
   expect(Array.from(result.blocked)).toEqual([
@@ -1908,8 +1917,10 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
     "loadRoute:/settings",
     "loadUrl:https://example.com",
     "reload",
+    "stop",
     "goBack",
     "goForward",
+    "getNavigationState",
     "captureScreenshot",
     "setNavigationPolicy:app://localhost:block",
     "destroy"
@@ -1923,11 +1934,13 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
     payload:
       request.method === "WebView.create"
         ? webviewHandle
-        : request.method === "WebView.captureScreenshot"
-          ? { mime: "image/png", bytes: pngBytesJson }
-          : request.method === "WebView.capability"
-            ? { supported: true }
-            : undefined
+        : request.method === "WebView.getNavigationState"
+          ? { canGoBack: true, canGoForward: false, loading: false }
+          : request.method === "WebView.captureScreenshot"
+            ? { mime: "image/png", bytes: pngBytesJson }
+            : request.method === "WebView.capability"
+              ? { supported: true }
+              : undefined
   }))
 
   const result = await Effect.runPromise(
@@ -1938,6 +1951,8 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
         originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
       })
       yield* webview.loadRoute(created, "/settings")
+      yield* webview.stop(created)
+      const navigationState = yield* webview.getNavigationState(created)
       yield* webview.setNavigationPolicy(created, {
         allowedOrigins: ["app://localhost", "https://example.com"],
         onDisallowed: "openExternal"
@@ -1946,11 +1961,16 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       const canOpenDevtools = yield* webview.capability("devtools open", { platform: "windows" })
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
 
-      return { blocked, canOpenDevtools, created, screenshot }
+      return { blocked, canOpenDevtools, created, navigationState, screenshot }
     }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
   )
 
   expect(result.created).toMatchObject(webviewHandle)
+  expect(result.navigationState).toEqual({
+    canGoBack: true,
+    canGoForward: false,
+    loading: false
+  })
   expect(result.screenshot).toEqual(new WebViewScreenshot({ mime: "image/png", bytes: pngBytes }))
   expect(result.canOpenDevtools).toBe(true)
   expect(Array.from(result.blocked)).toEqual([
@@ -1969,6 +1989,8 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       }
     ],
     ["WebView.loadRoute", { webview: webviewHandle, route: "/settings" }],
+    ["WebView.stop", { webview: webviewHandle }],
+    ["WebView.getNavigationState", { webview: webviewHandle }],
     [
       "WebView.setNavigationPolicy",
       {
@@ -2021,6 +2043,46 @@ test("WebView captureScreenshot rejects empty byte payloads", async () => {
       }
     ],
     ["WebView.captureScreenshot", { webview: webviewHandle }]
+  ])
+})
+
+test("WebView getNavigationState rejects malformed host output", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* WebView
+      const created = yield* client.create()
+      return yield* Effect.exit(client.getNavigationState(created))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(
+            webViewExchange(requests, (request) => ({
+              kind: "success",
+              payload:
+                request.method === "WebView.create"
+                  ? webviewHandle
+                  : request.method === "WebView.getNavigationState"
+                    ? { canGoBack: true, loading: false }
+                    : undefined
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [
+      "WebView.create",
+      {
+        url: "app://localhost/",
+        originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
+      }
+    ],
+    ["WebView.getNavigationState", { webview: webviewHandle }]
   ])
 })
 
@@ -11223,8 +11285,14 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
   loadRoute: (_webview, route) => recordVoid(calls, `loadRoute:${route}`),
   loadUrl: (_webview, url) => recordVoid(calls, `loadUrl:${url}`),
   reload: () => recordVoid(calls, "reload"),
+  stop: () => recordVoid(calls, "stop"),
   goBack: () => recordVoid(calls, "goBack"),
   goForward: () => recordVoid(calls, "goForward"),
+  getNavigationState: () =>
+    Effect.sync(() => {
+      calls.push("getNavigationState")
+      return { canGoBack: true, canGoForward: false, loading: false }
+    }),
   captureScreenshot: () =>
     Effect.sync(() => {
       calls.push("captureScreenshot")
