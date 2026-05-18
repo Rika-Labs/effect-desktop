@@ -759,6 +759,7 @@ export {
   ScreenHandlersLive,
   ScreenLive,
   ScreenMethodNames,
+  ScreenRpcEvents,
   ScreenRpcs,
   ScreenSurface,
   makeScreenClientLayer,

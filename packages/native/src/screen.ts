@@ -11,11 +11,13 @@ import {
   type HostProtocolError
 } from "@effect-desktop/bridge"
 import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import {
   ScreenDisplay,
+  ScreenDisplaysChangedEvent,
   ScreenDisplaysResult,
   ScreenIsSupportedInput,
   type ScreenMethod,
@@ -69,6 +71,12 @@ const ScreenRpcGroup = makeScreenRpcGroup()
 
 export const ScreenRpcs: RpcGroup.RpcGroup<ScreenRpc> = ScreenRpcGroup
 
+export const ScreenRpcEvents = Object.freeze({
+  DisplaysChanged: { payload: ScreenDisplaysChangedEvent }
+})
+
+export type ScreenRpcEvents = typeof ScreenRpcEvents
+
 export type ScreenRpc = RpcGroup.Rpcs<typeof ScreenRpcGroup>
 
 export type ScreenBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
@@ -90,6 +98,7 @@ export interface ScreenClientApi {
   readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>
   readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
   readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never>
+  readonly onDisplaysChanged: () => Stream.Stream<ScreenDisplaysChangedEvent, ScreenError, never>
   readonly isSupported: (
     method: ScreenMethod
   ) => Effect.Effect<ScreenSupportedResult, ScreenError, never>
@@ -103,6 +112,7 @@ export interface ScreenServiceApi {
   readonly getDisplays: () => Effect.Effect<ReadonlyArray<ScreenDisplay>, ScreenError, never>
   readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
   readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never>
+  readonly onDisplaysChanged: () => Stream.Stream<ScreenDisplaysChangedEvent, ScreenError, never>
   readonly isSupported: (method: ScreenMethod) => Effect.Effect<boolean, ScreenError, never>
 }
 
@@ -116,6 +126,7 @@ export class Screen extends Context.Service<Screen, ScreenServiceApi>()(
         getDisplays: () => client.getDisplays().pipe(Effect.map((result) => result.displays)),
         getPrimaryDisplay: () => client.getPrimaryDisplay(),
         getPointerPoint: () => client.getPointerPoint(),
+        onDisplaysChanged: () => client.onDisplaysChanged(),
         isSupported: (method) =>
           client.isSupported(method).pipe(Effect.map((result) => result.supported))
       } satisfies ScreenServiceApi)
@@ -154,7 +165,8 @@ export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
   service: ScreenClient,
   capabilities: ScreenCapabilityMethods,
   handlers: ScreenHandlersLive,
-  client: (client) => screenClientFromRpcClient(client)
+  client: (client) => screenClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => screenClientFromRpcClient(client, exchange)
 })
 
 export const makeScreenClientLayer = (client: ScreenClientApi): Layer.Layer<ScreenClient> =>
@@ -201,7 +213,10 @@ const normalizeScreenBridgeRequest = (
   })
 }
 
-const screenClientFromRpcClient = (client: DesktopRpcClient<ScreenRpc>): ScreenClientApi =>
+const screenClientFromRpcClient = (
+  client: DesktopRpcClient<ScreenRpc>,
+  exchange: BridgeClientExchange | undefined
+): ScreenClientApi =>
   Object.freeze({
     getDisplays: () =>
       runScreenRpc(client["Screen.getDisplays"](undefined)).pipe(
@@ -209,6 +224,10 @@ const screenClientFromRpcClient = (client: DesktopRpcClient<ScreenRpc>): ScreenC
       ),
     getPrimaryDisplay: () => runScreenRpc(client["Screen.getPrimaryDisplay"](undefined)),
     getPointerPoint: () => runScreenRpc(client["Screen.getPointerPoint"](undefined)),
+    onDisplaysChanged: () =>
+      subscribeNativeEvent(exchange, "Screen.DisplaysChanged", ScreenDisplaysChangedEvent).pipe(
+        Stream.mapEffect(validateScreenDisplaysChangedEvent)
+      ),
     isSupported: (method) =>
       runScreenRpc(client["Screen.isSupported"](new ScreenIsSupportedInput({ method })))
   } satisfies ScreenClientApi)
@@ -233,22 +252,34 @@ const isScreenError = (error: unknown): error is ScreenError =>
 const validateScreenDisplays = (
   result: ScreenDisplaysResult
 ): Effect.Effect<ScreenDisplaysResult, ScreenError, never> => {
-  const primaryCount = result.displays.filter((display) => display.primary).length
-  if (result.displays.length === 0) {
+  return validateScreenDisplayList(result.displays, "Screen.getDisplays").pipe(Effect.as(result))
+}
+
+const validateScreenDisplaysChangedEvent = (
+  event: ScreenDisplaysChangedEvent
+): Effect.Effect<ScreenDisplaysChangedEvent, ScreenError, never> =>
+  validateScreenDisplayList(event.displays, "Screen.DisplaysChanged").pipe(Effect.as(event))
+
+const validateScreenDisplayList = (
+  displays: ReadonlyArray<ScreenDisplay>,
+  operation: string
+): Effect.Effect<void, ScreenError, never> => {
+  const primaryCount = displays.filter((display) => display.primary).length
+  if (displays.length === 0) {
     return Effect.fail(
       makeHostProtocolInvalidOutputError(
-        "Screen.getDisplays",
-        "getDisplays payload must include at least one display"
+        operation,
+        "screen display payload must include at least one display"
       )
     )
   }
   if (primaryCount !== 1) {
     return Effect.fail(
       makeHostProtocolInvalidOutputError(
-        "Screen.getDisplays",
-        "getDisplays payload must include exactly one primary display"
+        operation,
+        "screen display payload must include exactly one primary display"
       )
     )
   }
-  return Effect.succeed(result)
+  return Effect.void
 }

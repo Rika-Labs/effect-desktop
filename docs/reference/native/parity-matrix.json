@@ -2146,7 +2146,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Screen.getPointerPoint",
@@ -2156,7 +2156,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Screen.getPrimaryDisplay",
@@ -2166,7 +2166,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Screen.isSupported",
@@ -2176,7 +2176,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "SelectionContext.isSupported",
@@ -2915,8 +2915,8 @@
   ],
   "summary": {
     "total": 187,
-    "routed": 124,
-    "missing": 63,
+    "routed": 128,
+    "missing": 59,
     "supported": 128,
     "partial": 21,
     "unsupported": 38

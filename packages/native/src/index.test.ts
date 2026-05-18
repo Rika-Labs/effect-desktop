@@ -163,6 +163,7 @@ import {
   ScreenRpcs,
   ScreenLive,
   ScreenMethodNames,
+  ScreenRpcEvents,
   ScreenSurface,
   Shell,
   ShellHandlersLive,
@@ -309,6 +310,7 @@ import {
   PowerMonitorSuspendEvent,
   ScreenBounds,
   ScreenDisplay,
+  ScreenDisplaysChangedEvent,
   ScreenDisplaysResult,
   ScreenIsSupportedInput,
   ScreenPoint,
@@ -4503,6 +4505,7 @@ test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
   expect("tag" in ScreenRpcs).toBe(false)
   expect("events" in ScreenRpcs).toBe(false)
   expect("spec" in ScreenRpcs).toBe(false)
+  expect(Object.keys(ScreenRpcEvents)).toEqual(["DisplaysChanged"])
 })
 
 test("ScreenSurface derives server, client, test, and metadata surfaces from the RpcGroup", async () => {
@@ -4853,6 +4856,7 @@ test("Screen service delegates through a substitutable ScreenClient port", async
       const screen = yield* Screen
       return {
         displays: yield* screen.getDisplays(),
+        changed: yield* screen.onDisplaysChanged().pipe(Stream.take(1), Stream.runCollect),
         primary: yield* screen.getPrimaryDisplay(),
         pointer: yield* screen.getPointerPoint(),
         pointerSupported: yield* screen.isSupported("getPointerPoint")
@@ -4861,15 +4865,53 @@ test("Screen service delegates through a substitutable ScreenClient port", async
   )
 
   expect(result.displays).toEqual([primaryDisplay])
+  expect(Array.from(result.changed)).toEqual([
+    new ScreenDisplaysChangedEvent({ displays: [primaryDisplay] })
+  ])
   expect(result.primary).toEqual(primaryDisplay)
   expect(result.pointer).toEqual(new ScreenPoint({ x: 12, y: 34 }))
   expect(result.pointerSupported).toBe(true)
   expect(calls).toEqual([
     "getDisplays",
+    "onDisplaysChanged",
     "getPrimaryDisplay",
     "getPointerPoint",
     "isSupported:getPointerPoint"
   ])
+})
+
+test("Screen service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-screen-unavailable",
+    message: "unsupported Screen.getDisplays",
+    operation: "Screen.getDisplays",
+    recoverable: false
+  })
+  const unsupportedClient: ScreenClientApi = {
+    ...screenClient([]),
+    getDisplays: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: ScreenClientApi = {
+    ...screenClient([]),
+    getDisplays: () => Effect.fail(makeHostProtocolHostUnavailableError("Screen.getDisplays"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* Effect.exit(screen.getDisplays())
+    }).pipe(Effect.provide(makeScreenServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* Effect.exit(screen.getDisplays())
+    }).pipe(Effect.provide(makeScreenServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("Screen bridge client sends typed host envelopes and decodes values", async () => {
@@ -4891,6 +4933,7 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
       const screen = yield* Screen
       return {
         displays: yield* screen.getDisplays(),
+        changed: yield* screen.onDisplaysChanged().pipe(Stream.take(1), Stream.runCollect),
         primary: yield* screen.getPrimaryDisplay(),
         pointer: yield* screen.getPointerPoint(),
         pointerSupported: yield* screen.isSupported("getPointerPoint")
@@ -4899,6 +4942,9 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
   )
 
   expect(result.displays).toEqual([primaryDisplay])
+  expect(Array.from(result.changed)).toEqual([
+    new ScreenDisplaysChangedEvent({ displays: [primaryDisplay] })
+  ])
   expect(result.primary).toMatchObject(primaryDisplay)
   expect(result.pointer).toEqual(new ScreenPoint({ x: 12, y: 34 }))
   expect(result.pointerSupported).toBe(true)
@@ -7650,6 +7696,11 @@ const screenClient = (calls: string[]): ScreenClientApi => ({
       calls.push("getPointerPoint")
       return new ScreenPoint({ x: 12, y: 34 })
     }),
+  onDisplaysChanged: () =>
+    Stream.sync(() => {
+      calls.push("onDisplaysChanged")
+      return new ScreenDisplaysChangedEvent({ displays: [primaryDisplay] })
+    }),
   isSupported: (method) =>
     Effect.sync(() => {
       calls.push(`isSupported:${method}`)
@@ -7985,7 +8036,19 @@ const screenExchange = (
   request: (request) => {
     requests.push(request)
     return Effect.succeed(respond(request))
-  }
+  },
+  subscribe: (method) =>
+    method === "Screen.DisplaysChanged"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000600,
+            traceId: "event-trace",
+            method,
+            payload: { displays: [primaryDisplay] }
+          })
+        )
+      : Stream.empty
 })
 
 const systemAppearanceExchange = (

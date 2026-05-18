@@ -48,6 +48,12 @@ pub const NOTIFICATION_GET_PERMISSION_STATUS_METHOD: &str = "Notification.getPer
 pub const NOTIFICATION_CLICK_EVENT: &str = "Notification.Click";
 pub const NOTIFICATION_ACTION_EVENT: &str = "Notification.Action";
 pub const NOTIFICATION_UNSUPPORTED_REASON: &str = "host-notification-unavailable";
+pub const SCREEN_GET_DISPLAYS_METHOD: &str = "Screen.getDisplays";
+pub const SCREEN_GET_PRIMARY_DISPLAY_METHOD: &str = "Screen.getPrimaryDisplay";
+pub const SCREEN_GET_POINTER_POINT_METHOD: &str = "Screen.getPointerPoint";
+pub const SCREEN_IS_SUPPORTED_METHOD: &str = "Screen.isSupported";
+pub const SCREEN_DISPLAYS_CHANGED_EVENT: &str = "Screen.DisplaysChanged";
+pub const SCREEN_UNSUPPORTED_REASON: &str = "host-screen-unavailable";
 pub const CLIPBOARD_READ_TEXT_METHOD: &str = "Clipboard.readText";
 pub const CLIPBOARD_WRITE_TEXT_METHOD: &str = "Clipboard.writeText";
 pub const CLIPBOARD_READ_HTML_METHOD: &str = "Clipboard.readHtml";
@@ -1026,6 +1032,171 @@ impl NotificationActionEventPayload {
             action_id: action_id.into(),
             owner_window_id,
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScreenBoundsPayload {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl ScreenBoundsPayload {
+    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    pub fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub fn y(&self) -> f64 {
+        self.y
+    }
+
+    pub fn width(&self) -> f64 {
+        self.width
+    }
+
+    pub fn height(&self) -> f64 {
+        self.height
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScreenPointPayload {
+    x: f64,
+    y: f64,
+}
+
+impl ScreenPointPayload {
+    pub fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
+    }
+
+    pub fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub fn y(&self) -> f64 {
+        self.y
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScreenDisplayPayload {
+    id: String,
+    bounds: ScreenBoundsPayload,
+    work_area: ScreenBoundsPayload,
+    scale_factor: f64,
+    primary: bool,
+}
+
+impl ScreenDisplayPayload {
+    pub fn new(
+        id: impl Into<String>,
+        bounds: ScreenBoundsPayload,
+        work_area: ScreenBoundsPayload,
+        scale_factor: f64,
+        primary: bool,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            bounds,
+            work_area,
+            scale_factor,
+            primary,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn bounds(&self) -> &ScreenBoundsPayload {
+        &self.bounds
+    }
+
+    pub fn work_area(&self) -> &ScreenBoundsPayload {
+        &self.work_area
+    }
+
+    pub fn scale_factor(&self) -> f64 {
+        self.scale_factor
+    }
+
+    pub fn primary(&self) -> bool {
+        self.primary
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScreenDisplaysPayload {
+    displays: Vec<ScreenDisplayPayload>,
+}
+
+impl ScreenDisplaysPayload {
+    pub fn new(displays: Vec<ScreenDisplayPayload>) -> Self {
+        Self { displays }
+    }
+
+    pub fn displays(&self) -> &[ScreenDisplayPayload] {
+        &self.displays
+    }
+}
+
+pub type ScreenDisplaysResultPayload = ScreenDisplaysPayload;
+
+pub type ScreenDisplaysChangedEventPayload = ScreenDisplaysPayload;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ScreenMethodPayload {
+    GetDisplays,
+    GetPrimaryDisplay,
+    GetPointerPoint,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScreenIsSupportedPayload {
+    method: ScreenMethodPayload,
+}
+
+impl ScreenIsSupportedPayload {
+    pub fn method(&self) -> ScreenMethodPayload {
+        self.method
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScreenSupportedPayload {
+    supported: bool,
+}
+
+impl ScreenSupportedPayload {
+    pub fn supported() -> Self {
+        Self { supported: true }
+    }
+
+    pub fn unsupported() -> Self {
+        Self { supported: false }
+    }
+
+    pub fn is_supported(&self) -> bool {
+        self.supported
     }
 }
 
@@ -8881,7 +9052,9 @@ mod tests {
         ResidentLifecycleEnablePayload, ResidentLifecycleEventPayload, ResidentLifecycleEventPhase,
         ResidentLifecyclePolicyPayload, ResidentLifecycleProcessPolicy,
         ResidentLifecycleStatePayload, ResidentLifecycleSupportedPayload,
-        ResidentLifecycleWindowPolicy, ResumeTicket, TransactionalFileMutationActorKind,
+        ResidentLifecycleWindowPolicy, ResumeTicket, ScreenBoundsPayload, ScreenDisplayPayload,
+        ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenIsSupportedPayload,
+        ScreenPointPayload, ScreenSupportedPayload, TransactionalFileMutationActorKind,
         TransactionalFileMutationActorPayload, TransactionalFileMutationCommitPayload,
         TransactionalFileMutationCommitResultPayload, TransactionalFileMutationDiffPayload,
         TransactionalFileMutationEventPayload, TransactionalFileMutationEventPhase,
@@ -10716,6 +10889,63 @@ mod tests {
         let error = serde_json::from_value::<TrayCreatePayload>(value)
             .expect_err("excess field should be rejected");
         assert!(error.to_string().contains("unknown field `badge`"));
+    }
+
+    #[test]
+    fn screen_payloads_serialize_canonically() {
+        let bounds = ScreenBoundsPayload::new(0.0, 0.0, 1920.0, 1080.0);
+        let work_area = ScreenBoundsPayload::new(0.0, 24.0, 1920.0, 1056.0);
+        let display = ScreenDisplayPayload::new("display-1", bounds.clone(), work_area, 2.0, true);
+        let displays = ScreenDisplaysResultPayload::new(vec![display.clone()]);
+
+        assert_eq!(
+            serde_json::to_string(&bounds).expect("bounds should encode"),
+            r#"{"x":0.0,"y":0.0,"width":1920.0,"height":1080.0}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&display).expect("display should encode"),
+            r#"{"id":"display-1","bounds":{"x":0.0,"y":0.0,"width":1920.0,"height":1080.0},"workArea":{"x":0.0,"y":24.0,"width":1920.0,"height":1056.0},"scaleFactor":2.0,"primary":true}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&displays).expect("display result should encode"),
+            r#"{"displays":[{"id":"display-1","bounds":{"x":0.0,"y":0.0,"width":1920.0,"height":1080.0},"workArea":{"x":0.0,"y":24.0,"width":1920.0,"height":1056.0},"scaleFactor":2.0,"primary":true}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ScreenDisplaysChangedEventPayload::new(vec![display]))
+                .expect("screen event should encode"),
+            r#"{"displays":[{"id":"display-1","bounds":{"x":0.0,"y":0.0,"width":1920.0,"height":1080.0},"workArea":{"x":0.0,"y":24.0,"width":1920.0,"height":1056.0},"scaleFactor":2.0,"primary":true}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ScreenPointPayload::new(12.0, 34.0))
+                .expect("point should encode"),
+            r#"{"x":12.0,"y":34.0}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ScreenSupportedPayload::supported())
+                .expect("support payload should encode"),
+            r#"{"supported":true}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ScreenSupportedPayload::unsupported())
+                .expect("support payload should encode"),
+            r#"{"supported":false}"#
+        );
+    }
+
+    #[test]
+    fn screen_support_payload_rejects_invalid_shape() {
+        let value = serde_json::json!({
+            "method": "getDisplays",
+            "reason": "extra"
+        });
+        let error = serde_json::from_value::<ScreenIsSupportedPayload>(value)
+            .expect_err("excess field should be rejected");
+        assert!(error.to_string().contains("unknown field `reason`"));
+
+        let value = serde_json::json!({ "method": "watchDisplays" });
+        let error = serde_json::from_value::<ScreenIsSupportedPayload>(value)
+            .expect_err("invalid method should be rejected");
+        assert!(error.to_string().contains("unknown variant"));
     }
 
     #[test]

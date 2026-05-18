@@ -5,7 +5,9 @@
 use crate::{macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{
-    HostProtocolEnvelope, HostProtocolError, TrayActivatedEventPayload, TrayResourcePayload,
+    HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
+    ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
+    ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
     WindowCreatePayload, WindowCreateResponse,
 };
 use std::{
@@ -20,6 +22,7 @@ use tao::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopWindowTarget},
+    monitor::MonitorHandle,
     window::{Window, WindowBuilder},
 };
 use tracing::{info, warn};
@@ -119,6 +122,23 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
     ) -> std::result::Result<(), HostProtocolError>;
 
     fn clear_runtime_trays(&self) -> std::result::Result<(), HostProtocolError>;
+
+    fn get_screen_displays(
+        &self,
+    ) -> std::result::Result<ScreenDisplaysResultPayload, HostProtocolError>;
+
+    fn get_primary_screen_display(
+        &self,
+    ) -> std::result::Result<ScreenDisplayPayload, HostProtocolError>;
+
+    fn get_screen_pointer_point(
+        &self,
+    ) -> std::result::Result<ScreenPointPayload, HostProtocolError>;
+
+    fn screen_is_supported(
+        &self,
+        method: ScreenMethodPayload,
+    ) -> std::result::Result<ScreenSupportedPayload, HostProtocolError>;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -202,6 +222,19 @@ enum WindowCommand {
     ClearRuntimeTrays {
         reply: Sender<WindowCommandReply>,
     },
+    GetScreenDisplays {
+        reply: Sender<WindowCommandReply>,
+    },
+    GetPrimaryScreenDisplay {
+        reply: Sender<WindowCommandReply>,
+    },
+    GetScreenPointerPoint {
+        reply: Sender<WindowCommandReply>,
+    },
+    ScreenIsSupported {
+        method: ScreenMethodPayload,
+        reply: Sender<WindowCommandReply>,
+    },
 }
 
 type WindowCommandReply = std::result::Result<WindowCommandResponse, HostProtocolError>;
@@ -216,6 +249,10 @@ enum WindowCommandResponse {
     TrayCreated(TrayResourcePayload),
     TrayUpdated,
     TrayDestroyed,
+    ScreenDisplays(ScreenDisplaysResultPayload),
+    ScreenDisplay(ScreenDisplayPayload),
+    ScreenPoint(ScreenPointPayload),
+    ScreenSupported(ScreenSupportedPayload),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -249,6 +286,8 @@ static TRAY_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> 
     LazyLock::new(|| Mutex::new(None));
 static TRAY_EVENT_HANDLES: LazyLock<Mutex<HashMap<String, TrayResourcePayload>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static SCREEN_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 impl WindowMethodPort {
     pub(crate) fn new() -> Self {
@@ -348,7 +387,11 @@ impl WindowMethodHandler for WindowMethodPort {
             )),
             WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
-            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "window create received tray response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
@@ -386,7 +429,11 @@ impl WindowMethodHandler for WindowMethodPort {
             )),
             WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
-            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "window destroy received tray response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
@@ -414,7 +461,11 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
-            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "dock badge command received window response",
                 operation,
             )),
@@ -437,7 +488,11 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
-            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "dock attention command received window response",
                 host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
             )),
@@ -463,7 +518,11 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
-            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "dock menu command received window response",
                 host_protocol::DOCK_SET_MENU_METHOD,
             )),
@@ -489,7 +548,11 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
-            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "application menu command received window response",
                 host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
             )),
@@ -517,7 +580,11 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
-            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
             )),
@@ -655,6 +722,70 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_tray_response(
                 response,
                 "host.runtime.tray.disconnect",
+            )),
+        }
+    }
+
+    fn get_screen_displays(
+        &self,
+    ) -> std::result::Result<ScreenDisplaysResultPayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetScreenDisplays { reply: reply_tx })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::ScreenDisplays(displays) => Ok(displays),
+            response => Err(unexpected_screen_response(
+                response,
+                host_protocol::SCREEN_GET_DISPLAYS_METHOD,
+            )),
+        }
+    }
+
+    fn get_primary_screen_display(
+        &self,
+    ) -> std::result::Result<ScreenDisplayPayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetPrimaryScreenDisplay { reply: reply_tx })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::ScreenDisplay(display) => Ok(display),
+            response => Err(unexpected_screen_response(
+                response,
+                host_protocol::SCREEN_GET_PRIMARY_DISPLAY_METHOD,
+            )),
+        }
+    }
+
+    fn get_screen_pointer_point(
+        &self,
+    ) -> std::result::Result<ScreenPointPayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetScreenPointerPoint { reply: reply_tx })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::ScreenPoint(point) => Ok(point),
+            response => Err(unexpected_screen_response(
+                response,
+                host_protocol::SCREEN_GET_POINTER_POINT_METHOD,
+            )),
+        }
+    }
+
+    fn screen_is_supported(
+        &self,
+        method: ScreenMethodPayload,
+    ) -> std::result::Result<ScreenSupportedPayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ScreenIsSupported {
+            method,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::ScreenSupported(supported) => Ok(supported),
+            response => Err(unexpected_screen_response(
+                response,
+                host_protocol::SCREEN_IS_SUPPORTED_METHOD,
             )),
         }
     }
@@ -1089,6 +1220,89 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn screen_displays(
+        &self,
+        target: &EventLoopWindowTarget<HostEvent>,
+        operation: &'static str,
+    ) -> std::result::Result<ScreenDisplaysResultPayload, HostProtocolError> {
+        let monitors = target.available_monitors().collect::<Vec<_>>();
+        if monitors.is_empty() {
+            return Err(HostProtocolError::host_unavailable(operation));
+        }
+        let primary_id = target
+            .primary_monitor()
+            .as_ref()
+            .map(screen_display_id)
+            .unwrap_or_else(|| screen_display_id(&monitors[0]));
+        let mut primary_assigned = false;
+        let displays = monitors
+            .iter()
+            .map(|monitor| {
+                let id = screen_display_id(monitor);
+                let primary = id == primary_id && !primary_assigned;
+                if primary {
+                    primary_assigned = true;
+                }
+                screen_display_payload(id, monitor, primary)
+            })
+            .collect::<Vec<_>>();
+        Ok(ScreenDisplaysResultPayload::new(displays))
+    }
+
+    fn primary_screen_display(
+        &self,
+        target: &EventLoopWindowTarget<HostEvent>,
+    ) -> std::result::Result<ScreenDisplayPayload, HostProtocolError> {
+        if let Some(primary) = target.primary_monitor() {
+            return Ok(screen_display_payload(
+                screen_display_id(&primary),
+                &primary,
+                true,
+            ));
+        }
+
+        let Some(first) = target.available_monitors().next() else {
+            return Err(HostProtocolError::host_unavailable(
+                host_protocol::SCREEN_GET_PRIMARY_DISPLAY_METHOD,
+            ));
+        };
+        Ok(screen_display_payload(
+            screen_display_id(&first),
+            &first,
+            true,
+        ))
+    }
+
+    fn emit_screen_displays_changed(
+        &self,
+        target: &EventLoopWindowTarget<HostEvent>,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(sender) = screen_event_sender()? else {
+            return Ok(());
+        };
+        let payload = self.screen_displays(target, host_protocol::SCREEN_DISPLAYS_CHANGED_EVENT)?;
+        let payload = serde_json::to_value(ScreenDisplaysChangedEventPayload::new(
+            payload.displays().to_vec(),
+        ))
+        .map_err(|error| {
+            HostProtocolError::invalid_output(
+                host_protocol::SCREEN_DISPLAYS_CHANGED_EVENT,
+                error.to_string(),
+            )
+        })?;
+        sender
+            .send(HostProtocolEnvelope::Event {
+                method: host_protocol::SCREEN_DISPLAYS_CHANGED_EVENT.to_string(),
+                timestamp: timestamp_millis(),
+                trace_id: format!("screen-displays-changed-{}", Uuid::now_v7()),
+                window_id: None,
+                payload: Some(payload),
+            })
+            .map_err(|_error| {
+                HostProtocolError::host_unavailable(host_protocol::SCREEN_DISPLAYS_CHANGED_EVENT)
+            })
+    }
+
     fn handle_pending_window_commands(
         &mut self,
         target: &EventLoopWindowTarget<HostEvent>,
@@ -1255,6 +1469,31 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::GetScreenDisplays { reply } => {
+                let result = self
+                    .screen_displays(target, host_protocol::SCREEN_GET_DISPLAYS_METHOD)
+                    .map(WindowCommandResponse::ScreenDisplays);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GetPrimaryScreenDisplay { reply } => {
+                let result = self
+                    .primary_screen_display(target)
+                    .map(WindowCommandResponse::ScreenDisplay);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GetScreenPointerPoint { reply } => {
+                let result = screen_pointer_point(target).map(WindowCommandResponse::ScreenPoint);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ScreenIsSupported { method, reply } => {
+                let result =
+                    screen_is_supported(target, method).map(WindowCommandResponse::ScreenSupported);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
         }
     }
 }
@@ -1283,13 +1522,194 @@ fn unexpected_tray_response(
         WindowCommandResponse::TrayCreated(_) => "tray command received create response",
         WindowCommandResponse::TrayUpdated => "tray command received update response",
         WindowCommandResponse::TrayDestroyed => "tray command received destroy response",
+        WindowCommandResponse::ScreenDisplays(_)
+        | WindowCommandResponse::ScreenDisplay(_)
+        | WindowCommandResponse::ScreenPoint(_)
+        | WindowCommandResponse::ScreenSupported(_) => "tray command received screen response",
     };
     HostProtocolError::internal(message, operation)
+}
+
+fn unexpected_screen_response(
+    response: WindowCommandResponse,
+    operation: &'static str,
+) -> HostProtocolError {
+    let message = match response {
+        WindowCommandResponse::Created(_) => "screen command received window create response",
+        WindowCommandResponse::Destroyed => "screen command received window destroy response",
+        WindowCommandResponse::DockBadgeLabelSet => "screen command received dock badge response",
+        WindowCommandResponse::DockAttentionRequested => {
+            "screen command received dock attention response"
+        }
+        WindowCommandResponse::DockMenuSet => "screen command received dock menu response",
+        WindowCommandResponse::MenuSet => "screen command received menu response",
+        WindowCommandResponse::TrayCreated(_)
+        | WindowCommandResponse::TrayUpdated
+        | WindowCommandResponse::TrayDestroyed => "screen command received tray response",
+        WindowCommandResponse::ScreenDisplays(_) => "screen command received displays response",
+        WindowCommandResponse::ScreenDisplay(_) => "screen command received display response",
+        WindowCommandResponse::ScreenPoint(_) => "screen command received point response",
+        WindowCommandResponse::ScreenSupported(_) => "screen command received support response",
+    };
+    HostProtocolError::internal(message, operation)
+}
+
+fn screen_display_payload(
+    id: String,
+    monitor: &MonitorHandle,
+    primary: bool,
+) -> ScreenDisplayPayload {
+    let position = monitor.position();
+    let size = monitor.size();
+    let bounds = ScreenBoundsPayload::new(
+        f64::from(position.x),
+        f64::from(position.y),
+        f64::from(size.width),
+        f64::from(size.height),
+    );
+    ScreenDisplayPayload::new(id, bounds.clone(), bounds, monitor.scale_factor(), primary)
+}
+
+fn screen_display_id(monitor: &MonitorHandle) -> String {
+    let position = monitor.position();
+    let size = monitor.size();
+    let name = monitor
+        .name()
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| {
+            format!(
+                "display@{},{}:{}x{}",
+                position.x, position.y, size.width, size.height
+            )
+        });
+    format!(
+        "{}@{},{}:{}x{}@{}",
+        name,
+        position.x,
+        position.y,
+        size.width,
+        size.height,
+        monitor.scale_factor()
+    )
+}
+
+fn screen_pointer_point(
+    target: &EventLoopWindowTarget<HostEvent>,
+) -> std::result::Result<ScreenPointPayload, HostProtocolError> {
+    if linux_wayland_pointer_unsupported() {
+        return Err(unsupported_screen(
+            host_protocol::SCREEN_GET_POINTER_POINT_METHOD,
+        ));
+    }
+
+    target
+        .cursor_position()
+        .map(|position| ScreenPointPayload::new(position.x, position.y))
+        .map_err(|_error| {
+            HostProtocolError::host_unavailable(host_protocol::SCREEN_GET_POINTER_POINT_METHOD)
+        })
+}
+
+fn screen_is_supported(
+    target: &EventLoopWindowTarget<HostEvent>,
+    method: ScreenMethodPayload,
+) -> std::result::Result<ScreenSupportedPayload, HostProtocolError> {
+    let supported = match method {
+        ScreenMethodPayload::GetDisplays | ScreenMethodPayload::GetPrimaryDisplay => {
+            target.available_monitors().next().is_some()
+        }
+        ScreenMethodPayload::GetPointerPoint => {
+            !linux_wayland_pointer_unsupported() && target.cursor_position().is_ok()
+        }
+    };
+    if supported {
+        Ok(ScreenSupportedPayload::supported())
+    } else {
+        Ok(ScreenSupportedPayload::unsupported())
+    }
+}
+
+fn unsupported_screen(operation: &'static str) -> HostProtocolError {
+    HostProtocolError::unsupported(host_protocol::SCREEN_UNSUPPORTED_REASON, operation)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_wayland_pointer_unsupported() -> bool {
+    linux_wayland_pointer_unsupported_from_env(
+        std::env::var("WINIT_UNIX_BACKEND").ok().as_deref(),
+        std::env::var("XDG_SESSION_TYPE").ok().as_deref(),
+        std::env::var("WAYLAND_DISPLAY").ok().as_deref(),
+    )
+}
+
+#[cfg(not(target_os = "linux"))]
+fn linux_wayland_pointer_unsupported() -> bool {
+    false
+}
+
+#[cfg(target_os = "linux")]
+fn linux_wayland_pointer_unsupported_from_env(
+    backend: Option<&str>,
+    session_type: Option<&str>,
+    wayland_display: Option<&str>,
+) -> bool {
+    if matches!(backend, Some("x11")) {
+        return false;
+    }
+    matches!(backend, Some("wayland"))
+        || matches!(session_type, Some("wayland"))
+        || wayland_display.is_some_and(|value| !value.is_empty())
 }
 
 #[cfg(target_os = "linux")]
 fn unsupported_tray(operation: &'static str) -> HostProtocolError {
     HostProtocolError::unsupported(host_protocol::TRAY_UNSUPPORTED_REASON, operation)
+}
+
+pub(crate) fn install_screen_event_sender(
+    sender: Sender<HostProtocolEnvelope>,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut current = SCREEN_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "screen event sender mutex poisoned",
+            "host.runtime.screen.connect",
+        )
+    })?;
+    *current = Some(sender);
+    Ok(())
+}
+
+pub(crate) fn clear_screen_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
+    let mut sender = SCREEN_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "screen event sender mutex poisoned",
+            "host.runtime.screen.disconnect",
+        )
+    })?;
+    *sender = None;
+    Ok(())
+}
+
+fn screen_event_sender(
+) -> std::result::Result<Option<Sender<HostProtocolEnvelope>>, HostProtocolError> {
+    SCREEN_EVENT_SENDER
+        .lock()
+        .map(|sender| sender.clone())
+        .map_err(|_| {
+            HostProtocolError::internal(
+                "screen event sender mutex poisoned",
+                "host.runtime.screen.event",
+            )
+        })
+}
+
+fn timestamp_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after Unix epoch")
+        .as_millis()
+        .try_into()
+        .expect("timestamp milliseconds should fit in u64")
 }
 
 pub(crate) fn clear_tray_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
@@ -1694,6 +2114,16 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
             Event::NewEvents(_) => {
                 registry.handle_pending_window_commands(target, mode, &command_source)
             }
+            event if is_screen_displays_changed_event(&event) => {
+                if let Err(error) = registry.emit_screen_displays_changed(target) {
+                    warn!(
+                        event = "host.screen.displays_changed_failed",
+                        error = ?error,
+                        "failed to emit screen display change event"
+                    );
+                }
+                WindowLifecycleEvent::Other
+            }
             event => classify_event(&event),
         };
         let now = Instant::now();
@@ -1712,6 +2142,17 @@ fn classify_event(event: &Event<'_, HostEvent>) -> WindowLifecycleEvent {
         } => WindowLifecycleEvent::CloseRequested,
         _ => WindowLifecycleEvent::Other,
     }
+}
+
+fn is_screen_displays_changed_event(event: &Event<'_, HostEvent>) -> bool {
+    match event {
+        Event::WindowEvent { event, .. } => is_screen_displays_changed_window_event(event),
+        _ => false,
+    }
+}
+
+fn is_screen_displays_changed_window_event(event: &WindowEvent<'_>) -> bool {
+    matches!(event, WindowEvent::ScaleFactorChanged { .. })
 }
 
 fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow {
@@ -1806,9 +2247,12 @@ fn validate_positive_finite(field: &str, value: f64) -> std::result::Result<(), 
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
         control_flow_for_lifecycle_event, control_flow_for_window_state,
-        lifecycle_event_with_smoke_timeout, lifecycle_for_create_result, smoke_deadline_for_mode,
+        is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
+        lifecycle_for_create_result, smoke_deadline_for_mode, unsupported_screen,
         validate_positive_finite, RunMode, WindowCommand, WindowCommandResponse,
         WindowCreateRequest, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
         WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
@@ -1817,6 +2261,8 @@ mod tests {
     use std::sync::mpsc;
     use std::thread;
     use std::time::Instant;
+    use tao::dpi::PhysicalSize;
+    use tao::event::WindowEvent;
     use tao::event_loop::ControlFlow;
 
     #[test]
@@ -1971,6 +2417,17 @@ mod tests {
     }
 
     #[test]
+    fn scale_factor_changed_is_screen_display_change_signal() {
+        let mut new_inner_size = PhysicalSize::new(1024, 768);
+        let event = WindowEvent::ScaleFactorChanged {
+            scale_factor: 2.0,
+            new_inner_size: &mut new_inner_size,
+        };
+
+        assert!(is_screen_displays_changed_window_event(&event));
+    }
+
+    #[test]
     fn create_request_defaults_missing_fields() {
         let request = WindowCreateRequest::try_from(WindowCreatePayload::default())
             .expect("default window create payload should validate");
@@ -2000,6 +2457,42 @@ mod tests {
                 host_protocol::WINDOW_CREATE_METHOD,
             ))
         );
+    }
+
+    #[test]
+    fn screen_unsupported_error_uses_screen_operation() {
+        assert_eq!(
+            unsupported_screen(host_protocol::SCREEN_GET_POINTER_POINT_METHOD),
+            HostProtocolError::unsupported(
+                host_protocol::SCREEN_UNSUPPORTED_REASON,
+                host_protocol::SCREEN_GET_POINTER_POINT_METHOD,
+            )
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_wayland_pointer_support_is_disabled_without_x11_override() {
+        assert!(linux_wayland_pointer_unsupported_from_env(
+            Some("wayland"),
+            None,
+            None
+        ));
+        assert!(linux_wayland_pointer_unsupported_from_env(
+            None,
+            Some("wayland"),
+            None
+        ));
+        assert!(linux_wayland_pointer_unsupported_from_env(
+            None,
+            None,
+            Some("wayland-0")
+        ));
+        assert!(!linux_wayland_pointer_unsupported_from_env(
+            Some("x11"),
+            Some("wayland"),
+            Some("wayland-0")
+        ));
     }
 
     #[test]

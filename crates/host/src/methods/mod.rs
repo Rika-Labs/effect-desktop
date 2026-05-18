@@ -19,6 +19,7 @@ mod notification;
 mod realtime_media_session;
 mod resident_lifecycle;
 mod scoped_access_grant;
+mod screen;
 mod selection_context;
 mod transactional_file_mutation;
 mod transient_window_role;
@@ -35,7 +36,10 @@ pub(crate) use job::JOB_ENV_LOCK;
 
 use crate::{
     linux,
-    window::{clear_tray_runtime_event_state, WindowMethodHandler},
+    window::{
+        clear_screen_runtime_event_state, clear_tray_runtime_event_state,
+        install_screen_event_sender, WindowMethodHandler,
+    },
 };
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -306,6 +310,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::NOTIFICATION_GET_PERMISSION_STATUS_METHOD,
         HostMethodDispatcher::Empty(notification::get_permission_status),
+    ),
+    route(
+        host_protocol::SCREEN_GET_DISPLAYS_METHOD,
+        HostMethodDispatcher::Window(screen::get_displays),
+    ),
+    route(
+        host_protocol::SCREEN_GET_PRIMARY_DISPLAY_METHOD,
+        HostMethodDispatcher::Window(screen::get_primary_display),
+    ),
+    route(
+        host_protocol::SCREEN_GET_POINTER_POINT_METHOD,
+        HostMethodDispatcher::Window(screen::get_pointer_point),
+    ),
+    route(
+        host_protocol::SCREEN_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Window(screen::is_supported),
     ),
     route(
         host_protocol::CLIPBOARD_READ_TEXT_METHOD,
@@ -1007,6 +1027,7 @@ impl HostMethodRouter {
     }
 
     pub(crate) fn clear_runtime_resources(&self) -> Result<(), String> {
+        clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_tray_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         self.window
             .clear_runtime_trays()
@@ -1026,6 +1047,7 @@ impl HostMethodRouter {
         &self,
         sender: Sender<HostProtocolEnvelope>,
     ) -> Result<(), String> {
+        install_screen_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         *self
             .runtime_event_sender
             .lock()
@@ -2625,6 +2647,136 @@ mod tests {
                     "supported": cfg!(target_os = "macos")
                 })),
                 error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn screen_methods_dispatch_through_window_handler() {
+        let router = test_router();
+        let displays = router
+            .dispatch_at(
+                request(
+                    "request-screen-displays",
+                    host_protocol::SCREEN_GET_DISPLAYS_METHOD,
+                ),
+                1710000000113,
+            )
+            .expect("screen displays request should return response");
+        let primary = router
+            .dispatch_at(
+                request(
+                    "request-screen-primary",
+                    host_protocol::SCREEN_GET_PRIMARY_DISPLAY_METHOD,
+                ),
+                1710000000114,
+            )
+            .expect("screen primary request should return response");
+        let pointer = router
+            .dispatch_at(
+                request(
+                    "request-screen-pointer",
+                    host_protocol::SCREEN_GET_POINTER_POINT_METHOD,
+                ),
+                1710000000115,
+            )
+            .expect("screen pointer request should return response");
+
+        assert_eq!(
+            displays,
+            HostProtocolEnvelope::Response {
+                id: "request-screen-displays".to_string(),
+                timestamp: 1710000000113,
+                trace_id: "trace-request-screen-displays".to_string(),
+                payload: Some(serde_json::json!({
+                    "displays": [{
+                        "id": "display-1",
+                        "bounds": { "x": 0.0, "y": 0.0, "width": 1920.0, "height": 1080.0 },
+                        "workArea": { "x": 0.0, "y": 0.0, "width": 1920.0, "height": 1080.0 },
+                        "scaleFactor": 2.0,
+                        "primary": true
+                    }]
+                })),
+                error: None,
+            }
+        );
+        assert_eq!(
+            primary,
+            HostProtocolEnvelope::Response {
+                id: "request-screen-primary".to_string(),
+                timestamp: 1710000000114,
+                trace_id: "trace-request-screen-primary".to_string(),
+                payload: Some(serde_json::json!({
+                    "id": "display-1",
+                    "bounds": { "x": 0.0, "y": 0.0, "width": 1920.0, "height": 1080.0 },
+                    "workArea": { "x": 0.0, "y": 0.0, "width": 1920.0, "height": 1080.0 },
+                    "scaleFactor": 2.0,
+                    "primary": true
+                })),
+                error: None,
+            }
+        );
+        assert_eq!(
+            pointer,
+            HostProtocolEnvelope::Response {
+                id: "request-screen-pointer".to_string(),
+                timestamp: 1710000000115,
+                trace_id: "trace-request-screen-pointer".to_string(),
+                payload: Some(serde_json::json!({ "x": 12.0, "y": 34.0 })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn screen_support_rejects_unknown_methods() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-screen-supported",
+                    host_protocol::SCREEN_IS_SUPPORTED_METHOD,
+                    serde_json::json!({
+                        "method": "watchDisplays"
+                    }),
+                ),
+                1710000000116,
+            )
+            .expect("screen support request should return response");
+
+        let HostProtocolEnvelope::Response { error, .. } = response else {
+            panic!("screen support should return response");
+        };
+        assert!(matches!(
+            error,
+            Some(HostProtocolError::InvalidArgument { .. })
+        ));
+    }
+
+    #[test]
+    fn screen_void_methods_reject_payloads() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-screen-displays-with-payload",
+                    host_protocol::SCREEN_GET_DISPLAYS_METHOD,
+                    serde_json::json!({}),
+                ),
+                1710000000117,
+            )
+            .expect("screen displays request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-screen-displays-with-payload".to_string(),
+                timestamp: 1710000000117,
+                trace_id: "trace-request-screen-displays-with-payload".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "payload",
+                    "must be omitted",
+                    host_protocol::SCREEN_GET_DISPLAYS_METHOD,
+                )),
             }
         );
     }
@@ -4664,5 +4816,37 @@ mod tests {
         fn clear_runtime_trays(&self) -> Result<(), HostProtocolError> {
             Ok(())
         }
+
+        fn get_screen_displays(
+            &self,
+        ) -> Result<host_protocol::ScreenDisplaysResultPayload, HostProtocolError> {
+            Ok(host_protocol::ScreenDisplaysResultPayload::new(vec![
+                fake_screen_display(true),
+            ]))
+        }
+
+        fn get_primary_screen_display(
+            &self,
+        ) -> Result<host_protocol::ScreenDisplayPayload, HostProtocolError> {
+            Ok(fake_screen_display(true))
+        }
+
+        fn get_screen_pointer_point(
+            &self,
+        ) -> Result<host_protocol::ScreenPointPayload, HostProtocolError> {
+            Ok(host_protocol::ScreenPointPayload::new(12.0, 34.0))
+        }
+
+        fn screen_is_supported(
+            &self,
+            _method: host_protocol::ScreenMethodPayload,
+        ) -> Result<host_protocol::ScreenSupportedPayload, HostProtocolError> {
+            Ok(host_protocol::ScreenSupportedPayload::supported())
+        }
+    }
+
+    fn fake_screen_display(primary: bool) -> host_protocol::ScreenDisplayPayload {
+        let bounds = host_protocol::ScreenBoundsPayload::new(0.0, 0.0, 1920.0, 1080.0);
+        host_protocol::ScreenDisplayPayload::new("display-1", bounds.clone(), bounds, 2.0, primary)
     }
 }

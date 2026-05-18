@@ -29,6 +29,12 @@ export class ScreenDisplaysResult extends Schema.Class<ScreenDisplaysResult>(
   displays: Schema.Array(ScreenDisplay)
 }) {}
 
+export class ScreenDisplaysChangedEvent extends Schema.Class<ScreenDisplaysChangedEvent>(
+  "ScreenDisplaysChangedEvent"
+)({
+  displays: Schema.Array(ScreenDisplay)
+}) {}
+
 export class ScreenIsSupportedInput extends Schema.Class<ScreenIsSupportedInput>(
   "ScreenIsSupportedInput"
 )({

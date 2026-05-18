@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
+import { Context, Effect, Layer, Option, Ref, Schema, Stream } from "effect"
 
 import {
   makePermissionRegistry,
@@ -35,6 +35,7 @@ import {
 import {
   ClipboardImage,
   ScreenDisplay,
+  ScreenDisplaysChangedEvent,
   ScreenPoint,
   type ClipboardCapability,
   type ClipboardImageOptions,
@@ -303,6 +304,7 @@ const makeScreenScenario = (options: TestScreenOptions): ScreenServiceApi => {
       Effect.succeed(primaryDisplay),
     getPointerPoint: (): Effect.Effect<ScreenPoint, ScreenError> =>
       Effect.succeed(new ScreenPoint({ x: 0, y: 0 })),
+    onDisplaysChanged: () => Stream.make(new ScreenDisplaysChangedEvent({ displays })),
     isSupported: (_method: ScreenMethod): Effect.Effect<boolean, ScreenError> =>
       Effect.succeed(true)
   } satisfies ScreenServiceApi)

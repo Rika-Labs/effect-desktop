@@ -2001,6 +2001,7 @@ test("native capability programs run unchanged through Live, Client, and Test la
     getDisplays: () => Effect.succeed(new ScreenDisplaysResult({ displays: [screenDisplay] })),
     getPrimaryDisplay: () => Effect.succeed(screenDisplay),
     getPointerPoint: () => Effect.succeed(new ScreenPoint({ x: 10, y: 20 })),
+    onDisplaysChanged: () => Stream.empty,
     isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
   })
   const screenBridge = makeMockBridge()
