@@ -12,6 +12,10 @@ Lower-level credential-store boundary for scoped secret bytes. Most apps use [`S
 
 The current native host only routes availability probing. Mutating or reading secret bytes requires a real platform adapter; until those host methods exist, `set`, `get`, `delete`, and `list` report `host-adapter-unimplemented` in capability metadata and bridge calls fail instead of falling back to plaintext storage.
 
+SafeStorage is not an HTTP auth credential broker. Proxy credentials,
+authentication challenges, and certificate decisions are absent; adding them
+would require a new network-auth service and host adapter.
+
 ## Methods
 
 | Method        | Payload                              | Success                  |

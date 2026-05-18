@@ -20,6 +20,10 @@ interception. There is no `WebRequest` service yet for ordered interceptors,
 subresource inspection, response-header mutation, blocking, redirects, or
 request audit.
 
+Proxy configuration, HTTP authentication challenges, and certificate decisions
+are also not part of `WebView`. Those hooks are absent; adding them would
+require a new network-auth service and host adapter.
+
 ## Import
 
 ```ts
@@ -69,6 +73,8 @@ unsupported with `host-adapter-unimplemented` until explicit host routes exist.
 helper; it does not prove that the direct WebView RPC host path is routed.
 Request/response interception is also not part of this surface yet; it requires
 a separate native host adapter.
+Proxy/auth/certificate hooks are likewise absent from the current host-backed
+surface.
 
 ## Related
 

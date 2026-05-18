@@ -14,6 +14,10 @@ The public service is Layer-first and test-substitutable. `decide` checks `netwo
 
 `EgressPolicy` is not a native network transport. It does not perform HTTP fetches, open WebSockets, upload data, bind localhost helpers, stream network progress, or cancel network I/O. Those operations still require a separate native network service and Rust host adapter.
 
+It also does not configure proxies, handle HTTP auth challenges, or decide
+certificate trust. Those hooks are absent; adding them would require a new
+network-auth service and host adapter.
+
 ## Methods
 
 | Method        | Payload                            | Success                                                     |

@@ -17,6 +17,8 @@ The fixed internal `app://localhost/` WebView asset protocol is owned by the hos
 This surface handles custom protocol policy and app asset responses. It does
 not provide request/response interception for normal WebView navigation,
 subresources, headers, redirects, or audit.
+It also does not configure proxies, answer HTTP auth challenges, or make
+certificate trust decisions.
 
 OS-level default protocol clients and file associations are not part of this
 surface. Use [`Association`](association.md) for those contracts.
