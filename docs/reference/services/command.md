@@ -10,7 +10,7 @@ effect_version: 4
 
 A `Command` is a logical action — a name, a handler, optional metadata — that menus, shortcut contracts, context menus, devtools, or UI can invoke. The `CommandRegistry` keeps the list; it does not duplicate command implementation per binding.
 
-Current host status: host-backed global shortcut registration and real pressed events are not implemented yet. The command registry and TypeScript command-binding lifecycle are still useful with substitutable clients and future native events.
+Current host status: the command registry and TypeScript command-binding lifecycle are available with substitutable clients. Host-backed menu/context-menu activation events and global shortcut registration/pressed events are not implemented yet.
 
 ## Import
 

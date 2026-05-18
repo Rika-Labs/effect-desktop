@@ -12,11 +12,11 @@ Context menu support. The TypeScript service, bridge contracts, and command-bind
 
 ## Methods
 
-| Method              | Payload                    | Success |
-| ------------------- | -------------------------- | ------- |
+| Method              | Payload                          | Success |
+| ------------------- | -------------------------------- | ------- |
 | `show`              | `{ window, template, position }` | `void`  |
-| `buildFromTemplate` | `{ template }`             | `void`  |
-| `bindCommand`       | `{ itemId, commandId }`    | `void`  |
+| `buildFromTemplate` | `{ template }`                   | `void`  |
+| `bindCommand`       | `{ itemId, commandId }`          | `void`  |
 
 `ContextMenu.Activated` is the bridge event contract used by the TypeScript command-binding service. Completing native parity requires a Rust host event source for real context-menu item activation.
 

@@ -12,7 +12,7 @@ effect_version: 4
 
 Commands are logical actions that can be bound to menus, shortcut contracts, context menus, devtools, or app UI. The `CommandRegistry` keeps the list; bindings reference command **ids**, not implementations.
 
-Current host status: menu and context-menu command binding is available at the TypeScript service boundary with substitutable clients. Host-backed global shortcut registration and real pressed events remain unimplemented until the native shortcut adapter exists.
+Current host status: menu, context-menu, and global-shortcut command binding is available at the TypeScript service boundary with substitutable clients. The Rust host currently routes app/window menu installation, but host-backed menu/context-menu activation events and global shortcut registration/pressed events remain unimplemented.
 
 ## Public surface
 
