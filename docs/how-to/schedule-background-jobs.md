@@ -14,7 +14,7 @@ Effect Desktop has three runtime primitives for background work, each with a dif
 
 | Need                                                             | Use                                           |
 | ---------------------------------------------------------------- | --------------------------------------------- |
-| Isolated OS process running TypeScript with a typed channel      | [`Worker`](spawn-a-worker.md)                 |
+| Separate TypeScript worker runtime with a typed channel          | [`Worker`](spawn-a-worker.md)                 |
 | Long-lived companion process you spawn at runtime                | [`Sidecar`](../reference/services/sidecar.md) |
 | In-runtime Effect work that needs cancellation but not isolation | `Effect.fork` inside a handler                |
 
@@ -65,7 +65,7 @@ yield *
 
 ## Worker-style background work
 
-When you want OS isolation:
+When you want a separate worker runtime with its own resource handle and capability preflight:
 
 ```ts
 const handle =

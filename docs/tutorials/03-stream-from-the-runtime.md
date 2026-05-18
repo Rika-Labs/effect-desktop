@@ -229,13 +229,13 @@ Type a directory path, click Start. The progress bar updates as files import. Cl
 
 ## When to reach for a worker instead
 
-Streaming RPC is the right answer when the renderer is the obvious consumer and the work doesn't need its own permission scope. When you want **OS isolation** — a separate Bun worker with its own declared capabilities and concurrency budget — use `Worker.spawn(...)`. The worker exposes a typed bidirectional channel; you can stream its output to the renderer through your own RPC bridge.
+Streaming RPC is the right answer when the renderer is the obvious consumer and the work doesn't need its own permission scope. When you want a separate worker runtime with its own declared capabilities, resource handle, and concurrency budget, use `Worker.spawn(...)`. The worker exposes a typed bidirectional channel; you can stream its output to the renderer through your own RPC bridge. It does not provide OS-enforced filesystem, network, CPU, or memory isolation.
 
 Use `Worker` when:
 
 - The work runs without a renderer attached (a background indexer).
-- You need a narrower permission scope than the runtime as a whole.
-- You want resource isolation so a runaway worker doesn't take down the runtime.
+- You need a narrower declared capability set than the runtime as a whole.
+- You want a separately tracked resource so runaway work can be observed and terminated.
 
 For in-runtime work that just needs cancellation, `Effect.fork` inside the handler scope plus `Schedule` for retry is enough — see [How-to: schedule background work](../how-to/schedule-background-jobs.md).
 

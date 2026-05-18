@@ -1,6 +1,6 @@
 ---
 title: Worker
-description: Isolated background TypeScript with typed channels and capability checks.
+description: Background TypeScript workers with typed channels and capability checks.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Worker`
 
-Runtime primitive for isolated background TypeScript. The framework spawns a Bun worker through a substitutable adapter, validates every channel message through Effect Schema, and registers each worker as a scope-bound `ResourceRegistry` handle.
+Runtime primitive for background TypeScript in a separate worker runtime. The framework spawns a Bun worker through a substitutable adapter, validates every channel message through Effect Schema, and registers each worker as a scope-bound `ResourceRegistry` handle.
 
 ## Import
 
@@ -82,7 +82,7 @@ Closing the owning scope shuts down the worker and releases the per-scope concur
 
 ## Long-running cancelable work
 
-Workers cover the **OS isolation** case. For TypeScript-only background work that needs cancellation but not its own permission scope, use `Effect.fork` inside a handler — the surrounding scope handles cancellation. A separate runtime-managed `Job` primitive with retry policies and replayable progress is on the roadmap; until then, build the same shape from `Stream`, `Schedule`, and `Scope` directly per Effect's primitives.
+Workers cover typed background work that needs its own resource handle, message channel, capability preflight, and concurrency budget. They do not provide OS-enforced filesystem, network, CPU, or memory isolation; use the native `ExecutionSandbox` surface once platform adapters exist for that security boundary. For TypeScript-only background work that needs cancellation but not its own permission scope, use `Effect.fork` inside a handler — the surrounding scope handles cancellation. A separate runtime-managed `Job` primitive with retry policies and replayable progress is on the roadmap; until then, build the same shape from `Stream`, `Schedule`, and `Scope` directly per Effect's primitives.
 
 ## Related
 

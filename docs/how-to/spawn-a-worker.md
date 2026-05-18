@@ -1,6 +1,6 @@
 ---
 title: How to spawn a worker
-description: Run isolated background TypeScript with typed channels and capability checks.
+description: Run background TypeScript workers with typed channels and capability checks.
 kind: how-to
 audience: app-developers
 effect_version: 4
@@ -8,14 +8,14 @@ effect_version: 4
 
 # How to spawn a worker
 
-`Worker` runs isolated background TypeScript. The framework spawns a Bun worker, validates every channel message through Effect Schema, registers the worker as a scoped resource, and checks every declared capability before activation.
+`Worker` runs background TypeScript in a separate worker runtime. The framework spawns a Bun worker, validates every channel message through Effect Schema, registers the worker as a scoped resource, and checks every declared capability before activation.
 
 ## 1. Write the worker script
 
 `workers/indexer.ts`:
 
 ```ts
-// This file runs in the worker process.
+// This file runs in the worker runtime.
 self.onmessage = async (event) => {
   const { kind, payload } = event.data
   if (kind === "index") {
@@ -85,7 +85,7 @@ Devtools' workflows panel renders this list live.
 
 Three reasons:
 
-- **Isolation.** A worker that hangs or leaks doesn't take down the runtime.
+- **Runtime separation.** A worker that hangs or leaks is tracked and terminated as its own resource.
 - **Capability discipline.** Workers declare what they need; the registry refuses to spawn one that wants more than it has.
 - **Backpressure.** The bridge channels have bounded queues; misbehaving producers can't drown the consumer.
 
