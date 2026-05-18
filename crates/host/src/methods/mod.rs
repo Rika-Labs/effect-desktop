@@ -57,6 +57,13 @@ type LocalToolRuntimeHandler =
     fn(Option<serde_json::Value>, u64) -> local_tool_runtime::EventfulResponse;
 type WorkspaceIndexHandler =
     fn(Option<serde_json::Value>, u64) -> workspace_index::EventfulResponse;
+type PayloadHandler =
+    fn(Option<serde_json::Value>) -> Result<Option<serde_json::Value>, HostProtocolError>;
+type EmptyHandler = fn() -> Result<Option<serde_json::Value>, HostProtocolError>;
+type WindowHandler = fn(
+    &dyn WindowMethodHandler,
+    Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>, HostProtocolError>;
 
 struct RealtimeMediaDispatch {
     id: String,
@@ -113,6 +120,688 @@ struct WorkspaceIndexDispatch {
     window_id: Option<String>,
     payload: Option<serde_json::Value>,
     timestamp: u64,
+}
+
+struct HostDispatchRequest {
+    id: String,
+    method: String,
+    trace_id: String,
+    window_id: Option<String>,
+    payload: Option<serde_json::Value>,
+    timestamp: u64,
+}
+
+struct HostMethodRegistry {
+    routes: &'static [HostMethodRoute],
+}
+
+struct HostMethodRoute {
+    method: &'static str,
+    dispatcher: HostMethodDispatcher,
+}
+
+enum HostMethodDispatcher {
+    Ping,
+    Version,
+    Payload(PayloadHandler),
+    Empty(EmptyHandler),
+    Window(WindowHandler),
+    WindowDestroy,
+    UnsupportedGlobalShortcut,
+    EgressRecord,
+    RealtimeMedia(RealtimeMediaHandler),
+    ExtensionConfig(ExtensionConfigHandler),
+    ExtensionPackage(ExtensionPackageHandler),
+    DistributionParity(DistributionParityHandler),
+    Job(JobHandler),
+    LocalToolRuntime(LocalToolRuntimeHandler),
+    LocalToolRuntimeRun,
+    WorkspaceIndex(WorkspaceIndexHandler),
+}
+
+const HOST_DISPATCH_REGISTRY: HostMethodRegistry = HostMethodRegistry {
+    routes: HOST_DISPATCH_ROUTES,
+};
+
+const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
+    route(host_protocol::HOST_PING_METHOD, HostMethodDispatcher::Ping),
+    route(
+        host_protocol::HOST_VERSION_METHOD,
+        HostMethodDispatcher::Version,
+    ),
+    route(
+        host_protocol::WINDOW_CREATE_METHOD,
+        HostMethodDispatcher::Window(window::create),
+    ),
+    route(
+        host_protocol::WINDOW_DESTROY_METHOD,
+        HostMethodDispatcher::WindowDestroy,
+    ),
+    route(
+        host_protocol::DOCK_SET_BADGE_COUNT_METHOD,
+        HostMethodDispatcher::Window(dock::set_badge_count),
+    ),
+    route(
+        host_protocol::DOCK_SET_BADGE_TEXT_METHOD,
+        HostMethodDispatcher::Window(dock::set_badge_text),
+    ),
+    route(
+        host_protocol::DOCK_SET_MENU_METHOD,
+        HostMethodDispatcher::Window(dock::set_menu),
+    ),
+    route(
+        host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
+        HostMethodDispatcher::Window(dock::request_attention),
+    ),
+    route(
+        host_protocol::DOCK_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(linux::dock_is_supported),
+    ),
+    route(
+        host_protocol::GLOBAL_SHORTCUT_REGISTER_METHOD,
+        HostMethodDispatcher::UnsupportedGlobalShortcut,
+    ),
+    route(
+        host_protocol::GLOBAL_SHORTCUT_UNREGISTER_METHOD,
+        HostMethodDispatcher::UnsupportedGlobalShortcut,
+    ),
+    route(
+        host_protocol::GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD,
+        HostMethodDispatcher::UnsupportedGlobalShortcut,
+    ),
+    route(
+        host_protocol::GLOBAL_SHORTCUT_IS_REGISTERED_METHOD,
+        HostMethodDispatcher::Empty(linux::global_shortcut_is_registered),
+    ),
+    route(
+        host_protocol::GLOBAL_SHORTCUT_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(linux::global_shortcut_is_supported),
+    ),
+    route(
+        host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD,
+        HostMethodDispatcher::Empty(linux::safe_storage_is_available),
+    ),
+    route(
+        host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
+        HostMethodDispatcher::RealtimeMedia(realtime_media_session::open_with_events),
+    ),
+    route(
+        host_protocol::REALTIME_MEDIA_SESSION_CLOSE_METHOD,
+        HostMethodDispatcher::RealtimeMedia(realtime_media_session::close_with_events),
+    ),
+    route(
+        host_protocol::REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD,
+        HostMethodDispatcher::RealtimeMedia(realtime_media_session::select_device_with_events),
+    ),
+    route(
+        host_protocol::REALTIME_MEDIA_SESSION_INTERRUPT_METHOD,
+        HostMethodDispatcher::RealtimeMedia(realtime_media_session::interrupt_with_events),
+    ),
+    route(
+        host_protocol::REALTIME_MEDIA_SESSION_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(realtime_media_session::is_supported),
+    ),
+    route(
+        host_protocol::DIAGNOSTICS_BUNDLE_COLLECT_METHOD,
+        HostMethodDispatcher::Payload(diagnostics_bundle::collect),
+    ),
+    route(
+        host_protocol::DIAGNOSTICS_BUNDLE_REDACT_METHOD,
+        HostMethodDispatcher::Payload(diagnostics_bundle::redact),
+    ),
+    route(
+        host_protocol::DIAGNOSTICS_BUNDLE_WRITE_METHOD,
+        HostMethodDispatcher::Payload(diagnostics_bundle::write),
+    ),
+    route(
+        host_protocol::DIAGNOSTICS_BUNDLE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(diagnostics_bundle::is_supported),
+    ),
+    route(
+        host_protocol::ATTACHMENT_INTAKE_INGEST_METHOD,
+        HostMethodDispatcher::Payload(attachment_intake::ingest),
+    ),
+    route(
+        host_protocol::ATTACHMENT_INTAKE_INSPECT_METHOD,
+        HostMethodDispatcher::Payload(attachment_intake::inspect),
+    ),
+    route(
+        host_protocol::ATTACHMENT_INTAKE_DISPOSE_METHOD,
+        HostMethodDispatcher::Payload(attachment_intake::dispose),
+    ),
+    route(
+        host_protocol::ATTACHMENT_INTAKE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(attachment_intake::is_supported),
+    ),
+    route(
+        host_protocol::SELECTION_CONTEXT_READ_SELECTION_METHOD,
+        HostMethodDispatcher::Payload(selection_context::read_selection),
+    ),
+    route(
+        host_protocol::SELECTION_CONTEXT_READ_DOCUMENT_METHOD,
+        HostMethodDispatcher::Payload(selection_context::read_document),
+    ),
+    route(
+        host_protocol::SELECTION_CONTEXT_WATCH_FOCUS_METHOD,
+        HostMethodDispatcher::Payload(selection_context::watch_focus),
+    ),
+    route(
+        host_protocol::SELECTION_CONTEXT_STOP_WATCHING_METHOD,
+        HostMethodDispatcher::Payload(selection_context::stop_watching),
+    ),
+    route(
+        host_protocol::SELECTION_CONTEXT_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(selection_context::is_supported),
+    ),
+    route(
+        host_protocol::FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD,
+        HostMethodDispatcher::Payload(focused_application_context::snapshot),
+    ),
+    route(
+        host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD,
+        HostMethodDispatcher::Payload(focused_application_context::watch),
+    ),
+    route(
+        host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD,
+        HostMethodDispatcher::Payload(focused_application_context::stop_watching),
+    ),
+    route(
+        host_protocol::FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(focused_application_context::is_supported),
+    ),
+    route(
+        host_protocol::DISPLAY_CAPTURE_CAPTURE_DISPLAY_METHOD,
+        HostMethodDispatcher::Payload(display_capture::capture_display),
+    ),
+    route(
+        host_protocol::DISPLAY_CAPTURE_CAPTURE_WINDOW_METHOD,
+        HostMethodDispatcher::Payload(display_capture::capture_window),
+    ),
+    route(
+        host_protocol::DISPLAY_CAPTURE_CAPTURE_REGION_METHOD,
+        HostMethodDispatcher::Payload(display_capture::capture_region),
+    ),
+    route(
+        host_protocol::DISPLAY_CAPTURE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(display_capture::is_supported),
+    ),
+    route(
+        host_protocol::TRANSIENT_WINDOW_ROLE_OPEN_METHOD,
+        HostMethodDispatcher::Payload(transient_window_role::open),
+    ),
+    route(
+        host_protocol::TRANSIENT_WINDOW_ROLE_REPOSITION_METHOD,
+        HostMethodDispatcher::Payload(transient_window_role::reposition),
+    ),
+    route(
+        host_protocol::TRANSIENT_WINDOW_ROLE_DISMISS_METHOD,
+        HostMethodDispatcher::Payload(transient_window_role::dismiss),
+    ),
+    route(
+        host_protocol::TRANSIENT_WINDOW_ROLE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(transient_window_role::is_supported),
+    ),
+    route(
+        host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
+        HostMethodDispatcher::Payload(activation_registry::register_surface),
+    ),
+    route(
+        host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD,
+        HostMethodDispatcher::Payload(activation_registry::unregister_surface),
+    ),
+    route(
+        host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD,
+        HostMethodDispatcher::Empty(activation_registry::list_surfaces),
+    ),
+    route(
+        host_protocol::ACTIVATION_REGISTRY_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(activation_registry::is_supported),
+    ),
+    route(
+        host_protocol::RESIDENT_LIFECYCLE_ENABLE_METHOD,
+        HostMethodDispatcher::Payload(resident_lifecycle::enable),
+    ),
+    route(
+        host_protocol::RESIDENT_LIFECYCLE_DISABLE_METHOD,
+        HostMethodDispatcher::Payload(resident_lifecycle::disable),
+    ),
+    route(
+        host_protocol::RESIDENT_LIFECYCLE_GET_STATE_METHOD,
+        HostMethodDispatcher::Empty(resident_lifecycle::get_state),
+    ),
+    route(
+        host_protocol::RESIDENT_LIFECYCLE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(resident_lifecycle::is_supported),
+    ),
+    route(
+        host_protocol::DISTRIBUTION_PARITY_VERIFY_METHOD,
+        HostMethodDispatcher::DistributionParity(distribution_parity::verify_with_event),
+    ),
+    route(
+        host_protocol::DISTRIBUTION_PARITY_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(distribution_parity::is_supported),
+    ),
+    route(
+        host_protocol::JOB_START_METHOD,
+        HostMethodDispatcher::Job(job::start_with_event),
+    ),
+    route(
+        host_protocol::JOB_PAUSE_METHOD,
+        HostMethodDispatcher::Job(job::pause_with_event),
+    ),
+    route(
+        host_protocol::JOB_RESUME_METHOD,
+        HostMethodDispatcher::Job(job::resume_with_event),
+    ),
+    route(
+        host_protocol::JOB_RETRY_METHOD,
+        HostMethodDispatcher::Job(job::retry_with_event),
+    ),
+    route(
+        host_protocol::JOB_INTERRUPT_METHOD,
+        HostMethodDispatcher::Job(job::interrupt_with_event),
+    ),
+    route(
+        host_protocol::JOB_SUCCEED_METHOD,
+        HostMethodDispatcher::Job(job::succeed_with_event),
+    ),
+    route(
+        host_protocol::JOB_FAIL_METHOD,
+        HostMethodDispatcher::Job(job::fail_with_event),
+    ),
+    route(
+        host_protocol::JOB_REPORT_PROGRESS_METHOD,
+        HostMethodDispatcher::Job(job::report_progress_with_event),
+    ),
+    route(
+        host_protocol::JOB_GET_METHOD,
+        HostMethodDispatcher::Payload(job::get),
+    ),
+    route(
+        host_protocol::JOB_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(job::is_supported),
+    ),
+    route(
+        host_protocol::EGRESS_POLICY_DECIDE_METHOD,
+        HostMethodDispatcher::Payload(egress_policy::decide),
+    ),
+    route(
+        host_protocol::EGRESS_POLICY_RECORD_METHOD,
+        HostMethodDispatcher::EgressRecord,
+    ),
+    route(
+        host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(egress_policy::is_supported),
+    ),
+    route(
+        host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
+        HostMethodDispatcher::Payload(execution_sandbox::create),
+    ),
+    route(
+        host_protocol::EXECUTION_SANDBOX_RUN_METHOD,
+        HostMethodDispatcher::Payload(execution_sandbox::run),
+    ),
+    route(
+        host_protocol::EXECUTION_SANDBOX_DESTROY_METHOD,
+        HostMethodDispatcher::Payload(execution_sandbox::destroy),
+    ),
+    route(
+        host_protocol::EXECUTION_SANDBOX_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(execution_sandbox::is_supported),
+    ),
+    route(
+        host_protocol::EXTENSION_CONFIG_READ_METHOD,
+        HostMethodDispatcher::ExtensionConfig(extension_config::read_with_event),
+    ),
+    route(
+        host_protocol::EXTENSION_CONFIG_WRITE_METHOD,
+        HostMethodDispatcher::ExtensionConfig(extension_config::write_with_event),
+    ),
+    route(
+        host_protocol::EXTENSION_CONFIG_RESET_METHOD,
+        HostMethodDispatcher::ExtensionConfig(extension_config::reset_with_event),
+    ),
+    route(
+        host_protocol::EXTENSION_CONFIG_REDACT_METHOD,
+        HostMethodDispatcher::ExtensionConfig(extension_config::redact_with_event),
+    ),
+    route(
+        host_protocol::EXTENSION_CONFIG_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(extension_config::is_supported),
+    ),
+    route(
+        host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
+        HostMethodDispatcher::ExtensionPackage(extension_package::install_with_event),
+    ),
+    route(
+        host_protocol::EXTENSION_PACKAGE_UPDATE_METHOD,
+        HostMethodDispatcher::ExtensionPackage(extension_package::update_with_event),
+    ),
+    route(
+        host_protocol::EXTENSION_PACKAGE_REMOVE_METHOD,
+        HostMethodDispatcher::ExtensionPackage(extension_package::remove_with_event),
+    ),
+    route(
+        host_protocol::EXTENSION_PACKAGE_LIST_METHOD,
+        HostMethodDispatcher::Empty(extension_package::list),
+    ),
+    route(
+        host_protocol::EXTENSION_PACKAGE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(extension_package::is_supported),
+    ),
+    route(
+        host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+        HostMethodDispatcher::LocalToolRuntime(local_tool_runtime::register_with_event),
+    ),
+    route(
+        host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD,
+        HostMethodDispatcher::LocalToolRuntimeRun,
+    ),
+    route(
+        host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD,
+        HostMethodDispatcher::LocalToolRuntime(local_tool_runtime::stop_with_event),
+    ),
+    route(
+        host_protocol::LOCAL_TOOL_RUNTIME_HEALTH_METHOD,
+        HostMethodDispatcher::LocalToolRuntime(local_tool_runtime::health_with_event),
+    ),
+    route(
+        host_protocol::LOCAL_TOOL_RUNTIME_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(local_tool_runtime::is_supported),
+    ),
+    route(
+        host_protocol::WORKSPACE_INDEX_OPEN_METHOD,
+        HostMethodDispatcher::WorkspaceIndex(workspace_index::open_with_event),
+    ),
+    route(
+        host_protocol::WORKSPACE_INDEX_REFRESH_METHOD,
+        HostMethodDispatcher::WorkspaceIndex(workspace_index::refresh_with_event),
+    ),
+    route(
+        host_protocol::WORKSPACE_INDEX_CLOSE_METHOD,
+        HostMethodDispatcher::WorkspaceIndex(workspace_index::close_with_event),
+    ),
+    route(
+        host_protocol::WORKSPACE_INDEX_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(workspace_index::is_supported),
+    ),
+    route(
+        host_protocol::SCOPED_ACCESS_GRANT_GRANT_METHOD,
+        HostMethodDispatcher::Payload(scoped_access_grant::grant),
+    ),
+    route(
+        host_protocol::SCOPED_ACCESS_GRANT_RESOLVE_METHOD,
+        HostMethodDispatcher::Payload(scoped_access_grant::resolve),
+    ),
+    route(
+        host_protocol::SCOPED_ACCESS_GRANT_REVOKE_METHOD,
+        HostMethodDispatcher::Payload(scoped_access_grant::revoke),
+    ),
+    route(
+        host_protocol::SCOPED_ACCESS_GRANT_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(scoped_access_grant::is_supported),
+    ),
+    route(
+        host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD,
+        HostMethodDispatcher::Payload(transactional_file_mutation::prepare),
+    ),
+    route(
+        host_protocol::TRANSACTIONAL_FILE_MUTATION_COMMIT_METHOD,
+        HostMethodDispatcher::Payload(transactional_file_mutation::commit),
+    ),
+    route(
+        host_protocol::TRANSACTIONAL_FILE_MUTATION_ROLLBACK_METHOD,
+        HostMethodDispatcher::Payload(transactional_file_mutation::rollback),
+    ),
+    route(
+        host_protocol::TRANSACTIONAL_FILE_MUTATION_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(transactional_file_mutation::is_supported),
+    ),
+    route(
+        host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
+        HostMethodDispatcher::Window(menu::set_application_menu),
+    ),
+    route(
+        host_protocol::MENU_SET_WINDOW_MENU_METHOD,
+        HostMethodDispatcher::Window(menu::set_window_menu),
+    ),
+];
+
+const fn route(method: &'static str, dispatcher: HostMethodDispatcher) -> HostMethodRoute {
+    HostMethodRoute { method, dispatcher }
+}
+
+impl HostMethodRegistry {
+    fn dispatch(
+        &self,
+        router: &HostMethodRouter,
+        request: HostDispatchRequest,
+    ) -> Vec<HostProtocolEnvelope> {
+        let Some(route) = self
+            .routes
+            .iter()
+            .find(|route| route.method == request.method)
+        else {
+            return response_frame(
+                request.id,
+                request.timestamp,
+                request.trace_id,
+                None,
+                Some(HostProtocolError::method_not_found(request.method)),
+            );
+        };
+        route.dispatcher.dispatch(router, route.method, request)
+    }
+
+    #[cfg(test)]
+    fn methods(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.routes.iter().map(|route| route.method)
+    }
+}
+
+impl HostMethodDispatcher {
+    fn dispatch(
+        &self,
+        router: &HostMethodRouter,
+        method: &'static str,
+        request: HostDispatchRequest,
+    ) -> Vec<HostProtocolEnvelope> {
+        match self {
+            Self::Ping => {
+                response_frame(request.id, request.timestamp, request.trace_id, None, None)
+            }
+            Self::Version => response_frame(
+                request.id,
+                request.timestamp,
+                request.trace_id,
+                Some(handshake::version_payload()),
+                None,
+            ),
+            Self::Payload(handler) => dispatch_result_frame(
+                request.id,
+                request.timestamp,
+                request.trace_id,
+                handler(request.payload),
+            ),
+            Self::Empty(handler) => {
+                dispatch_result_frame(request.id, request.timestamp, request.trace_id, handler())
+            }
+            Self::Window(handler) => dispatch_result_frame(
+                request.id,
+                request.timestamp,
+                request.trace_id,
+                handler(&*router.window, request.payload),
+            ),
+            Self::WindowDestroy => {
+                let destroy_payload = request.payload.clone();
+                let result = window::destroy(&*router.window, request.payload);
+                if result.is_ok() {
+                    if let Some(window_id) = decode_window_destroy_id(destroy_payload) {
+                        if let Err(error) = realtime_media_session::close_sessions_for_window(
+                            &window_id,
+                            host_protocol::WINDOW_DESTROY_METHOD,
+                        ) {
+                            return response_frame(
+                                request.id,
+                                request.timestamp,
+                                request.trace_id,
+                                None,
+                                Some(error),
+                            );
+                        }
+                    }
+                }
+                dispatch_result_frame(request.id, request.timestamp, request.trace_id, result)
+            }
+            Self::UnsupportedGlobalShortcut => dispatch_result_frame(
+                request.id,
+                request.timestamp,
+                request.trace_id,
+                Err(linux::unsupported_global_shortcut(method)),
+            ),
+            Self::EgressRecord => dispatch_egress_record(request),
+            Self::RealtimeMedia(handler) => router.dispatch_realtime_media_session(
+                RealtimeMediaDispatch {
+                    id: request.id,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: request.payload,
+                    timestamp: request.timestamp,
+                },
+                *handler,
+            ),
+            Self::ExtensionConfig(handler) => router.dispatch_extension_config(
+                ExtensionConfigDispatch {
+                    id: request.id,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: request.payload,
+                    timestamp: request.timestamp,
+                },
+                *handler,
+            ),
+            Self::ExtensionPackage(handler) => router.dispatch_extension_package(
+                ExtensionPackageDispatch {
+                    id: request.id,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: request.payload,
+                    timestamp: request.timestamp,
+                },
+                *handler,
+            ),
+            Self::DistributionParity(handler) => router.dispatch_distribution_parity(
+                DistributionParityDispatch {
+                    id: request.id,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: request.payload,
+                    timestamp: request.timestamp,
+                },
+                *handler,
+            ),
+            Self::Job(handler) => router.dispatch_job(
+                JobDispatch {
+                    id: request.id,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: request.payload,
+                    timestamp: request.timestamp,
+                },
+                *handler,
+            ),
+            Self::LocalToolRuntime(handler) => router.dispatch_local_tool_runtime(
+                LocalToolRuntimeDispatch {
+                    id: request.id,
+                    method: request.method,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: request.payload,
+                    timestamp: request.timestamp,
+                },
+                *handler,
+            ),
+            Self::LocalToolRuntimeRun => {
+                router.dispatch_local_tool_runtime_run(LocalToolRuntimeDispatch {
+                    id: request.id,
+                    method: request.method,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: request.payload,
+                    timestamp: request.timestamp,
+                })
+            }
+            Self::WorkspaceIndex(handler) => router.dispatch_workspace_index(
+                WorkspaceIndexDispatch {
+                    id: request.id,
+                    trace_id: request.trace_id,
+                    window_id: request.window_id,
+                    payload: request.payload,
+                    timestamp: request.timestamp,
+                },
+                *handler,
+            ),
+        }
+    }
+}
+
+fn dispatch_egress_record(request: HostDispatchRequest) -> Vec<HostProtocolEnvelope> {
+    let (payload, event_payload, error) =
+        match egress_policy::record_with_event(request.payload, request.timestamp) {
+            Ok((payload, event_payload)) => (payload, event_payload, None),
+            Err(error) => (None, None, Some(error)),
+        };
+
+    let response = HostProtocolEnvelope::Response {
+        id: request.id,
+        timestamp: request.timestamp,
+        trace_id: request.trace_id.clone(),
+        payload,
+        error,
+    };
+
+    match event_payload {
+        Some(payload) => vec![
+            HostProtocolEnvelope::Event {
+                method: host_protocol::EGRESS_POLICY_DECISION_RECORDED_EVENT.to_string(),
+                timestamp: request.timestamp,
+                trace_id: request.trace_id,
+                window_id: request.window_id,
+                payload: Some(payload),
+            },
+            response,
+        ],
+        None => vec![response],
+    }
+}
+
+fn dispatch_result_frame(
+    id: String,
+    timestamp: u64,
+    trace_id: String,
+    result: Result<Option<serde_json::Value>, HostProtocolError>,
+) -> Vec<HostProtocolEnvelope> {
+    let (payload, error) = match result {
+        Ok(payload) => (payload, None),
+        Err(error) => (None, Some(error)),
+    };
+    response_frame(id, timestamp, trace_id, payload, error)
+}
+
+fn response_frame(
+    id: String,
+    timestamp: u64,
+    trace_id: String,
+    payload: Option<serde_json::Value>,
+    error: Option<HostProtocolError>,
+) -> Vec<HostProtocolEnvelope> {
+    vec![HostProtocolEnvelope::Response {
+        id,
+        timestamp,
+        trace_id,
+        payload,
+        error,
+    }]
 }
 
 #[derive(Clone)]
@@ -271,6 +960,11 @@ impl HostMethodRouter {
             .next()
     }
 
+    #[cfg(test)]
+    fn registered_methods(&self) -> Vec<&'static str> {
+        HOST_DISPATCH_REGISTRY.methods().collect()
+    }
+
     fn dispatch_frames_at(
         &self,
         envelope: HostProtocolEnvelope,
@@ -293,568 +987,17 @@ impl HostMethodRouter {
             return Vec::new();
         };
 
-        if method == host_protocol::EGRESS_POLICY_RECORD_METHOD {
-            let (payload, event_payload, error) =
-                match egress_policy::record_with_event(payload, timestamp) {
-                    Ok((payload, event_payload)) => (payload, event_payload, None),
-                    Err(error) => (None, None, Some(error)),
-                };
-
-            let response = HostProtocolEnvelope::Response {
+        HOST_DISPATCH_REGISTRY.dispatch(
+            self,
+            HostDispatchRequest {
                 id,
-                timestamp,
-                trace_id: trace_id.clone(),
+                method,
+                trace_id,
                 payload,
-                error,
-            };
-
-            return match event_payload {
-                Some(payload) => vec![
-                    HostProtocolEnvelope::Event {
-                        method: host_protocol::EGRESS_POLICY_DECISION_RECORDED_EVENT.to_string(),
-                        timestamp,
-                        trace_id,
-                        window_id,
-                        payload: Some(payload),
-                    },
-                    response,
-                ],
-                None => vec![response],
-            };
-        }
-
-        let result = match method.as_str() {
-            host_protocol::HOST_PING_METHOD => Ok(None),
-            host_protocol::HOST_VERSION_METHOD => Ok(Some(handshake::version_payload())),
-            host_protocol::WINDOW_CREATE_METHOD => window::create(&*self.window, payload),
-            host_protocol::WINDOW_DESTROY_METHOD => {
-                let destroy_payload = payload.clone();
-                let result = window::destroy(&*self.window, payload);
-                if result.is_ok() {
-                    if let Some(window_id) = decode_window_destroy_id(destroy_payload) {
-                        if let Err(error) = realtime_media_session::close_sessions_for_window(
-                            &window_id,
-                            host_protocol::WINDOW_DESTROY_METHOD,
-                        ) {
-                            return vec![HostProtocolEnvelope::Response {
-                                id,
-                                timestamp,
-                                trace_id,
-                                payload: None,
-                                error: Some(error),
-                            }];
-                        }
-                    }
-                }
-                result
-            }
-            host_protocol::DOCK_SET_BADGE_COUNT_METHOD => {
-                dock::set_badge_count(&*self.window, payload)
-            }
-            host_protocol::DOCK_SET_BADGE_TEXT_METHOD => {
-                dock::set_badge_text(&*self.window, payload)
-            }
-            host_protocol::DOCK_SET_MENU_METHOD => dock::set_menu(&*self.window, payload),
-            host_protocol::DOCK_REQUEST_ATTENTION_METHOD => {
-                dock::request_attention(&*self.window, payload)
-            }
-            host_protocol::DOCK_IS_SUPPORTED_METHOD => linux::dock_is_supported(payload),
-            host_protocol::GLOBAL_SHORTCUT_REGISTER_METHOD => Err(
-                linux::unsupported_global_shortcut(host_protocol::GLOBAL_SHORTCUT_REGISTER_METHOD),
-            ),
-            host_protocol::GLOBAL_SHORTCUT_UNREGISTER_METHOD => {
-                Err(linux::unsupported_global_shortcut(
-                    host_protocol::GLOBAL_SHORTCUT_UNREGISTER_METHOD,
-                ))
-            }
-            host_protocol::GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD => {
-                Err(linux::unsupported_global_shortcut(
-                    host_protocol::GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD,
-                ))
-            }
-            host_protocol::GLOBAL_SHORTCUT_IS_REGISTERED_METHOD => {
-                linux::global_shortcut_is_registered()
-            }
-            host_protocol::GLOBAL_SHORTCUT_IS_SUPPORTED_METHOD => {
-                linux::global_shortcut_is_supported()
-            }
-            host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD => linux::safe_storage_is_available(),
-            host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD => {
-                return self.dispatch_realtime_media_session(
-                    RealtimeMediaDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    realtime_media_session::open_with_events,
-                );
-            }
-            host_protocol::REALTIME_MEDIA_SESSION_CLOSE_METHOD => {
-                return self.dispatch_realtime_media_session(
-                    RealtimeMediaDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    realtime_media_session::close_with_events,
-                );
-            }
-            host_protocol::REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD => {
-                return self.dispatch_realtime_media_session(
-                    RealtimeMediaDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    realtime_media_session::select_device_with_events,
-                );
-            }
-            host_protocol::REALTIME_MEDIA_SESSION_INTERRUPT_METHOD => {
-                return self.dispatch_realtime_media_session(
-                    RealtimeMediaDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    realtime_media_session::interrupt_with_events,
-                );
-            }
-            host_protocol::REALTIME_MEDIA_SESSION_IS_SUPPORTED_METHOD => {
-                realtime_media_session::is_supported()
-            }
-            host_protocol::DIAGNOSTICS_BUNDLE_COLLECT_METHOD => {
-                diagnostics_bundle::collect(payload)
-            }
-            host_protocol::DIAGNOSTICS_BUNDLE_REDACT_METHOD => diagnostics_bundle::redact(payload),
-            host_protocol::DIAGNOSTICS_BUNDLE_WRITE_METHOD => diagnostics_bundle::write(payload),
-            host_protocol::DIAGNOSTICS_BUNDLE_IS_SUPPORTED_METHOD => {
-                diagnostics_bundle::is_supported()
-            }
-            host_protocol::ATTACHMENT_INTAKE_INGEST_METHOD => attachment_intake::ingest(payload),
-            host_protocol::ATTACHMENT_INTAKE_INSPECT_METHOD => attachment_intake::inspect(payload),
-            host_protocol::ATTACHMENT_INTAKE_DISPOSE_METHOD => attachment_intake::dispose(payload),
-            host_protocol::ATTACHMENT_INTAKE_IS_SUPPORTED_METHOD => {
-                attachment_intake::is_supported()
-            }
-            host_protocol::SELECTION_CONTEXT_READ_SELECTION_METHOD => {
-                selection_context::read_selection(payload)
-            }
-            host_protocol::SELECTION_CONTEXT_READ_DOCUMENT_METHOD => {
-                selection_context::read_document(payload)
-            }
-            host_protocol::SELECTION_CONTEXT_WATCH_FOCUS_METHOD => {
-                selection_context::watch_focus(payload)
-            }
-            host_protocol::SELECTION_CONTEXT_STOP_WATCHING_METHOD => {
-                selection_context::stop_watching(payload)
-            }
-            host_protocol::SELECTION_CONTEXT_IS_SUPPORTED_METHOD => {
-                selection_context::is_supported()
-            }
-            host_protocol::FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD => {
-                focused_application_context::snapshot(payload)
-            }
-            host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD => {
-                focused_application_context::watch(payload)
-            }
-            host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD => {
-                focused_application_context::stop_watching(payload)
-            }
-            host_protocol::FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD => {
-                focused_application_context::is_supported()
-            }
-            host_protocol::DISPLAY_CAPTURE_CAPTURE_DISPLAY_METHOD => {
-                display_capture::capture_display(payload)
-            }
-            host_protocol::DISPLAY_CAPTURE_CAPTURE_WINDOW_METHOD => {
-                display_capture::capture_window(payload)
-            }
-            host_protocol::DISPLAY_CAPTURE_CAPTURE_REGION_METHOD => {
-                display_capture::capture_region(payload)
-            }
-            host_protocol::DISPLAY_CAPTURE_IS_SUPPORTED_METHOD => display_capture::is_supported(),
-            host_protocol::TRANSIENT_WINDOW_ROLE_OPEN_METHOD => {
-                transient_window_role::open(payload)
-            }
-            host_protocol::TRANSIENT_WINDOW_ROLE_REPOSITION_METHOD => {
-                transient_window_role::reposition(payload)
-            }
-            host_protocol::TRANSIENT_WINDOW_ROLE_DISMISS_METHOD => {
-                transient_window_role::dismiss(payload)
-            }
-            host_protocol::TRANSIENT_WINDOW_ROLE_IS_SUPPORTED_METHOD => {
-                transient_window_role::is_supported()
-            }
-            host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD => {
-                activation_registry::register_surface(payload)
-            }
-            host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD => {
-                activation_registry::unregister_surface(payload)
-            }
-            host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD => {
-                activation_registry::list_surfaces()
-            }
-            host_protocol::ACTIVATION_REGISTRY_IS_SUPPORTED_METHOD => {
-                activation_registry::is_supported()
-            }
-            host_protocol::RESIDENT_LIFECYCLE_ENABLE_METHOD => resident_lifecycle::enable(payload),
-            host_protocol::RESIDENT_LIFECYCLE_DISABLE_METHOD => {
-                resident_lifecycle::disable(payload)
-            }
-            host_protocol::RESIDENT_LIFECYCLE_GET_STATE_METHOD => resident_lifecycle::get_state(),
-            host_protocol::RESIDENT_LIFECYCLE_IS_SUPPORTED_METHOD => {
-                resident_lifecycle::is_supported()
-            }
-            host_protocol::DISTRIBUTION_PARITY_VERIFY_METHOD => {
-                return self.dispatch_distribution_parity(
-                    DistributionParityDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    distribution_parity::verify_with_event,
-                );
-            }
-            host_protocol::DISTRIBUTION_PARITY_IS_SUPPORTED_METHOD => {
-                distribution_parity::is_supported()
-            }
-            host_protocol::JOB_START_METHOD => {
-                return self.dispatch_job(
-                    JobDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    job::start_with_event,
-                );
-            }
-            host_protocol::JOB_PAUSE_METHOD => {
-                return self.dispatch_job(
-                    JobDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    job::pause_with_event,
-                );
-            }
-            host_protocol::JOB_RESUME_METHOD => {
-                return self.dispatch_job(
-                    JobDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    job::resume_with_event,
-                );
-            }
-            host_protocol::JOB_RETRY_METHOD => {
-                return self.dispatch_job(
-                    JobDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    job::retry_with_event,
-                );
-            }
-            host_protocol::JOB_INTERRUPT_METHOD => {
-                return self.dispatch_job(
-                    JobDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    job::interrupt_with_event,
-                );
-            }
-            host_protocol::JOB_SUCCEED_METHOD => {
-                return self.dispatch_job(
-                    JobDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    job::succeed_with_event,
-                );
-            }
-            host_protocol::JOB_FAIL_METHOD => {
-                return self.dispatch_job(
-                    JobDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    job::fail_with_event,
-                );
-            }
-            host_protocol::JOB_REPORT_PROGRESS_METHOD => {
-                return self.dispatch_job(
-                    JobDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    job::report_progress_with_event,
-                );
-            }
-            host_protocol::JOB_GET_METHOD => job::get(payload),
-            host_protocol::JOB_IS_SUPPORTED_METHOD => job::is_supported(),
-            host_protocol::EGRESS_POLICY_DECIDE_METHOD => egress_policy::decide(payload),
-            host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD => egress_policy::is_supported(),
-            host_protocol::EXECUTION_SANDBOX_CREATE_METHOD => execution_sandbox::create(payload),
-            host_protocol::EXECUTION_SANDBOX_RUN_METHOD => execution_sandbox::run(payload),
-            host_protocol::EXECUTION_SANDBOX_DESTROY_METHOD => execution_sandbox::destroy(payload),
-            host_protocol::EXECUTION_SANDBOX_IS_SUPPORTED_METHOD => {
-                execution_sandbox::is_supported()
-            }
-            host_protocol::EXTENSION_CONFIG_READ_METHOD => {
-                return self.dispatch_extension_config(
-                    ExtensionConfigDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    extension_config::read_with_event,
-                );
-            }
-            host_protocol::EXTENSION_CONFIG_WRITE_METHOD => {
-                return self.dispatch_extension_config(
-                    ExtensionConfigDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    extension_config::write_with_event,
-                );
-            }
-            host_protocol::EXTENSION_CONFIG_RESET_METHOD => {
-                return self.dispatch_extension_config(
-                    ExtensionConfigDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    extension_config::reset_with_event,
-                );
-            }
-            host_protocol::EXTENSION_CONFIG_REDACT_METHOD => {
-                return self.dispatch_extension_config(
-                    ExtensionConfigDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    extension_config::redact_with_event,
-                );
-            }
-            host_protocol::EXTENSION_CONFIG_IS_SUPPORTED_METHOD => extension_config::is_supported(),
-            host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD => {
-                return self.dispatch_extension_package(
-                    ExtensionPackageDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    extension_package::install_with_event,
-                );
-            }
-            host_protocol::EXTENSION_PACKAGE_UPDATE_METHOD => {
-                return self.dispatch_extension_package(
-                    ExtensionPackageDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    extension_package::update_with_event,
-                );
-            }
-            host_protocol::EXTENSION_PACKAGE_REMOVE_METHOD => {
-                return self.dispatch_extension_package(
-                    ExtensionPackageDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    extension_package::remove_with_event,
-                );
-            }
-            host_protocol::WORKSPACE_INDEX_OPEN_METHOD => {
-                return self.dispatch_workspace_index(
-                    WorkspaceIndexDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    workspace_index::open_with_event,
-                );
-            }
-            host_protocol::WORKSPACE_INDEX_REFRESH_METHOD => {
-                return self.dispatch_workspace_index(
-                    WorkspaceIndexDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    workspace_index::refresh_with_event,
-                );
-            }
-            host_protocol::WORKSPACE_INDEX_CLOSE_METHOD => {
-                return self.dispatch_workspace_index(
-                    WorkspaceIndexDispatch {
-                        id,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    workspace_index::close_with_event,
-                );
-            }
-            host_protocol::EXTENSION_PACKAGE_LIST_METHOD => extension_package::list(),
-            host_protocol::EXTENSION_PACKAGE_IS_SUPPORTED_METHOD => {
-                extension_package::is_supported()
-            }
-            host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD => {
-                return self.dispatch_local_tool_runtime(
-                    LocalToolRuntimeDispatch {
-                        id,
-                        method,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    local_tool_runtime::register_with_event,
-                );
-            }
-            host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD => {
-                return self.dispatch_local_tool_runtime_run(LocalToolRuntimeDispatch {
-                    id,
-                    method,
-                    trace_id,
-                    window_id,
-                    payload,
-                    timestamp,
-                });
-            }
-            host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD => {
-                return self.dispatch_local_tool_runtime(
-                    LocalToolRuntimeDispatch {
-                        id,
-                        method,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    local_tool_runtime::stop_with_event,
-                );
-            }
-            host_protocol::LOCAL_TOOL_RUNTIME_HEALTH_METHOD => {
-                return self.dispatch_local_tool_runtime(
-                    LocalToolRuntimeDispatch {
-                        id,
-                        method,
-                        trace_id,
-                        window_id,
-                        payload,
-                        timestamp,
-                    },
-                    local_tool_runtime::health_with_event,
-                );
-            }
-            host_protocol::LOCAL_TOOL_RUNTIME_IS_SUPPORTED_METHOD => {
-                local_tool_runtime::is_supported()
-            }
-            host_protocol::WORKSPACE_INDEX_IS_SUPPORTED_METHOD => workspace_index::is_supported(),
-            host_protocol::SCOPED_ACCESS_GRANT_GRANT_METHOD => scoped_access_grant::grant(payload),
-            host_protocol::SCOPED_ACCESS_GRANT_RESOLVE_METHOD => {
-                scoped_access_grant::resolve(payload)
-            }
-            host_protocol::SCOPED_ACCESS_GRANT_REVOKE_METHOD => {
-                scoped_access_grant::revoke(payload)
-            }
-            host_protocol::SCOPED_ACCESS_GRANT_IS_SUPPORTED_METHOD => {
-                scoped_access_grant::is_supported()
-            }
-            host_protocol::TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD => {
-                transactional_file_mutation::prepare(payload)
-            }
-            host_protocol::TRANSACTIONAL_FILE_MUTATION_COMMIT_METHOD => {
-                transactional_file_mutation::commit(payload)
-            }
-            host_protocol::TRANSACTIONAL_FILE_MUTATION_ROLLBACK_METHOD => {
-                transactional_file_mutation::rollback(payload)
-            }
-            host_protocol::TRANSACTIONAL_FILE_MUTATION_IS_SUPPORTED_METHOD => {
-                transactional_file_mutation::is_supported()
-            }
-            host_protocol::MENU_SET_APPLICATION_MENU_METHOD => {
-                menu::set_application_menu(&*self.window, payload)
-            }
-            host_protocol::MENU_SET_WINDOW_MENU_METHOD => {
-                menu::set_window_menu(&*self.window, payload)
-            }
-            _ => Err(HostProtocolError::method_not_found(method.clone())),
-        };
-
-        let (payload, error) = match result {
-            Ok(payload) => (payload, None),
-            Err(error) => (None, Some(error)),
-        };
-
-        vec![HostProtocolEnvelope::Response {
-            id,
-            timestamp,
-            trace_id,
-            payload,
-            error,
-        }]
+                window_id,
+                timestamp,
+            },
+        )
     }
 
     fn dispatch_realtime_media_session(
@@ -1255,6 +1398,47 @@ mod tests {
                 error: None,
             }
         );
+    }
+
+    #[test]
+    fn host_dispatch_registry_exposes_unique_registered_methods() {
+        let methods = test_router().registered_methods();
+        let unique = methods
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+
+        assert_eq!(unique.len(), methods.len());
+        assert!(unique.contains(host_protocol::HOST_PING_METHOD));
+        assert!(unique.contains(host_protocol::WINDOW_CREATE_METHOD));
+        assert!(unique.contains(host_protocol::EGRESS_POLICY_RECORD_METHOD));
+        assert!(unique.contains(host_protocol::EXECUTION_SANDBOX_CREATE_METHOD));
+        assert!(!unique.contains("host.missing"));
+    }
+
+    #[test]
+    fn host_dispatch_registry_covers_host_protocol_methods() {
+        let registered = test_router()
+            .registered_methods()
+            .into_iter()
+            .map(str::to_string)
+            .collect::<std::collections::HashSet<_>>();
+        let declared = declared_host_protocol_methods()
+            .into_iter()
+            .filter(|method| method != host_protocol::RENDERER_RESUME_METHOD)
+            .collect::<std::collections::HashSet<_>>();
+
+        let missing = declared
+            .difference(&registered)
+            .cloned()
+            .collect::<Vec<_>>();
+        let extra = registered
+            .difference(&declared)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        assert_eq!(missing, Vec::<String>::new());
+        assert_eq!(extra, Vec::<String>::new());
     }
 
     #[test]
@@ -3695,6 +3879,34 @@ mod tests {
             Ok(WindowCreateResponse::new("window-test")),
             Ok(()),
         )))
+    }
+
+    fn declared_host_protocol_methods() -> Vec<String> {
+        let source = include_str!("../../../host-protocol/src/lib.rs");
+        let mut declarations = Vec::new();
+        let mut current = String::new();
+        for line in source.lines() {
+            if current.is_empty() {
+                let is_method_constant = line.starts_with("pub const ") && line.contains("_METHOD");
+                if !is_method_constant {
+                    continue;
+                }
+            }
+            current.push_str(line);
+            if line.ends_with(';') {
+                if let Some(method) = method_literal(&current) {
+                    declarations.push(method);
+                }
+                current.clear();
+            }
+        }
+        declarations
+    }
+
+    fn method_literal(declaration: &str) -> Option<String> {
+        let start = declaration.find('"')? + 1;
+        let end = declaration[start..].find('"')? + start;
+        Some(declaration[start..end].to_string())
     }
 
     fn transient_window_role_handle() -> serde_json::Value {

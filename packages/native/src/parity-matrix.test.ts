@@ -40,7 +40,7 @@ const buildNativeParityMatrix = async (): Promise<NativeParityMatrixResultType> 
   return Effect.runPromise(makeNativeParityMatrixResult(Native.all.surfaces, hostMethods))
 }
 
-test("NativeParityMatrix reports declared TypeScript methods against the Rust host router", async () => {
+test("NativeParityMatrix reports declared TypeScript methods against the Rust host registry", async () => {
   const hostMethods = await readRoutedHostMethods()
   const result = await Effect.runPromise(
     makeNativeParityMatrixResult(Native.all.surfaces, hostMethods)
@@ -176,10 +176,10 @@ test("NativeParityMatrix surfaces host inventory failures as typed errors", asyn
   }
 })
 
-test("Rust host inventory parser reads only the router dispatch table", () => {
+test("Rust host inventory parser reads only the host dispatch registry", () => {
   const hostMethods = routedHostMethodsFromSource(
     'pub const WINDOW_CREATE_METHOD: &str = "Window.create";\npub const WINDOW_FOCUS_METHOD: &str =\n    "Window.focus";\npub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";\npub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";\n',
-    "fn dispatch_frames_at() {\n  if method == host_protocol::EGRESS_POLICY_RECORD_METHOD { return Vec::new(); }\n  let result = match method.as_str() {\n    host_protocol::WINDOW_CREATE_METHOD => Ok(None),\n    host_protocol::WINDOW_FOCUS_METHOD => Ok(None),\n    _ => Err(HostProtocolError::method_not_found(method.clone())),\n  };\n}\nfn dispatch_realtime_media_session() {}\n#[test] fn unrelated() { host_protocol::WINDOW_DESTROY_METHOD; }"
+    "const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[\n  route(host_protocol::EGRESS_POLICY_RECORD_METHOD, HostMethodDispatcher::EgressRecord),\n  route(host_protocol::WINDOW_CREATE_METHOD, HostMethodDispatcher::Window(window::create)),\n  route(host_protocol::WINDOW_FOCUS_METHOD, HostMethodDispatcher::Window(window::focus)),\n];\nconst fn route(method: &'static str, dispatcher: HostMethodDispatcher) -> HostMethodRoute { HostMethodRoute { method, dispatcher } }\n#[test] fn unrelated() { host_protocol::WINDOW_DESTROY_METHOD; }"
   )
 
   expect([...hostMethods]).toEqual(["EgressPolicy.record", "Window.create", "Window.focus"])
