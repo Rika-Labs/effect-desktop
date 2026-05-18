@@ -25,6 +25,12 @@ interception. There is no `WebRequest` service yet for ordered interceptors,
 subresource inspection, response-header mutation, blocking, redirects, or
 request audit.
 
+Navigation and popup policy is not host-backed today. `setNavigationPolicy` is
+declared in the TypeScript bridge contract, but the Rust host does not route
+`WebView.setNavigationPolicy`, install a native navigation handler, install a
+new-window handler, or connect WebView-originated external opens to
+`Shell.openExternal` policy before a popup is created.
+
 Subframe identity is not exposed today. Effect Desktop has no `WebViewFrames`
 service, frame handle schema, frame lifecycle stream, `listFrames`, or
 `postToFrame` host route, and the current Wry-backed host path does not provide
