@@ -28,6 +28,16 @@ import {
 
 export type SystemAppearanceError = HostProtocolError
 
+const UnsupportedReason = "host-adapter-unimplemented"
+
+const SystemAppearanceSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
+
 export const SystemAppearanceGetAppearance = systemAppearanceRpc(
   "getAppearance",
   Schema.Void,
@@ -253,8 +263,8 @@ const systemAppearanceClientFromRpcClient = (
     SystemAppearanceError,
     never
   >
-): SystemAppearanceClientApi => {
-  return Object.freeze({
+): SystemAppearanceClientApi =>
+  Object.freeze({
     getAppearance: () =>
       runSystemAppearanceRpc(
         client["SystemAppearance.getAppearance"](undefined),
@@ -282,7 +292,6 @@ const systemAppearanceClientFromRpcClient = (
         "SystemAppearance.isSupported"
       )
   } satisfies SystemAppearanceClientApi)
-}
 
 const subscribeSystemAppearanceEvent = (
   exchange: BridgeClientExchange,
@@ -300,7 +309,7 @@ function systemAppearanceRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: SystemAppearanceSupport
   })
 }
 
