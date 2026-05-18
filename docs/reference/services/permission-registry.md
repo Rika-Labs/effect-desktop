@@ -10,6 +10,11 @@ effect_version: 4
 
 Deny-by-default capability chokepoint. Every privileged operation in the runtime checks a capability against the registry before executing.
 
+`PermissionRegistry` is app/runtime capability policy, not a browser session
+permission manager. It does not route WebView permission prompts for camera,
+microphone, notifications, geolocation, clipboard, or display capture through
+profile/session-partitioned decisions.
+
 ## Import
 
 ```ts

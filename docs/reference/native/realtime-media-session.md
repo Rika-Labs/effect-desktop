@@ -10,6 +10,10 @@ effect_version: 4
 
 Product-neutral realtime media session primitive. It models microphone and speaker device state, permission state, interruption events, and session state without assistant, chat, model, prompt, or LLM concepts.
 
+`RealtimeMediaSession` is scoped to realtime microphone/speaker sessions. It is
+not the central WebView/session permission manager for notifications,
+geolocation, clipboard, display capture, or generic browser permission prompts.
+
 The public service is Layer-first and test-substitutable. The Rust host adapter is runtime-verified on macOS through CPAL. `isSupported` opens and immediately releases default microphone and speaker streams; it returns `supported: true` only where CPAL reports stream startup synchronously. Headless machines, missing devices, unavailable audio backends, denied OS media access, or platforms where stream startup is only enqueued return typed failures or typed unsupported results. `open` and `selectDevice` obey the same startup-verification gate, so unsupported platforms do not silently start best-effort streams.
 
 ## Methods

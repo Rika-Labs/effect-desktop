@@ -24,6 +24,10 @@ Proxy configuration, HTTP authentication challenges, and certificate decisions
 are also not part of `WebView`. Those hooks are absent; adding them would
 require a new network-auth service and host adapter.
 
+Browser permission prompts are not handled by `WebView` today. Camera,
+microphone, notifications, geolocation, clipboard, and display-capture
+decisions still need explicit profile/session-partitioned host wiring.
+
 ## Import
 
 ```ts
