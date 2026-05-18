@@ -389,6 +389,44 @@ test("ExecutionSandbox bridge client rejects malformed input before native trans
   })
 })
 
+test("ExecutionSandbox bridge client rejects relative and traversing policy paths before native transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({
+        kind: "success",
+        payload: createResult("sandbox-1", defaultDenyPolicy())
+      })
+    },
+    subscribe: () => Stream.empty
+  }
+
+  const relativeCwd = createInput()
+  Object.defineProperty(relativeCwd.policy, "cwd", { value: "tmp/app" })
+  const traversingRoot = createInput()
+  Object.defineProperty(traversingRoot.policy.filesystem, "readRoots", {
+    value: ["/tmp/../secret"]
+  })
+
+  const exits = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* ExecutionSandboxClient
+      const relativeCwdExit = yield* Effect.exit(client.create(relativeCwd))
+      const traversingRootExit = yield* Effect.exit(client.create(traversingRoot))
+      return { relativeCwdExit, traversingRootExit }
+    }).pipe(Effect.provide(makeExecutionSandboxBridgeClientLayer(exchange)))
+  )
+
+  expect(requests).toEqual([])
+  expectExitFailure(exits.relativeCwdExit, (error) => {
+    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "ExecutionSandbox.create" })
+  })
+  expectExitFailure(exits.traversingRootExit, (error) => {
+    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "ExecutionSandbox.create" })
+  })
+})
+
 test("ExecutionSandbox bridge client rejects shell-shaped run commands before native transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange: BridgeClientExchange = {

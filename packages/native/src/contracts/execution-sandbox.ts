@@ -32,8 +32,33 @@ const ExecutionSandboxTimestamp = Schema.Number.check(
   Schema.isFinite(),
   Schema.isGreaterThanOrEqualTo(0)
 )
-const ExecutionSandboxPathList = Schema.Array(PrintableNonEmptyString)
+const ExecutionSandboxPolicyPath = PrintableNonEmptyString.check(
+  Schema.makeFilter(
+    (value) =>
+      isSafeExecutionSandboxPath(value) ||
+      "must be an absolute path without control characters or dot segments"
+  )
+)
+const ExecutionSandboxPathList = Schema.Array(ExecutionSandboxPolicyPath)
 const ExecutionSandboxHostList = Schema.Array(PrintableNonEmptyString)
+
+const WindowsDriveAbsolutePathPattern = /^[A-Za-z]:[\\/]/u
+const WindowsUncAbsolutePathPattern = /^\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/u
+
+const isSafeExecutionSandboxPath = (value: string): boolean => {
+  if (value.startsWith("/")) {
+    return !hasDotPathSegment(value, /\/+/u)
+  }
+
+  if (WindowsDriveAbsolutePathPattern.test(value) || WindowsUncAbsolutePathPattern.test(value)) {
+    return !hasDotPathSegment(value, /[\\/]+/u)
+  }
+
+  return false
+}
+
+const hasDotPathSegment = (value: string, separator: RegExp): boolean =>
+  value.split(separator).some((segment) => segment === "." || segment === "..")
 
 export class ExecutionSandboxActor extends Schema.Class<ExecutionSandboxActor>(
   "ExecutionSandboxActor"
@@ -82,7 +107,7 @@ export class ExecutionSandboxCleanupPolicy extends Schema.Class<ExecutionSandbox
 export class ExecutionSandboxPolicy extends Schema.Class<ExecutionSandboxPolicy>(
   "ExecutionSandboxPolicy"
 )({
-  cwd: PrintableNonEmptyString,
+  cwd: ExecutionSandboxPolicyPath,
   environment: Schema.optionalKey(Schema.Array(ExecutionSandboxEnvironmentEntry)),
   filesystem: Schema.optionalKey(ExecutionSandboxFilesystemPolicy),
   network: Schema.optionalKey(ExecutionSandboxNetworkPolicy),

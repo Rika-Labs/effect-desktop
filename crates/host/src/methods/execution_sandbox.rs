@@ -73,7 +73,7 @@ fn validate_create(
     operation: &'static str,
 ) -> Result<(), HostProtocolError> {
     validate_actor(input.actor(), operation)?;
-    validate_printable_non_empty("policy.cwd", input.policy().cwd(), operation)?;
+    validate_sandbox_path("policy.cwd", input.policy().cwd(), operation)?;
     if let Some(sandbox_id) = input.sandbox_id() {
         validate_non_empty("sandboxId", sandbox_id, operation)?;
     }
@@ -85,10 +85,10 @@ fn validate_create(
         validate_no_nul("policy.environment.value", entry.value(), operation)?;
     }
     for root in input.policy().filesystem().read_roots() {
-        validate_printable_non_empty("policy.filesystem.readRoots", root, operation)?;
+        validate_sandbox_path("policy.filesystem.readRoots", root, operation)?;
     }
     for root in input.policy().filesystem().write_roots() {
-        validate_printable_non_empty("policy.filesystem.writeRoots", root, operation)?;
+        validate_sandbox_path("policy.filesystem.writeRoots", root, operation)?;
     }
     for host in input.policy().network().hosts() {
         validate_printable_non_empty("policy.network.hosts", host, operation)?;
@@ -239,6 +239,56 @@ fn is_shell_metacharacter(value: char) -> bool {
     matches!(value, ';' | '|' | '&' | '>' | '<' | '`' | '\n')
 }
 
+fn validate_sandbox_path(
+    field: &str,
+    value: &str,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    validate_printable_non_empty(field, value, operation)?;
+    if !is_safe_absolute_path(value) {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must be an absolute path without dot segments",
+            operation,
+        ));
+    }
+    Ok(())
+}
+
+fn is_safe_absolute_path(value: &str) -> bool {
+    if value.starts_with('/') {
+        return !has_dot_segment(value.split('/'));
+    }
+
+    if is_windows_drive_absolute_path(value) || is_windows_unc_absolute_path(value) {
+        return !has_dot_segment(value.split(['/', '\\']));
+    }
+
+    false
+}
+
+fn is_windows_drive_absolute_path(value: &str) -> bool {
+    let mut chars = value.chars();
+    matches!(
+        (chars.next(), chars.next(), chars.next()),
+        (Some(letter), Some(':'), Some('/') | Some('\\')) if letter.is_ascii_alphabetic()
+    )
+}
+
+fn is_windows_unc_absolute_path(value: &str) -> bool {
+    let Some(rest) = value.strip_prefix("\\\\") else {
+        return false;
+    };
+    let mut parts = rest.split(['/', '\\']).filter(|part| !part.is_empty());
+    parts.next().is_some() && parts.next().is_some()
+}
+
+fn has_dot_segment<'a>(segments: impl Iterator<Item = &'a str>) -> bool {
+    segments
+        .into_iter()
+        .any(|segment| segment == "." || segment == "..")
+}
+
 fn unsupported(operation: &'static str) -> HostProtocolError {
     HostProtocolError::unsupported(
         host_protocol::EXECUTION_SANDBOX_UNSUPPORTED_REASON,
@@ -288,6 +338,31 @@ mod tests {
 
         assert!(
             matches!(error, HostProtocolError::InvalidArgument { field, .. } if field == "policy.budgets.cpuMillis")
+        );
+    }
+
+    #[test]
+    fn create_rejects_relative_cwd_before_unsupported() {
+        let mut payload = valid_create_payload();
+        payload["policy"]["cwd"] = json!("tmp/app");
+
+        let error = create(Some(payload)).expect_err("relative cwd should fail before unsupported");
+
+        assert!(
+            matches!(error, HostProtocolError::InvalidArgument { field, .. } if field == "policy.cwd")
+        );
+    }
+
+    #[test]
+    fn create_rejects_traversing_filesystem_root_before_unsupported() {
+        let mut payload = valid_create_payload();
+        payload["policy"]["filesystem"]["readRoots"] = json!(["/tmp/../secret"]);
+
+        let error =
+            create(Some(payload)).expect_err("traversing root should fail before unsupported");
+
+        assert!(
+            matches!(error, HostProtocolError::InvalidArgument { field, .. } if field == "policy.filesystem.readRoots")
         );
     }
 

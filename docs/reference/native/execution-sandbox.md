@@ -41,6 +41,8 @@ The policy is data, not executable code:
 
 Filesystem and network access deny by default. Omitting `filesystem` or `network` normalizes to empty root and host lists, so no file or network permission is required and no file or network access is granted.
 
+`cwd`, `filesystem.readRoots`, and `filesystem.writeRoots` must be absolute platform paths without dot segments. Relative paths, drive-relative paths, incomplete UNC paths, and traversal-like roots are rejected before native transport or host side effects.
+
 ## Audit
 
 The service audits permission use and denial. `create` checks filesystem and network permissions only when the policy asks for roots or hosts. `run` checks `process.spawn` for the command, cwd, and environment mode before calling the host client.
