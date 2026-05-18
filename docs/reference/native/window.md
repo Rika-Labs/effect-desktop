@@ -89,6 +89,11 @@ Window lookup is backed by host-routed native methods. `getCurrent` returns the 
 
 `Window.events()` exposes the typed runtime-router window registry stream to renderer clients through `Window.Event`. Events are ordered by router publication order and use the router's sliding drop-oldest buffer with no replay. `opened` and `focused` events are non-terminal; `closed` is terminal for that window id. Event subscription is gated by the internal `Window.subscribeEvents` native permission before the bridge opens the stream, so denial is observable and audit-backed through `PermissionRegistry`. Host-originated `opened` events register a live `ResourceRegistry` window handle when one is not already known, and host-originated terminal `closed` events close the live window scope when one exists. The Rust host also publishes `Window.Event` for native open, OS-confirmed focus, and destroy transitions, and queues closed events when handling native close requests before applying the existing exit policy.
 
+The lifecycle surface is not complete. `show`, `hide`, `focus`, and `close` are
+host-routed, and `Window.Event` reports opened, focused, and closed registry
+phases. Effect Desktop does not yet expose a portable `blur` command,
+visibility-change events for show/hide, or a separate close-vs-destroy contract.
+
 `Window.create({ parent })` creates a child or owned window at host creation time. The parent must be a fresh `WindowHandle` from the same runtime; stale or unknown handles fail before host transport. The bridge sends the host `parentWindowId`, and the native host applies Tao's creation-time ownership where supported: macOS uses the parent `NSWindow`; Windows uses an owned window relationship. Hosts without a Tao parent/owner primitive return `Unsupported` when a parent is requested. Closing a known parent through `Window.close` closes registered children before destroying the parent so resource scopes and `windowClosed` events are deterministic in tests and host-backed runtimes.
 
 This is not a complete modal ownership API. Effect Desktop does not yet expose a
