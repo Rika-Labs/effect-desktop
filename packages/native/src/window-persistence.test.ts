@@ -536,6 +536,7 @@ const makeWindowClient = (
 ): WindowClientApi => ({
   create: () => Effect.succeed(windowHandle),
   close: () => Effect.void,
+  destroy: () => Effect.void,
   show: () => Effect.void,
   hide: () => Effect.void,
   focus: () => Effect.void,

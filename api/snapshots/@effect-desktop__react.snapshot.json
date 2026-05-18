@@ -31,7 +31,7 @@
     {
       "name": "currentWindow",
       "kind": "value",
-      "signature": "const currentWindow: Readonly<{ handle: Readonly<{ useQuery: () => Option.Option<WindowHandle>; }>; id: Readonly<{ useQuery: () => Option.Option<string>; }>; close: Readonly<{ useMutation: () => CurrentWindowCloseMutation; }>; }>"
+      "signature": "const currentWindow: Readonly<{ handle: Readonly<{ useQuery: () => Option.Option<WindowHandle>; }>; id: Readonly<{ useQuery: () => Option.Option<string>; }>; close: Readonly<{ useMutation: () => CurrentWindowCloseMutation; }>; destroy: Readonly<{ useMutation: () => CurrentWindowDestroyMutation; }>; }>"
     },
     {
       "name": "CurrentWindowCloseMutation",
@@ -116,7 +116,7 @@
     {
       "name": "DesktopWindowClient",
       "kind": "interface",
-      "signature": "export interface DesktopWindowClient { readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never> readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never> }"
+      "signature": "export interface DesktopWindowClient { readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never> readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never> readonly destroy: (window: WindowHandle) => Effect.Effect<void, WindowError, never> }"
     },
     {
       "name": "DisplaysResult",
@@ -466,7 +466,7 @@
     {
       "name": "windows",
       "kind": "value",
-      "signature": "const windows: Readonly<{ create: Readonly<{ useMutation: () => WindowCreateMutation; }>; close: Readonly<{ useMutation: () => WindowCloseMutation; }>; }>"
+      "signature": "const windows: Readonly<{ create: Readonly<{ useMutation: () => WindowCreateMutation; }>; close: Readonly<{ useMutation: () => WindowCloseMutation; }>; destroy: Readonly<{ useMutation: () => WindowDestroyMutation; }>; }>"
     }
   ]
 }

@@ -55,9 +55,10 @@ import {
 | `restore`          | `WindowHandle`                | `void`             | Clear minimized, maximized, and fullscreen state.  |
 | `setFullscreen`    | `WindowFullscreenInput`       | `void`             | Enter or exit borderless fullscreen.               |
 | `getState`         | `WindowHandle`                | `WindowState`      | Read minimized, maximized, and fullscreen state.   |
-| `close`            | `WindowHandle`                | `void`             | Destroy a native window.                           |
+| `close`            | `WindowHandle`                | `void`             | Compatibility name for `destroy`.                  |
+| `destroy`          | `WindowHandle`                | `void`             | Destroy a native window and close its scope.       |
 
-`WindowMethodNames = ["create", "close", "show", "hide", "focus", "getCurrent", "getById", "list", "getBounds", "setBounds", "center", "setTitle", "setResizable", "setDecorations", "setAlwaysOnTop", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
+`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getBounds", "setBounds", "center", "setTitle", "setResizable", "setDecorations", "setAlwaysOnTop", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
 The placement surface is not complete. `getBounds`, `setBounds`, and `center`
 are host-routed logical-coordinate operations, but Effect Desktop does not yet
@@ -85,16 +86,17 @@ attention lifecycle events, and the existing progress and attention controls
 must be treated as host-routed best-effort operations with platform-specific
 scope limits.
 
-Window lookup is backed by host-routed native methods. `getCurrent` returns the focused tracked window, `getById` returns a tracked open window by id, and `list` returns tracked open windows in host creation order. The runtime validates host lookup results against its live `ResourceRegistry` handles, so a destroyed window is removed from lookup before `Window.close` completes.
+Window lookup is backed by host-routed native methods. `getCurrent` returns the focused tracked window, `getById` returns a tracked open window by id, and `list` returns tracked open windows in host creation order. The runtime validates host lookup results against its live `ResourceRegistry` handles, so a destroyed window is removed from lookup before `Window.destroy` or compatibility `Window.close` completes.
 
 `Window.events()` exposes the typed runtime-router window registry stream to renderer clients through `Window.Event`. Events are ordered by router publication order and use the router's sliding drop-oldest buffer with no replay. `opened` and `focused` events are non-terminal; `closed` is terminal for that window id. Event subscription is gated by the internal `Window.subscribeEvents` native permission before the bridge opens the stream, so denial is observable and audit-backed through `PermissionRegistry`. Host-originated `opened` events register a live `ResourceRegistry` window handle when one is not already known, and host-originated terminal `closed` events close the live window scope when one exists. The Rust host also publishes `Window.Event` for native open, OS-confirmed focus, and destroy transitions, and queues closed events when handling native close requests before applying the existing exit policy.
 
-The lifecycle surface is not complete. `show`, `hide`, `focus`, and `close` are
-host-routed, and `Window.Event` reports opened, focused, and closed registry
-phases. Effect Desktop does not yet expose a portable `blur` command,
-visibility-change events for show/hide, or a separate close-vs-destroy contract.
+The lifecycle surface is not complete. `show`, `hide`, `focus`, `destroy`, and
+compatibility `close` are host-routed, and `Window.Event` reports opened,
+focused, and closed registry phases. Effect Desktop does not yet expose a
+portable `blur` command, visibility-change events for show/hide, or a separate
+OS close-request veto/confirm contract.
 
-`Window.create({ parent })` creates a child or owned window at host creation time. The parent must be a fresh `WindowHandle` from the same runtime; stale or unknown handles fail before host transport. The bridge sends the host `parentWindowId`, and the native host applies Tao's creation-time ownership where supported: macOS uses the parent `NSWindow`; Windows uses an owned window relationship. Hosts without a Tao parent/owner primitive return `Unsupported` when a parent is requested. Closing a known parent through `Window.close` closes registered children before destroying the parent so resource scopes and `windowClosed` events are deterministic in tests and host-backed runtimes.
+`Window.create({ parent })` creates a child or owned window at host creation time. The parent must be a fresh `WindowHandle` from the same runtime; stale or unknown handles fail before host transport. The bridge sends the host `parentWindowId`, and the native host applies Tao's creation-time ownership where supported: macOS uses the parent `NSWindow`; Windows uses an owned window relationship. Hosts without a Tao parent/owner primitive return `Unsupported` when a parent is requested. Destroying a known parent through `Window.destroy` or compatibility `Window.close` closes registered children before destroying the parent so resource scopes and `windowClosed` events are deterministic in tests and host-backed runtimes.
 
 This is not a complete modal ownership API. Effect Desktop does not yet expose a
 `WindowOwnership` service, runtime `setParent`, modal enable/disable, owner

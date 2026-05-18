@@ -113,6 +113,9 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
     hostMethod: "Window.destroy",
     hostStatus: "routed"
   })
+  expect(result.rows.find((row) => row.tag === "Window.destroy")).toMatchObject({
+    hostStatus: "routed"
+  })
   expect(result.rows.find((row) => row.tag === "EgressPolicy.record")).toMatchObject({
     hostStatus: "routed"
   })

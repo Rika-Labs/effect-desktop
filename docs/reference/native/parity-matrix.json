@@ -4075,6 +4075,16 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.destroy",
+      "surface": "Window",
+      "method": "destroy",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.focus",
       "surface": "Window",
       "method": "focus",
@@ -4317,10 +4327,10 @@
     }
   ],
   "summary": {
-    "total": 223,
-    "routed": 201,
+    "total": 224,
+    "routed": 202,
     "missing": 22,
-    "supported": 106,
+    "supported": 107,
     "partial": 22,
     "unsupported": 95
   }

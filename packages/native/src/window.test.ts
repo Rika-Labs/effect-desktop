@@ -6,6 +6,7 @@ import { WindowRpcs } from "./window.js"
 test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering", () => {
   expect(rpcSupport(request("Window.create"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.close"))).toEqual({ status: "supported" })
+  expect(rpcSupport(request("Window.destroy"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.show"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.hide"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.focus"))).toEqual({ status: "supported" })

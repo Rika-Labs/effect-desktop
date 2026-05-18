@@ -723,6 +723,7 @@ const nativePermissionTagList = (
 const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "create",
   "close",
+  "destroy",
   "show",
   "hide",
   "focus",
@@ -8099,6 +8100,7 @@ test("WindowRpcs declares only callable Window methods", () => {
   expect(Array.from(WindowRpcs.requests.keys())).toEqual([
     "Window.create",
     "Window.close",
+    "Window.destroy",
     "Window.show",
     "Window.hide",
     "Window.focus",
@@ -8128,6 +8130,7 @@ test("WindowRpcs declares only callable Window methods", () => {
   ): void => {
     void client["Window.create"]
     void client["Window.close"]
+    void client["Window.destroy"]
     void client["Window.show"]
     void client["Window.hide"]
     void client["Window.focus"]
@@ -8155,6 +8158,7 @@ test("WindowRpcs declares only callable Window methods", () => {
   expect(supportedWindowMethods).toEqual([
     "Window.create",
     "Window.close",
+    "Window.destroy",
     "Window.show",
     "Window.hide",
     "Window.focus",
@@ -8240,6 +8244,7 @@ test("Window service delegates through a substitutable WindowClient port", async
         return windowHandle
       }),
     close: () => recordVoid(calls, "close"),
+    destroy: () => recordVoid(calls, "destroy"),
     show: () => recordVoid(calls, "show"),
     hide: () => recordVoid(calls, "hide"),
     focus: () => recordVoid(calls, "focus"),
@@ -8323,6 +8328,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       const state = yield* window.getState(created)
       const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
       yield* window.restore(created)
+      yield* window.destroy(created)
       yield* window.close(created)
 
       return { bounds, byId, created, current, event, state, windows }
@@ -8361,6 +8367,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "setFullscreen:true",
     "getState",
     "restore",
+    "destroy",
     "close"
   ])
 })
@@ -8644,6 +8651,37 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
         windowId: "host-window-1"
       }
     ]
+  ])
+})
+
+test("host WindowClient adapter exposes explicit destroy through host destroy", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const rpcExchange = makeWindowRpcExchange(windowExchange(requests), registry, {
+    nextRequestId: nextId(["create-request", "destroy-request"]),
+    nextTraceId: nextId(["create-trace", "destroy-trace"]),
+    now: nextNumber([1_710_000_000_100, 1_710_000_000_101])
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const created = yield* window.create({ title: "Destroy" })
+      yield* window.destroy(created)
+      const afterDestroy = yield* registry.list()
+      return { afterDestroy, created }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      )
+    )
+  )
+
+  expect(String(result.created.id)).toBe("host-window-1")
+  expect(result.afterDestroy.entries).toEqual([])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_CREATE_METHOD, { title: "Destroy" }],
+    [WINDOW_DESTROY_METHOD, { windowId: "host-window-1" }]
   ])
 })
 
@@ -10229,6 +10267,7 @@ test("host WindowClient adapter exposes only supported callable methods", async 
 
   expect("create" in client).toBe(true)
   expect("close" in client).toBe(true)
+  expect("destroy" in client).toBe(true)
   expect("show" in client).toBe(true)
   expect("hide" in client).toBe(true)
   expect("focus" in client).toBe(true)
@@ -11437,6 +11476,7 @@ const dockClient = (calls: string[]): DockClientApi => ({
 const noopWindowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   close: () => Effect.void,
+  destroy: () => Effect.void,
   show: () => Effect.void,
   hide: () => Effect.void,
   focus: () => Effect.void,

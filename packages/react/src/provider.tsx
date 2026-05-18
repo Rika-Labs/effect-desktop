@@ -10,6 +10,7 @@ import { createContext, createElement, useContext, useEffect, useMemo, type Reac
 export interface DesktopWindowClient {
   readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
   readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly destroy: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
 }
 
 export interface DesktopClient {
@@ -83,7 +84,8 @@ export const createUnavailableDesktopClient = (message = "missing host bridge"):
   return Object.freeze({
     window: Object.freeze({
       create: (_input?: WindowCreateOptions) => unavailable<WindowHandle>("window.create"),
-      close: (_window: WindowHandle) => unavailable<void>("window.close")
+      close: (_window: WindowHandle) => unavailable<void>("window.close"),
+      destroy: (_window: WindowHandle) => unavailable<void>("window.destroy")
     })
   } satisfies DesktopClient)
 }

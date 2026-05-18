@@ -90,7 +90,10 @@ test("React package root does not export browser storage services", () => {
 const unavailableWindow: DesktopWindowClient = {
   create: () =>
     Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.create")),
-  close: () => Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.close"))
+  close: () =>
+    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.close")),
+  destroy: () =>
+    Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.destroy"))
 }
 
 test("disposeRuntime reports cleanup defects through onCleanupError", async () => {
@@ -205,6 +208,31 @@ test("windows subpath exposes idle create mutation state before invocation", () 
   expect(
     renderToStaticMarkup(createElement(DesktopProvider, { client: desktop }, createElement(Probe)))
   ).toBe("<span>idle</span>")
+})
+
+test("window lifecycle subpaths expose explicit destroy mutations", () => {
+  const Probe = () => {
+    const destroyWindow = windows.destroy.useMutation()
+    const destroyCurrentWindow = currentWindow.destroy.useMutation()
+    return createElement("span", null, `${destroyWindow.status}:${destroyCurrentWindow.status}`)
+  }
+  const window = {
+    kind: "window",
+    id: "window-1",
+    generation: 0,
+    ownerScope: "window:window-1",
+    state: "open"
+  } as const as Parameters<DesktopWindowClient["destroy"]>[0]
+
+  expect(
+    renderToStaticMarkup(
+      createElement(
+        DesktopProvider,
+        { client: desktop, currentWindow: window },
+        createElement(Probe)
+      )
+    )
+  ).toBe("<span>idle:idle</span>")
 })
 
 test("createUnavailableDesktopClient exposes lowercase renderer namespaces", async () => {

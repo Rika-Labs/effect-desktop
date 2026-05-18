@@ -23,6 +23,7 @@ const windowHandle = Schema.decodeUnknownSync(WindowResource)({
 const windowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
   close: () => Effect.void,
+  destroy: () => Effect.void,
   show: () => Effect.void,
   hide: () => Effect.void,
   focus: () => Effect.void,

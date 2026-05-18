@@ -369,6 +369,15 @@ const makeWindowScenario = (
           return next
         })
       }),
+    destroy: (window): Effect.Effect<void, WindowError, never> =>
+      Effect.gen(function* () {
+        yield* registry.dispose(window.id)
+        yield* Ref.update(windows, (records) => {
+          const next = new Map(records)
+          next.delete(window.id)
+          return next
+        })
+      }),
     show: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
     hide: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
     focus: (_window): Effect.Effect<void, WindowError, never> => Effect.void,

@@ -74,6 +74,12 @@ export const WindowClose = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["close"] })
 )
+export const WindowDestroy = windowRpc(
+  "destroy",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["destroy"] })
+)
 export const WindowShow = windowRpc(
   "show",
   WindowHandleInput,
@@ -211,6 +217,7 @@ const makeWindowRpcGroup = () =>
   RpcGroup.make(
     WindowCreate,
     WindowClose,
+    WindowDestroy,
     WindowShow,
     WindowHide,
     WindowFocus,
@@ -258,6 +265,7 @@ type WindowRpcClient = DesktopRpcClient<WindowRpcUnion>
 export const WindowMethodNames = Object.freeze([
   "create",
   "close",
+  "destroy",
   "show",
   "hide",
   "focus",
@@ -289,6 +297,7 @@ const WindowCapabilityMethodNames = Object.freeze([
 export interface WindowClientApi {
   readonly create: (input: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
   readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly destroy: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly show: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly hide: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly focus: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
@@ -394,6 +403,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
     Effect.gen(function* () {
       const window = yield* Window
       yield* window.close(input.window)
+    }),
+  "Window.destroy": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.destroy(input.window)
     }),
   "Window.show": (input) =>
     Effect.gen(function* () {
@@ -541,6 +555,7 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
   const service: WindowServiceApi = {
     create: (input) => client.create(input ?? {}),
     close: (window) => client.close(window),
+    destroy: (window) => client.destroy(window),
     show: (window) => client.show(window),
     hide: (window) => client.hide(window),
     focus: (window) => client.focus(window),
@@ -590,22 +605,8 @@ function windowClientFromRpcClient(
         const window = yield* runWindowRpc(client["Window.create"](decoded), "Window.create")
         return yield* decodeWindowHandle(window, "Window.create")
       }),
-    close: (window) =>
-      Effect.gen(function* () {
-        const decoded = yield* Schema.decodeUnknownEffect(WindowHandleInput)(
-          { window },
-          StrictParseOptions
-        ).pipe(
-          Effect.mapError((error) =>
-            makeHostProtocolInvalidArgumentError(
-              "payload",
-              formatUnknownError(error),
-              "Window.close"
-            )
-          )
-        )
-        yield* runWindowRpc(client["Window.close"](decoded), "Window.close")
-      }),
+    close: (window) => runWindowHandleRpc(client, "Window.close", window),
+    destroy: (window) => runWindowHandleRpc(client, "Window.destroy", window),
     show: (window) => runWindowHandleRpc(client, "Window.show", window),
     hide: (window) => runWindowHandleRpc(client, "Window.hide", window),
     focus: (window) => runWindowHandleRpc(client, "Window.focus", window),
@@ -733,6 +734,8 @@ const runWindowHandleRpc = (
   client: WindowRpcClient,
   operation:
     | "Window.show"
+    | "Window.close"
+    | "Window.destroy"
     | "Window.hide"
     | "Window.focus"
     | "Window.center"
@@ -1047,6 +1050,43 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
   const childWindowIdsByParentId = new Map<string, Set<string>>()
   const parentWindowIdByChildId = new Map<string, string>()
   const windowHandleById = new Map<string, WindowHandle>()
+  const destroyKnownWindow = (
+    input: WindowHandleInput,
+    operation: "Window.close" | "Window.destroy"
+  ) =>
+    Effect.gen(function* () {
+      const registry = yield* ResourceRegistry
+      const { window } = input
+      const resourceId = window.id
+      if (!knownWindowIds.has(window.id)) {
+        return yield* Effect.fail(makeHostProtocolNotFoundError(`Window:${window.id}`, operation))
+      }
+
+      const existing = yield* registry.get(resourceId)
+      if (Option.isNone(existing)) {
+        return yield* Effect.fail(makeStaleHandleError(operation, window, window.generation + 1))
+      }
+
+      yield* registry
+        .assertFresh({
+          kind: window.kind,
+          generation: window.generation,
+          ownerScope: window.ownerScope,
+          state: window.state,
+          id: resourceId
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            makeStaleHandleError(operation, window, error.actualGeneration)
+          )
+        )
+      yield* closeKnownWindowTree(window, operation, host, registry, {
+        ...(options.appEventRouter === undefined ? {} : { appEventRouter: options.appEventRouter }),
+        childWindowIdsByParentId,
+        parentWindowIdByChildId,
+        windowHandleById
+      })
+    })
 
   return {
     "Window.create": (input: WindowCreateInput) =>
@@ -1085,46 +1125,8 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
         }
         return window
       }),
-    "Window.close": (input: WindowHandleInput) =>
-      Effect.gen(function* () {
-        const registry = yield* ResourceRegistry
-        const { window } = input
-        const resourceId = window.id
-        if (!knownWindowIds.has(window.id)) {
-          return yield* Effect.fail(
-            makeHostProtocolNotFoundError(`Window:${window.id}`, "Window.close")
-          )
-        }
-
-        const existing = yield* registry.get(resourceId)
-        if (Option.isNone(existing)) {
-          return yield* Effect.fail(
-            makeStaleHandleError("Window.close", window, window.generation + 1)
-          )
-        }
-
-        yield* registry
-          .assertFresh({
-            kind: window.kind,
-            generation: window.generation,
-            ownerScope: window.ownerScope,
-            state: window.state,
-            id: resourceId
-          })
-          .pipe(
-            Effect.mapError((error) =>
-              makeStaleHandleError("Window.close", window, error.actualGeneration)
-            )
-          )
-        yield* closeKnownWindowTree(window, host, registry, {
-          ...(options.appEventRouter === undefined
-            ? {}
-            : { appEventRouter: options.appEventRouter }),
-          childWindowIdsByParentId,
-          parentWindowIdByChildId,
-          windowHandleById
-        })
-      }),
+    "Window.close": (input: WindowHandleInput) => destroyKnownWindow(input, "Window.close"),
+    "Window.destroy": (input: WindowHandleInput) => destroyKnownWindow(input, "Window.destroy"),
     "Window.show": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.show")
@@ -1397,6 +1399,7 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
 
 const closeKnownWindowTree = (
   window: WindowHandle,
+  operation: "Window.close" | "Window.destroy",
   host: ReturnType<typeof makeHostWindowClient>,
   registry: ResourceRegistryApi,
   context: {
@@ -1412,13 +1415,10 @@ const closeKnownWindowTree = (
       const childWindow = context.windowHandleById.get(childWindowId)
       if (childWindow === undefined) {
         return yield* Effect.fail(
-          makeHostProtocolInternalError(
-            `Missing tracked child Window:${childWindowId}`,
-            "Window.close"
-          )
+          makeHostProtocolInternalError(`Missing tracked child Window:${childWindowId}`, operation)
         )
       }
-      yield* closeKnownWindowTree(childWindow, host, registry, context)
+      yield* closeKnownWindowTree(childWindow, operation, host, registry, context)
     }
 
     yield* host.destroy(window.id)
