@@ -3573,10 +3573,7 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
                 window_id,
                 event: WindowEvent::CloseRequested,
                 ..
-            } => {
-                registry.native_window_close_requested(window_id);
-                WindowLifecycleEvent::CloseRequested
-            }
+            } => handle_native_window_close_requested(&mut registry, window_id),
             event if is_screen_displays_changed_event(&event) => {
                 if let Err(error) = registry.emit_screen_displays_changed(target) {
                     warn!(
@@ -3605,6 +3602,14 @@ fn classify_event(event: &Event<'_, HostEvent>) -> WindowLifecycleEvent {
         } => WindowLifecycleEvent::CloseRequested,
         _ => WindowLifecycleEvent::Other,
     }
+}
+
+fn handle_native_window_close_requested(
+    registry: &mut WindowRegistry,
+    native_window_id: WindowId,
+) -> WindowLifecycleEvent {
+    registry.native_window_close_requested(native_window_id);
+    WindowLifecycleEvent::CloseRequested
 }
 
 fn is_screen_displays_changed_event(event: &Event<'_, HostEvent>) -> bool {
@@ -3714,7 +3719,8 @@ mod tests {
     use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
         clear_window_runtime_event_state, control_flow_for_lifecycle_event,
-        control_flow_for_window_state, emit_window_registry_event, install_window_event_sender,
+        control_flow_for_window_state, emit_window_registry_event,
+        handle_native_window_close_requested, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
         lifecycle_for_create_result, smoke_deadline_for_mode, unsupported_screen,
         validate_positive_finite, RunMode, WindowCommand, WindowCommandResponse,
@@ -3734,6 +3740,21 @@ mod tests {
     use tao::dpi::PhysicalSize;
     use tao::event::WindowEvent;
     use tao::event_loop::ControlFlow;
+
+    struct WindowEventSenderGuard;
+
+    impl Drop for WindowEventSenderGuard {
+        fn drop(&mut self) {
+            let _ = clear_window_runtime_event_state();
+        }
+    }
+
+    fn install_test_window_event_sender(
+    ) -> (mpsc::Receiver<HostProtocolEnvelope>, WindowEventSenderGuard) {
+        let (sender, receiver) = mpsc::channel();
+        install_window_event_sender(sender).expect("window event sender should install");
+        (receiver, WindowEventSenderGuard)
+    }
 
     #[test]
     fn close_requested_exits_with_zero_status() {
@@ -3902,8 +3923,7 @@ mod tests {
         let _guard = WINDOW_EVENT_TEST_LOCK
             .lock()
             .expect("window event test lock should not be poisoned");
-        let (sender, receiver) = mpsc::channel();
-        install_window_event_sender(sender).expect("window event sender should install");
+        let (receiver, _event_sender_guard) = install_test_window_event_sender();
 
         emit_window_registry_event("window-1", WindowRegistryEventPhase::Closed)
             .expect("window event should emit");
@@ -3911,7 +3931,6 @@ mod tests {
         let event = receiver
             .recv()
             .expect("window event receiver should receive event");
-        clear_window_runtime_event_state().expect("window event sender should clear");
 
         let HostProtocolEnvelope::Event {
             method,
@@ -3936,12 +3955,11 @@ mod tests {
     }
 
     #[test]
-    fn native_close_requested_removes_lookup_and_emits_terminal_event() {
+    fn native_close_requested_emits_terminal_event_before_exit_policy() {
         let _guard = WINDOW_EVENT_TEST_LOCK
             .lock()
             .expect("window event test lock should not be poisoned");
-        let (sender, receiver) = mpsc::channel();
-        install_window_event_sender(sender).expect("window event sender should install");
+        let (receiver, _event_sender_guard) = install_test_window_event_sender();
         // SAFETY: The dummy id stays inside registry bookkeeping and is never passed to Tao.
         let native_window_id = unsafe { WindowId::dummy() };
         let mut registry = WindowRegistry::new();
@@ -3951,7 +3969,7 @@ mod tests {
         registry.window_order.push("window-1".to_string());
         registry.focused_window_id = Some("window-1".to_string());
 
-        registry.native_window_close_requested(native_window_id);
+        let lifecycle_event = handle_native_window_close_requested(&mut registry, native_window_id);
 
         assert!(!registry
             .window_id_by_native_id
@@ -3961,7 +3979,6 @@ mod tests {
         let event = receiver
             .recv()
             .expect("window event receiver should receive close event");
-        clear_window_runtime_event_state().expect("window event sender should clear");
         assert!(receiver.try_recv().is_err());
 
         let HostProtocolEnvelope::Event {
@@ -3984,6 +4001,21 @@ mod tests {
                 "terminal": true
             })
         );
+
+        let now = Instant::now();
+        assert_eq!(
+            control_flow_for_window_state(
+                lifecycle_event_with_smoke_timeout(
+                    lifecycle_event,
+                    RunMode::Interactive,
+                    None,
+                    now
+                ),
+                now
+            ),
+            ControlFlow::Exit
+        );
+        assert_eq!(lifecycle_event, WindowLifecycleEvent::CloseRequested);
     }
 
     #[test]
