@@ -2822,6 +2822,77 @@ impl SystemAppearanceAccentColorPayload {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct SystemAppearanceNullableColorPayload(Option<SystemAppearanceColorPayload>);
+
+impl SystemAppearanceNullableColorPayload {
+    pub fn new(color: Option<SystemAppearanceColorPayload>) -> Self {
+        Self(color)
+    }
+
+    pub fn color(&self) -> Option<&SystemAppearanceColorPayload> {
+        self.0.as_ref()
+    }
+}
+
+impl<'de> Deserialize<'de> for SystemAppearanceNullableColorPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        if value.is_null() {
+            return Ok(Self(None));
+        }
+        serde_json::from_value(value)
+            .map(Some)
+            .map(Self)
+            .map_err(de::Error::custom)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemAppearanceChangedPayload {
+    appearance: SystemAppearanceModePayload,
+    accent_color: SystemAppearanceNullableColorPayload,
+    reduced_motion: bool,
+    reduced_transparency: bool,
+}
+
+impl SystemAppearanceChangedPayload {
+    pub fn new(
+        appearance: SystemAppearanceModePayload,
+        accent_color: Option<SystemAppearanceColorPayload>,
+        reduced_motion: bool,
+        reduced_transparency: bool,
+    ) -> Self {
+        Self {
+            appearance,
+            accent_color: SystemAppearanceNullableColorPayload::new(accent_color),
+            reduced_motion,
+            reduced_transparency,
+        }
+    }
+
+    pub fn appearance(&self) -> SystemAppearanceModePayload {
+        self.appearance
+    }
+
+    pub fn accent_color(&self) -> Option<&SystemAppearanceColorPayload> {
+        self.accent_color.color()
+    }
+
+    pub fn reduced_motion(&self) -> bool {
+        self.reduced_motion
+    }
+
+    pub fn reduced_transparency(&self) -> bool {
+        self.reduced_transparency
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemAppearanceBooleanPayload {
@@ -11057,9 +11128,9 @@ mod tests {
         ScreenDisplaysResultPayload, ScreenIsSupportedPayload, ScreenPointPayload,
         ScreenSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
         ShellShowItemInFolderPayload, ShellTrashItemPayload, SystemAppearanceAccentColorPayload,
-        SystemAppearanceBooleanPayload, SystemAppearanceColorPayload,
-        SystemAppearanceIsSupportedPayload, SystemAppearanceMethodPayload,
-        SystemAppearanceModePayload, SystemAppearanceResultPayload,
+        SystemAppearanceBooleanPayload, SystemAppearanceChangedPayload,
+        SystemAppearanceColorPayload, SystemAppearanceIsSupportedPayload,
+        SystemAppearanceMethodPayload, SystemAppearanceModePayload, SystemAppearanceResultPayload,
         SystemAppearanceSupportedPayload, TransactionalFileMutationActorKind,
         TransactionalFileMutationActorPayload, TransactionalFileMutationCommitPayload,
         TransactionalFileMutationCommitResultPayload, TransactionalFileMutationDiffPayload,
@@ -12098,6 +12169,24 @@ mod tests {
             r#"{"color":null}"#
         );
 
+        let changed = SystemAppearanceChangedPayload::new(
+            SystemAppearanceModePayload::HighContrast,
+            None,
+            true,
+            false,
+        );
+        assert_eq!(
+            changed.appearance(),
+            SystemAppearanceModePayload::HighContrast
+        );
+        assert_eq!(changed.accent_color(), None);
+        assert!(changed.reduced_motion());
+        assert!(!changed.reduced_transparency());
+        assert_eq!(
+            serde_json::to_string(&changed).expect("changed event should encode"),
+            r#"{"appearance":"highContrast","accentColor":null,"reducedMotion":true,"reducedTransparency":false}"#
+        );
+
         let reduced = SystemAppearanceBooleanPayload::new(true);
         assert!(reduced.enabled());
         assert_eq!(
@@ -12136,6 +12225,12 @@ mod tests {
         )
         .expect_err("excess appearance field should be rejected");
         assert!(error.to_string().contains("unknown field `isDark`"));
+
+        let error = serde_json::from_str::<SystemAppearanceChangedPayload>(
+            r#"{"appearance":"dark","reducedMotion":true,"reducedTransparency":false}"#,
+        )
+        .expect_err("changed event without accent color should be rejected");
+        assert!(error.to_string().contains("missing field `accentColor`"));
     }
 
     #[test]

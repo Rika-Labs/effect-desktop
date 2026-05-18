@@ -29,6 +29,7 @@ import {
 export type SystemAppearanceError = HostProtocolError
 
 const UnsupportedReason = "host-adapter-unimplemented"
+const StrictParseOptions = { onExcessProperty: "error" } as const
 
 const SystemAppearanceSupport = NativeSurface.support.unsupported(UnsupportedReason, {
   platforms: [
@@ -297,7 +298,7 @@ const subscribeSystemAppearanceEvent = (
   exchange: BridgeClientExchange,
   method: "SystemAppearance.AppearanceChanged"
 ): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> =>
-  subscribeNativeEvent(exchange, method, SystemAppearanceChangedEvent)
+  subscribeNativeEvent(exchange, method, SystemAppearanceChangedEvent, StrictParseOptions)
 
 function systemAppearanceRpc<
   const Method extends string,

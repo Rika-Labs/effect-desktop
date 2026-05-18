@@ -6876,7 +6876,12 @@ test("SystemAppearance service maps result wrappers to public values", async () 
   expect(result.accentSupported).toBe(true)
   expect(result.changeSupported).toBe(true)
   expect(Array.from(result.changed)).toEqual([
-    new SystemAppearanceChangedEvent({ appearance: "highContrast" })
+    new SystemAppearanceChangedEvent({
+      appearance: "highContrast",
+      accentColor,
+      reducedMotion: true,
+      reducedTransparency: false
+    })
   ])
   expect(calls).toEqual([
     "getAppearance",
@@ -6926,7 +6931,12 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
   expect(result.transparency).toBe(false)
   expect(result.accentSupported).toBe(true)
   expect(Array.from(result.changed)).toEqual([
-    new SystemAppearanceChangedEvent({ appearance: "highContrast" })
+    new SystemAppearanceChangedEvent({
+      appearance: "highContrast",
+      accentColor: null,
+      reducedMotion: true,
+      reducedTransparency: false
+    })
   ])
   expect(requests.map((request) => request.method)).toEqual([
     "SystemAppearance.getAppearance",
@@ -6935,6 +6945,68 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
     "SystemAppearance.getReducedTransparency",
     "SystemAppearance.isSupported"
   ])
+})
+
+test("SystemAppearance bridge client rejects partial appearance events as InvalidOutput", async () => {
+  const cases = [
+    {
+      name: "missing accentColor",
+      payload: {
+        appearance: "dark",
+        reducedMotion: true,
+        reducedTransparency: false
+      }
+    },
+    {
+      name: "excess field",
+      payload: {
+        appearance: "dark",
+        accentColor: null,
+        reducedMotion: true,
+        reducedTransparency: false,
+        isDark: true
+      }
+    }
+  ] as const
+
+  for (const { payload } of cases) {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const appearance = yield* SystemAppearance
+        return yield* Effect.exit(
+          appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+        )
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            SystemAppearanceLive,
+            makeSystemAppearanceBridgeClientLayer(systemAppearanceEventExchange(payload))
+          )
+        )
+      )
+    )
+
+    expectExitFailure(result, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
+})
+
+const systemAppearanceEventExchange = (payload: Record<string, unknown>): BridgeClientExchange => ({
+  request: (request) =>
+    request.method === "SystemAppearance.isSupported"
+      ? Effect.succeed({ kind: "success", payload: { supported: true } })
+      : Effect.die(`unexpected SystemAppearance request: ${request.method}`),
+  subscribe: (method) =>
+    method === "SystemAppearance.AppearanceChanged"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000701,
+            traceId: "event-trace",
+            method,
+            payload
+          })
+        )
+      : Stream.empty
 })
 
 test("PowerMonitorRpcs declares the Phase 8 event-only surface", () => {
@@ -11098,7 +11170,14 @@ const systemAppearanceClient = (calls: string[]): SystemAppearanceClientApi => (
       return new SystemAppearanceBooleanResult({ enabled: false })
     }),
   onAppearanceChanged: () =>
-    Stream.make(new SystemAppearanceChangedEvent({ appearance: "highContrast" })),
+    Stream.make(
+      new SystemAppearanceChangedEvent({
+        appearance: "highContrast",
+        accentColor,
+        reducedMotion: true,
+        reducedTransparency: false
+      })
+    ),
   isSupported: (method) =>
     Effect.sync(() => {
       calls.push(`isSupported:${method}`)
@@ -11582,7 +11661,12 @@ const systemAppearanceExchange = (
             timestamp: 1710000000700,
             traceId: "event-trace",
             method,
-            payload: { appearance: "highContrast" }
+            payload: {
+              appearance: "highContrast",
+              accentColor: null,
+              reducedMotion: true,
+              reducedTransparency: false
+            }
           })
         )
       : Stream.empty

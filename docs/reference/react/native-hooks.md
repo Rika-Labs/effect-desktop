@@ -31,7 +31,12 @@ import {
 
 ```ts
 {
-  data?: { appearance: "light" | "dark" | "highContrast" }
+  data?: {
+    appearance: "light" | "dark" | "highContrast"
+    accentColor: null | { r: number; g: number; b: number; a: number }
+    reducedMotion: boolean
+    reducedTransparency: boolean
+  }
 }
 ```
 

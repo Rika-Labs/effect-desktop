@@ -18,25 +18,33 @@ implemented.
 
 ## Methods
 
-| Method                   | Success                    | Runtime support |
-| ------------------------ | -------------------------- | --------------- |
-| `getAppearance`          | `{ appearance }`           | unsupported     |
-| `getAccentColor`         | `{ color }`                | unsupported     |
-| `getReducedMotion`       | `{ enabled: boolean }`     | unsupported     |
-| `getReducedTransparency` | `{ enabled: boolean }`     | unsupported     |
-| `isSupported`            | `{ supported: boolean }`   | unsupported     |
+| Method                   | Success                  | Runtime support |
+| ------------------------ | ------------------------ | --------------- |
+| `getAppearance`          | `{ appearance }`         | unsupported     |
+| `getAccentColor`         | `{ color }`              | unsupported     |
+| `getReducedMotion`       | `{ enabled: boolean }`   | unsupported     |
+| `getReducedTransparency` | `{ enabled: boolean }`   | unsupported     |
+| `isSupported`            | `{ supported: boolean }` | unsupported     |
 
 `appearance` is `"light"`, `"dark"`, or `"highContrast"`. `color` is either
 `null` or an RGBA object.
 
 ## Events
 
-The current TypeScript event stream is `onAppearanceChanged()`, which emits
-`SystemAppearanceChangedEvent` with `{ appearance }`.
+The current TypeScript event stream is `onAppearanceChanged()`, which emits a
+`SystemAppearanceChangedEvent` snapshot:
 
-The event does not yet carry the same full snapshot shape as the initial
-methods. Native OS appearance delivery is currently unsupported until the host
-adapter exists.
+```ts
+{
+  appearance: "light" | "dark" | "highContrast"
+  accentColor: null | { r: number; g: number; b: number; a: number }
+  reducedMotion: boolean
+  reducedTransparency: boolean
+}
+```
+
+Native OS appearance delivery is currently unsupported until the host adapter
+exists.
 
 ## Errors
 
