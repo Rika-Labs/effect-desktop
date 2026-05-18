@@ -82,7 +82,7 @@ Native service authors should use the internal native surface authoring path, no
 | `CrashReporter`             | Crash reporter                    | [native/crash-reporter](reference/native/crash-reporter.md)                           |
 | `DiagnosticsBundle`         | Diagnostics export                | [native/diagnostics-bundle](reference/native/diagnostics-bundle.md)                   |
 | `Dialog`                    | File, save, message dialogs       | [native/dialog](reference/native/dialog.md)                                           |
-| `Dock`                      | macOS dock                        | [native/dock](reference/native/dock.md)                                               |
+| `Dock`                      | Dock/taskbar state                | [native/dock](reference/native/dock.md)                                               |
 | `EgressPolicy`              | Network egress decisions          | [native/egress-policy](reference/native/egress-policy.md)                             |
 | `ExecutionSandbox`          | Isolated execution policy         | [native/execution-sandbox](reference/native/execution-sandbox.md)                     |
 | `ExtensionConfig`           | Extension settings                | [native/extension-config](reference/native/extension-config.md)                       |
@@ -98,7 +98,7 @@ Native service authors should use the internal native surface authoring path, no
 | `Protocol`                  | App protocol routing              | [native/protocol](reference/native/protocol.md)                                       |
 | `PowerMonitor`              | Power source events               | [native/power-monitor](reference/native/power-monitor.md)                             |
 | `RealtimeMediaSession`      | Realtime media sessions           | [native/realtime-media-session](reference/native/realtime-media-session.md)           |
-| `SafeStorage`               | Encrypted storage primitive       | [native/safe-storage](reference/native/safe-storage.md)                               |
+| `SafeStorage`               | Credential-store boundary         | [native/safe-storage](reference/native/safe-storage.md)                               |
 | `Screen`                    | Displays, pointer                 | [native/screen](reference/native/screen.md)                                           |
 | `Shell`                     | Open path, external URL           | [native/shell](reference/native/shell.md)                                             |
 | `SystemAppearance`          | Theme, accent                     | [native/system-appearance](reference/native/system-appearance.md)                     |

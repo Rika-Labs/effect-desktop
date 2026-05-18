@@ -8,19 +8,19 @@ effect_version: 4
 
 # `Dock`
 
-Dock/taskbar-facing application state. The surface is intentionally explicit about platform gaps: badge count/text and attention are host-routed, while progress and jump lists remain unavailable until platform adapters are implemented.
+Dock/taskbar-facing application state. The surface is intentionally explicit about platform gaps: badge count/text and attention are host-routed, while progress, dock menus, and jump lists remain unavailable until platform adapters are implemented.
 
 ## Methods
 
-| Method             | Payload                                                         | Success                  |
-| ------------------ | --------------------------------------------------------------- | ------------------------ |
-| `setBadgeCount`    | `{ count: number }`                                             | `void`                   |
-| `setBadgeText`     | `{ text: string \| null }`                                      | `void`                   |
+| Method             | Payload                                                          | Success                  |
+| ------------------ | ---------------------------------------------------------------- | ------------------------ |
+| `setBadgeCount`    | `{ count: number }`                                              | `void`                   |
+| `setBadgeText`     | `{ text: string \| null }`                                       | `void`                   |
 | `setProgress`      | `{ value: number \| null, options?: { state?: ProgressState } }` | `void`                   |
-| `setMenu`          | `{ menu: MenuTemplate \| null }`                                | `void`                   |
-| `setJumpList`      | `{ items: DockJumpListItem[] }`                                 | `void`                   |
-| `requestAttention` | `{ critical?: boolean }`                                        | `void`                   |
-| `isSupported`      | `{ method: DockMethod }`                                        | `{ supported: boolean }` |
+| `setMenu`          | `{ menu: MenuTemplate \| null }`                                 | `void`                   |
+| `setJumpList`      | `{ items: DockJumpListItem[] }`                                  | `void`                   |
+| `requestAttention` | `{ critical?: boolean }`                                         | `void`                   |
+| `isSupported`      | `{ method: DockMethod }`                                         | `{ supported: boolean }` |
 
 ## Errors
 
