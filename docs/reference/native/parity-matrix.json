@@ -319,6 +319,90 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "AppMetadata.getInfo",
+      "surface": "AppMetadata",
+      "method": "getInfo",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "AppMetadata.getLaunchContext",
+      "surface": "AppMetadata",
+      "method": "getLaunchContext",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "AppMetadata.getPaths",
+      "surface": "AppMetadata",
+      "method": "getPaths",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Association.getFileAssociations",
       "surface": "Association",
       "method": "getFileAssociations",
@@ -4010,11 +4094,11 @@
     }
   ],
   "summary": {
-    "total": 196,
-    "routed": 174,
+    "total": 199,
+    "routed": 177,
     "missing": 22,
     "supported": 81,
     "partial": 22,
-    "unsupported": 93
+    "unsupported": 96
   }
 }

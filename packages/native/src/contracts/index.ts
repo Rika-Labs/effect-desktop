@@ -1,4 +1,5 @@
 export * from "./app.js"
+export * from "./app-metadata.js"
 export * from "./association.js"
 export * from "./activation-registry.js"
 export * from "./autostart.js"

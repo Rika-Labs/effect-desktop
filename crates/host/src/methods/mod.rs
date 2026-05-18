@@ -1,5 +1,6 @@
 mod activation_registry;
 mod app;
+mod app_metadata;
 mod association;
 mod attachment_intake;
 mod autostart;
@@ -233,6 +234,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::APP_REGISTER_PROTOCOL_METHOD,
         HostMethodDispatcher::Payload(app::register_protocol),
+    ),
+    route(
+        host_protocol::APP_METADATA_GET_INFO_METHOD,
+        HostMethodDispatcher::Payload(app_metadata::get_info),
+    ),
+    route(
+        host_protocol::APP_METADATA_GET_PATHS_METHOD,
+        HostMethodDispatcher::Payload(app_metadata::get_paths),
+    ),
+    route(
+        host_protocol::APP_METADATA_GET_LAUNCH_CONTEXT_METHOD,
+        HostMethodDispatcher::Payload(app_metadata::get_launch_context),
     ),
     route(
         host_protocol::ASSOCIATION_IS_DEFAULT_PROTOCOL_CLIENT_METHOD,
@@ -2694,6 +2707,55 @@ mod tests {
         } = response
         else {
             panic!("app restart should reject malformed args");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    #[test]
+    fn app_metadata_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-app-metadata-info",
+                    host_protocol::APP_METADATA_GET_INFO_METHOD,
+                ),
+                1710000000126,
+            )
+            .expect("app metadata get info should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-metadata-info".to_string(),
+                timestamp: 1710000000126,
+                trace_id: "trace-request-app-metadata-info".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::APP_METADATA_UNSUPPORTED_REASON,
+                    host_protocol::APP_METADATA_GET_INFO_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn app_metadata_routes_reject_present_payloads() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-metadata-paths-invalid",
+                    host_protocol::APP_METADATA_GET_PATHS_METHOD,
+                    serde_json::json!({}),
+                ),
+                1710000000126,
+            )
+            .expect("app metadata get paths should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("app metadata get paths should reject present payload");
         };
         assert_eq!(error.tag(), "InvalidArgument");
     }

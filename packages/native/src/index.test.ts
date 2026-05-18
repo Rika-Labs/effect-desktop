@@ -65,6 +65,11 @@ import {
   AppLive,
   AppMethodNames,
   AppSurface,
+  AppMetadata,
+  AppMetadataLive,
+  AppMetadataMethodNames,
+  AppMetadataRpcEvents,
+  AppMetadataRpcs,
   Association,
   AssociationLive,
   AssociationMethodNames,
@@ -224,6 +229,7 @@ import {
   WindowMethodNames,
   makeAssociationServiceLayer,
   makeAppServiceLayer,
+  makeAppMetadataServiceLayer,
   makeAutostartServiceLayer,
   makeClipboardServiceLayer,
   makeContextMenuServiceLayer,
@@ -253,6 +259,7 @@ import {
   unsafeSecretBytes,
   wipeSecretBytes,
   type AppClientApi,
+  type AppMetadataClientApi,
   type AssociationClientApi,
   type AutostartClientApi,
   type ClipboardClientApi,
@@ -274,6 +281,7 @@ import {
   type WebViewClientApi,
   type WindowClientApi
 } from "./index.js"
+import { makeAppMetadataBridgeClientLayer, makeHostAppMetadataRpcRuntime } from "./app-metadata.js"
 import { makeAppBridgeClientLayer } from "./app.js"
 import { makeAssociationBridgeClientLayer, makeHostAssociationRpcRuntime } from "./association.js"
 import { makeAutostartBridgeClientLayer, makeHostAutostartRpcRuntime } from "./autostart.js"
@@ -314,6 +322,11 @@ import {
   AppBeforeQuitEvent,
   AppCommandLine,
   AppInfo,
+  AppMetadataEnvironmentShape,
+  AppMetadataEvent,
+  AppMetadataInfo,
+  AppMetadataLaunchContext,
+  AppMetadataPaths,
   AppOpenFileEvent,
   AppOpenUrlEvent,
   AppSecondInstanceEvent,
@@ -666,6 +679,12 @@ const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
   "registerProtocol"
 ]
 
+const expectedAppMetadataMethods: Array<(typeof AppMetadataMethodNames)[number]> = [
+  "getInfo",
+  "getPaths",
+  "getLaunchContext"
+]
+
 const expectedWebViewMethods: Array<(typeof WebViewMethodNames)[number]> = [
   "create",
   "loadRoute",
@@ -915,6 +934,22 @@ const primaryDisplay = new ScreenDisplay({
   primary: true
 })
 const accentColor = new SystemAppearanceColor({ r: 0.1, g: 0.2, b: 0.3, a: 1 })
+const appMetadataInfo = new AppMetadataInfo({
+  id: "dev.effect-desktop.test",
+  name: "Effect Desktop Test",
+  version: "0.0.0"
+})
+const appMetadataPaths = new AppMetadataPaths({
+  executable: new CanonicalPath({ path: "/Applications/Test.app/Contents/MacOS/test" }),
+  resources: new CanonicalPath({ path: "/Applications/Test.app/Contents/Resources" }),
+  cwd: new CanonicalPath({ path: "/repo" })
+})
+const appMetadataLaunchContext = new AppMetadataLaunchContext({
+  argv: ["test", "--safe-mode"],
+  cwd: new CanonicalPath({ path: "/repo" }),
+  reason: "launch",
+  environment: new AppMetadataEnvironmentShape({ variableNames: ["PATH", "HOME"] })
+})
 
 test("AppRpcs declares the Phase 7 App method and event surface", () => {
   expect([...AppMethodNames]).toEqual(expectedAppMethods)
@@ -1477,6 +1512,278 @@ test("App bridge client rejects non-portable quit exit codes as InvalidArgument"
   const exit256 = await Effect.runPromiseExit(client.quit({ exitCode: 256 }))
   expectExitFailure(exit256, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
+})
+
+test("AppMetadataRpcs declares the Phase 8 AppMetadata method and event surface", () => {
+  expect([...AppMetadataMethodNames]).toEqual(expectedAppMetadataMethods)
+  expect(Array.from(AppMetadataRpcs.requests.keys())).toEqual([
+    "AppMetadata.getInfo",
+    "AppMetadata.getPaths",
+    "AppMetadata.getLaunchContext"
+  ])
+  expect(rpcMethodNames("AppMetadata", AppMetadataRpcs)).toEqual(expectedAppMetadataMethods)
+  expect(Object.keys(AppMetadataRpcEvents)).toEqual(["Event"])
+})
+
+test("AppMetadata service delegates through a substitutable AppMetadataClient port", async () => {
+  const calls: string[] = []
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const metadata = yield* AppMetadata
+      const info = yield* metadata.getInfo()
+      const paths = yield* metadata.getPaths()
+      const launchContext = yield* metadata.getLaunchContext()
+      const events = yield* metadata.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { events, info, launchContext, paths }
+    }).pipe(Effect.provide(makeAppMetadataServiceLayer(appMetadataClient(calls))))
+  )
+
+  expect(result.info).toEqual(appMetadataInfo)
+  expect(result.paths).toEqual(appMetadataPaths)
+  expect(result.launchContext).toEqual(appMetadataLaunchContext)
+  expect(Array.from(result.events)).toEqual([
+    new AppMetadataEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
+  ])
+  expect(calls).toEqual(["getInfo", "getPaths", "getLaunchContext", "events"])
+})
+
+test("AppMetadata bridge client sends typed host envelopes and decodes events and results", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = appMetadataExchange(requests, (request) => {
+    if (request.method === "AppMetadata.getInfo") {
+      return {
+        kind: "success",
+        payload: {
+          id: "dev.effect-desktop.test",
+          name: "Effect Desktop Test",
+          version: "0.0.0"
+        }
+      }
+    }
+    if (request.method === "AppMetadata.getPaths") {
+      return {
+        kind: "success",
+        payload: {
+          executable: { path: "/Applications/Test.app/Contents/MacOS/test" },
+          resources: { path: "/Applications/Test.app/Contents/Resources" },
+          cwd: { path: "/repo" }
+        }
+      }
+    }
+    if (request.method === "AppMetadata.getLaunchContext") {
+      return {
+        kind: "success",
+        payload: {
+          argv: ["test", "--safe-mode"],
+          cwd: { path: "/repo" },
+          reason: "launch",
+          environment: { variableNames: ["PATH", "HOME"] }
+        }
+      }
+    }
+    return { kind: "success", payload: undefined }
+  })
+
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const metadata = yield* AppMetadata
+      const info = yield* metadata.getInfo()
+      const paths = yield* metadata.getPaths()
+      const launchContext = yield* metadata.getLaunchContext()
+      const events = yield* metadata.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { events, info, launchContext, paths }
+    }).pipe(
+      Effect.provide(Layer.provide(AppMetadataLive, makeAppMetadataBridgeClientLayer(exchange)))
+    )
+  )
+
+  expect(result.info).toEqual(appMetadataInfo)
+  expect(result.paths).toEqual(appMetadataPaths)
+  expect(result.launchContext).toEqual(appMetadataLaunchContext)
+  expect(Array.from(result.events)).toEqual([
+    new AppMetadataEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["AppMetadata.getInfo", null],
+    ["AppMetadata.getPaths", null],
+    ["AppMetadata.getLaunchContext", null]
+  ])
+})
+
+test("AppMetadata bridge client rejects malformed host output as InvalidOutput", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const metadata = yield* AppMetadata
+      const infoExit = yield* Effect.exit(metadata.getInfo())
+      const pathsExit = yield* Effect.exit(metadata.getPaths())
+      const launchContextExit = yield* Effect.exit(metadata.getLaunchContext())
+      return { infoExit, launchContextExit, pathsExit }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppMetadataLive,
+          makeAppMetadataBridgeClientLayer(
+            appMetadataExchange(requests, (request) => {
+              if (request.method === "AppMetadata.getInfo") {
+                return {
+                  kind: "success",
+                  payload: { id: "", name: "Effect Desktop Test", version: "not-semver" }
+                }
+              }
+              if (request.method === "AppMetadata.getPaths") {
+                return {
+                  kind: "success",
+                  payload: {
+                    executable: { path: "relative" },
+                    resources: { path: "/resources" },
+                    cwd: { path: "/repo" }
+                  }
+                }
+              }
+              return {
+                kind: "success",
+                payload: {
+                  argv: ["test", "bad\u0000arg"],
+                  cwd: { path: "/repo" },
+                  reason: "scheduled",
+                  environment: { variableNames: ["PATH"] }
+                }
+              }
+            })
+          )
+        )
+      )
+    )
+  )
+
+  expectExitFailure(result.infoExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expectExitFailure(result.pathsExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expectExitFailure(result.launchContextExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["AppMetadata.getInfo", null],
+    ["AppMetadata.getPaths", null],
+    ["AppMetadata.getLaunchContext", null]
+  ])
+})
+
+test("native host RPC runtime denies protected AppMetadata calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostAppMetadataRpcRuntime(
+    {
+      "AppMetadata.getInfo": () =>
+        Effect.sync(() => {
+          calls.push("getInfo")
+          return appMetadataInfo
+        }),
+      "AppMetadata.getPaths": () => Effect.succeed(appMetadataPaths),
+      "AppMetadata.getLaunchContext": () => Effect.succeed(appMetadataLaunchContext)
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "app-metadata-denied",
+          method: "AppMetadata.getInfo",
+          timestamp: 1710000000000,
+          traceId: "trace-app-metadata-denied"
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("native host RPC runtime allows declared AppMetadata permissions", async () => {
+  const calls: string[] = []
+  const runtime = makeHostAppMetadataRpcRuntime(
+    {
+      "AppMetadata.getInfo": () =>
+        Effect.sync(() => {
+          calls.push("getInfo")
+          return appMetadataInfo
+        }),
+      "AppMetadata.getPaths": () => Effect.succeed(appMetadataPaths),
+      "AppMetadata.getLaunchContext": () => Effect.succeed(appMetadataLaunchContext)
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  await Effect.runPromise(
+    permissions.declare(Native.Permissions.appMetadata.getInfo, {
+      source: "app-metadata-test",
+      effect: "allow"
+    })
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "app-metadata-allowed",
+          method: "AppMetadata.getInfo",
+          timestamp: 1710000000000,
+          traceId: "trace-app-metadata-allowed"
+        })
+      )
+      .pipe(Effect.provide(Layer.succeed(PermissionRegistry)(permissions)))
+  )
+
+  expect(response.kind).toBe("success")
+  if (response.kind === "success") {
+    expect(response.payload).toEqual({
+      id: "dev.effect-desktop.test",
+      name: "Effect Desktop Test",
+      version: "0.0.0"
+    })
+  }
+  expect(calls).toEqual(["getInfo"])
+})
+
+test("AppMetadata service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-adapter-unimplemented",
+    message: "unsupported AppMetadata.getInfo",
+    operation: "AppMetadata.getInfo",
+    recoverable: false
+  })
+  const unsupportedClient: AppMetadataClientApi = {
+    ...appMetadataClient([]),
+    getInfo: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: AppMetadataClientApi = {
+    ...appMetadataClient([]),
+    getInfo: () => Effect.fail(makeHostProtocolHostUnavailableError("AppMetadata.getInfo"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const metadata = yield* AppMetadata
+      return yield* Effect.exit(metadata.getInfo())
+    }).pipe(Effect.provide(makeAppMetadataServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const metadata = yield* AppMetadata
+      return yield* Effect.exit(metadata.getInfo())
+    }).pipe(Effect.provide(makeAppMetadataServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => {
@@ -8311,6 +8618,29 @@ const appClient = (calls: string[]): AppClientApi => ({
   onBeforeQuit: () => Stream.make(new AppBeforeQuitEvent({ traceId: "trace" }))
 })
 
+const appMetadataClient = (calls: string[]): AppMetadataClientApi => ({
+  getInfo: () =>
+    Effect.sync(() => {
+      calls.push("getInfo")
+      return appMetadataInfo
+    }),
+  getPaths: () =>
+    Effect.sync(() => {
+      calls.push("getPaths")
+      return appMetadataPaths
+    }),
+  getLaunchContext: () =>
+    Effect.sync(() => {
+      calls.push("getLaunchContext")
+      return appMetadataLaunchContext
+    }),
+  events: () =>
+    Stream.sync(() => {
+      calls.push("events")
+      return new AppMetadataEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
+    })
+})
+
 const associationClient = (calls: string[]): AssociationClientApi => ({
   isDefaultProtocolClient: (input) =>
     Effect.sync(() => {
@@ -8858,6 +9188,28 @@ const appExchange = (
             traceId: "event-trace",
             method,
             payload: { path: "README.md" }
+          })
+        )
+      : Stream.empty
+})
+
+const appMetadataExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "AppMetadata.Event"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000100,
+            traceId: "event-trace",
+            method,
+            payload: { phase: "failed", reason: "host-adapter-unimplemented" }
           })
         )
       : Stream.empty

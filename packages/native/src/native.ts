@@ -5,6 +5,7 @@ import {
 } from "@effect-desktop/core"
 
 import { ActivationRegistrySurface } from "./activation-registry.js"
+import { AppMetadataSurface } from "./app-metadata.js"
 import { AppSurface } from "./app.js"
 import { AssociationSurface } from "./association.js"
 import { AutostartSurface } from "./autostart.js"
@@ -50,6 +51,7 @@ import type { NativeSurfaceSelection } from "./native-surface.js"
 
 const BuiltInSurfaces = Object.freeze([
   ActivationRegistrySurface,
+  AppMetadataSurface,
   AppSurface,
   AssociationSurface,
   AutostartSurface,
@@ -101,6 +103,7 @@ export const available = (...selections: readonly NativeSurfaceSelection[]): Des
   Desktop.native(...selections)
 
 const App = AppSurface.selection
+const AppMetadata = AppMetadataSurface.selection
 const Association = AssociationSurface.selection
 const ActivationRegistry = ActivationRegistrySurface.selection
 const Autostart = AutostartSurface.selection
@@ -152,6 +155,7 @@ const permissionAll = Object.freeze(BuiltInSurfaces.flatMap((surface) => surface
 
 export const Permissions = Object.freeze({
   activationRegistry: ActivationRegistrySurface.permissions,
+  appMetadata: AppMetadataSurface.permissions,
   app: AppSurface.permissions,
   association: AssociationSurface.permissions,
   autostart: AutostartSurface.permissions,
@@ -198,6 +202,7 @@ export const Permissions = Object.freeze({
 
 export const Native = Object.freeze({
   ActivationRegistry,
+  AppMetadata,
   App,
   Association,
   Autostart,

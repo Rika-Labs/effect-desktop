@@ -14,7 +14,8 @@ The TypeScript surface is present for contract and bridge-client validation
 work, but the Rust host App adapter is not implemented. The native surface
 reports `unsupported` on macOS, Windows, and Linux until the host owns app
 lifecycle control, protocol registration, open-at-login integration, single
-instance coordination, app metadata, and lifecycle events.
+instance coordination, and lifecycle events. `AppMetadata` owns app identity,
+paths, launch context, and environment-shape contracts.
 
 ## Status
 
@@ -54,10 +55,12 @@ sources.
 `Protocol.registerAppProtocol` owns the currently implemented custom protocol
 serving path. `Association` owns OS-level default protocol and file association
 contracts. `Autostart` owns OS-level login-item and autostart contracts.
-`App.registerProtocol` and `App.setOpenAtLogin` remain unsupported until App
-lifecycle and OS-level protocol registration are host-backed.
+`AppMetadata` owns app identity, paths, launch context, and environment-shape
+contracts. `App.registerProtocol`, `App.setOpenAtLogin`, `App.getInfo`, and
+`App.getCommandLine` remain unsupported until App lifecycle, OS-level protocol
+registration, and metadata source ownership are host-backed.
 
 ## Related
 
-- Reference: [`Association`](association.md), [`Autostart`](autostart.md), [`Window`](window.md), [`PowerMonitor`](power-monitor.md)
+- Reference: [`AppMetadata`](app-metadata.md), [`Association`](association.md), [`Autostart`](autostart.md), [`Window`](window.md), [`PowerMonitor`](power-monitor.md)
 - Source: [`packages/native/src/app.ts`](../../../packages/native/src/app.ts)

@@ -39,6 +39,25 @@ export {
   type AppServiceApi
 } from "./app.js"
 export {
+  AppMetadata,
+  AppMetadataClient,
+  AppMetadataHandlersLive,
+  AppMetadataLive,
+  AppMetadataMethodNames,
+  AppMetadataRpcEvents,
+  AppMetadataRpcs,
+  AppMetadataSurface,
+  makeAppMetadataBridgeClientLayer,
+  makeAppMetadataClientLayer,
+  makeAppMetadataServiceLayer,
+  makeHostAppMetadataRpcRuntime,
+  type AppMetadataClientApi,
+  type AppMetadataError,
+  type AppMetadataRpc,
+  type AppMetadataRpcHandlers,
+  type AppMetadataServiceApi
+} from "./app-metadata.js"
+export {
   Association,
   AssociationClient,
   AssociationHandlersLive,

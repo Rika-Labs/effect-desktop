@@ -26,6 +26,10 @@ pub const APP_SECOND_INSTANCE_EVENT: &str = "App.onSecondInstance";
 pub const APP_OPEN_FILE_EVENT: &str = "App.onOpenFile";
 pub const APP_OPEN_URL_EVENT: &str = "App.onOpenUrl";
 pub const APP_BEFORE_QUIT_EVENT: &str = "App.onBeforeQuit";
+pub const APP_METADATA_GET_INFO_METHOD: &str = "AppMetadata.getInfo";
+pub const APP_METADATA_GET_PATHS_METHOD: &str = "AppMetadata.getPaths";
+pub const APP_METADATA_GET_LAUNCH_CONTEXT_METHOD: &str = "AppMetadata.getLaunchContext";
+pub const APP_METADATA_EVENT: &str = "AppMetadata.Event";
 pub const ASSOCIATION_IS_DEFAULT_PROTOCOL_CLIENT_METHOD: &str =
     "Association.isDefaultProtocolClient";
 pub const ASSOCIATION_SET_DEFAULT_PROTOCOL_CLIENT_METHOD: &str =
@@ -273,6 +277,7 @@ pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented
 pub const SCOPED_ACCESS_GRANT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const APP_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const APP_METADATA_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const ASSOCIATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RECENT_DOCUMENTS_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const AUTOSTART_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -526,6 +531,115 @@ impl AppBeforeQuitEventPayload {
         Self {
             trace_id: trace_id.into(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppMetadataInfoPayload {
+    id: String,
+    name: String,
+    version: String,
+}
+
+impl AppMetadataInfoPayload {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, version: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            version: version.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppMetadataPathsPayload {
+    executable: CanonicalPathPayload,
+    resources: CanonicalPathPayload,
+    cwd: CanonicalPathPayload,
+}
+
+impl AppMetadataPathsPayload {
+    pub fn new(
+        executable: CanonicalPathPayload,
+        resources: CanonicalPathPayload,
+        cwd: CanonicalPathPayload,
+    ) -> Self {
+        Self {
+            executable,
+            resources,
+            cwd,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AppMetadataLaunchReasonPayload {
+    Launch,
+    OpenFile,
+    OpenUrl,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppMetadataEnvironmentShapePayload {
+    variable_names: Vec<String>,
+}
+
+impl AppMetadataEnvironmentShapePayload {
+    pub fn new(variable_names: Vec<String>) -> Self {
+        Self { variable_names }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppMetadataLaunchContextPayload {
+    argv: Vec<String>,
+    cwd: CanonicalPathPayload,
+    reason: AppMetadataLaunchReasonPayload,
+    environment: AppMetadataEnvironmentShapePayload,
+}
+
+impl AppMetadataLaunchContextPayload {
+    pub fn new(
+        argv: Vec<String>,
+        cwd: CanonicalPathPayload,
+        reason: AppMetadataLaunchReasonPayload,
+        environment: AppMetadataEnvironmentShapePayload,
+    ) -> Self {
+        Self {
+            argv,
+            cwd,
+            reason,
+            environment,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AppMetadataEventPhasePayload {
+    InfoRead,
+    PathsRead,
+    LaunchContextRead,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppMetadataEventPayload {
+    phase: AppMetadataEventPhasePayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl AppMetadataEventPayload {
+    pub fn new(phase: AppMetadataEventPhasePayload, reason: Option<String>) -> Self {
+        Self { phase, reason }
     }
 }
 
@@ -10139,17 +10253,19 @@ mod tests {
         ActivationRegistryPermissionContextPayload, ActivationRegistrySource,
         ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload,
         AppActivationReasonPayload, AppBeforeQuitEventPayload, AppCommandLinePayload,
-        AppInfoPayload, AppOpenAtLoginPayload, AppOpenFileEventPayload, AppOpenUrlEventPayload,
-        AppProtocolPayload, AppQuitPayload, AppRestartPayload, AppSecondInstanceEventPayload,
-        AppSingleInstancePayload, AssociationEventPayload, AssociationEventPhasePayload,
-        AssociationFileAssociationPayload, AssociationFileAssociationsPayload,
-        AssociationFileAssociationsResultPayload, AssociationProtocolPayload,
-        AssociationProtocolStatusPayload, AutostartEnablePayload, AutostartEventPayload,
-        AutostartEventPhasePayload, AutostartMechanismPayload, AutostartStatusPayload,
-        CanonicalPathPayload, ClipboardCapabilityPayload, ClipboardHtmlPayload,
-        ClipboardImagePayload, ClipboardIsSupportedPayload, ClipboardSupportedPayload,
-        ClipboardTextPayload, CrashReporterBreadcrumbPayload, CrashReporterFlushPayload,
-        CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
+        AppInfoPayload, AppMetadataEnvironmentShapePayload, AppMetadataEventPayload,
+        AppMetadataEventPhasePayload, AppMetadataInfoPayload, AppMetadataLaunchContextPayload,
+        AppMetadataLaunchReasonPayload, AppMetadataPathsPayload, AppOpenAtLoginPayload,
+        AppOpenFileEventPayload, AppOpenUrlEventPayload, AppProtocolPayload, AppQuitPayload,
+        AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
+        AssociationEventPayload, AssociationEventPhasePayload, AssociationFileAssociationPayload,
+        AssociationFileAssociationsPayload, AssociationFileAssociationsResultPayload,
+        AssociationProtocolPayload, AssociationProtocolStatusPayload, AutostartEnablePayload,
+        AutostartEventPayload, AutostartEventPhasePayload, AutostartMechanismPayload,
+        AutostartStatusPayload, CanonicalPathPayload, ClipboardCapabilityPayload,
+        ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
+        ClipboardSupportedPayload, ClipboardTextPayload, CrashReporterBreadcrumbPayload,
+        CrashReporterFlushPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
         DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
         DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
         DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
@@ -10437,6 +10553,73 @@ mod tests {
                 .expect("before quit event should encode"),
             r#"{"traceId":"trace-before-quit"}"#
         );
+    }
+
+    #[test]
+    fn app_metadata_payloads_encode_current_contract() {
+        assert_eq!(
+            serde_json::to_string(&AppMetadataInfoPayload::new(
+                "dev.effect-desktop.test",
+                "Effect Desktop Test",
+                "0.0.0"
+            ))
+            .expect("app metadata info should encode"),
+            r#"{"id":"dev.effect-desktop.test","name":"Effect Desktop Test","version":"0.0.0"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppMetadataPathsPayload::new(
+                CanonicalPathPayload::new("/Applications/Test.app/Contents/MacOS/test"),
+                CanonicalPathPayload::new("/Applications/Test.app/Contents/Resources"),
+                CanonicalPathPayload::new("/repo")
+            ))
+            .expect("app metadata paths should encode"),
+            r#"{"executable":{"path":"/Applications/Test.app/Contents/MacOS/test"},"resources":{"path":"/Applications/Test.app/Contents/Resources"},"cwd":{"path":"/repo"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppMetadataLaunchContextPayload::new(
+                vec!["test".to_string(), "--safe-mode".to_string()],
+                CanonicalPathPayload::new("/repo"),
+                AppMetadataLaunchReasonPayload::Launch,
+                AppMetadataEnvironmentShapePayload::new(vec!["PATH".to_string()])
+            ))
+            .expect("app metadata launch context should encode"),
+            r#"{"argv":["test","--safe-mode"],"cwd":{"path":"/repo"},"reason":"launch","environment":{"variableNames":["PATH"]}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppMetadataEventPayload::new(
+                AppMetadataEventPhasePayload::LaunchContextRead,
+                Some("host-adapter-unimplemented".to_string())
+            ))
+            .expect("app metadata event should encode"),
+            r#"{"phase":"launch-context-read","reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn app_metadata_payloads_reject_excess_fields_and_invalid_shapes() {
+        let error = serde_json::from_str::<AppMetadataInfoPayload>(
+            r#"{"id":"app","name":"App","version":"0.0.0","x":true}"#,
+        )
+        .expect_err("excess metadata info field should be rejected");
+        assert!(error.to_string().contains("unknown field `x`"));
+
+        let error = serde_json::from_str::<AppMetadataPathsPayload>(
+            r#"{"executable":{"path":"/bin/app"},"resources":{"path":"/app/resources"},"cwd":{"path":"/repo"},"x":true}"#,
+        )
+        .expect_err("excess metadata paths field should be rejected");
+        assert!(error.to_string().contains("unknown field `x`"));
+
+        let error = serde_json::from_str::<AppMetadataLaunchContextPayload>(
+            r#"{"argv":["app"],"cwd":{"path":"/repo"},"reason":"scheduled","environment":{"variableNames":["PATH"]}}"#,
+        )
+        .expect_err("unknown launch reason should be rejected");
+        assert!(error.to_string().contains("unknown variant `scheduled`"));
+
+        let error = serde_json::from_str::<AppMetadataEventPayload>(
+            r#"{"phase":"changed","reason":"unexpected"}"#,
+        )
+        .expect_err("unknown metadata event phase should be rejected");
+        assert!(error.to_string().contains("unknown variant `changed`"));
     }
 
     #[test]
