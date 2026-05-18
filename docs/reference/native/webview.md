@@ -15,6 +15,11 @@ It does not expose routed `WebView.*` RPC methods yet, so the public `WebView`
 RPC surface is declared but fail-closed in capability metadata until a host
 adapter owns those methods.
 
+Session/profile handles are not exposed today. `WebView.create` has no
+profile/session input, and the host does not retain a browser `WebContext`
+registry that can bind WebViews, cookies, cache, permissions, storage,
+downloads, or requests to a partition.
+
 `WebView.NavigationBlocked` is a navigation-policy event, not request/response
 interception. There is no `WebRequest` service yet for ordered interceptors,
 subresource inspection, response-header mutation, blocking, redirects, or
