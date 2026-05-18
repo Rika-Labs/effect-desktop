@@ -14,6 +14,10 @@ Protocol policy is startup configuration. The host freezes the registry when it 
 
 The fixed internal `app://localhost/` WebView asset protocol is owned by the host runtime and remains separate from this public custom protocol policy surface.
 
+This surface handles custom protocol policy and app asset responses. It does
+not provide request/response interception for normal WebView navigation,
+subresources, headers, redirects, or audit.
+
 OS-level default protocol clients and file associations are not part of this
 surface. Use [`Association`](association.md) for those contracts.
 

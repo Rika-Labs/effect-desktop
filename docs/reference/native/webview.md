@@ -15,6 +15,11 @@ It does not expose routed `WebView.*` RPC methods yet, so the public `WebView`
 RPC surface is declared but fail-closed in capability metadata until a host
 adapter owns those methods.
 
+`WebView.NavigationBlocked` is a navigation-policy event, not request/response
+interception. There is no `WebRequest` service yet for ordered interceptors,
+subresource inspection, response-header mutation, blocking, redirects, or
+request audit.
+
 ## Import
 
 ```ts
@@ -62,6 +67,8 @@ currently owned by `Window.create`; direct `WebView.*` bridge methods are
 unsupported with `host-adapter-unimplemented` until explicit host routes exist.
 `webViewCapability(...)` remains a local platform and runtime-mode feature
 helper; it does not prove that the direct WebView RPC host path is routed.
+Request/response interception is also not part of this surface yet; it requires
+a separate native host adapter.
 
 ## Related
 
