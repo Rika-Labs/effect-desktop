@@ -8,13 +8,15 @@ export const TrayResource = ResourceHandleSchema("tray", "open")
 
 export type TrayHandle = ResourceHandle<"tray", "open">
 
-export const TrayIcon = BridgeSafeNonEmptyString.check(Schema.isPattern(/^(?!file:)/iu))
+export const TrayIcon = BridgeSafeNonEmptyString.check(Schema.isPattern(/^solid:#[0-9a-f]{8}$/iu))
 
 export const TrayTooltip = PrintableNonEmptyString
+export const TrayTitle = PrintableNonEmptyString
 
 export class TrayCreateInput extends Schema.Class<TrayCreateInput>("TrayCreateInput")({
   icon: TrayIcon,
   tooltip: Schema.optionalKey(TrayTooltip),
+  title: Schema.optionalKey(TrayTitle),
   menu: Schema.optionalKey(MenuTemplate)
 }) {}
 
@@ -28,6 +30,11 @@ export class TraySetIconInput extends Schema.Class<TraySetIconInput>("TraySetIco
 export class TraySetTooltipInput extends Schema.Class<TraySetTooltipInput>("TraySetTooltipInput")({
   tray: TrayResource,
   tooltip: TrayTooltip
+}) {}
+
+export class TraySetTitleInput extends Schema.Class<TraySetTitleInput>("TraySetTitleInput")({
+  tray: TrayResource,
+  title: TrayTitle
 }) {}
 
 export class TraySetMenuInput extends Schema.Class<TraySetMenuInput>("TraySetMenuInput")({
@@ -45,5 +52,6 @@ export class TrayActivatedEvent extends Schema.Class<TrayActivatedEvent>("TrayAc
 }) {}
 
 export class TraySupportedResult extends Schema.Class<TraySupportedResult>("TraySupportedResult")({
-  supported: Schema.Boolean
+  supported: Schema.Boolean,
+  reason: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}

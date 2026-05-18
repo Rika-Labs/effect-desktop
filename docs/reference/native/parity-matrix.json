@@ -2462,9 +2462,25 @@
       "method": "create",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Tray.destroy",
@@ -2472,9 +2488,25 @@
       "method": "destroy",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Tray.isSupported",
@@ -2484,7 +2516,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Tray.setIcon",
@@ -2492,9 +2524,25 @@
       "method": "setIcon",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Tray.setMenu",
@@ -2502,9 +2550,52 @@
       "method": "setMenu",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Tray.setTitle",
+      "surface": "Tray",
+      "method": "setTitle",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "windows-tray-title-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "windows-tray-title-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
     },
     {
       "tag": "Tray.setTooltip",
@@ -2512,9 +2603,25 @@
       "method": "setTooltip",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Updater.check",
@@ -2739,11 +2846,11 @@
     }
   ],
   "summary": {
-    "total": 186,
-    "routed": 112,
-    "missing": 74,
-    "supported": 137,
-    "partial": 11,
+    "total": 187,
+    "routed": 119,
+    "missing": 68,
+    "supported": 132,
+    "partial": 17,
     "unsupported": 38
   }
 }

@@ -7,10 +7,18 @@ import {
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import {
+  type PermissionRegistry,
+  P,
+  type DesktopRpcClient,
+  ResourceRegistry,
+  type ResourceRegistryApi,
+  ResourceRegistryLive
+} from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -24,12 +32,27 @@ import {
   TrayResource,
   TraySetIconInput,
   TraySetMenuInput,
+  TraySetTitleInput,
   TraySetTooltipInput,
   TraySupportedResult
 } from "./contracts/tray.js"
 import type { MenuTemplateOptions } from "./menu.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const TrayTitleSupport = NativeSurface.support.partial("windows-tray-title-unavailable", {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: "windows-tray-title-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-tray-unavailable" }
+  ]
+}) satisfies RpcSupportMetadata
+const TrayPlatformSupport = NativeSurface.support.partial("linux-tray-unavailable", {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "supported" },
+    { platform: "linux", status: "unsupported", reason: "host-tray-unavailable" }
+  ]
+}) satisfies RpcSupportMetadata
 
 export type TrayError = HostProtocolError
 
@@ -37,31 +60,43 @@ export const TrayCreate = trayRpc(
   "create",
   TrayCreateInput,
   TrayResource,
-  P.nativeInvoke({ primitive: "Tray", methods: ["create"] })
+  P.nativeInvoke({ primitive: "Tray", methods: ["create"] }),
+  TrayPlatformSupport
 )
 export const TraySetIcon = trayRpc(
   "setIcon",
   TraySetIconInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Tray", methods: ["setIcon"] })
+  P.nativeInvoke({ primitive: "Tray", methods: ["setIcon"] }),
+  TrayPlatformSupport
 )
 export const TraySetTooltip = trayRpc(
   "setTooltip",
   TraySetTooltipInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Tray", methods: ["setTooltip"] })
+  P.nativeInvoke({ primitive: "Tray", methods: ["setTooltip"] }),
+  TrayPlatformSupport
+)
+export const TraySetTitle = trayRpc(
+  "setTitle",
+  TraySetTitleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Tray", methods: ["setTitle"] }),
+  TrayTitleSupport
 )
 export const TraySetMenu = trayRpc(
   "setMenu",
   TraySetMenuInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Tray", methods: ["setMenu"] })
+  P.nativeInvoke({ primitive: "Tray", methods: ["setMenu"] }),
+  TrayPlatformSupport
 )
 export const TrayDestroy = trayRpc(
   "destroy",
   TrayDestroyInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Tray", methods: ["destroy"] })
+  P.nativeInvoke({ primitive: "Tray", methods: ["destroy"] }),
+  TrayPlatformSupport
 )
 export const TrayIsSupported = trayRpc("isSupported", Schema.Void, TraySupportedResult, {
   kind: "none"
@@ -77,6 +112,7 @@ const TrayRpcGroup = RpcGroup.make(
   TrayCreate,
   TraySetIcon,
   TraySetTooltip,
+  TraySetTitle,
   TraySetMenu,
   TrayDestroy,
   TrayIsSupported
@@ -88,6 +124,7 @@ export const TrayMethodNames = Object.freeze([
   "create",
   "setIcon",
   "setTooltip",
+  "setTitle",
   "setMenu",
   "destroy",
   "isSupported"
@@ -97,6 +134,7 @@ const TrayCapabilityMethods = Object.freeze([
   "create",
   "setIcon",
   "setTooltip",
+  "setTitle",
   "setMenu",
   "destroy"
 ] as const satisfies readonly (typeof TrayMethodNames)[number][])
@@ -105,6 +143,7 @@ export interface TrayClientApi {
   readonly create: (input: TrayCreateOptions) => Effect.Effect<TrayHandle, TrayError, never>
   readonly setIcon: (tray: TrayHandle, icon: string) => Effect.Effect<void, TrayError, never>
   readonly setTooltip: (tray: TrayHandle, tooltip: string) => Effect.Effect<void, TrayError, never>
+  readonly setTitle: (tray: TrayHandle, title: string) => Effect.Effect<void, TrayError, never>
   readonly setMenu: (
     tray: TrayHandle,
     menu: MenuTemplateOptions
@@ -122,21 +161,77 @@ export interface TrayServiceApi extends Omit<TrayClientApi, "isSupported"> {
   readonly isSupported: () => Effect.Effect<boolean, TrayError, never>
 }
 
+export interface TrayServiceOptions {
+  readonly resources: ResourceRegistryApi
+}
+
 export class Tray extends Context.Service<Tray, TrayServiceApi>()("@effect-desktop/native/Tray") {
-  static readonly layer = Layer.effect(Tray)(
-    Effect.gen(function* () {
-      const client = yield* TrayClient
-      return Tray.of({
-        create: (input) => client.create(input),
-        setIcon: (tray, icon) => client.setIcon(tray, icon),
-        setTooltip: (tray, tooltip) => client.setTooltip(tray, tooltip),
-        setMenu: (tray, menu) => client.setMenu(tray, menu),
-        destroy: (tray) => client.destroy(tray),
-        onActivated: () => client.onActivated(),
-        isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported))
-      } satisfies TrayServiceApi)
-    })
+  static readonly layer = Layer.provide(
+    Layer.effect(Tray)(
+      Effect.gen(function* () {
+        const client = yield* TrayClient
+        const resources = yield* ResourceRegistry
+        return makeTrayService(client, { resources })
+      })
+    ),
+    ResourceRegistryLive
   )
+}
+
+const makeTrayService = (client: TrayClientApi, options: TrayServiceOptions): TrayServiceApi => {
+  const explicitlyDestroyed = new Set<string>()
+  return Tray.of({
+    create: (input) =>
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const created = yield* restore(client.create(input))
+          const handle = yield* options.resources
+            .register({
+              kind: "tray",
+              id: created.id,
+              ownerScope: created.ownerScope,
+              state: "open",
+              reusableId: true,
+              dispose: Effect.gen(function* () {
+                if (explicitlyDestroyed.has(created.id)) {
+                  return
+                }
+                yield* client.destroy(created)
+              }).pipe(Effect.ignore)
+            })
+            .pipe(
+              Effect.tapError(() => client.destroy(created).pipe(Effect.ignore)),
+              Effect.mapError((error) =>
+                makeHostProtocolInvalidArgumentError(error.field, error.message, "Tray.create")
+              )
+            )
+          return toTrayHandle(handle)
+        })
+      ),
+    setIcon: (tray, icon) => client.setIcon(tray, icon),
+    setTooltip: (tray, tooltip) => client.setTooltip(tray, tooltip),
+    setTitle: (tray, title) => client.setTitle(tray, title),
+    setMenu: (tray, menu) => client.setMenu(tray, menu),
+    destroy: (tray) =>
+      Effect.gen(function* () {
+        if (tray.kind !== "tray" || tray.state !== "open") {
+          return yield* Effect.fail(
+            makeHostProtocolInvalidArgumentError(
+              "tray",
+              "must be an open tray handle",
+              "Tray.destroy"
+            )
+          )
+        }
+        yield* client.destroy(tray)
+        explicitlyDestroyed.add(tray.id)
+        yield* options.resources
+          .dispose(tray.id)
+          .pipe(Effect.ensuring(Effect.sync(() => explicitlyDestroyed.delete(tray.id))))
+      }),
+    onActivated: () => client.onActivated(),
+    isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported))
+  } satisfies TrayServiceApi)
 }
 
 export const TrayLive = Tray.layer
@@ -144,8 +239,13 @@ export const TrayLive = Tray.layer
 export const makeTrayClientLayer = (client: TrayClientApi): Layer.Layer<TrayClient> =>
   Layer.succeed(TrayClient)(client)
 
-export const makeTrayServiceLayer = (client: TrayClientApi): Layer.Layer<Tray> =>
-  Layer.provide(TrayLive, makeTrayClientLayer(client))
+export const makeTrayServiceLayer = (
+  client: TrayClientApi,
+  options?: TrayServiceOptions
+): Layer.Layer<Tray> =>
+  options === undefined
+    ? Layer.provide(TrayLive, makeTrayClientLayer(client))
+    : Layer.succeed(Tray, makeTrayService(client, options))
 
 export const makeTrayBridgeClientLayer = (
   exchange: BridgeClientExchange,
@@ -171,6 +271,11 @@ export const TrayHandlersLive = TrayRpcGroup.toLayer({
     Effect.gen(function* () {
       const tray = yield* Tray
       yield* tray.setTooltip(input.tray, input.tooltip)
+    }),
+  "Tray.setTitle": (input) =>
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      yield* tray.setTitle(input.tray, input.title)
     }),
   "Tray.setMenu": (input) =>
     Effect.gen(function* () {
@@ -201,7 +306,8 @@ export const TraySurface = NativeSurface.make("Tray", TrayRpcGroup, {
 export const makeHostTrayRpcRuntime = (
   handlers: TrayRpcHandlers,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => TraySurface.hostRuntime(handlers, runtimeOptions)
+): BridgeHandlerRuntime<PermissionRegistry | ResourceRegistry> =>
+  TraySurface.hostRuntime(handlers, runtimeOptions)
 
 const trayClientFromRpcClient = (
   client: DesktopRpcClient<TrayRpc>,
@@ -221,6 +327,10 @@ const trayClientFromRpcClient = (
         Effect.flatMap((decoded) =>
           runTrayRpc(client["Tray.setTooltip"](decoded), "Tray.setTooltip")
         )
+      ),
+    setTitle: (tray, title) =>
+      decodeTraySetTitleInput({ tray: toTrayHandle(tray), title }).pipe(
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.setTitle"](decoded), "Tray.setTitle"))
       ),
     setMenu: (tray, menu) =>
       decodeTraySetMenuInput({ tray: toTrayHandle(tray), menu }).pipe(
@@ -265,6 +375,11 @@ const decodeTraySetTooltipInput = (
 ): Effect.Effect<TraySetTooltipInput, TrayError, never> =>
   decodeInput(TraySetTooltipInput, input, "Tray.setTooltip")
 
+const decodeTraySetTitleInput = (
+  input: unknown
+): Effect.Effect<TraySetTitleInput, TrayError, never> =>
+  decodeInput(TraySetTitleInput, input, "Tray.setTitle")
+
 const decodeTraySetMenuInput = (
   input: unknown
 ): Effect.Effect<TraySetMenuInput, TrayError, never> =>
@@ -301,13 +416,19 @@ function trayRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  capability: RpcCapabilityMetadata,
+  support: RpcSupportMetadata = NativeSurface.support.supported
+) {
   return NativeSurface.rpc("Tray", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support
   })
 }
 

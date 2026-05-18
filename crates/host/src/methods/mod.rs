@@ -21,6 +21,7 @@ mod scoped_access_grant;
 mod selection_context;
 mod transactional_file_mutation;
 mod transient_window_role;
+mod tray;
 mod window;
 mod workspace_index;
 
@@ -31,7 +32,10 @@ pub(crate) use extension_package::EXTENSION_PACKAGE_ENV_LOCK;
 #[cfg(test)]
 pub(crate) use job::JOB_ENV_LOCK;
 
-use crate::{linux, window::WindowMethodHandler};
+use crate::{
+    linux,
+    window::{clear_tray_runtime_event_state, WindowMethodHandler},
+};
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
@@ -65,6 +69,11 @@ type EmptyHandler = fn() -> Result<Option<serde_json::Value>, HostProtocolError>
 type WindowHandler = fn(
     &dyn WindowMethodHandler,
     Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>, HostProtocolError>;
+type TrayCreateHandler = fn(
+    &dyn WindowMethodHandler,
+    Option<serde_json::Value>,
+    Option<Sender<HostProtocolEnvelope>>,
 ) -> Result<Option<serde_json::Value>, HostProtocolError>;
 
 struct RealtimeMediaDispatch {
@@ -148,6 +157,7 @@ enum HostMethodDispatcher {
     Payload(PayloadHandler),
     Empty(EmptyHandler),
     Window(WindowHandler),
+    TrayCreate(TrayCreateHandler),
     WindowDestroy,
     UnsupportedGlobalShortcut,
     EgressRecord,
@@ -242,6 +252,34 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::DIALOG_CONFIRM_METHOD,
         HostMethodDispatcher::Payload(dialog::confirm),
+    ),
+    route(
+        host_protocol::TRAY_CREATE_METHOD,
+        HostMethodDispatcher::TrayCreate(tray::create_with_event_sender),
+    ),
+    route(
+        host_protocol::TRAY_SET_ICON_METHOD,
+        HostMethodDispatcher::Window(tray::set_icon),
+    ),
+    route(
+        host_protocol::TRAY_SET_TOOLTIP_METHOD,
+        HostMethodDispatcher::Window(tray::set_tooltip),
+    ),
+    route(
+        host_protocol::TRAY_SET_TITLE_METHOD,
+        HostMethodDispatcher::Window(tray::set_title),
+    ),
+    route(
+        host_protocol::TRAY_SET_MENU_METHOD,
+        HostMethodDispatcher::Window(tray::set_menu),
+    ),
+    route(
+        host_protocol::TRAY_DESTROY_METHOD,
+        HostMethodDispatcher::Window(tray::destroy),
+    ),
+    route(
+        host_protocol::TRAY_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(tray::is_supported),
     ),
     route(
         host_protocol::CLIPBOARD_READ_TEXT_METHOD,
@@ -686,6 +724,19 @@ impl HostMethodDispatcher {
                 request.trace_id,
                 handler(&*router.window, request.payload),
             ),
+            Self::TrayCreate(handler) => {
+                let event_sender = router
+                    .runtime_event_sender
+                    .lock()
+                    .ok()
+                    .and_then(|sender| sender.clone());
+                dispatch_result_frame(
+                    request.id,
+                    request.timestamp,
+                    request.trace_id,
+                    handler(&*router.window, request.payload, event_sender),
+                )
+            }
             Self::WindowDestroy => {
                 let destroy_payload = request.payload.clone();
                 let result = window::destroy(&*router.window, request.payload);
@@ -917,6 +968,10 @@ impl HostMethodRouter {
     }
 
     pub(crate) fn clear_runtime_resources(&self) -> Result<(), String> {
+        clear_tray_runtime_event_state().map_err(|error| format!("{error:?}"))?;
+        self.window
+            .clear_runtime_trays()
+            .map_err(|error| format!("{error:?}"))?;
         realtime_media_session::close_all_sessions("host.runtime.disconnect")
             .map_err(|error| format!("{error:?}"))?;
         let runtime_ids = self.drain_local_tool_runtime_ids()?;
@@ -1407,7 +1462,7 @@ fn local_tool_runtime_payload_id(payload: Option<&serde_json::Value>) -> Option<
 #[cfg(test)]
 mod tests {
     use super::HostMethodRouter;
-    use crate::window::{WindowCreateRequest, WindowMethodHandler};
+    use crate::window::{TrayCreateRequest, WindowCreateRequest, WindowMethodHandler};
     use host_protocol::{
         ClipboardSupportedPayload, HostProtocolEnvelope, HostProtocolError, WindowCreateResponse,
         PROTOCOL_VERSION,
@@ -4456,6 +4511,60 @@ mod tests {
             _window_id: &str,
             _template: serde_json::Value,
         ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn create_tray(
+            &self,
+            _request: TrayCreateRequest,
+        ) -> Result<host_protocol::TrayResourcePayload, HostProtocolError> {
+            Ok(host_protocol::TrayResourcePayload::new(
+                "tray-1",
+                0,
+                "tray:tray-1",
+            ))
+        }
+
+        fn set_tray_icon(
+            &self,
+            _tray: &host_protocol::TrayResourcePayload,
+            _icon: String,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_tray_tooltip(
+            &self,
+            _tray: &host_protocol::TrayResourcePayload,
+            _tooltip: String,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_tray_title(
+            &self,
+            _tray: &host_protocol::TrayResourcePayload,
+            _title: String,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_tray_menu(
+            &self,
+            _tray: &host_protocol::TrayResourcePayload,
+            _menu: serde_json::Value,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn destroy_tray(
+            &self,
+            _tray: &host_protocol::TrayResourcePayload,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn clear_runtime_trays(&self) -> Result<(), HostProtocolError> {
             Ok(())
         }
     }

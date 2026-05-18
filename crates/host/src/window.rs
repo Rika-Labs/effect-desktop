@@ -4,14 +4,17 @@
 
 use crate::{macos, webview, windows};
 use anyhow::Result;
-use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
+use host_protocol::{
+    HostProtocolEnvelope, HostProtocolError, TrayActivatedEventPayload, TrayResourcePayload,
+    WindowCreatePayload, WindowCreateResponse,
+};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
-        Arc, Mutex,
+        Arc, LazyLock, Mutex,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tao::{
     dpi::LogicalSize,
@@ -80,6 +83,42 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         window_id: &str,
         template: serde_json::Value,
     ) -> std::result::Result<(), HostProtocolError>;
+
+    fn create_tray(
+        &self,
+        request: TrayCreateRequest,
+    ) -> std::result::Result<TrayResourcePayload, HostProtocolError>;
+
+    fn set_tray_icon(
+        &self,
+        tray: &TrayResourcePayload,
+        icon: String,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_tray_tooltip(
+        &self,
+        tray: &TrayResourcePayload,
+        tooltip: String,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_tray_title(
+        &self,
+        tray: &TrayResourcePayload,
+        title: String,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_tray_menu(
+        &self,
+        tray: &TrayResourcePayload,
+        menu: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn destroy_tray(
+        &self,
+        tray: &TrayResourcePayload,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn clear_runtime_trays(&self) -> std::result::Result<(), HostProtocolError>;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -88,6 +127,15 @@ pub(crate) struct WindowCreateRequest {
     width: f64,
     height: f64,
     macos_polish: Option<macos::MacosWindowPolish>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TrayCreateRequest {
+    icon: String,
+    tooltip: Option<String>,
+    title: Option<String>,
+    menu: Option<serde_json::Value>,
+    event_sender: Option<Sender<HostProtocolEnvelope>>,
 }
 
 enum HostEvent {}
@@ -123,6 +171,37 @@ enum WindowCommand {
         template: serde_json::Value,
         reply: Sender<WindowCommandReply>,
     },
+    CreateTray {
+        request: TrayCreateRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTrayIcon {
+        tray: TrayResourcePayload,
+        icon: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTrayTooltip {
+        tray: TrayResourcePayload,
+        tooltip: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTrayTitle {
+        tray: TrayResourcePayload,
+        title: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTrayMenu {
+        tray: TrayResourcePayload,
+        menu: serde_json::Value,
+        reply: Sender<WindowCommandReply>,
+    },
+    DestroyTray {
+        tray: TrayResourcePayload,
+        reply: Sender<WindowCommandReply>,
+    },
+    ClearRuntimeTrays {
+        reply: Sender<WindowCommandReply>,
+    },
 }
 
 type WindowCommandReply = std::result::Result<WindowCommandResponse, HostProtocolError>;
@@ -134,6 +213,9 @@ enum WindowCommandResponse {
     DockAttentionRequested,
     DockMenuSet,
     MenuSet,
+    TrayCreated(TrayResourcePayload),
+    TrayUpdated,
+    TrayDestroyed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -150,9 +232,23 @@ struct NativeWindowResources {
     _webview: webview::HostWebView,
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+struct NativeTrayResources {
+    _tray: tray_icon::TrayIcon,
+    generation: u64,
+    owner_scope: String,
+}
+
 struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    trays: HashMap<String, NativeTrayResources>,
 }
+
+static TRAY_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
+    LazyLock::new(|| Mutex::new(None));
+static TRAY_EVENT_HANDLES: LazyLock<Mutex<HashMap<String, TrayResourcePayload>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 impl WindowMethodPort {
     pub(crate) fn new() -> Self {
@@ -250,6 +346,12 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window create received destroy response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
+            WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
+                "window create received tray response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
         }
     }
 
@@ -282,6 +384,12 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window destroy received create response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
+            WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
+                "window destroy received tray response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
         }
     }
 
@@ -303,7 +411,10 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
-            | WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
                 "dock badge command received window response",
                 operation,
             )),
@@ -323,7 +434,10 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
-            | WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
                 "dock attention command received window response",
                 host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
             )),
@@ -346,7 +460,10 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockAttentionRequested
-            | WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
                 "dock menu command received window response",
                 host_protocol::DOCK_SET_MENU_METHOD,
             )),
@@ -369,7 +486,10 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
-            | WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
                 "application menu command received window response",
                 host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
             )),
@@ -394,9 +514,147 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
-            | WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
+            )),
+        }
+    }
+
+    fn create_tray(
+        &self,
+        request: TrayCreateRequest,
+    ) -> std::result::Result<TrayResourcePayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::CreateTray {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::TrayCreated(tray) => Ok(tray),
+            response => Err(unexpected_tray_response(
+                response,
+                host_protocol::TRAY_CREATE_METHOD,
+            )),
+        }
+    }
+
+    fn set_tray_icon(
+        &self,
+        tray: &TrayResourcePayload,
+        icon: String,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTrayIcon {
+            tray: tray.clone(),
+            icon,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::TrayUpdated => Ok(()),
+            response => Err(unexpected_tray_response(
+                response,
+                host_protocol::TRAY_SET_ICON_METHOD,
+            )),
+        }
+    }
+
+    fn set_tray_tooltip(
+        &self,
+        tray: &TrayResourcePayload,
+        tooltip: String,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTrayTooltip {
+            tray: tray.clone(),
+            tooltip,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::TrayUpdated => Ok(()),
+            response => Err(unexpected_tray_response(
+                response,
+                host_protocol::TRAY_SET_TOOLTIP_METHOD,
+            )),
+        }
+    }
+
+    fn set_tray_title(
+        &self,
+        tray: &TrayResourcePayload,
+        title: String,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTrayTitle {
+            tray: tray.clone(),
+            title,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::TrayUpdated => Ok(()),
+            response => Err(unexpected_tray_response(
+                response,
+                host_protocol::TRAY_SET_TITLE_METHOD,
+            )),
+        }
+    }
+
+    fn set_tray_menu(
+        &self,
+        tray: &TrayResourcePayload,
+        menu: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTrayMenu {
+            tray: tray.clone(),
+            menu,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::TrayUpdated => Ok(()),
+            response => Err(unexpected_tray_response(
+                response,
+                host_protocol::TRAY_SET_MENU_METHOD,
+            )),
+        }
+    }
+
+    fn destroy_tray(
+        &self,
+        tray: &TrayResourcePayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::DestroyTray {
+            tray: tray.clone(),
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::TrayDestroyed => Ok(()),
+            response => Err(unexpected_tray_response(
+                response,
+                host_protocol::TRAY_DESTROY_METHOD,
+            )),
+        }
+    }
+
+    fn clear_runtime_trays(&self) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ClearRuntimeTrays { reply: reply_tx })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::TrayDestroyed => Ok(()),
+            response => Err(unexpected_tray_response(
+                response,
+                "host.runtime.tray.disconnect",
             )),
         }
     }
@@ -460,10 +718,50 @@ impl TryFrom<WindowCreatePayload> for WindowCreateRequest {
     }
 }
 
+impl TrayCreateRequest {
+    pub(crate) fn new(
+        icon: String,
+        tooltip: Option<String>,
+        title: Option<String>,
+        menu: Option<serde_json::Value>,
+        event_sender: Option<Sender<HostProtocolEnvelope>>,
+    ) -> Self {
+        Self {
+            icon,
+            tooltip,
+            title,
+            menu,
+            event_sender,
+        }
+    }
+
+    fn icon(&self) -> &str {
+        &self.icon
+    }
+
+    fn tooltip(&self) -> Option<&str> {
+        self.tooltip.as_deref()
+    }
+
+    fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    fn menu(&self) -> Option<&serde_json::Value> {
+        self.menu.as_ref()
+    }
+
+    fn event_sender(&self) -> Option<Sender<HostProtocolEnvelope>> {
+        self.event_sender.clone()
+    }
+}
+
 impl WindowRegistry {
     fn new() -> Self {
         Self {
             windows: HashMap::new(),
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            trays: HashMap::new(),
         }
     }
 
@@ -586,6 +884,211 @@ impl WindowRegistry {
         macos::set_application_menu(template)
     }
 
+    fn create_tray(
+        &mut self,
+        request: TrayCreateRequest,
+    ) -> std::result::Result<TrayResourcePayload, HostProtocolError> {
+        #[cfg(target_os = "linux")]
+        {
+            let _ = request;
+            return Err(unsupported_tray(host_protocol::TRAY_CREATE_METHOD));
+        }
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let tray_id = Uuid::now_v7().to_string();
+            let icon = build_tray_icon(request.icon(), host_protocol::TRAY_CREATE_METHOD)?;
+            let mut builder = tray_icon::TrayIconBuilder::new()
+                .with_id(tray_icon::TrayIconId::new(tray_id.clone()))
+                .with_icon(icon);
+
+            if let Some(tooltip) = request.tooltip() {
+                builder = builder.with_tooltip(tooltip);
+            }
+
+            #[cfg(target_os = "macos")]
+            if let Some(title) = request.title() {
+                builder = builder.with_title(title);
+            }
+
+            #[cfg(target_os = "windows")]
+            if request.title().is_some() {
+                return Err(HostProtocolError::unsupported(
+                    "tray title is unsupported on Windows",
+                    host_protocol::TRAY_CREATE_METHOD,
+                ));
+            }
+
+            if let Some(menu) = request.menu() {
+                builder = builder.with_menu(Box::new(build_tray_menu(
+                    menu,
+                    host_protocol::TRAY_CREATE_METHOD,
+                )?));
+            }
+
+            if let Some(sender) = request.event_sender() {
+                install_tray_event_sender(sender)?;
+            }
+
+            let tray = builder.build().map_err(|error| {
+                HostProtocolError::internal(
+                    format!("failed to create tray icon: {error}"),
+                    host_protocol::TRAY_CREATE_METHOD,
+                )
+            })?;
+            let generation = 0;
+            let owner_scope = format!("tray:{tray_id}");
+            self.trays.insert(
+                tray_id.clone(),
+                NativeTrayResources {
+                    _tray: tray,
+                    generation,
+                    owner_scope: owner_scope.clone(),
+                },
+            );
+
+            let handle = TrayResourcePayload::new(tray_id.clone(), generation, owner_scope);
+            track_tray_event_handle(&tray_id, handle.clone())?;
+            Ok(handle)
+        }
+    }
+
+    fn set_tray_icon(
+        &mut self,
+        tray: &TrayResourcePayload,
+        icon: String,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let operation = host_protocol::TRAY_SET_ICON_METHOD;
+        #[cfg(target_os = "linux")]
+        {
+            let _ = (tray, icon);
+            return Err(unsupported_tray(operation));
+        }
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            validate_tray_handle(self, tray, operation)?;
+            let icon = build_tray_icon(&icon, operation)?;
+            self.trays
+                .get_mut(tray.id())
+                .expect("validated tray exists")
+                ._tray
+                .set_icon(Some(icon))
+                .map_err(|error| HostProtocolError::internal(error.to_string(), operation))
+        }
+    }
+
+    fn set_tray_tooltip(
+        &mut self,
+        tray: &TrayResourcePayload,
+        tooltip: String,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let operation = host_protocol::TRAY_SET_TOOLTIP_METHOD;
+        #[cfg(target_os = "linux")]
+        {
+            let _ = (tray, tooltip);
+            return Err(unsupported_tray(operation));
+        }
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            validate_tray_handle(self, tray, operation)?;
+            self.trays
+                .get_mut(tray.id())
+                .expect("validated tray exists")
+                ._tray
+                .set_tooltip(Some(tooltip))
+                .map_err(|error| HostProtocolError::internal(error.to_string(), operation))
+        }
+    }
+
+    fn set_tray_title(
+        &mut self,
+        tray: &TrayResourcePayload,
+        title: String,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let operation = host_protocol::TRAY_SET_TITLE_METHOD;
+        #[cfg(target_os = "linux")]
+        {
+            let _ = (tray, title);
+            return Err(unsupported_tray(operation));
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let _ = (tray, title);
+            return Err(HostProtocolError::unsupported(
+                "tray title is unsupported on Windows",
+                operation,
+            ));
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            validate_tray_handle(self, tray, operation)?;
+            self.trays
+                .get_mut(tray.id())
+                .expect("validated tray exists")
+                ._tray
+                .set_title(Some(title));
+            Ok(())
+        }
+    }
+
+    fn set_tray_menu(
+        &mut self,
+        tray: &TrayResourcePayload,
+        menu: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let operation = host_protocol::TRAY_SET_MENU_METHOD;
+        #[cfg(target_os = "linux")]
+        {
+            let _ = (tray, menu);
+            return Err(unsupported_tray(operation));
+        }
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            validate_tray_handle(self, tray, operation)?;
+            let menu = build_tray_menu(&menu, operation)?;
+            self.trays
+                .get_mut(tray.id())
+                .expect("validated tray exists")
+                ._tray
+                .set_menu(Some(Box::new(menu)));
+            Ok(())
+        }
+    }
+
+    fn destroy_tray(
+        &mut self,
+        tray: &TrayResourcePayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let operation = host_protocol::TRAY_DESTROY_METHOD;
+        #[cfg(target_os = "linux")]
+        {
+            let _ = tray;
+            return Err(unsupported_tray(operation));
+        }
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            validate_tray_handle(self, tray, operation)?;
+            self.trays.remove(tray.id());
+            forget_tray_event_handle(tray.id())?;
+            Ok(())
+        }
+    }
+
+    fn clear_runtime_trays(&mut self) -> std::result::Result<(), HostProtocolError> {
+        clear_tray_runtime_event_state()?;
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.trays.clear();
+        }
+        Ok(())
+    }
+
     fn handle_pending_window_commands(
         &mut self,
         target: &EventLoopWindowTarget<HostEvent>,
@@ -699,6 +1202,59 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::CreateTray { request, reply } => {
+                let result = self
+                    .create_tray(request)
+                    .map(WindowCommandResponse::TrayCreated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTrayIcon { tray, icon, reply } => {
+                let result = self
+                    .set_tray_icon(&tray, icon)
+                    .map(|()| WindowCommandResponse::TrayUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTrayTooltip {
+                tray,
+                tooltip,
+                reply,
+            } => {
+                let result = self
+                    .set_tray_tooltip(&tray, tooltip)
+                    .map(|()| WindowCommandResponse::TrayUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTrayTitle { tray, title, reply } => {
+                let result = self
+                    .set_tray_title(&tray, title)
+                    .map(|()| WindowCommandResponse::TrayUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTrayMenu { tray, menu, reply } => {
+                let result = self
+                    .set_tray_menu(&tray, menu)
+                    .map(|()| WindowCommandResponse::TrayUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::DestroyTray { tray, reply } => {
+                let result = self
+                    .destroy_tray(&tray)
+                    .map(|()| WindowCommandResponse::TrayDestroyed);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ClearRuntimeTrays { reply } => {
+                let result = self
+                    .clear_runtime_trays()
+                    .map(|()| WindowCommandResponse::TrayDestroyed);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
         }
     }
 }
@@ -709,6 +1265,417 @@ fn lifecycle_for_create_result(result: &WindowCommandReply) -> WindowLifecycleEv
     } else {
         WindowLifecycleEvent::Other
     }
+}
+
+fn unexpected_tray_response(
+    response: WindowCommandResponse,
+    operation: &'static str,
+) -> HostProtocolError {
+    let message = match response {
+        WindowCommandResponse::Created(_) => "tray command received window create response",
+        WindowCommandResponse::Destroyed => "tray command received window destroy response",
+        WindowCommandResponse::DockBadgeLabelSet => "tray command received dock badge response",
+        WindowCommandResponse::DockAttentionRequested => {
+            "tray command received dock attention response"
+        }
+        WindowCommandResponse::DockMenuSet => "tray command received dock menu response",
+        WindowCommandResponse::MenuSet => "tray command received menu response",
+        WindowCommandResponse::TrayCreated(_) => "tray command received create response",
+        WindowCommandResponse::TrayUpdated => "tray command received update response",
+        WindowCommandResponse::TrayDestroyed => "tray command received destroy response",
+    };
+    HostProtocolError::internal(message, operation)
+}
+
+#[cfg(target_os = "linux")]
+fn unsupported_tray(operation: &'static str) -> HostProtocolError {
+    HostProtocolError::unsupported(host_protocol::TRAY_UNSUPPORTED_REASON, operation)
+}
+
+pub(crate) fn clear_tray_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
+    let mut sender = TRAY_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "tray event sender mutex poisoned",
+            "host.runtime.tray.disconnect",
+        )
+    })?;
+    *sender = None;
+    let mut handles = TRAY_EVENT_HANDLES.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "tray event handle mutex poisoned",
+            "host.runtime.tray.disconnect",
+        )
+    })?;
+    handles.clear();
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn install_tray_event_sender(
+    sender: Sender<HostProtocolEnvelope>,
+) -> std::result::Result<(), HostProtocolError> {
+    {
+        let mut current = TRAY_EVENT_SENDER.lock().map_err(|_| {
+            HostProtocolError::internal(
+                "tray event sender mutex poisoned",
+                host_protocol::TRAY_CREATE_METHOD,
+            )
+        })?;
+        *current = Some(sender);
+    }
+
+    tray_icon::TrayIconEvent::set_event_handler(Some(forward_tray_icon_event));
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn track_tray_event_handle(
+    id: &str,
+    handle: TrayResourcePayload,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut handles = TRAY_EVENT_HANDLES.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "tray event handle mutex poisoned",
+            host_protocol::TRAY_CREATE_METHOD,
+        )
+    })?;
+    handles.insert(id.to_string(), handle);
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn forget_tray_event_handle(id: &str) -> std::result::Result<(), HostProtocolError> {
+    let mut handles = TRAY_EVENT_HANDLES.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "tray event handle mutex poisoned",
+            host_protocol::TRAY_DESTROY_METHOD,
+        )
+    })?;
+    handles.remove(id);
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn forward_tray_icon_event(event: tray_icon::TrayIconEvent) {
+    if !matches!(
+        event,
+        tray_icon::TrayIconEvent::Click { .. } | tray_icon::TrayIconEvent::DoubleClick { .. }
+    ) {
+        return;
+    }
+
+    let id = event.id().as_ref().to_string();
+    let tray = match TRAY_EVENT_HANDLES
+        .lock()
+        .ok()
+        .and_then(|handles| handles.get(&id).cloned())
+    {
+        Some(tray) => tray,
+        None => return,
+    };
+    let sender = match TRAY_EVENT_SENDER
+        .lock()
+        .ok()
+        .and_then(|sender| sender.clone())
+    {
+        Some(sender) => sender,
+        None => return,
+    };
+    let payload = match serde_json::to_value(TrayActivatedEventPayload::new(tray)) {
+        Ok(payload) => payload,
+        Err(error) => {
+            warn!(
+                event = "host.tray.event_encode_failed",
+                error = %error,
+                "failed to encode tray event"
+            );
+            return;
+        }
+    };
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default();
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::TRAY_ACTIVATED_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("tray-activated-{id}-{timestamp}"),
+        window_id: None,
+        payload: Some(payload),
+    });
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn validate_tray_handle(
+    registry: &WindowRegistry,
+    tray: &TrayResourcePayload,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    if tray.kind() != "tray" {
+        return Err(HostProtocolError::invalid_argument(
+            "tray.kind",
+            "must be tray",
+            operation,
+        ));
+    }
+    if tray.state() != "open" {
+        return Err(HostProtocolError::invalid_argument(
+            "tray.state",
+            "must be open",
+            operation,
+        ));
+    }
+
+    let Some(resources) = registry.trays.get(tray.id()) else {
+        return Err(HostProtocolError::not_found(
+            format!("Tray:{}", tray.id()),
+            operation,
+        ));
+    };
+    if resources.generation != tray.generation() {
+        return Err(HostProtocolError::invalid_argument(
+            "tray.generation",
+            "does not match the active tray generation",
+            operation,
+        ));
+    }
+    if resources.owner_scope != tray.owner_scope() {
+        return Err(HostProtocolError::invalid_argument(
+            "tray.ownerScope",
+            "does not match the active tray owner scope",
+            operation,
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn build_tray_icon(
+    value: &str,
+    operation: &'static str,
+) -> std::result::Result<tray_icon::Icon, HostProtocolError> {
+    let Some(hex) = value.strip_prefix("solid:#") else {
+        return Err(HostProtocolError::invalid_argument(
+            "icon",
+            "must be a solid:#RRGGBBAA tray icon",
+            operation,
+        ));
+    };
+    if hex.len() != 8 {
+        return Err(HostProtocolError::invalid_argument(
+            "icon",
+            "must include RGBA hex channels",
+            operation,
+        ));
+    }
+
+    let red = parse_hex_byte(&hex[0..2], operation)?;
+    let green = parse_hex_byte(&hex[2..4], operation)?;
+    let blue = parse_hex_byte(&hex[4..6], operation)?;
+    let alpha = parse_hex_byte(&hex[6..8], operation)?;
+    let pixel_count = 16 * 16;
+    let mut rgba = Vec::with_capacity(pixel_count * 4);
+    for _ in 0..pixel_count {
+        rgba.extend_from_slice(&[red, green, blue, alpha]);
+    }
+
+    tray_icon::Icon::from_rgba(rgba, 16, 16)
+        .map_err(|error| HostProtocolError::invalid_argument("icon", error.to_string(), operation))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn parse_hex_byte(value: &str, operation: &'static str) -> Result<u8, HostProtocolError> {
+    u8::from_str_radix(value, 16).map_err(|_| {
+        HostProtocolError::invalid_argument("icon", "must include valid hex channels", operation)
+    })
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn build_tray_menu(
+    value: &serde_json::Value,
+    operation: &'static str,
+) -> std::result::Result<tray_icon::menu::Menu, HostProtocolError> {
+    let menu = tray_icon::menu::Menu::new();
+    let items = menu_items(value, "menu.items", operation)?;
+    for item in items {
+        append_menu_item(&menu, &item, operation)?;
+    }
+    Ok(menu)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn append_menu_item(
+    menu: &tray_icon::menu::Menu,
+    value: &serde_json::Value,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    match menu_item_type(value, operation)? {
+        "item" => {
+            if value.get("checked").and_then(serde_json::Value::as_bool) == Some(true) {
+                let item = tray_icon::menu::CheckMenuItem::with_id(
+                    required_string(value, "id", operation)?,
+                    required_string(value, "label", operation)?,
+                    value
+                        .get("enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true),
+                    true,
+                    None,
+                );
+                menu.append(&item)
+            } else {
+                let item = tray_icon::menu::MenuItem::with_id(
+                    required_string(value, "id", operation)?,
+                    required_string(value, "label", operation)?,
+                    value
+                        .get("enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true),
+                    None,
+                );
+                menu.append(&item)
+            }
+        }
+        "separator" => {
+            let item = tray_icon::menu::PredefinedMenuItem::separator();
+            menu.append(&item)
+        }
+        "submenu" => {
+            let submenu = build_submenu(value, operation)?;
+            menu.append(&submenu)
+        }
+        _ => {
+            return Err(HostProtocolError::invalid_argument(
+                "menu.item.type",
+                "must be item, separator, or submenu",
+                operation,
+            ));
+        }
+    }
+    .map_err(|error| HostProtocolError::invalid_argument("menu", error.to_string(), operation))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn append_submenu_item(
+    submenu: &tray_icon::menu::Submenu,
+    value: &serde_json::Value,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    match menu_item_type(value, operation)? {
+        "item" => {
+            if value.get("checked").and_then(serde_json::Value::as_bool) == Some(true) {
+                let item = tray_icon::menu::CheckMenuItem::with_id(
+                    required_string(value, "id", operation)?,
+                    required_string(value, "label", operation)?,
+                    value
+                        .get("enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true),
+                    true,
+                    None,
+                );
+                submenu.append(&item)
+            } else {
+                let item = tray_icon::menu::MenuItem::with_id(
+                    required_string(value, "id", operation)?,
+                    required_string(value, "label", operation)?,
+                    value
+                        .get("enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true),
+                    None,
+                );
+                submenu.append(&item)
+            }
+        }
+        "separator" => {
+            let item = tray_icon::menu::PredefinedMenuItem::separator();
+            submenu.append(&item)
+        }
+        "submenu" => {
+            let child = build_submenu(value, operation)?;
+            submenu.append(&child)
+        }
+        _ => {
+            return Err(HostProtocolError::invalid_argument(
+                "menu.item.type",
+                "must be item, separator, or submenu",
+                operation,
+            ));
+        }
+    }
+    .map_err(|error| HostProtocolError::invalid_argument("menu", error.to_string(), operation))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn build_submenu(
+    value: &serde_json::Value,
+    operation: &'static str,
+) -> std::result::Result<tray_icon::menu::Submenu, HostProtocolError> {
+    let submenu = tray_icon::menu::Submenu::with_id(
+        required_string(value, "id", operation)?,
+        required_string(value, "label", operation)?,
+        value
+            .get("enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true),
+    );
+    for item in menu_items(value, "items", operation)? {
+        append_submenu_item(&submenu, item, operation)?;
+    }
+    Ok(submenu)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn menu_items<'a>(
+    value: &'a serde_json::Value,
+    field: &str,
+    operation: &'static str,
+) -> std::result::Result<&'a Vec<serde_json::Value>, HostProtocolError> {
+    value
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| HostProtocolError::invalid_argument(field, "must be an array", operation))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn menu_item_type<'a>(
+    value: &'a serde_json::Value,
+    operation: &'static str,
+) -> std::result::Result<&'a str, HostProtocolError> {
+    value
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument("menu.item.type", "must be a string", operation)
+        })
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn required_string(
+    value: &serde_json::Value,
+    field: &'static str,
+    operation: &'static str,
+) -> std::result::Result<String, HostProtocolError> {
+    let text = value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument(
+                format!("menu.item.{field}"),
+                "must be a string",
+                operation,
+            )
+        })?;
+    if text.is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            format!("menu.item.{field}"),
+            "must not be empty",
+            operation,
+        ));
+    }
+    Ok(text.to_string())
 }
 
 pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -> Result<()> {

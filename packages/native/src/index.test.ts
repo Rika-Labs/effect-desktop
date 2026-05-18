@@ -6,6 +6,7 @@ import {
   HostProtocolNotFoundError,
   HostProtocolResponseEnvelope,
   HostProtocolStaleHandleError,
+  HostProtocolUnsupportedError,
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
@@ -268,7 +269,7 @@ import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
 import { makeShellBridgeClientLayer } from "./shell.js"
 import { makeSystemAppearanceBridgeClientLayer } from "./system-appearance.js"
-import { makeTrayBridgeClientLayer } from "./tray.js"
+import { makeHostTrayRpcRuntime, makeTrayBridgeClientLayer } from "./tray.js"
 import { makeUpdaterBridgeClientLayer } from "./updater.js"
 import { makeWebViewBridgeClientLayer, webViewCapability } from "./webview.js"
 import { makeHostWindowRpcRuntime, makeWindowBridgeClientLayer } from "./window.js"
@@ -763,6 +764,7 @@ const expectedTrayMethods: Array<(typeof TrayMethodNames)[number]> = [
   "create",
   "setIcon",
   "setTooltip",
+  "setTitle",
   "setMenu",
   "destroy",
   "isSupported"
@@ -2548,12 +2550,14 @@ test("Tray service delegates through a substitutable TrayClient port", async () 
     Effect.gen(function* () {
       const tray = yield* Tray
       const created = yield* tray.create({
-        icon: "app://assets/tray.png",
+        icon: "solid:#3366ccff",
         tooltip: "Effect Desktop",
+        title: "ED",
         menu: menuTemplate
       })
-      yield* tray.setIcon(created, "app://assets/tray-active.png")
+      yield* tray.setIcon(created, "solid:#22aa66ff")
       yield* tray.setTooltip(created, "Running")
+      yield* tray.setTitle(created, "OK")
       yield* tray.setMenu(created, menuTemplate)
       const activated = yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
       yield* tray.destroy(created)
@@ -2567,9 +2571,10 @@ test("Tray service delegates through a substitutable TrayClient port", async () 
     new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" })
   ])
   expect(calls).toEqual([
-    "create:app://assets/tray.png:Effect Desktop:3",
-    "setIcon:tray-1:app://assets/tray-active.png",
+    "create:solid:#3366ccff:Effect Desktop:ED:3",
+    "setIcon:tray-1:solid:#22aa66ff",
     "setTooltip:tray-1:Running",
+    "setTitle:tray-1:OK",
     "setMenu:tray-1:3",
     "destroy:tray-1"
   ])
@@ -2586,12 +2591,14 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
     Effect.gen(function* () {
       const tray = yield* Tray
       const created = yield* tray.create({
-        icon: "app://assets/tray.png",
+        icon: "solid:#3366ccff",
         tooltip: "Effect Desktop",
+        title: "ED",
         menu: menuTemplate
       })
-      yield* tray.setIcon(created, "app://assets/tray-active.png")
+      yield* tray.setIcon(created, "solid:#22aa66ff")
       yield* tray.setTooltip(created, "Running")
+      yield* tray.setTitle(created, "OK")
       yield* tray.setMenu(created, menuTemplate)
       const activated = yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
       yield* tray.destroy(created)
@@ -2604,14 +2611,16 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
   expect(Array.from(result.activated)).toEqual([
     new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" })
   ])
+  const expectedMenu = { items: menuTemplate.items }
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [
       "Tray.create",
-      { icon: "app://assets/tray.png", tooltip: "Effect Desktop", menu: menuTemplate }
+      { icon: "solid:#3366ccff", tooltip: "Effect Desktop", title: "ED", menu: expectedMenu }
     ],
-    ["Tray.setIcon", { tray: trayHandle, icon: "app://assets/tray-active.png" }],
+    ["Tray.setIcon", { tray: trayHandle, icon: "solid:#22aa66ff" }],
     ["Tray.setTooltip", { tray: trayHandle, tooltip: "Running" }],
-    ["Tray.setMenu", { tray: trayHandle, menu: menuTemplate }],
+    ["Tray.setTitle", { tray: trayHandle, title: "OK" }],
+    ["Tray.setMenu", { tray: trayHandle, menu: expectedMenu }],
     ["Tray.destroy", { tray: trayHandle }]
   ])
 })
@@ -2699,13 +2708,15 @@ test("Tray bridge client rejects invalid icon and tooltip metadata before transp
   const emptyIconExit = await Effect.runPromiseExit(client.create({ icon: "" }))
   const fileIconExit = await Effect.runPromiseExit(client.setIcon(trayHandle, "file:///etc/passwd"))
   const emptyTooltipExit = await Effect.runPromiseExit(client.setTooltip(trayHandle, ""))
+  const emptyTitleExit = await Effect.runPromiseExit(client.setTitle(trayHandle, ""))
   const nulTooltipExit = await Effect.runPromiseExit(
-    client.create({ icon: "app://assets/tray.png", tooltip: "tip\u0000text" })
+    client.create({ icon: "solid:#3366ccff", tooltip: "tip\u0000text" })
   )
 
   expectExitFailure(emptyIconExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(fileIconExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(emptyTooltipExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(emptyTitleExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(nulTooltipExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
 })
@@ -2732,6 +2743,106 @@ test("Tray bridge client rejects stale destroy handles before host transport", a
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
+})
+
+test("native host RPC runtime denies protected Tray calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostTrayRpcRuntime(
+    {
+      "Tray.create": () =>
+        Effect.sync(() => {
+          calls.push("create")
+          return trayHandle
+        }),
+      "Tray.setIcon": () => Effect.void,
+      "Tray.setTooltip": () => Effect.void,
+      "Tray.setTitle": () => Effect.void,
+      "Tray.setMenu": () => Effect.void,
+      "Tray.destroy": () => Effect.void,
+      "Tray.isSupported": () => Effect.succeed(new TraySupportedResult({ supported: true }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "tray-denied",
+          method: "Tray.create",
+          payload: { icon: "solid:#3366ccff" },
+          timestamp: 1710000000000,
+          traceId: "trace-tray-denied"
+        })
+      )
+      .pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.effect(PermissionRegistry, makePermissionRegistry()),
+            Layer.effect(ResourceRegistry, makeResourceRegistry())
+          )
+        )
+      )
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("Tray service cleans up scoped resources through ResourceRegistry", async () => {
+  const calls: string[] = []
+  const resources = await Effect.runPromise(makeResourceRegistry())
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      const created = yield* tray.create({ icon: "solid:#3366ccff" })
+      yield* resources.closeScope(created.ownerScope)
+    }).pipe(Effect.provide(makeTrayServiceLayer(trayClient(calls), { resources })))
+  )
+
+  const snapshot = await Effect.runPromise(resources.list())
+  expect(snapshot.entries).toHaveLength(0)
+  expect(calls).toContain("destroy:tray-1")
+})
+
+test("Tray service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-tray-unavailable",
+    message: "unsupported Tray.create",
+    operation: "Tray.create",
+    recoverable: false
+  })
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const failClient: TrayClientApi = {
+    ...trayClient([]),
+    create: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: TrayClientApi = {
+    ...trayClient([]),
+    create: () => Effect.fail(makeHostProtocolHostUnavailableError("Tray.create"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      return yield* Effect.exit(tray.create({ icon: "solid:#3366ccff" }))
+    }).pipe(Effect.provide(makeTrayServiceLayer(failClient, { resources })))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      return yield* Effect.exit(tray.create({ icon: "solid:#3366ccff" }))
+    }).pipe(Effect.provide(makeTrayServiceLayer(hostFailureClient, { resources })))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("DialogRpcs declares the Phase 7 Dialog method surface", () => {
@@ -7135,11 +7246,14 @@ const contextMenuClient = (calls: string[]): ContextMenuClientApi => ({
 const trayClient = (calls: string[]): TrayClientApi => ({
   create: (input) =>
     Effect.sync(() => {
-      calls.push(`create:${input.icon}:${input.tooltip ?? ""}:${input.menu?.items.length ?? 0}`)
+      calls.push(
+        `create:${input.icon}:${input.tooltip ?? ""}:${input.title ?? ""}:${input.menu?.items.length ?? 0}`
+      )
       return trayHandle
     }),
   setIcon: (tray, icon) => recordVoid(calls, `setIcon:${tray.id}:${icon}`),
   setTooltip: (tray, tooltip) => recordVoid(calls, `setTooltip:${tray.id}:${tooltip}`),
+  setTitle: (tray, title) => recordVoid(calls, `setTitle:${tray.id}:${title}`),
   setMenu: (tray, menu) => recordVoid(calls, `setMenu:${tray.id}:${menu.items.length}`),
   destroy: (tray) => recordVoid(calls, `destroy:${tray.id}`),
   onActivated: () =>

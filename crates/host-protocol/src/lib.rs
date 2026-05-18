@@ -32,6 +32,14 @@ pub const DIALOG_OPEN_DIRECTORY_METHOD: &str = "Dialog.openDirectory";
 pub const DIALOG_SAVE_FILE_METHOD: &str = "Dialog.saveFile";
 pub const DIALOG_MESSAGE_METHOD: &str = "Dialog.message";
 pub const DIALOG_CONFIRM_METHOD: &str = "Dialog.confirm";
+pub const TRAY_CREATE_METHOD: &str = "Tray.create";
+pub const TRAY_SET_ICON_METHOD: &str = "Tray.setIcon";
+pub const TRAY_SET_TOOLTIP_METHOD: &str = "Tray.setTooltip";
+pub const TRAY_SET_TITLE_METHOD: &str = "Tray.setTitle";
+pub const TRAY_SET_MENU_METHOD: &str = "Tray.setMenu";
+pub const TRAY_DESTROY_METHOD: &str = "Tray.destroy";
+pub const TRAY_IS_SUPPORTED_METHOD: &str = "Tray.isSupported";
+pub const TRAY_ACTIVATED_EVENT: &str = "Tray.Activated";
 pub const CLIPBOARD_READ_TEXT_METHOD: &str = "Clipboard.readText";
 pub const CLIPBOARD_WRITE_TEXT_METHOD: &str = "Clipboard.writeText";
 pub const CLIPBOARD_READ_HTML_METHOD: &str = "Clipboard.readHtml";
@@ -184,6 +192,7 @@ pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented
 pub const SCOPED_ACCESS_GRANT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const CLIPBOARD_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const TRAY_UNSUPPORTED_REASON: &str = "host-tray-unavailable";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -575,6 +584,208 @@ impl DialogConfirmResultPayload {
 
     pub fn confirmed(&self) -> bool {
         self.confirmed
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrayResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl TrayResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "tray".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn owner_scope(&self) -> &str {
+        &self.owner_scope
+    }
+
+    pub fn state(&self) -> &str {
+        &self.state
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrayCreatePayload {
+    icon: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tooltip: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    menu: Option<Value>,
+}
+
+impl TrayCreatePayload {
+    pub fn new(icon: impl Into<String>) -> Self {
+        Self {
+            icon: icon.into(),
+            tooltip: None,
+            title: None,
+            menu: None,
+        }
+    }
+
+    pub fn icon(&self) -> &str {
+        &self.icon
+    }
+
+    pub fn tooltip(&self) -> Option<&str> {
+        self.tooltip.as_deref()
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    pub fn menu(&self) -> Option<&Value> {
+        self.menu.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TraySetIconPayload {
+    tray: TrayResourcePayload,
+    icon: String,
+}
+
+impl TraySetIconPayload {
+    pub fn tray(&self) -> &TrayResourcePayload {
+        &self.tray
+    }
+
+    pub fn icon(&self) -> &str {
+        &self.icon
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TraySetTooltipPayload {
+    tray: TrayResourcePayload,
+    tooltip: String,
+}
+
+impl TraySetTooltipPayload {
+    pub fn tray(&self) -> &TrayResourcePayload {
+        &self.tray
+    }
+
+    pub fn tooltip(&self) -> &str {
+        &self.tooltip
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TraySetTitlePayload {
+    tray: TrayResourcePayload,
+    title: String,
+}
+
+impl TraySetTitlePayload {
+    pub fn tray(&self) -> &TrayResourcePayload {
+        &self.tray
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TraySetMenuPayload {
+    tray: TrayResourcePayload,
+    menu: Value,
+}
+
+impl TraySetMenuPayload {
+    pub fn tray(&self) -> &TrayResourcePayload {
+        &self.tray
+    }
+
+    pub fn menu(&self) -> &Value {
+        &self.menu
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrayDestroyPayload {
+    tray: TrayResourcePayload,
+}
+
+impl TrayDestroyPayload {
+    pub fn tray(&self) -> &TrayResourcePayload {
+        &self.tray
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TraySupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl TraySupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrayActivatedEventPayload {
+    tray: TrayResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_window_id: Option<String>,
+}
+
+impl TrayActivatedEventPayload {
+    pub fn new(tray: TrayResourcePayload) -> Self {
+        Self {
+            tray,
+            owner_window_id: None,
+        }
     }
 }
 
@@ -8440,7 +8651,8 @@ mod tests {
         TransientWindowRoleEventPhase, TransientWindowRoleKind, TransientWindowRoleOpenPayload,
         TransientWindowRolePlacementPayload, TransientWindowRolePointPayload,
         TransientWindowRolePolicyPayload, TransientWindowRoleSupportedPayload,
-        TransientWindowZOrderPolicy, WindowCreatePayload, WindowCreateResponse,
+        TransientWindowZOrderPolicy, TrayActivatedEventPayload, TrayCreatePayload,
+        TrayResourcePayload, TraySupportedPayload, WindowCreatePayload, WindowCreateResponse,
         WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
         WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
         WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
@@ -8455,7 +8667,7 @@ mod tests {
         LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
         TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
-        WORKSPACE_INDEX_UNSUPPORTED_REASON,
+        TRAY_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -10217,6 +10429,50 @@ mod tests {
             serde_json::to_string(&payload).expect("renderer resume denied payload should encode"),
             r#"{"windowId":"window-1","reason":"backfillExhausted","message":"reconnect backfill exhausted"}"#
         );
+    }
+
+    #[test]
+    fn tray_payloads_serialize_canonically() {
+        let tray = TrayResourcePayload::new("tray-1", 0, "tray:tray-1");
+        assert_eq!(
+            serde_json::to_string(&tray).expect("tray handle should encode"),
+            r#"{"kind":"tray","id":"tray-1","generation":0,"ownerScope":"tray:tray-1","state":"open"}"#
+        );
+
+        let create = TrayCreatePayload::new("solid:#3366ccff");
+        assert_eq!(
+            serde_json::to_string(&create).expect("tray create should encode"),
+            r#"{"icon":"solid:#3366ccff"}"#
+        );
+
+        let event = TrayActivatedEventPayload::new(tray);
+        assert_eq!(
+            serde_json::to_string(&event).expect("tray event should encode"),
+            r#"{"tray":{"kind":"tray","id":"tray-1","generation":0,"ownerScope":"tray:tray-1","state":"open"}}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&TraySupportedPayload::unsupported(TRAY_UNSUPPORTED_REASON))
+                .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-tray-unavailable"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&TraySupportedPayload::supported())
+                .expect("support payload should encode"),
+            r#"{"supported":true}"#
+        );
+    }
+
+    #[test]
+    fn tray_create_rejects_excess_fields() {
+        let value = serde_json::json!({
+            "icon": "solid:#3366ccff",
+            "badge": "1"
+        });
+
+        let error = serde_json::from_value::<TrayCreatePayload>(value)
+            .expect_err("excess field should be rejected");
+        assert!(error.to_string().contains("unknown field `badge`"));
     }
 
     fn read_fixture(name: &str) -> String {
