@@ -2559,6 +2559,11 @@
       "signature": "const makeWindowClientLayer: (client: WindowClientApi) => Layer.Layer<WindowClient>"
     },
     {
+      "name": "makeWindowPersistenceLayer",
+      "kind": "value",
+      "signature": "const makeWindowPersistenceLayer: (options?: WindowPersistenceOptions) => Layer.Layer<WindowPersistence, never, Window | Screen | KeyValueStore.KeyValueStore>"
+    },
+    {
       "name": "makeWindowServiceLayer",
       "kind": "value",
       "signature": "const makeWindowServiceLayer: (client: WindowClientApi) => Layer.Layer<Window>"
@@ -4192,6 +4197,51 @@
       "name": "WindowMethodNames",
       "kind": "value",
       "signature": "const WindowMethodNames: readonly [\"create\", \"close\", \"show\", \"hide\", \"focus\", \"getCurrent\", \"getById\", \"list\", \"getBounds\", \"setBounds\", \"center\", \"setTitle\", \"setResizable\", \"setDecorations\", \"setAlwaysOnTop\", \"setProgress\", \"requestAttention\", \"cancelAttention\", \"minimize\", \"maximize\", \"restore\", \"setFullscreen\", \"getState\"]"
+    },
+    {
+      "name": "WindowPersistence",
+      "kind": "class",
+      "signature": "export class WindowPersistence extends Context.Service<WindowPersistence, WindowPersistenceApi>()( \"@effect-desktop/native/window-persistence/WindowPersistence\" ) { static layer( options: WindowPersistenceOptions = {} ): Layer.Layer<WindowPersistence, never, Window | Screen | KeyValueStore.KeyValueStore> { return Layer.effect(WindowPersistence)(makeWindowPersistence(options)) } }"
+    },
+    {
+      "name": "WindowPersistenceApi",
+      "kind": "interface",
+      "signature": "export interface WindowPersistenceApi { readonly save: ( window: WindowHandle, options?: WindowPersistenceSaveOptionsInput ) => Effect.Effect<void, WindowPersistenceError, never> readonly restore: ( window: WindowHandle ) => Effect.Effect<WindowPersistenceRestoreResult, WindowPersistenceError, never> readonly clear: (window: WindowHandle) => Effect.Effect<void, WindowPersistenceError, never> readonly events: ( window: WindowHandle ) => Stream.Stream<WindowStateEvent, WindowPersistenceError, never> }"
+    },
+    {
+      "name": "WindowPersistenceError",
+      "kind": "class",
+      "signature": "export class WindowPersistenceError extends Schema.TaggedErrorClass<WindowPersistenceError>()( \"WindowPersistenceError\", { reason: WindowPersistenceErrorReason, operation: Schema.NonEmptyString, message: Schema.String, cause: Schema.optionalKey(Schema.Unknown) } ) {}"
+    },
+    {
+      "name": "WindowPersistenceErrorReason",
+      "kind": "type",
+      "signature": "const WindowPersistenceErrorReason: Schema.Literals<readonly [\"denied\", \"unsupported\", \"invalid-input\", \"invalid-output\", \"host-failed\", \"storage-failed\"]>"
+    },
+    {
+      "name": "WindowPersistenceLive",
+      "kind": "value",
+      "signature": "const WindowPersistenceLive: Layer.Layer<WindowPersistence, never, KeyValueStore.KeyValueStore | Window | Screen>"
+    },
+    {
+      "name": "WindowPersistenceOptions",
+      "kind": "interface",
+      "signature": "export interface WindowPersistenceOptions { readonly path?: string readonly bundleId?: string readonly now?: () => number }"
+    },
+    {
+      "name": "WindowPersistenceRestoreResult",
+      "kind": "class",
+      "signature": "export class WindowPersistenceRestoreResult extends Schema.Class<WindowPersistenceRestoreResult>( \"WindowPersistenceRestoreResult\" )({ restored: Schema.Boolean, state: Schema.optionalKey(WindowStateRecord) }) {}"
+    },
+    {
+      "name": "WindowPersistenceSaveOptions",
+      "kind": "class",
+      "signature": "export class WindowPersistenceSaveOptions extends Schema.Class<WindowPersistenceSaveOptions>( \"WindowPersistenceSaveOptions\" )({ zoom: Schema.optionalKey(PositiveFiniteNumber), devtoolsPanel: Schema.optionalKey(Schema.String), scrollPositions: Schema.optionalKey( Schema.Record(Schema.String, Schema.Number.check(Schema.isFinite())) ) }) {}"
+    },
+    {
+      "name": "WindowPersistenceSaveOptionsInput",
+      "kind": "type",
+      "signature": "export type WindowPersistenceSaveOptionsInput = Schema.Schema.Type< typeof WindowPersistenceSaveOptions >"
     },
     {
       "name": "WindowPosition",

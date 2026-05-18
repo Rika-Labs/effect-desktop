@@ -20,12 +20,13 @@ Windows are native resources owned by the host and described to the runtime thro
 - `WindowSupportedRpcs` — host-backed supported slice.
 - `Window` — Effect service for runtime code.
 - `WindowClient` — client-side service.
+- `WindowPersistence` — native service that saves, restores, clears, and observes per-window geometry state.
 - `WindowLive`, `WindowHandlersLive`, `makeWindow*Layer` helpers.
 - `WindowMethodNames` for contract metadata and support checks.
 
 ## Common operations
 
-The supported methods today are `create` and `close`. Renderer code uses React helpers:
+The supported methods include creation, lookup, visibility, bounds, state, attention, progress, and close. Renderer code uses React helpers:
 
 ```tsx
 import { useCreateWindowMutation } from "@effect-desktop/react"
@@ -48,7 +49,7 @@ if (WindowRpcs === undefined || !WindowMethodNames.includes("create")) {
 
 ## Lifecycle
 
-Each window is a scoped resource. Closing the window closes its scope and any per-window resources (workers, watchers, settings stores) it owned. `WindowState` persists per-window geometry across launches when `restoreState: true`.
+Each window is a scoped resource. Closing the window closes its scope and any per-window resources (workers, watchers, settings stores) it owned. `WindowPersistence` persists per-window geometry across launches through explicit `save`, `restore`, and `clear` calls; there is no `restoreState` flag on `WindowSpec`.
 
 ## Where to go next
 

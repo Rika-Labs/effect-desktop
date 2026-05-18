@@ -956,3 +956,15 @@ export {
   type WindowServiceApi,
   type WindowSize
 } from "./window.js"
+export {
+  makeWindowPersistenceLayer,
+  WindowPersistence,
+  WindowPersistenceError,
+  WindowPersistenceErrorReason,
+  WindowPersistenceLive,
+  WindowPersistenceRestoreResult,
+  WindowPersistenceSaveOptions,
+  type WindowPersistenceApi,
+  type WindowPersistenceOptions,
+  type WindowPersistenceSaveOptionsInput
+} from "./window-persistence.js"

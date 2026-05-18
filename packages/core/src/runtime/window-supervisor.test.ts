@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
-import { Cause, ConfigProvider, Effect, Exit, Layer } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Layer, Stream } from "effect"
 
 import { ResourceOwner } from "./resource-owner.js"
 import { WindowContext } from "./window-context.js"
@@ -24,7 +24,7 @@ import {
 test("openDeclaredWindows opens declared windows and smoke-test destroys them", async () => {
   const created: WindowCreateInput[] = []
   const destroyed: string[] = []
-  const client: HostWindowClient = {
+  const client = makeHostWindowClient({
     create: (input = {}) =>
       Effect.sync(() => {
         created.push(input)
@@ -34,7 +34,7 @@ test("openDeclaredWindows opens declared windows and smoke-test destroys them", 
       Effect.sync(() => {
         destroyed.push(windowId)
       })
-  }
+  })
 
   const opened = await Effect.runPromise(
     Effect.scoped(
@@ -85,7 +85,7 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
     readonly hostWindowId: string
     readonly ownerScope: string
   }> = []
-  const client: HostWindowClient = {
+  const client = makeHostWindowClient({
     create: (input = {}) =>
       Effect.sync(() => {
         created.push(input)
@@ -95,7 +95,7 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
       Effect.sync(() => {
         destroyed.push(windowId)
       })
-  }
+  })
 
   const mainServices = Layer.effectDiscard(
     Effect.gen(function* () {
@@ -171,13 +171,13 @@ test("openDeclaredWindows binds each window's services Layer to that window's sc
 test("openDeclaredWindows tears down a window when its services Layer fails to build", async () => {
   const destroyed: string[] = []
   const released: string[] = []
-  const client: HostWindowClient = {
+  const client = makeHostWindowClient({
     create: () => Effect.succeed({ windowId: "window-1" }),
     destroy: (windowId) =>
       Effect.sync(() => {
         destroyed.push(windowId)
       })
-  }
+  })
 
   class ServicesBuildFailure extends Error {
     constructor() {
@@ -472,6 +472,34 @@ test("toStartupModuleSpecifier classifies paths, package specifiers, and URL sch
 
 const provider = (env: Readonly<Record<string, string>>): ConfigProvider.ConfigProvider =>
   ConfigProvider.fromEnv({ env })
+
+const makeHostWindowClient = (overrides: Partial<HostWindowClient> = {}): HostWindowClient => ({
+  create: () => Effect.succeed({ windowId: "window-1" }),
+  show: () => Effect.void,
+  hide: () => Effect.void,
+  focus: () => Effect.void,
+  getCurrent: () => Effect.succeed({ windowId: "window-1" }),
+  getById: (windowId) => Effect.succeed({ windowId }),
+  list: () => Effect.succeed({ windows: [{ windowId: "window-1" }] }),
+  getBounds: () => Effect.succeed({ x: 0, y: 0, width: 800, height: 600 }),
+  setBounds: () => Effect.void,
+  center: () => Effect.void,
+  setTitle: () => Effect.void,
+  setResizable: () => Effect.void,
+  setDecorations: () => Effect.void,
+  setAlwaysOnTop: () => Effect.void,
+  setProgress: () => Effect.void,
+  requestAttention: () => Effect.void,
+  cancelAttention: () => Effect.void,
+  minimize: () => Effect.void,
+  maximize: () => Effect.void,
+  restore: () => Effect.void,
+  setFullscreen: () => Effect.void,
+  getState: () => Effect.succeed({ minimized: false, maximized: false, fullscreen: false }),
+  events: () => Stream.empty,
+  destroy: () => Effect.void,
+  ...overrides
+})
 
 const getFailure = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {
   expect(Exit.isFailure(exit)).toBe(true)

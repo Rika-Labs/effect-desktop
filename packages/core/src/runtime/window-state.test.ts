@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
+import { Context, Effect, Exit, Fiber, Layer, Option, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import {
@@ -225,6 +225,35 @@ test("WindowState concurrent persists keep independent records", async () => {
   expect(Option.getOrThrow(restoredPalette).x).toBe(900)
 })
 
+test("WindowState concurrent services sharing one path serialize read-modify-write", async () => {
+  const path = await tempWindowStatePath()
+  const context = await Effect.runPromise(Effect.scoped(Layer.build(KeyValueStore.layerMemory)))
+  const kv = Context.get(context, KeyValueStore.KeyValueStore)
+  const slowKv: KeyValueStore.KeyValueStore = {
+    ...kv,
+    get: (key) =>
+      kv.get(key).pipe(
+        Effect.flatMap((value) => Effect.yieldNow.pipe(Effect.as(value))),
+        Effect.flatMap((value) => Effect.yieldNow.pipe(Effect.as(value)))
+      )
+  }
+  const main = await makeService("main", { path }, slowKv)
+  const palette = await makeService("palette", { path }, slowKv)
+
+  await Effect.runPromise(
+    Effect.all(
+      [
+        main.persist(makeWindowStateRecord({ x: 10 })),
+        palette.persist(makeWindowStateRecord({ x: 900 }))
+      ],
+      { concurrency: "unbounded" }
+    )
+  )
+
+  expect(Option.getOrThrow(await Effect.runPromise(main.restore())).x).toBe(10)
+  expect(Option.getOrThrow(await Effect.runPromise(palette.restore())).x).toBe(900)
+})
+
 test("WindowState snaps off-screen windows to the primary display", async () => {
   const path = await tempWindowStatePath()
   const { service } = await makeFixture({
@@ -240,6 +269,73 @@ test("WindowState snaps off-screen windows to the primary display", async () => 
 
   expect(Option.getOrThrow(restored).x).toBe(0)
   expect(Option.getOrThrow(restored).y).toBe(0)
+})
+
+test("WindowState snaps stale display records to the current primary display", async () => {
+  const path = await tempWindowStatePath()
+  const { service } = await makeFixture({
+    path,
+    displays: [
+      new WindowDisplayBounds({
+        id: "primary",
+        x: 0,
+        y: 0,
+        width: 1024,
+        height: 768,
+        scaleFactor: 2,
+        primary: true
+      }),
+      new WindowDisplayBounds({
+        id: "secondary",
+        x: 1024,
+        y: 0,
+        width: 1024,
+        height: 768,
+        scaleFactor: 1
+      })
+    ]
+  })
+
+  await Effect.runPromise(
+    service.persist(makeWindowStateRecord({ x: 1200, y: 40, displayId: "removed" }))
+  )
+  const restored = await Effect.runPromise(service.restore())
+
+  expect(Option.getOrThrow(restored)).toMatchObject({
+    x: 0,
+    y: 0,
+    displayId: "primary",
+    scaleFactor: 2
+  })
+})
+
+test("WindowState keeps records visible on their saved display", async () => {
+  const path = await tempWindowStatePath()
+  const { service } = await makeFixture({
+    path,
+    displays: [
+      new WindowDisplayBounds({
+        id: "primary",
+        x: 0,
+        y: 0,
+        width: 1024,
+        height: 768,
+        primary: true
+      }),
+      new WindowDisplayBounds({ id: "secondary", x: 1024, y: 0, width: 1024, height: 768 })
+    ]
+  })
+
+  await Effect.runPromise(
+    service.persist(makeWindowStateRecord({ x: 1200, y: 40, displayId: "secondary" }))
+  )
+  const restored = await Effect.runPromise(service.restore())
+
+  expect(Option.getOrThrow(restored)).toMatchObject({
+    x: 1200,
+    y: 40,
+    displayId: "secondary"
+  })
 })
 
 test("WindowState clear leaves other window records intact", async () => {
@@ -342,6 +438,7 @@ function makeWindowStateRecord(overrides: Partial<WindowStateRecord> = {}): Wind
     y: overrides.y ?? 120,
     width: overrides.width ?? 800,
     height: overrides.height ?? 600,
+    ...(overrides.displayId === undefined ? {} : { displayId: overrides.displayId }),
     isFullScreen: overrides.isFullScreen ?? false,
     scaleFactor: overrides.scaleFactor ?? 2,
     zoom: overrides.zoom ?? 1,
