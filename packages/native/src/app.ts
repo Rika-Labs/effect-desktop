@@ -37,6 +37,16 @@ import {
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
+const UnsupportedReason = "host-adapter-unimplemented"
+
+const AppSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
+
 export const AppGetInfo = appRpc("getInfo", Schema.Void, AppInfo, { kind: "none" })
 export const AppGetCommandLine = appRpc("getCommandLine", Schema.Void, AppCommandLine, {
   kind: "none"
@@ -249,8 +259,8 @@ const makeAppService = (client: AppClientApi): AppServiceApi => {
 const appClientFromRpcClient = (
   client: DesktopRpcClient<AppRpc>,
   exchange: BridgeClientExchange | undefined
-): AppClientApi => {
-  const appClient: AppClientApi = {
+): AppClientApi =>
+  Object.freeze({
     getInfo: () => runAppRpc(client["App.getInfo"](undefined), "App.getInfo"),
     getCommandLine: () => runAppRpc(client["App.getCommandLine"](undefined), "App.getCommandLine"),
     quit: (input) =>
@@ -284,10 +294,7 @@ const appClientFromRpcClient = (
     onOpenFile: () => subscribeAppEvent(exchange, "App.onOpenFile", AppOpenFileEvent),
     onOpenUrl: () => subscribeAppEvent(exchange, "App.onOpenUrl", AppOpenUrlEvent),
     onBeforeQuit: () => subscribeAppEvent(exchange, "App.onBeforeQuit", AppBeforeQuitEvent)
-  }
-
-  return Object.freeze(appClient)
-}
+  } satisfies AppClientApi)
 
 const subscribeAppEvent = <A>(
   exchange: BridgeClientExchange | undefined,
@@ -336,7 +343,7 @@ function appRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: AppSupport
   })
 }
 
