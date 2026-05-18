@@ -1,5 +1,6 @@
 mod activation_registry;
 mod app;
+mod association;
 mod attachment_intake;
 mod clipboard;
 mod crash_reporter;
@@ -230,6 +231,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::APP_REGISTER_PROTOCOL_METHOD,
         HostMethodDispatcher::Payload(app::register_protocol),
+    ),
+    route(
+        host_protocol::ASSOCIATION_IS_DEFAULT_PROTOCOL_CLIENT_METHOD,
+        HostMethodDispatcher::Payload(association::is_default_protocol_client),
+    ),
+    route(
+        host_protocol::ASSOCIATION_SET_DEFAULT_PROTOCOL_CLIENT_METHOD,
+        HostMethodDispatcher::Payload(association::set_default_protocol_client),
+    ),
+    route(
+        host_protocol::ASSOCIATION_GET_FILE_ASSOCIATIONS_METHOD,
+        HostMethodDispatcher::Payload(association::get_file_associations),
     ),
     route(
         host_protocol::WINDOW_CREATE_METHOD,
@@ -2655,6 +2668,56 @@ mod tests {
         } = response
         else {
             panic!("app restart should reject malformed args");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    #[test]
+    fn association_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-association-protocol-status",
+                    host_protocol::ASSOCIATION_IS_DEFAULT_PROTOCOL_CLIENT_METHOD,
+                    serde_json::json!({ "scheme": "example" }),
+                ),
+                1710000000126,
+            )
+            .expect("association status should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-association-protocol-status".to_string(),
+                timestamp: 1710000000126,
+                trace_id: "trace-request-association-protocol-status".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::ASSOCIATION_UNSUPPORTED_REASON,
+                    host_protocol::ASSOCIATION_IS_DEFAULT_PROTOCOL_CLIENT_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn association_routes_reject_malformed_payloads() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-association-invalid",
+                    host_protocol::ASSOCIATION_GET_FILE_ASSOCIATIONS_METHOD,
+                    serde_json::json!({ "extensions": ["../txt"] }),
+                ),
+                1710000000126,
+            )
+            .expect("association invalid request should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("association route should reject malformed extensions");
         };
         assert_eq!(error.tag(), "InvalidArgument");
     }

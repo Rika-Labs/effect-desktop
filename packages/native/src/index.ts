@@ -39,6 +39,25 @@ export {
   type AppServiceApi
 } from "./app.js"
 export {
+  Association,
+  AssociationClient,
+  AssociationHandlersLive,
+  AssociationLive,
+  AssociationMethodNames,
+  AssociationRpcEvents,
+  AssociationRpcs,
+  AssociationSurface,
+  makeAssociationBridgeClientLayer,
+  makeAssociationClientLayer,
+  makeAssociationServiceLayer,
+  makeHostAssociationRpcRuntime,
+  type AssociationClientApi,
+  type AssociationError,
+  type AssociationRpc,
+  type AssociationRpcHandlers,
+  type AssociationServiceApi
+} from "./association.js"
+export {
   AttachmentIntake,
   AttachmentIntakeClient,
   AttachmentIntakeHandlersLive,

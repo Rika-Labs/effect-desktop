@@ -26,6 +26,12 @@ pub const APP_SECOND_INSTANCE_EVENT: &str = "App.onSecondInstance";
 pub const APP_OPEN_FILE_EVENT: &str = "App.onOpenFile";
 pub const APP_OPEN_URL_EVENT: &str = "App.onOpenUrl";
 pub const APP_BEFORE_QUIT_EVENT: &str = "App.onBeforeQuit";
+pub const ASSOCIATION_IS_DEFAULT_PROTOCOL_CLIENT_METHOD: &str =
+    "Association.isDefaultProtocolClient";
+pub const ASSOCIATION_SET_DEFAULT_PROTOCOL_CLIENT_METHOD: &str =
+    "Association.setDefaultProtocolClient";
+pub const ASSOCIATION_GET_FILE_ASSOCIATIONS_METHOD: &str = "Association.getFileAssociations";
+pub const ASSOCIATION_EVENT: &str = "Association.Event";
 pub const WINDOW_CREATE_METHOD: &str = "Window.create";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
@@ -259,6 +265,7 @@ pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented
 pub const SCOPED_ACCESS_GRANT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const APP_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const ASSOCIATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const CLIPBOARD_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRAY_UNSUPPORTED_REASON: &str = "host-tray-unavailable";
 
@@ -509,6 +516,108 @@ impl AppBeforeQuitEventPayload {
         Self {
             trace_id: trace_id.into(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssociationProtocolPayload {
+    scheme: String,
+}
+
+impl AssociationProtocolPayload {
+    pub fn new(scheme: impl Into<String>) -> Self {
+        Self {
+            scheme: scheme.into(),
+        }
+    }
+
+    pub fn scheme(&self) -> &str {
+        &self.scheme
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssociationProtocolStatusPayload {
+    scheme: String,
+    is_default: bool,
+}
+
+impl AssociationProtocolStatusPayload {
+    pub fn new(scheme: impl Into<String>, is_default: bool) -> Self {
+        Self {
+            scheme: scheme.into(),
+            is_default,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssociationFileAssociationsPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    extensions: Option<Vec<String>>,
+}
+
+impl AssociationFileAssociationsPayload {
+    pub fn new(extensions: Option<Vec<String>>) -> Self {
+        Self { extensions }
+    }
+
+    pub fn extensions(&self) -> Option<&[String]> {
+        self.extensions.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssociationFileAssociationPayload {
+    extension: String,
+    is_default: bool,
+}
+
+impl AssociationFileAssociationPayload {
+    pub fn new(extension: impl Into<String>, is_default: bool) -> Self {
+        Self {
+            extension: extension.into(),
+            is_default,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssociationFileAssociationsResultPayload {
+    associations: Vec<AssociationFileAssociationPayload>,
+}
+
+impl AssociationFileAssociationsResultPayload {
+    pub fn new(associations: Vec<AssociationFileAssociationPayload>) -> Self {
+        Self { associations }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AssociationEventPhasePayload {
+    ProtocolChecked,
+    ProtocolUpdated,
+    FileAssociationsChecked,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssociationEventPayload {
+    phase: AssociationEventPhasePayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl AssociationEventPayload {
+    pub fn new(phase: AssociationEventPhasePayload, reason: Option<String>) -> Self {
+        Self { phase, reason }
     }
 }
 
@@ -9878,7 +9987,10 @@ mod tests {
         AppActivationReasonPayload, AppBeforeQuitEventPayload, AppCommandLinePayload,
         AppInfoPayload, AppOpenAtLoginPayload, AppOpenFileEventPayload, AppOpenUrlEventPayload,
         AppProtocolPayload, AppQuitPayload, AppRestartPayload, AppSecondInstanceEventPayload,
-        AppSingleInstancePayload, CanonicalPathPayload, ClipboardCapabilityPayload,
+        AppSingleInstancePayload, AssociationEventPayload, AssociationEventPhasePayload,
+        AssociationFileAssociationPayload, AssociationFileAssociationsPayload,
+        AssociationFileAssociationsResultPayload, AssociationProtocolPayload,
+        AssociationProtocolStatusPayload, CanonicalPathPayload, ClipboardCapabilityPayload,
         ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
         ClipboardSupportedPayload, ClipboardTextPayload, CrashReporterBreadcrumbPayload,
         CrashReporterFlushPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
@@ -10167,6 +10279,56 @@ mod tests {
                 .expect("before quit event should encode"),
             r#"{"traceId":"trace-before-quit"}"#
         );
+    }
+
+    #[test]
+    fn association_payloads_encode_current_contract() {
+        assert_eq!(
+            serde_json::to_string(&AssociationProtocolPayload::new("example"))
+                .expect("protocol input should encode"),
+            r#"{"scheme":"example"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AssociationProtocolStatusPayload::new("example", false))
+                .expect("protocol status should encode"),
+            r#"{"scheme":"example","isDefault":false}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AssociationFileAssociationsPayload::new(Some(vec![
+                ".txt".to_string()
+            ])))
+            .expect("file association input should encode"),
+            r#"{"extensions":[".txt"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AssociationFileAssociationsResultPayload::new(vec![
+                AssociationFileAssociationPayload::new(".txt", false)
+            ]))
+            .expect("file association result should encode"),
+            r#"{"associations":[{"extension":".txt","isDefault":false}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AssociationEventPayload::new(
+                AssociationEventPhasePayload::ProtocolChecked,
+                Some("host-adapter-unimplemented".to_string())
+            ))
+            .expect("association event should encode"),
+            r#"{"phase":"protocol-checked","reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn association_payloads_reject_excess_fields() {
+        let error =
+            serde_json::from_str::<AssociationProtocolPayload>(r#"{"scheme":"example","x":true}"#)
+                .expect_err("excess association field should be rejected");
+        assert!(error.to_string().contains("unknown field `x`"));
+
+        let error = serde_json::from_str::<AssociationEventPayload>(
+            r#"{"phase":"changed","reason":"unexpected"}"#,
+        )
+        .expect_err("unknown association event phase should be rejected");
+        assert!(error.to_string().contains("unknown variant `changed`"));
     }
 
     #[test]

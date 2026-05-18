@@ -14,6 +14,9 @@ Protocol policy is startup configuration. The host freezes the registry when it 
 
 The fixed internal `app://localhost/` WebView asset protocol is owned by the host runtime and remains separate from this public custom protocol policy surface.
 
+OS-level default protocol clients and file associations are not part of this
+surface. Use [`Association`](association.md) for those contracts.
+
 ## Methods
 
 | Method                | Payload             | Success |
@@ -48,5 +51,5 @@ Registered schemes without an asset root fail closed with `403`. Denied paths re
 
 ## Related
 
-- Reference: [Configuration production checks](../config.md), [`Shell`](shell.md)
+- Reference: [Configuration production checks](../config.md), [`Association`](association.md), [`Shell`](shell.md)
 - Source: [`packages/native/src/protocol.ts`](../../../packages/native/src/protocol.ts)

@@ -18,16 +18,16 @@ instance coordination, app metadata, and lifecycle events.
 
 ## Status
 
-| Method                      | Success                    | Runtime support |
-| --------------------------- | -------------------------- | --------------- |
-| `getInfo`                   | `AppInfo`                  | unsupported     |
-| `getCommandLine`            | `AppCommandLine`           | unsupported     |
-| `quit`                      | `void`                     | unsupported     |
-| `restart`                   | `void`                     | unsupported     |
-| `focus`                     | `void`                     | unsupported     |
-| `requestSingleInstanceLock` | `AppSingleInstanceResult`  | unsupported     |
-| `setOpenAtLogin`            | `void`                     | unsupported     |
-| `registerProtocol`          | `void`                     | unsupported     |
+| Method                      | Success                   | Runtime support |
+| --------------------------- | ------------------------- | --------------- |
+| `getInfo`                   | `AppInfo`                 | unsupported     |
+| `getCommandLine`            | `AppCommandLine`          | unsupported     |
+| `quit`                      | `void`                    | unsupported     |
+| `restart`                   | `void`                    | unsupported     |
+| `focus`                     | `void`                    | unsupported     |
+| `requestSingleInstanceLock` | `AppSingleInstanceResult` | unsupported     |
+| `setOpenAtLogin`            | `void`                    | unsupported     |
+| `registerProtocol`          | `void`                    | unsupported     |
 
 ## Events
 
@@ -52,10 +52,11 @@ sources.
 ## Notes
 
 `Protocol.registerAppProtocol` owns the currently implemented custom protocol
-serving path. `App.registerProtocol` remains unsupported until App lifecycle and
+serving path. `Association` owns OS-level default protocol and file association
+contracts. `App.registerProtocol` remains unsupported until App lifecycle and
 OS-level protocol registration are host-backed.
 
 ## Related
 
-- Reference: [`Window`](window.md), [`PowerMonitor`](power-monitor.md)
+- Reference: [`Association`](association.md), [`Window`](window.md), [`PowerMonitor`](power-monitor.md)
 - Source: [`packages/native/src/app.ts`](../../../packages/native/src/app.ts)

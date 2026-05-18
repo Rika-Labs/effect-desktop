@@ -65,6 +65,11 @@ import {
   AppLive,
   AppMethodNames,
   AppSurface,
+  Association,
+  AssociationLive,
+  AssociationMethodNames,
+  AssociationRpcs,
+  AssociationRpcEvents,
   Native,
   NativeCapabilities,
   NativeCapabilitiesLive,
@@ -207,6 +212,7 @@ import {
   WindowClient,
   WindowLive,
   WindowMethodNames,
+  makeAssociationServiceLayer,
   makeAppServiceLayer,
   makeClipboardServiceLayer,
   makeContextMenuServiceLayer,
@@ -235,6 +241,7 @@ import {
   unsafeSecretBytes,
   wipeSecretBytes,
   type AppClientApi,
+  type AssociationClientApi,
   type ClipboardClientApi,
   type ContextMenuClientApi,
   type DialogClientApi,
@@ -254,6 +261,7 @@ import {
   type WindowClientApi
 } from "./index.js"
 import { makeAppBridgeClientLayer } from "./app.js"
+import { makeAssociationBridgeClientLayer, makeHostAssociationRpcRuntime } from "./association.js"
 import { makeClipboardBridgeClientLayer, makeHostClipboardRpcRuntime } from "./clipboard.js"
 import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
 import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
@@ -278,6 +286,10 @@ import { makeUpdaterBridgeClientLayer } from "./updater.js"
 import { makeWebViewBridgeClientLayer, webViewCapability } from "./webview.js"
 import { makeHostWindowRpcRuntime, makeWindowBridgeClientLayer } from "./window.js"
 import {
+  AssociationEvent,
+  AssociationFileAssociation,
+  AssociationFileAssociationsResult,
+  AssociationProtocolStatus,
   AppBeforeQuitEvent,
   AppCommandLine,
   AppInfo,
@@ -716,6 +728,12 @@ const expectedProtocolMethods: Array<(typeof ProtocolMethodNames)[number]> = [
   "serveAsset",
   "serveRoute",
   "deny"
+]
+
+const expectedAssociationMethods: Array<(typeof AssociationMethodNames)[number]> = [
+  "isDefaultProtocolClient",
+  "setDefaultProtocolClient",
+  "getFileAssociations"
 ]
 
 const expectedSafeStorageMethods: Array<(typeof SafeStorageMethodNames)[number]> = [
@@ -4150,6 +4168,204 @@ test("Protocol service propagates unsupported platform and host failure", async 
       const protocol = yield* Protocol
       return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
     }).pipe(Effect.provide(makeProtocolServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+})
+
+test("AssociationRpcs declares the Phase 8 Association method and event surface", () => {
+  expect([...AssociationMethodNames]).toEqual(expectedAssociationMethods)
+  expect(Array.from(AssociationRpcs.requests.keys())).toEqual([
+    "Association.isDefaultProtocolClient",
+    "Association.setDefaultProtocolClient",
+    "Association.getFileAssociations"
+  ])
+  expect(rpcMethodNames("Association", AssociationRpcs)).toEqual(expectedAssociationMethods)
+  expect(Object.keys(AssociationRpcEvents)).toEqual(["Event"])
+})
+
+test("Association service delegates through a substitutable AssociationClient port", async () => {
+  const calls: string[] = []
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const association = yield* Association
+      const protocolStatus = yield* association.isDefaultProtocolClient({ scheme: "example" })
+      yield* association.setDefaultProtocolClient({ scheme: "example" })
+      const fileAssociations = yield* association.getFileAssociations({ extensions: [".txt"] })
+      const events = yield* association.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { events, fileAssociations, protocolStatus }
+    }).pipe(Effect.provide(makeAssociationServiceLayer(associationClient(calls))))
+  )
+
+  expect(result.protocolStatus).toEqual(
+    new AssociationProtocolStatus({ scheme: "example", isDefault: false })
+  )
+  expect(result.fileAssociations).toEqual(
+    new AssociationFileAssociationsResult({
+      associations: [new AssociationFileAssociation({ extension: ".txt", isDefault: false })]
+    })
+  )
+  expect(Array.from(result.events)).toEqual([
+    new AssociationEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
+  ])
+  expect(calls).toEqual([
+    "isDefaultProtocolClient:example",
+    "setDefaultProtocolClient:example",
+    "getFileAssociations:.txt",
+    "events"
+  ])
+})
+
+test("Association bridge client sends typed host envelopes and decodes events and results", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = associationExchange(requests, (request) => {
+    if (request.method === "Association.isDefaultProtocolClient") {
+      return { kind: "success", payload: { scheme: "example", isDefault: false } }
+    }
+    if (request.method === "Association.getFileAssociations") {
+      return {
+        kind: "success",
+        payload: { associations: [{ extension: ".txt", isDefault: false }] }
+      }
+    }
+    return { kind: "success", payload: undefined }
+  })
+
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const association = yield* Association
+      const protocolStatus = yield* association.isDefaultProtocolClient({ scheme: "example" })
+      yield* association.setDefaultProtocolClient({ scheme: "example" })
+      const fileAssociations = yield* association.getFileAssociations({ extensions: [".txt"] })
+      const events = yield* association.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { events, fileAssociations, protocolStatus }
+    }).pipe(
+      Effect.provide(Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange)))
+    )
+  )
+
+  expect(result.protocolStatus).toEqual(
+    new AssociationProtocolStatus({ scheme: "example", isDefault: false })
+  )
+  expect(result.fileAssociations).toEqual(
+    new AssociationFileAssociationsResult({
+      associations: [new AssociationFileAssociation({ extension: ".txt", isDefault: false })]
+    })
+  )
+  expect(Array.from(result.events)).toEqual([
+    new AssociationEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Association.isDefaultProtocolClient", { scheme: "example" }],
+    ["Association.setDefaultProtocolClient", { scheme: "example" }],
+    ["Association.getFileAssociations", { extensions: [".txt"] }]
+  ])
+})
+
+test("Association bridge client rejects invalid schemes and file extensions before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Association
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AssociationLive,
+          makeAssociationBridgeClientLayer(
+            associationExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exits = await Effect.runPromise(
+    Effect.all([
+      Effect.exit(client.isDefaultProtocolClient({ scheme: "http" })),
+      Effect.exit(client.setDefaultProtocolClient({ scheme: "bad scheme" })),
+      Effect.exit(client.isDefaultProtocolClient({ scheme: "App" })),
+      Effect.exit(client.getFileAssociations({ extensions: ["txt"] })),
+      Effect.exit(client.getFileAssociations({ extensions: ["..txt"] })),
+      Effect.exit(client.getFileAssociations({ extensions: [".bad/path"] }))
+    ])
+  )
+
+  for (const exit of exits) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  expect(requests).toEqual([])
+})
+
+test("native host RPC runtime denies protected Association calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostAssociationRpcRuntime(
+    {
+      "Association.isDefaultProtocolClient": (input) =>
+        Effect.sync(() => {
+          calls.push(`isDefaultProtocolClient:${input.scheme}`)
+          return new AssociationProtocolStatus({ scheme: input.scheme, isDefault: false })
+        }),
+      "Association.setDefaultProtocolClient": () => Effect.void,
+      "Association.getFileAssociations": () =>
+        Effect.succeed(new AssociationFileAssociationsResult({ associations: [] }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "association-denied",
+          method: "Association.setDefaultProtocolClient",
+          timestamp: 1710000000000,
+          traceId: "trace-association-denied",
+          payload: { scheme: "example" }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("Association service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-adapter-unimplemented",
+    message: "unsupported Association.isDefaultProtocolClient",
+    operation: "Association.isDefaultProtocolClient",
+    recoverable: false
+  })
+  const unsupportedClient: AssociationClientApi = {
+    ...associationClient([]),
+    isDefaultProtocolClient: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: AssociationClientApi = {
+    ...associationClient([]),
+    isDefaultProtocolClient: () =>
+      Effect.fail(makeHostProtocolHostUnavailableError("Association.isDefaultProtocolClient"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const association = yield* Association
+      return yield* Effect.exit(association.isDefaultProtocolClient({ scheme: "example" }))
+    }).pipe(Effect.provide(makeAssociationServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const association = yield* Association
+      return yield* Effect.exit(association.isDefaultProtocolClient({ scheme: "example" }))
+    }).pipe(Effect.provide(makeAssociationServiceLayer(hostFailureClient)))
   )
 
   expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -7687,6 +7903,28 @@ const appClient = (calls: string[]): AppClientApi => ({
   onBeforeQuit: () => Stream.make(new AppBeforeQuitEvent({ traceId: "trace" }))
 })
 
+const associationClient = (calls: string[]): AssociationClientApi => ({
+  isDefaultProtocolClient: (input) =>
+    Effect.sync(() => {
+      calls.push(`isDefaultProtocolClient:${input.scheme}`)
+      return new AssociationProtocolStatus({ scheme: input.scheme, isDefault: false })
+    }),
+  setDefaultProtocolClient: (input) =>
+    recordVoid(calls, `setDefaultProtocolClient:${input.scheme}`),
+  getFileAssociations: (input) =>
+    Effect.sync(() => {
+      calls.push(`getFileAssociations:${input?.extensions?.join(",") ?? ""}`)
+      return new AssociationFileAssociationsResult({
+        associations: [new AssociationFileAssociation({ extension: ".txt", isDefault: false })]
+      })
+    }),
+  events: () =>
+    Stream.sync(() => {
+      calls.push("events")
+      return new AssociationEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
+    })
+})
+
 const webViewClient = (calls: string[]): WebViewClientApi => ({
   create: (input) =>
     Effect.sync(() => {
@@ -8169,6 +8407,28 @@ const appExchange = (
             traceId: "event-trace",
             method,
             payload: { path: "README.md" }
+          })
+        )
+      : Stream.empty
+})
+
+const associationExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "Association.Event"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000100,
+            traceId: "event-trace",
+            method,
+            payload: { phase: "failed", reason: "host-adapter-unimplemented" }
           })
         )
       : Stream.empty

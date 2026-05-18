@@ -6,6 +6,7 @@ import {
 
 import { ActivationRegistrySurface } from "./activation-registry.js"
 import { AppSurface } from "./app.js"
+import { AssociationSurface } from "./association.js"
 import { AttachmentIntakeSurface } from "./attachment-intake.js"
 import { ClipboardSurface } from "./clipboard.js"
 import { ContextMenuSurface } from "./context-menu.js"
@@ -48,6 +49,7 @@ import type { NativeSurfaceSelection } from "./native-surface.js"
 const BuiltInSurfaces = Object.freeze([
   ActivationRegistrySurface,
   AppSurface,
+  AssociationSurface,
   AttachmentIntakeSurface,
   ClipboardSurface,
   ContextMenuSurface,
@@ -95,6 +97,7 @@ export const available = (...selections: readonly NativeSurfaceSelection[]): Des
   Desktop.native(...selections)
 
 const App = AppSurface.selection
+const Association = AssociationSurface.selection
 const ActivationRegistry = ActivationRegistrySurface.selection
 const AttachmentIntake = AttachmentIntakeSurface.selection
 const Clipboard = ClipboardSurface.selection
@@ -144,6 +147,7 @@ const permissionAll = Object.freeze(BuiltInSurfaces.flatMap((surface) => surface
 export const Permissions = Object.freeze({
   activationRegistry: ActivationRegistrySurface.permissions,
   app: AppSurface.permissions,
+  association: AssociationSurface.permissions,
   attachmentIntake: AttachmentIntakeSurface.permissions,
   clipboard: ClipboardSurface.permissions,
   contextMenu: ContextMenuSurface.permissions,
@@ -187,6 +191,7 @@ export const Permissions = Object.freeze({
 export const Native = Object.freeze({
   ActivationRegistry,
   App,
+  Association,
   AttachmentIntake,
   Clipboard,
   ContextMenu,

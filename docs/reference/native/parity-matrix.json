@@ -319,6 +319,90 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Association.getFileAssociations",
+      "surface": "Association",
+      "method": "getFileAssociations",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Association.isDefaultProtocolClient",
+      "surface": "Association",
+      "method": "isDefaultProtocolClient",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Association.setDefaultProtocolClient",
+      "surface": "Association",
+      "method": "setDefaultProtocolClient",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "AttachmentIntake.dispose",
       "surface": "AttachmentIntake",
       "method": "dispose",
@@ -3758,11 +3842,11 @@
     }
   ],
   "summary": {
-    "total": 187,
-    "routed": 165,
+    "total": 190,
+    "routed": 168,
     "missing": 22,
     "supported": 81,
     "partial": 22,
-    "unsupported": 84
+    "unsupported": 87
   }
 }
