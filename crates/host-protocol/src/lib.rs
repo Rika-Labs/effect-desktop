@@ -90,6 +90,11 @@ pub const CRASH_REPORTER_START_METHOD: &str = "CrashReporter.start";
 pub const CRASH_REPORTER_RECORD_BREADCRUMB_METHOD: &str = "CrashReporter.recordBreadcrumb";
 pub const CRASH_REPORTER_FLUSH_METHOD: &str = "CrashReporter.flush";
 pub const CRASH_REPORTER_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const POWER_MONITOR_IS_SUPPORTED_METHOD: &str = "PowerMonitor.isSupported";
+pub const POWER_MONITOR_SUSPEND_EVENT: &str = "PowerMonitor.Suspend";
+pub const POWER_MONITOR_RESUME_EVENT: &str = "PowerMonitor.Resume";
+pub const POWER_MONITOR_SHUTDOWN_EVENT: &str = "PowerMonitor.Shutdown";
+pub const POWER_MONITOR_POWER_SOURCE_CHANGED_EVENT: &str = "PowerMonitor.PowerSourceChanged";
 pub const REALTIME_MEDIA_SESSION_OPEN_METHOD: &str = "RealtimeMediaSession.open";
 pub const REALTIME_MEDIA_SESSION_CLOSE_METHOD: &str = "RealtimeMediaSession.close";
 pub const REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD: &str = "RealtimeMediaSession.selectDevice";
@@ -1786,6 +1791,51 @@ impl CrashReporterFlushPayload {
 
     pub fn flushed(&self) -> u64 {
         self.flushed
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PowerMonitorMethodPayload {
+    OnSuspend,
+    OnResume,
+    OnShutdown,
+    OnPowerSourceChanged,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PowerMonitorIsSupportedPayload {
+    method: PowerMonitorMethodPayload,
+}
+
+impl PowerMonitorIsSupportedPayload {
+    pub fn new(method: PowerMonitorMethodPayload) -> Self {
+        Self { method }
+    }
+
+    pub fn method(&self) -> PowerMonitorMethodPayload {
+        self.method
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PowerMonitorSupportedPayload {
+    supported: bool,
+}
+
+impl PowerMonitorSupportedPayload {
+    pub fn supported() -> Self {
+        Self { supported: true }
+    }
+
+    pub fn unsupported() -> Self {
+        Self { supported: false }
+    }
+
+    pub fn is_supported(&self) -> bool {
+        self.supported
     }
 }
 
@@ -9516,6 +9566,7 @@ mod tests {
         NotificationActionEventPayload, NotificationActionPayload, NotificationClickEventPayload,
         NotificationPermissionPayload, NotificationPermissionStatePayload,
         NotificationResourcePayload, NotificationShowPayload, NotificationSupportedPayload,
+        PowerMonitorIsSupportedPayload, PowerMonitorMethodPayload, PowerMonitorSupportedPayload,
         ProtocolDenyPayload, ProtocolRegisterAppProtocolPayload, ProtocolServeAssetPayload,
         ProtocolServeRoutePayload, RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
         RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
@@ -10093,6 +10144,44 @@ mod tests {
         )
         .expect_err("excess crash reporter start field should be rejected");
         assert!(error.to_string().contains("unknown field `submitUrl`"));
+    }
+
+    #[test]
+    fn power_monitor_payloads_encode_current_contract() {
+        let support = PowerMonitorIsSupportedPayload::new(PowerMonitorMethodPayload::OnSuspend);
+        assert_eq!(support.method(), PowerMonitorMethodPayload::OnSuspend);
+        assert_eq!(
+            serde_json::to_string(&support).expect("power monitor support should encode"),
+            r#"{"method":"onSuspend"}"#
+        );
+
+        let supported = PowerMonitorSupportedPayload::supported();
+        assert!(supported.is_supported());
+        assert_eq!(
+            serde_json::to_string(&supported).expect("power monitor supported should encode"),
+            r#"{"supported":true}"#
+        );
+
+        let unsupported = PowerMonitorSupportedPayload::unsupported();
+        assert!(!unsupported.is_supported());
+        assert_eq!(
+            serde_json::to_string(&unsupported).expect("power monitor unsupported should encode"),
+            r#"{"supported":false}"#
+        );
+    }
+
+    #[test]
+    fn power_monitor_payloads_reject_unknown_methods_and_excess_fields() {
+        let error =
+            serde_json::from_str::<PowerMonitorIsSupportedPayload>(r#"{"method":"onLockScreen"}"#)
+                .expect_err("unknown power monitor method should be rejected");
+        assert!(error.to_string().contains("unknown variant `onLockScreen`"));
+
+        let error = serde_json::from_str::<PowerMonitorIsSupportedPayload>(
+            r#"{"method":"onSuspend","watch":true}"#,
+        )
+        .expect_err("excess power monitor support field should be rejected");
+        assert!(error.to_string().contains("unknown field `watch`"));
     }
 
     #[test]

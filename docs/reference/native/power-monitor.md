@@ -39,8 +39,9 @@ Lock and unlock events are not exposed by the current TypeScript contract.
 ## Errors
 
 `PowerMonitorError` is the host protocol error union. Until the host adapter is
-implemented, bridge calls and subscriptions reach an unsupported or missing host
-path rather than real OS power events.
+implemented, `isSupported` decodes through a Rust `PowerMonitor.isSupported`
+route and returns `{ supported: false }`; subscriptions still do not have a
+native OS event source.
 
 ## React hook
 

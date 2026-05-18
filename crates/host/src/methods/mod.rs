@@ -18,6 +18,7 @@ mod local_tool_runtime;
 mod menu;
 mod notification;
 mod path;
+mod power_monitor;
 pub(crate) mod protocol;
 mod realtime_media_session;
 mod resident_lifecycle;
@@ -455,6 +456,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::CRASH_REPORTER_FLUSH_METHOD,
         HostMethodDispatcher::Payload(crash_reporter::flush),
+    ),
+    route(
+        host_protocol::POWER_MONITOR_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(power_monitor::is_supported),
     ),
     route(
         host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
@@ -3312,6 +3317,53 @@ mod tests {
                 )),
             }
         );
+    }
+
+    #[test]
+    fn power_monitor_support_routes_false_payload() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-power-monitor-support",
+                    host_protocol::POWER_MONITOR_IS_SUPPORTED_METHOD,
+                    serde_json::json!({ "method": "onSuspend" }),
+                ),
+                1710000000112,
+            )
+            .expect("power monitor support should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-power-monitor-support".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-power-monitor-support".to_string(),
+                payload: Some(serde_json::json!({ "supported": false })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn power_monitor_support_rejects_unknown_method() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-power-monitor-invalid",
+                    host_protocol::POWER_MONITOR_IS_SUPPORTED_METHOD,
+                    serde_json::json!({ "method": "onLockScreen" }),
+                ),
+                1710000000112,
+            )
+            .expect("power monitor support should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("power monitor support should reject unknown method");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
     }
 
     #[test]
