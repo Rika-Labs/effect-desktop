@@ -205,14 +205,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Version,
     ),
     route(
-        host_protocol::APP_GET_INFO_METHOD,
-        HostMethodDispatcher::Payload(app::get_info),
-    ),
-    route(
-        host_protocol::APP_GET_COMMAND_LINE_METHOD,
-        HostMethodDispatcher::Payload(app::get_command_line),
-    ),
-    route(
         host_protocol::APP_QUIT_METHOD,
         HostMethodDispatcher::Payload(app::quit),
     ),
@@ -1932,6 +1924,26 @@ mod tests {
     }
 
     #[test]
+    fn legacy_app_metadata_methods_are_not_host_routes() {
+        for method in ["App.getInfo", "App.getCommandLine"] {
+            let response = test_router()
+                .dispatch_at(
+                    request("request-legacy-app-metadata", method),
+                    1710000000102,
+                )
+                .expect("legacy app metadata request should return response");
+
+            let HostProtocolEnvelope::Response {
+                error: Some(error), ..
+            } = response
+            else {
+                panic!("legacy app metadata method should not be routed");
+            };
+            assert_eq!(error, HostProtocolError::method_not_found(method));
+        }
+    }
+
+    #[test]
     fn focused_application_context_support_dispatches_through_router() {
         let response = test_router()
             .dispatch_at(
@@ -2764,19 +2776,19 @@ mod tests {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
-                    "request-app-info-object",
-                    host_protocol::APP_GET_INFO_METHOD,
+                    "request-app-focus-object",
+                    host_protocol::APP_FOCUS_METHOD,
                     serde_json::json!({}),
                 ),
                 1710000000125,
             )
-            .expect("app get info should return response");
+            .expect("app focus should return response");
 
         let HostProtocolEnvelope::Response {
             error: Some(error), ..
         } = response
         else {
-            panic!("app get info should reject present payload");
+            panic!("app focus should reject present payload");
         };
         assert_eq!(error.tag(), "InvalidArgument");
     }
@@ -2804,7 +2816,7 @@ mod tests {
     }
 
     #[test]
-    fn app_metadata_routes_to_typed_unsupported() {
+    fn app_metadata_routes_to_host_owned_payloads() {
         let response = test_router()
             .dispatch_at(
                 request(
@@ -2815,19 +2827,23 @@ mod tests {
             )
             .expect("app metadata get info should return response");
 
-        assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-app-metadata-info".to_string(),
-                timestamp: 1710000000126,
-                trace_id: "trace-request-app-metadata-info".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::APP_METADATA_UNSUPPORTED_REASON,
-                    host_protocol::APP_METADATA_GET_INFO_METHOD,
-                )),
-            }
-        );
+        let HostProtocolEnvelope::Response {
+            payload: Some(payload),
+            error: None,
+            ..
+        } = response
+        else {
+            panic!("app metadata get info should return payload");
+        };
+        assert!(payload["id"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+        assert!(payload["name"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+        assert!(payload["version"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
     }
 
     #[test]

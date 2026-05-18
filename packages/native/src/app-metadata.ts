@@ -24,14 +24,7 @@ import { NativeSurface } from "./native-surface.js"
 export * from "./contracts/app-metadata.js"
 
 const Surface = "AppMetadata"
-const UnsupportedReason = "host-adapter-unimplemented"
-const AppMetadataSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
+const AppMetadataSupport = NativeSurface.support.supported
 
 export type AppMetadataError = HostProtocolError
 

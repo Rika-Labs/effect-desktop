@@ -18,8 +18,6 @@ import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
-  AppCommandLine,
-  AppInfo,
   AppOpenAtLoginInput,
   type AppOpenAtLoginOptions,
   AppOpenFileEvent,
@@ -45,11 +43,6 @@ const AppSupport = NativeSurface.support.unsupported(UnsupportedReason, {
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
-})
-
-export const AppGetInfo = appRpc("getInfo", Schema.Void, AppInfo, { kind: "none" })
-export const AppGetCommandLine = appRpc("getCommandLine", Schema.Void, AppCommandLine, {
-  kind: "none"
 })
 export const AppQuit = appRpc(
   "quit",
@@ -98,8 +91,6 @@ export const AppRpcEvents = Object.freeze({
 export type AppRpcEvents = typeof AppRpcEvents
 
 const AppRpcGroup = RpcGroup.make(
-  AppGetInfo,
-  AppGetCommandLine,
   AppQuit,
   AppRestart,
   AppFocus,
@@ -111,8 +102,6 @@ const AppRpcGroup = RpcGroup.make(
 export const AppRpcs: RpcGroup.RpcGroup<AppRpc> = AppRpcGroup
 
 export const AppMethodNames = Object.freeze([
-  "getInfo",
-  "getCommandLine",
   "quit",
   "restart",
   "focus",
@@ -132,8 +121,6 @@ const AppCapabilityMethods = Object.freeze([
 export type AppError = HostProtocolError
 
 export interface AppClientApi {
-  readonly getInfo: () => Effect.Effect<AppInfo, AppError, never>
-  readonly getCommandLine: () => Effect.Effect<AppCommandLine, AppError, never>
   readonly quit: (input: AppQuitOptions) => Effect.Effect<void, AppError, never>
   readonly restart: (input: AppRestartOptions) => Effect.Effect<void, AppError, never>
   readonly focus: () => Effect.Effect<void, AppError, never>
@@ -182,16 +169,6 @@ export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 export type AppRpcHandlers = RpcGroup.HandlersFrom<AppRpc>
 
 export const AppHandlersLive = AppRpcGroup.toLayer({
-  "App.getInfo": () =>
-    Effect.gen(function* () {
-      const app = yield* App
-      return yield* app.getInfo()
-    }),
-  "App.getCommandLine": () =>
-    Effect.gen(function* () {
-      const app = yield* App
-      return yield* app.getCommandLine()
-    }),
   "App.quit": (input) =>
     Effect.gen(function* () {
       const app = yield* App
@@ -239,8 +216,6 @@ export const makeHostAppRpcRuntime = (
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {
-    getInfo: () => client.getInfo(),
-    getCommandLine: () => client.getCommandLine(),
     quit: (input) => client.quit(input ?? {}),
     restart: (input) => client.restart(input ?? {}),
     focus: () => client.focus(),
@@ -261,8 +236,6 @@ const appClientFromRpcClient = (
   exchange: BridgeClientExchange | undefined
 ): AppClientApi =>
   Object.freeze({
-    getInfo: () => runAppRpc(client["App.getInfo"](undefined), "App.getInfo"),
-    getCommandLine: () => runAppRpc(client["App.getCommandLine"](undefined), "App.getCommandLine"),
     quit: (input) =>
       decodeAppQuitInput(input).pipe(
         Effect.flatMap((decoded) => runAppRpc(client["App.quit"](decoded), "App.quit"))

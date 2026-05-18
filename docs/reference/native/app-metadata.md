@@ -11,18 +11,17 @@ effect_version: 4
 Declare app identity, executable/resource paths, launch context, and
 environment shape through the native host boundary.
 
-The TypeScript surface is present for contract and bridge-client validation
-work, but the Rust host AppMetadata adapter is not implemented. The native
-surface reports `unsupported` on macOS, Windows, and Linux until the host owns
-package/config/runtime metadata collection.
+The Rust host adapter reads packaged `app-manifest.json` identity when present,
+falls back to host package metadata in source/dev runs, and returns runtime
+paths and launch context from the host process.
 
 ## Status
 
 | Method             | Success                    | Runtime support |
 | ------------------ | -------------------------- | --------------- |
-| `getInfo`          | `AppMetadataInfo`          | unsupported     |
-| `getPaths`         | `AppMetadataPaths`         | unsupported     |
-| `getLaunchContext` | `AppMetadataLaunchContext` | unsupported     |
+| `getInfo`          | `AppMetadataInfo`          | supported       |
+| `getPaths`         | `AppMetadataPaths`         | supported       |
+| `getLaunchContext` | `AppMetadataLaunchContext` | supported       |
 
 ## Contracts
 
@@ -43,14 +42,13 @@ Launch reasons are `launch`, `open-file`, `open-url`, and `unknown`.
 
 The current event stream is `events()`. Event phases are `info-read`,
 `paths-read`, `launch-context-read`, and `failed`. Native event delivery is
-currently unsupported until the host adapter exists.
+reserved for future metadata refresh events.
 
 ## Errors
 
-`AppMetadataError` is the host protocol error union. Until the host adapter is
-implemented, AppMetadata methods decode through Rust `AppMetadata.*` routes and
-fail closed as typed `Unsupported` with reason
-`host-adapter-unimplemented`.
+`AppMetadataError` is the host protocol error union. AppMetadata methods decode
+through Rust `AppMetadata.*` routes and fail as typed host protocol errors when
+host-owned metadata or canonical paths cannot be read.
 
 ## Related
 

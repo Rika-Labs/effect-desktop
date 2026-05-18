@@ -123,62 +123,6 @@
       "hostStatus": "routed"
     },
     {
-      "tag": "App.getCommandLine",
-      "surface": "App",
-      "method": "getCommandLine",
-      "capability": "none",
-      "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
-      },
-      "hostStatus": "routed"
-    },
-    {
-      "tag": "App.getInfo",
-      "surface": "App",
-      "method": "getInfo",
-      "capability": "none",
-      "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
-      },
-      "hostStatus": "routed"
-    },
-    {
       "tag": "App.quit",
       "surface": "App",
       "method": "quit",
@@ -324,25 +268,7 @@
       "method": "getInfo",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -352,25 +278,7 @@
       "method": "getLaunchContext",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -380,25 +288,7 @@
       "method": "getPaths",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4263,6 +4153,17 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.subscribeEvents",
+      "surface": "Window",
+      "method": "subscribeEvents",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed",
+      "hostMethod": "Window.Event"
+    },
+    {
       "tag": "WorkspaceIndex.close",
       "surface": "WorkspaceIndex",
       "method": "close",
@@ -4304,11 +4205,11 @@
     }
   ],
   "summary": {
-    "total": 220,
-    "routed": 198,
+    "total": 219,
+    "routed": 197,
     "missing": 22,
-    "supported": 102,
+    "supported": 106,
     "partial": 22,
-    "unsupported": 96
+    "unsupported": 91
   }
 }

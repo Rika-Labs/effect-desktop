@@ -1,6 +1,7 @@
 import type { NativeParityMatrixRowType, NativeParityMatrixSummaryType } from "./parity-matrix.js"
 
-const HOST_PROTOCOL_METHOD_PATTERN = /pub const ([A-Z0-9_]+_METHOD): &str\s*=\s*"([^"]+)";/gu
+const HOST_PROTOCOL_METHOD_PATTERN =
+  /pub const ([A-Z0-9_]+_(?:METHOD|EVENT)): &str\s*=\s*"([^"]+)";/gu
 const HOST_ROUTER_METHOD_PATTERN = /host_protocol::([A-Z0-9_]+_METHOD)(?:\s*=>|\b)/gu
 
 interface NativeParityMatrixDocument {
@@ -31,6 +32,11 @@ export const routedHostMethodsFromSource = (
     if (method !== undefined) {
       routedMethods.add(method)
     }
+  }
+
+  const windowEventMethod = protocolMethods.get("WINDOW_EVENT")
+  if (windowEventMethod !== undefined && routerSource.includes("install_window_event_sender")) {
+    routedMethods.add(windowEventMethod)
   }
 
   return Object.freeze(routedMethods)

@@ -7,9 +7,6 @@ const PortableExitCode = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0),
   Schema.isLessThanOrEqualTo(255)
 )
-const AppVersion = Schema.NonEmptyString.check(
-  Schema.isPattern(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u)
-)
 // eslint-disable-next-line no-control-regex -- App launch args must reject NUL.
 const ArgString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]*$/))
 const DangerousOpenIntentSchemes = new Set([
@@ -41,17 +38,6 @@ const isAppUrl = (value: string): boolean => {
 const AppUrl = PrintableNonEmptyString.check(
   Schema.makeFilter((value) => isAppUrl(value) || "must be a valid URL")
 )
-
-export class AppInfo extends Schema.Class<AppInfo>("AppInfo")({
-  id: PrintableNonEmptyString,
-  name: PrintableNonEmptyString,
-  version: AppVersion
-}) {}
-
-export class AppCommandLine extends Schema.Class<AppCommandLine>("AppCommandLine")({
-  argv: Schema.Array(ArgString),
-  cwd: BridgeSafeNonEmptyString
-}) {}
 
 export class AppQuitInput extends Schema.Class<AppQuitInput>("AppQuitInput")({
   exitCode: Schema.optionalKey(PortableExitCode)

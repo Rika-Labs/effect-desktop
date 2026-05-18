@@ -343,8 +343,6 @@ import {
   AutostartEvent,
   AutostartStatus,
   AppBeforeQuitEvent,
-  AppCommandLine,
-  AppInfo,
   AppMetadataEnvironmentShape,
   AppMetadataEvent,
   AppMetadataInfo,
@@ -652,7 +650,8 @@ test("Native.all registers every built-in native surface", () => {
     Array.from(group.group.requests.keys())
   )
 
-  expect(tags).toContain("App.getInfo")
+  expect(tags).toContain("App.quit")
+  expect(tags).toContain("AppMetadata.getInfo")
   expect(tags).toContain("Clipboard.readText")
   expect(tags).toContain("Window.create")
 })
@@ -721,8 +720,6 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
 const expectedWindowCapabilityMethods = [...expectedWindowMethods, "subscribeEvents"] as const
 
 const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
-  "getInfo",
-  "getCommandLine",
   "quit",
   "restart",
   "focus",
@@ -1019,8 +1016,6 @@ test("App service delegates through a substitutable AppClient port", async () =>
   const result = await runScopedPromise(
     Effect.gen(function* () {
       const app = yield* App
-      const info = yield* app.getInfo()
-      const commandLine = yield* app.getCommandLine()
       yield* app.focus()
       yield* app.quit()
       yield* app.restart({ args: ["--restarted"] })
@@ -1028,24 +1023,14 @@ test("App service delegates through a substitutable AppClient port", async () =>
       yield* app.registerProtocol({ scheme: "effect-desktop" })
       const protocolEvents = yield* app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect)
 
-      return { commandLine, info, protocolEvents }
+      return { protocolEvents }
     }).pipe(Effect.provide(makeAppServiceLayer(appClient(calls))))
   )
 
-  expect(result.info).toEqual(
-    new AppInfo({
-      id: "dev.effect-desktop.test",
-      name: "Effect Desktop Test",
-      version: "0.0.0"
-    })
-  )
-  expect(result.commandLine).toEqual(new AppCommandLine({ argv: ["app"], cwd: "/repo" }))
   expect(Array.from(result.protocolEvents)).toEqual([
     new AppOpenUrlEvent({ url: "effect-desktop://open" })
   ])
   expect(calls).toEqual([
-    "getInfo",
-    "getCommandLine",
     "focus",
     "quit:-1",
     "restart:--restarted",
@@ -1056,39 +1041,20 @@ test("App service delegates through a substitutable AppClient port", async () =>
 
 test("App bridge client sends typed host envelopes and decodes event streams", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const exchange = appExchange(requests, (request) => ({
-    kind: "success",
-    payload:
-      request.method === "App.getInfo"
-        ? {
-            id: "dev.effect-desktop.test",
-            name: "Effect Desktop Test",
-            version: "0.0.0"
-          }
-        : undefined
-  }))
+  const exchange = appExchange(requests, () => ({ kind: "success", payload: undefined }))
 
   const result = await runScopedPromise(
     Effect.gen(function* () {
       const app = yield* App
-      const info = yield* app.getInfo()
       yield* app.registerProtocol({ scheme: "effect-desktop" })
       const openFiles = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
 
-      return { info, openFiles }
+      return { openFiles }
     }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
   )
 
-  expect(result.info).toEqual(
-    new AppInfo({
-      id: "dev.effect-desktop.test",
-      name: "Effect Desktop Test",
-      version: "0.0.0"
-    })
-  )
   expect(Array.from(result.openFiles)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["App.getInfo", null],
     ["App.registerProtocol", { scheme: "effect-desktop" }]
   ])
 })
@@ -1237,47 +1203,6 @@ test("App bridge client validates protocol registration scheme before host reque
 
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["App.registerProtocol", { scheme: "effect-desktop" }]
-  ])
-})
-
-test("App bridge client rejects malformed App.getInfo and App.getCommandLine output as InvalidOutput", async () => {
-  const requests: HostProtocolRequestEnvelope[] = []
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const client = yield* App
-      const infoExit = yield* Effect.exit(client.getInfo())
-      const commandLineExit = yield* Effect.exit(client.getCommandLine())
-      return { commandLineExit, infoExit }
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          AppLive,
-          makeAppBridgeClientLayer(
-            appExchange(requests, (request) =>
-              request.method === "App.getInfo"
-                ? {
-                    kind: "success",
-                    payload: {
-                      id: "",
-                      name: "bad^@name",
-                      version: "not-semver"
-                    }
-                  }
-                : request.method === "App.getCommandLine"
-                  ? { kind: "success", payload: { argv: ["app", "bad\u0000arg"], cwd: "" } }
-                  : ({ kind: "success", payload: undefined } as const)
-            )
-          )
-        )
-      )
-    )
-  )
-
-  expectExitFailure(result.infoExit, (error) => hasErrorTag(error, "InvalidOutput"))
-  expectExitFailure(result.commandLineExit, (error) => hasErrorTag(error, "InvalidOutput"))
-  expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["App.getInfo", null],
-    ["App.getCommandLine", null]
   ])
 })
 
@@ -10177,20 +10102,6 @@ const recordVoid = (calls: string[], call: string): Effect.Effect<void, never, n
   })
 
 const appClient = (calls: string[]): AppClientApi => ({
-  getInfo: () =>
-    Effect.sync(() => {
-      calls.push("getInfo")
-      return new AppInfo({
-        id: "dev.effect-desktop.test",
-        name: "Effect Desktop Test",
-        version: "0.0.0"
-      })
-    }),
-  getCommandLine: () =>
-    Effect.sync(() => {
-      calls.push("getCommandLine")
-      return new AppCommandLine({ argv: ["app"], cwd: "/repo" })
-    }),
   quit: (input: { readonly exitCode?: number }) =>
     recordVoid(calls, `quit:${input.exitCode ?? -1}`),
   restart: (input: { readonly args?: readonly string[] }) =>

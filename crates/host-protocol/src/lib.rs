@@ -14,8 +14,6 @@ use serde_json::Value;
 pub const HOST_PING_METHOD: &str = "host.ping";
 pub const HOST_VERSION_METHOD: &str = "host.version";
 pub const PROTOCOL_VERSION: &str = env!("EFFECT_DESKTOP_HOST_PROTOCOL_VERSION");
-pub const APP_GET_INFO_METHOD: &str = "App.getInfo";
-pub const APP_GET_COMMAND_LINE_METHOD: &str = "App.getCommandLine";
 pub const APP_QUIT_METHOD: &str = "App.quit";
 pub const APP_RESTART_METHOD: &str = "App.restart";
 pub const APP_FOCUS_METHOD: &str = "App.focus";
@@ -299,7 +297,6 @@ pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented
 pub const SCOPED_ACCESS_GRANT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const APP_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
-pub const APP_METADATA_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const ASSOCIATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RECENT_DOCUMENTS_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const AUTOSTART_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
@@ -321,60 +318,6 @@ impl HostVersionPayload {
 
     pub fn protocol_version(&self) -> &str {
         &self.protocol_version
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AppInfoPayload {
-    id: String,
-    name: String,
-    version: String,
-}
-
-impl AppInfoPayload {
-    pub fn new(id: impl Into<String>, name: impl Into<String>, version: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            name: name.into(),
-            version: version.into(),
-        }
-    }
-
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn version(&self) -> &str {
-        &self.version
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AppCommandLinePayload {
-    argv: Vec<String>,
-    cwd: String,
-}
-
-impl AppCommandLinePayload {
-    pub fn new(argv: Vec<String>, cwd: impl Into<String>) -> Self {
-        Self {
-            argv,
-            cwd: cwd.into(),
-        }
-    }
-
-    pub fn argv(&self) -> &[String] {
-        &self.argv
-    }
-
-    pub fn cwd(&self) -> &str {
-        &self.cwd
     }
 }
 
@@ -10692,12 +10635,11 @@ mod tests {
         ActivationRegistryEventPayload, ActivationRegistryEventPhase,
         ActivationRegistryPermissionContextPayload, ActivationRegistrySource,
         ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload,
-        AppActivationReasonPayload, AppBeforeQuitEventPayload, AppCommandLinePayload,
-        AppInfoPayload, AppMetadataEnvironmentShapePayload, AppMetadataEventPayload,
-        AppMetadataEventPhasePayload, AppMetadataInfoPayload, AppMetadataLaunchContextPayload,
-        AppMetadataLaunchReasonPayload, AppMetadataPathsPayload, AppOpenAtLoginPayload,
-        AppOpenFileEventPayload, AppOpenUrlEventPayload, AppProtocolPayload, AppQuitPayload,
-        AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
+        AppActivationReasonPayload, AppBeforeQuitEventPayload, AppMetadataEnvironmentShapePayload,
+        AppMetadataEventPayload, AppMetadataEventPhasePayload, AppMetadataInfoPayload,
+        AppMetadataLaunchContextPayload, AppMetadataLaunchReasonPayload, AppMetadataPathsPayload,
+        AppOpenAtLoginPayload, AppOpenFileEventPayload, AppOpenUrlEventPayload, AppProtocolPayload,
+        AppQuitPayload, AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
         AssociationEventPayload, AssociationEventPhasePayload, AssociationFileAssociationPayload,
         AssociationFileAssociationsPayload, AssociationFileAssociationsResultPayload,
         AssociationProtocolPayload, AssociationProtocolStatusPayload, AutostartEnablePayload,
@@ -10901,23 +10843,6 @@ mod tests {
 
     #[test]
     fn app_payloads_encode_current_contract() {
-        assert_eq!(
-            serde_json::to_string(&AppInfoPayload::new(
-                "dev.effect-desktop.test",
-                "Effect Desktop Test",
-                "0.0.0"
-            ))
-            .expect("app info should encode"),
-            r#"{"id":"dev.effect-desktop.test","name":"Effect Desktop Test","version":"0.0.0"}"#
-        );
-        assert_eq!(
-            serde_json::to_string(&AppCommandLinePayload::new(
-                vec!["app".to_string()],
-                "/repo"
-            ))
-            .expect("command line should encode"),
-            r#"{"argv":["app"],"cwd":"/repo"}"#
-        );
         assert_eq!(
             serde_json::to_string(&AppQuitPayload::new(Some(0))).expect("quit should encode"),
             r#"{"exitCode":0}"#

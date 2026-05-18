@@ -57,8 +57,6 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
   })
   for (const tag of [
     "App.focus",
-    "App.getCommandLine",
-    "App.getInfo",
     "App.quit",
     "App.registerProtocol",
     "App.requestSingleInstanceLock",

@@ -20,16 +20,6 @@ const RESERVED_SCHEMES: &[&str] = &[
     "view-source",
 ];
 
-pub(crate) fn get_info(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    reject_unexpected_payload(payload, host_protocol::APP_GET_INFO_METHOD)?;
-    Err(unsupported(host_protocol::APP_GET_INFO_METHOD))
-}
-
-pub(crate) fn get_command_line(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    reject_unexpected_payload(payload, host_protocol::APP_GET_COMMAND_LINE_METHOD)?;
-    Err(unsupported(host_protocol::APP_GET_COMMAND_LINE_METHOD))
-}
-
 pub(crate) fn quit(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     reject_null_field(payload.as_ref(), "exitCode", host_protocol::APP_QUIT_METHOD)?;
     let _input = decode_payload::<AppQuitPayload>(payload, host_protocol::APP_QUIT_METHOD)?;
@@ -198,19 +188,12 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{focus, get_info, quit, register_protocol, restart, set_open_at_login};
+    use super::{focus, quit, register_protocol, restart, set_open_at_login};
     use host_protocol::HostProtocolError;
     use serde_json::{json, Value};
 
     #[test]
     fn app_void_requests_decode_before_unsupported() {
-        assert_eq!(
-            get_info(None).expect_err("get info"),
-            HostProtocolError::unsupported(
-                host_protocol::APP_UNSUPPORTED_REASON,
-                host_protocol::APP_GET_INFO_METHOD,
-            )
-        );
         assert_eq!(
             focus(None).expect_err("focus"),
             HostProtocolError::unsupported(
@@ -223,24 +206,16 @@ mod tests {
     #[test]
     fn app_void_requests_accept_null_as_wire_void() {
         assert_eq!(
-            get_info(Some(Value::Null)).expect_err("null payload"),
+            focus(Some(Value::Null)).expect_err("null payload"),
             HostProtocolError::unsupported(
                 host_protocol::APP_UNSUPPORTED_REASON,
-                host_protocol::APP_GET_INFO_METHOD,
+                host_protocol::APP_FOCUS_METHOD,
             )
         );
     }
 
     #[test]
     fn app_void_requests_reject_non_null_present_payloads() {
-        assert_eq!(
-            get_info(Some(json!({}))).expect_err("object payload"),
-            HostProtocolError::invalid_argument(
-                "payload",
-                "must be omitted",
-                host_protocol::APP_GET_INFO_METHOD,
-            )
-        );
         assert_eq!(
             focus(Some(json!({}))).expect_err("object payload"),
             HostProtocolError::invalid_argument(

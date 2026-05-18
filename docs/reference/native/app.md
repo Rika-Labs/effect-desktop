@@ -8,21 +8,19 @@ effect_version: 4
 
 # `App`
 
-App-level lifecycle and host-operation service.
+App-level lifecycle and host-operation service. `AppMetadata` owns app identity,
+paths, launch context, and environment-shape reads.
 
 The TypeScript surface is present for contract and bridge-client validation
-work, but the Rust host App adapter is not implemented. The native surface
-reports `unsupported` on macOS, Windows, and Linux until the host owns app
-lifecycle control, protocol registration, open-at-login integration, single
-instance coordination, and lifecycle events. `AppMetadata` owns app identity,
-paths, launch context, and environment-shape contracts.
+work, but the Rust host App lifecycle adapter is not implemented. The native
+surface reports `unsupported` on macOS, Windows, and Linux until the host owns
+app lifecycle control, protocol registration, open-at-login integration, single
+instance coordination, and lifecycle events.
 
 ## Status
 
 | Method                      | Success                   | Runtime support |
 | --------------------------- | ------------------------- | --------------- |
-| `getInfo`                   | `AppInfo`                 | unsupported     |
-| `getCommandLine`            | `AppCommandLine`          | unsupported     |
 | `quit`                      | `void`                    | unsupported     |
 | `restart`                   | `void`                    | unsupported     |
 | `focus`                     | `void`                    | unsupported     |
@@ -56,9 +54,8 @@ sources.
 serving path. `Association` owns OS-level default protocol and file association
 contracts. `Autostart` owns OS-level login-item and autostart contracts.
 `AppMetadata` owns app identity, paths, launch context, and environment-shape
-contracts. `App.registerProtocol`, `App.setOpenAtLogin`, `App.getInfo`, and
-`App.getCommandLine` remain unsupported until App lifecycle, OS-level protocol
-registration, and metadata source ownership are host-backed.
+contracts. `App.registerProtocol` and `App.setOpenAtLogin` remain unsupported
+until App lifecycle and OS-level protocol registration are host-backed.
 
 ## Related
 
