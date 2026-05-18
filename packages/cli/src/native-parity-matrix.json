@@ -1676,7 +1676,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Path.cache",
@@ -1686,7 +1686,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Path.downloads",
@@ -1696,7 +1696,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Path.home",
@@ -1706,7 +1706,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Path.logs",
@@ -1716,7 +1716,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Path.temp",
@@ -1726,7 +1726,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "PowerMonitor.isSupported",
@@ -2931,8 +2931,8 @@
   ],
   "summary": {
     "total": 187,
-    "routed": 132,
-    "missing": 55,
+    "routed": 138,
+    "missing": 49,
     "supported": 127,
     "partial": 22,
     "unsupported": 38

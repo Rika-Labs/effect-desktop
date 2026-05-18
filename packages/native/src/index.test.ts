@@ -265,7 +265,7 @@ import {
   makeHostNotificationRpcRuntime,
   makeNotificationBridgeClientLayer
 } from "./notification.js"
-import { makePathBridgeClientLayer } from "./path.js"
+import { makeHostPathRpcRuntime, makePathBridgeClientLayer } from "./path.js"
 import { makePowerMonitorBridgeClientLayer } from "./power-monitor.js"
 import { makeProtocolBridgeClientLayer } from "./protocol.js"
 import { makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
@@ -3731,6 +3731,79 @@ test("Path bridge client sends typed host envelopes and decodes canonical paths"
     ["Path.home", null],
     ["Path.downloads", null]
   ])
+})
+
+test("native host RPC runtime denies protected Path calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostPathRpcRuntime(
+    {
+      "Path.appData": () =>
+        Effect.sync(() => {
+          calls.push("appData")
+          return new CanonicalPath({ path: "/host/appData" })
+        }),
+      "Path.cache": () => Effect.succeed(new CanonicalPath({ path: "/host/cache" })),
+      "Path.logs": () => Effect.succeed(new CanonicalPath({ path: "/host/logs" })),
+      "Path.temp": () => Effect.succeed(new CanonicalPath({ path: "/host/temp" })),
+      "Path.home": () => Effect.succeed(new CanonicalPath({ path: "/host/home" })),
+      "Path.downloads": () => Effect.succeed(new CanonicalPath({ path: "/host/downloads" }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "path-denied",
+          method: "Path.appData",
+          timestamp: 1710000000000,
+          traceId: "trace-path-denied"
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("Path service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-path-unavailable",
+    message: "unsupported Path.home",
+    operation: "Path.home",
+    recoverable: false
+  })
+  const unsupportedClient: PathClientApi = {
+    ...pathClient([]),
+    home: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: PathClientApi = {
+    ...pathClient([]),
+    home: () => Effect.fail(makeHostProtocolHostUnavailableError("Path.home"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const path = yield* Path
+      return yield* Effect.exit(path.home())
+    }).pipe(Effect.provide(makePathServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const path = yield* Path
+      return yield* Effect.exit(path.home())
+    }).pipe(Effect.provide(makePathServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("Path bridge client rejects NUL-bearing host output as InvalidOutput", async () => {

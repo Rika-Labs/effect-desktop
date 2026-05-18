@@ -16,6 +16,7 @@ mod job;
 mod local_tool_runtime;
 mod menu;
 mod notification;
+mod path;
 mod realtime_media_session;
 mod resident_lifecycle;
 mod scoped_access_grant;
@@ -343,6 +344,30 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::SHELL_TRASH_ITEM_METHOD,
         HostMethodDispatcher::Payload(shell::trash_item),
+    ),
+    route(
+        host_protocol::PATH_APP_DATA_METHOD,
+        HostMethodDispatcher::Payload(path::app_data),
+    ),
+    route(
+        host_protocol::PATH_CACHE_METHOD,
+        HostMethodDispatcher::Payload(path::cache),
+    ),
+    route(
+        host_protocol::PATH_LOGS_METHOD,
+        HostMethodDispatcher::Payload(path::logs),
+    ),
+    route(
+        host_protocol::PATH_TEMP_METHOD,
+        HostMethodDispatcher::Payload(path::temp),
+    ),
+    route(
+        host_protocol::PATH_HOME_METHOD,
+        HostMethodDispatcher::Payload(path::home),
+    ),
+    route(
+        host_protocol::PATH_DOWNLOADS_METHOD,
+        HostMethodDispatcher::Payload(path::downloads),
     ),
     route(
         host_protocol::CLIPBOARD_READ_TEXT_METHOD,
@@ -2850,6 +2875,75 @@ mod tests {
                     "path",
                     "must not contain parent traversal",
                     host_protocol::SHELL_OPEN_PATH_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn path_methods_dispatch_canonical_paths_through_router() {
+        let cases = [
+            ("app-data", host_protocol::PATH_APP_DATA_METHOD),
+            ("cache", host_protocol::PATH_CACHE_METHOD),
+            ("logs", host_protocol::PATH_LOGS_METHOD),
+            ("temp", host_protocol::PATH_TEMP_METHOD),
+            ("home", host_protocol::PATH_HOME_METHOD),
+            ("downloads", host_protocol::PATH_DOWNLOADS_METHOD),
+        ];
+
+        for (name, method) in cases {
+            let request_id = format!("request-path-{name}");
+            let response = test_router()
+                .dispatch_at(request(&request_id, method), 1710000000120)
+                .expect("path request should return response");
+
+            match response {
+                HostProtocolEnvelope::Response {
+                    id,
+                    timestamp,
+                    trace_id,
+                    payload: Some(payload),
+                    error: None,
+                } => {
+                    assert_eq!(id, request_id);
+                    assert_eq!(timestamp, 1710000000120);
+                    assert_eq!(trace_id, format!("trace-request-path-{name}"));
+                    let path = payload
+                        .get("path")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_else(|| panic!("{method} should return a string path"));
+                    assert!(!path.is_empty(), "{method} returned an empty path");
+                    assert!(Path::new(path).is_absolute(), "{method} returned {path}");
+                }
+                other => panic!("unexpected {method} response: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn path_methods_reject_payloads_through_router() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-path-home-payload",
+                    host_protocol::PATH_HOME_METHOD,
+                    serde_json::json!({}),
+                ),
+                1710000000121,
+            )
+            .expect("path home request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-path-home-payload".to_string(),
+                timestamp: 1710000000121,
+                trace_id: "trace-request-path-home-payload".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "payload",
+                    "must be omitted",
+                    host_protocol::PATH_HOME_METHOD,
                 )),
             }
         );

@@ -48,6 +48,13 @@ pub const NOTIFICATION_GET_PERMISSION_STATUS_METHOD: &str = "Notification.getPer
 pub const NOTIFICATION_CLICK_EVENT: &str = "Notification.Click";
 pub const NOTIFICATION_ACTION_EVENT: &str = "Notification.Action";
 pub const NOTIFICATION_UNSUPPORTED_REASON: &str = "host-notification-unavailable";
+pub const PATH_APP_DATA_METHOD: &str = "Path.appData";
+pub const PATH_CACHE_METHOD: &str = "Path.cache";
+pub const PATH_LOGS_METHOD: &str = "Path.logs";
+pub const PATH_TEMP_METHOD: &str = "Path.temp";
+pub const PATH_HOME_METHOD: &str = "Path.home";
+pub const PATH_DOWNLOADS_METHOD: &str = "Path.downloads";
+pub const PATH_UNSUPPORTED_REASON: &str = "host-path-unavailable";
 pub const SCREEN_GET_DISPLAYS_METHOD: &str = "Screen.getDisplays";
 pub const SCREEN_GET_PRIMARY_DISPLAY_METHOD: &str = "Screen.getPrimaryDisplay";
 pub const SCREEN_GET_POINTER_POINT_METHOD: &str = "Screen.getPointerPoint";
@@ -997,6 +1004,22 @@ impl NotificationPermissionPayload {
 
     pub fn state(&self) -> NotificationPermissionStatePayload {
         self.state
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CanonicalPathPayload {
+    path: String,
+}
+
+impl CanonicalPathPayload {
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into() }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
     }
 }
 
@@ -9066,7 +9089,7 @@ mod tests {
         ActivationRegistryActorKind, ActivationRegistryActorPayload,
         ActivationRegistryEventPayload, ActivationRegistryEventPhase,
         ActivationRegistryPermissionContextPayload, ActivationRegistrySource,
-        ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload,
+        ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload, CanonicalPathPayload,
         ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
         ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
         DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
@@ -11072,6 +11095,23 @@ mod tests {
         let error = serde_json::from_value::<ShellOpenExternalPayload>(value)
             .expect_err("excess field should be rejected");
         assert!(error.to_string().contains("unknown field `shell`"));
+    }
+
+    #[test]
+    fn canonical_path_payload_serializes_and_rejects_excess_fields() {
+        assert_eq!(
+            serde_json::to_string(&CanonicalPathPayload::new("/tmp/effect-desktop"))
+                .expect("canonical path should encode"),
+            r#"{"path":"/tmp/effect-desktop"}"#
+        );
+
+        let value = serde_json::json!({
+            "path": "/tmp/effect-desktop",
+            "extra": true
+        });
+        let error = serde_json::from_value::<CanonicalPathPayload>(value)
+            .expect_err("excess field should reject");
+        assert!(error.to_string().contains("unknown field `extra`"));
     }
 
     #[test]
