@@ -95,6 +95,14 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
     hostStatus: "routed",
     support: { status: "unsupported", reason: "host-adapter-unimplemented" }
   })
+  expect(result.rows.find((row) => row.tag === "SystemAppearance.getAppearance")).toMatchObject({
+    hostStatus: "routed",
+    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
+  })
+  expect(result.rows.find((row) => row.tag === "SystemAppearance.isSupported")).toMatchObject({
+    hostStatus: "routed",
+    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
+  })
   expect(result.rows.find((row) => row.tag === "Window.close")).toMatchObject({
     hostMethod: "Window.destroy",
     hostStatus: "routed"

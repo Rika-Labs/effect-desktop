@@ -95,6 +95,14 @@ pub const POWER_MONITOR_SUSPEND_EVENT: &str = "PowerMonitor.Suspend";
 pub const POWER_MONITOR_RESUME_EVENT: &str = "PowerMonitor.Resume";
 pub const POWER_MONITOR_SHUTDOWN_EVENT: &str = "PowerMonitor.Shutdown";
 pub const POWER_MONITOR_POWER_SOURCE_CHANGED_EVENT: &str = "PowerMonitor.PowerSourceChanged";
+pub const SYSTEM_APPEARANCE_GET_APPEARANCE_METHOD: &str = "SystemAppearance.getAppearance";
+pub const SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD: &str = "SystemAppearance.getAccentColor";
+pub const SYSTEM_APPEARANCE_GET_REDUCED_MOTION_METHOD: &str = "SystemAppearance.getReducedMotion";
+pub const SYSTEM_APPEARANCE_GET_REDUCED_TRANSPARENCY_METHOD: &str =
+    "SystemAppearance.getReducedTransparency";
+pub const SYSTEM_APPEARANCE_IS_SUPPORTED_METHOD: &str = "SystemAppearance.isSupported";
+pub const SYSTEM_APPEARANCE_APPEARANCE_CHANGED_EVENT: &str = "SystemAppearance.AppearanceChanged";
+pub const SYSTEM_APPEARANCE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const REALTIME_MEDIA_SESSION_OPEN_METHOD: &str = "RealtimeMediaSession.open";
 pub const REALTIME_MEDIA_SESSION_CLOSE_METHOD: &str = "RealtimeMediaSession.close";
 pub const REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD: &str = "RealtimeMediaSession.selectDevice";
@@ -1826,6 +1834,123 @@ pub struct PowerMonitorSupportedPayload {
 }
 
 impl PowerMonitorSupportedPayload {
+    pub fn supported() -> Self {
+        Self { supported: true }
+    }
+
+    pub fn unsupported() -> Self {
+        Self { supported: false }
+    }
+
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SystemAppearanceMethodPayload {
+    GetAppearance,
+    GetAccentColor,
+    GetReducedMotion,
+    GetReducedTransparency,
+    OnAppearanceChanged,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SystemAppearanceModePayload {
+    Light,
+    Dark,
+    HighContrast,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemAppearanceColorPayload {
+    r: f64,
+    g: f64,
+    b: f64,
+    a: f64,
+}
+
+impl SystemAppearanceColorPayload {
+    pub fn new(r: f64, g: f64, b: f64, a: f64) -> Self {
+        Self { r, g, b, a }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemAppearanceResultPayload {
+    appearance: SystemAppearanceModePayload,
+}
+
+impl SystemAppearanceResultPayload {
+    pub fn new(appearance: SystemAppearanceModePayload) -> Self {
+        Self { appearance }
+    }
+
+    pub fn appearance(&self) -> SystemAppearanceModePayload {
+        self.appearance
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemAppearanceAccentColorPayload {
+    color: Option<SystemAppearanceColorPayload>,
+}
+
+impl SystemAppearanceAccentColorPayload {
+    pub fn new(color: Option<SystemAppearanceColorPayload>) -> Self {
+        Self { color }
+    }
+
+    pub fn color(&self) -> Option<&SystemAppearanceColorPayload> {
+        self.color.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemAppearanceBooleanPayload {
+    enabled: bool,
+}
+
+impl SystemAppearanceBooleanPayload {
+    pub fn new(enabled: bool) -> Self {
+        Self { enabled }
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemAppearanceIsSupportedPayload {
+    method: SystemAppearanceMethodPayload,
+}
+
+impl SystemAppearanceIsSupportedPayload {
+    pub fn new(method: SystemAppearanceMethodPayload) -> Self {
+        Self { method }
+    }
+
+    pub fn method(&self) -> SystemAppearanceMethodPayload {
+        self.method
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SystemAppearanceSupportedPayload {
+    supported: bool,
+}
+
+impl SystemAppearanceSupportedPayload {
     pub fn supported() -> Self {
         Self { supported: true }
     }
@@ -9583,7 +9708,11 @@ mod tests {
         ResidentLifecycleWindowPolicy, ResumeTicket, ScreenBoundsPayload, ScreenDisplayPayload,
         ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenIsSupportedPayload,
         ScreenPointPayload, ScreenSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
-        ShellShowItemInFolderPayload, ShellTrashItemPayload, TransactionalFileMutationActorKind,
+        ShellShowItemInFolderPayload, ShellTrashItemPayload, SystemAppearanceAccentColorPayload,
+        SystemAppearanceBooleanPayload, SystemAppearanceColorPayload,
+        SystemAppearanceIsSupportedPayload, SystemAppearanceMethodPayload,
+        SystemAppearanceModePayload, SystemAppearanceResultPayload,
+        SystemAppearanceSupportedPayload, TransactionalFileMutationActorKind,
         TransactionalFileMutationActorPayload, TransactionalFileMutationCommitPayload,
         TransactionalFileMutationCommitResultPayload, TransactionalFileMutationDiffPayload,
         TransactionalFileMutationEventPayload, TransactionalFileMutationEventPhase,
@@ -10182,6 +10311,70 @@ mod tests {
         )
         .expect_err("excess power monitor support field should be rejected");
         assert!(error.to_string().contains("unknown field `watch`"));
+    }
+
+    #[test]
+    fn system_appearance_payloads_encode_current_contract() {
+        let appearance = SystemAppearanceResultPayload::new(SystemAppearanceModePayload::Dark);
+        assert_eq!(appearance.appearance(), SystemAppearanceModePayload::Dark);
+        assert_eq!(
+            serde_json::to_string(&appearance).expect("appearance should encode"),
+            r#"{"appearance":"dark"}"#
+        );
+
+        let color = SystemAppearanceColorPayload::new(1.0, 2.0, 3.0, 0.5);
+        let accent = SystemAppearanceAccentColorPayload::new(Some(color));
+        assert!(accent.color().is_some());
+        assert_eq!(
+            serde_json::to_string(&accent).expect("accent should encode"),
+            r#"{"color":{"r":1.0,"g":2.0,"b":3.0,"a":0.5}}"#
+        );
+
+        let no_accent = SystemAppearanceAccentColorPayload::new(None);
+        assert_eq!(no_accent.color(), None);
+        assert_eq!(
+            serde_json::to_string(&no_accent).expect("null accent should encode"),
+            r#"{"color":null}"#
+        );
+
+        let reduced = SystemAppearanceBooleanPayload::new(true);
+        assert!(reduced.enabled());
+        assert_eq!(
+            serde_json::to_string(&reduced).expect("boolean result should encode"),
+            r#"{"enabled":true}"#
+        );
+
+        let support =
+            SystemAppearanceIsSupportedPayload::new(SystemAppearanceMethodPayload::GetAppearance);
+        assert_eq!(
+            support.method(),
+            SystemAppearanceMethodPayload::GetAppearance
+        );
+        assert_eq!(
+            serde_json::to_string(&support).expect("support input should encode"),
+            r#"{"method":"getAppearance"}"#
+        );
+
+        let unsupported = SystemAppearanceSupportedPayload::unsupported();
+        assert!(!unsupported.is_supported());
+        assert_eq!(
+            serde_json::to_string(&unsupported).expect("support output should encode"),
+            r#"{"supported":false}"#
+        );
+    }
+
+    #[test]
+    fn system_appearance_payloads_reject_unknown_methods_and_excess_fields() {
+        let error =
+            serde_json::from_str::<SystemAppearanceIsSupportedPayload>(r#"{"method":"theme"}"#)
+                .expect_err("unknown system appearance method should be rejected");
+        assert!(error.to_string().contains("unknown variant `theme`"));
+
+        let error = serde_json::from_str::<SystemAppearanceResultPayload>(
+            r#"{"appearance":"dark","isDark":true}"#,
+        )
+        .expect_err("excess appearance field should be rejected");
+        assert!(error.to_string().contains("unknown field `isDark`"));
     }
 
     #[test]

@@ -26,6 +26,7 @@ mod scoped_access_grant;
 mod screen;
 mod selection_context;
 mod shell;
+mod system_appearance;
 mod transactional_file_mutation;
 mod transient_window_role;
 mod tray;
@@ -460,6 +461,26 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::POWER_MONITOR_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(power_monitor::is_supported),
+    ),
+    route(
+        host_protocol::SYSTEM_APPEARANCE_GET_APPEARANCE_METHOD,
+        HostMethodDispatcher::Payload(system_appearance::get_appearance),
+    ),
+    route(
+        host_protocol::SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD,
+        HostMethodDispatcher::Payload(system_appearance::get_accent_color),
+    ),
+    route(
+        host_protocol::SYSTEM_APPEARANCE_GET_REDUCED_MOTION_METHOD,
+        HostMethodDispatcher::Payload(system_appearance::get_reduced_motion),
+    ),
+    route(
+        host_protocol::SYSTEM_APPEARANCE_GET_REDUCED_TRANSPARENCY_METHOD,
+        HostMethodDispatcher::Payload(system_appearance::get_reduced_transparency),
+    ),
+    route(
+        host_protocol::SYSTEM_APPEARANCE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(system_appearance::is_supported),
     ),
     route(
         host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
@@ -3362,6 +3383,80 @@ mod tests {
         } = response
         else {
             panic!("power monitor support should reject unknown method");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    #[test]
+    fn system_appearance_get_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-system-appearance-get",
+                    host_protocol::SYSTEM_APPEARANCE_GET_APPEARANCE_METHOD,
+                ),
+                1710000000112,
+            )
+            .expect("system appearance get should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-system-appearance-get".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-system-appearance-get".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::SYSTEM_APPEARANCE_UNSUPPORTED_REASON,
+                    host_protocol::SYSTEM_APPEARANCE_GET_APPEARANCE_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn system_appearance_support_routes_false_payload() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-system-appearance-support",
+                    host_protocol::SYSTEM_APPEARANCE_IS_SUPPORTED_METHOD,
+                    serde_json::json!({ "method": "getAppearance" }),
+                ),
+                1710000000112,
+            )
+            .expect("system appearance support should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-system-appearance-support".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-system-appearance-support".to_string(),
+                payload: Some(serde_json::json!({ "supported": false })),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn system_appearance_support_rejects_unknown_method() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-system-appearance-invalid",
+                    host_protocol::SYSTEM_APPEARANCE_IS_SUPPORTED_METHOD,
+                    serde_json::json!({ "method": "theme" }),
+                ),
+                1710000000112,
+            )
+            .expect("system appearance support should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("system appearance support should reject unknown method");
         };
         assert_eq!(error.tag(), "InvalidArgument");
     }

@@ -41,8 +41,10 @@ adapter exists.
 ## Errors
 
 `SystemAppearanceError` is the host protocol error union. Until the host adapter
-is implemented, bridge calls and subscriptions reach an unsupported or missing
-host path rather than real OS appearance state.
+is implemented, snapshot methods decode through Rust `SystemAppearance.*` routes
+and fail closed as typed `Unsupported`. `isSupported` decodes through the Rust
+host and returns `{ supported: false }`; subscriptions still do not have a native
+OS event source.
 
 ## React hook
 
