@@ -271,7 +271,7 @@ import { makeProtocolBridgeClientLayer } from "./protocol.js"
 import { makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
-import { makeShellBridgeClientLayer } from "./shell.js"
+import { makeHostShellRpcRuntime, makeShellBridgeClientLayer } from "./shell.js"
 import { makeSystemAppearanceBridgeClientLayer } from "./system-appearance.js"
 import { makeHostTrayRpcRuntime, makeTrayBridgeClientLayer } from "./tray.js"
 import { makeUpdaterBridgeClientLayer } from "./updater.js"
@@ -4377,6 +4377,15 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
 test("ShellRpcs declares the Phase 8 Shell method surface", () => {
   expect([...ShellMethodNames]).toEqual(expectedShellMethods)
   expect(rpcMethodNames("Shell", ShellRpcs)).toEqual(expectedShellMethods)
+  expect(rpcSupport(ShellRpcs.requests.get("Shell.trashItem")!)).toEqual({
+    status: "partial",
+    reason: "windows-trash-unavailable",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported", reason: "windows-trash-unavailable" },
+      { platform: "linux", status: "supported" }
+    ]
+  })
 })
 
 test("Shell service delegates through a substitutable ShellClient port", async () => {
@@ -4397,6 +4406,40 @@ test("Shell service delegates through a substitutable ShellClient port", async (
     "openPath:/tmp/report.txt:false",
     "trashItem:/tmp/old-report.txt"
   ])
+})
+
+test("Shell service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-shell-unavailable",
+    message: "unsupported Shell.openExternal",
+    operation: "Shell.openExternal",
+    recoverable: false
+  })
+  const unsupportedClient: ShellClientApi = {
+    ...shellClient([]),
+    openExternal: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: ShellClientApi = {
+    ...shellClient([]),
+    openExternal: () => Effect.fail(makeHostProtocolHostUnavailableError("Shell.openExternal"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shell = yield* Shell
+      return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
+    }).pipe(Effect.provide(makeShellServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shell = yield* Shell
+      return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
+    }).pipe(Effect.provide(makeShellServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("Shell bridge client validates schemes and path argv before transport", async () => {
@@ -4492,6 +4535,43 @@ test("Shell bridge client rejects control characters in external URLs before tra
   }
 
   expect(requests).toEqual([])
+})
+
+test("native host RPC runtime denies protected Shell calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostShellRpcRuntime(
+    {
+      "Shell.openExternal": () =>
+        Effect.sync(() => {
+          calls.push("openExternal")
+        }),
+      "Shell.showItemInFolder": () => Effect.void,
+      "Shell.openPath": () => Effect.void,
+      "Shell.trashItem": () => Effect.void
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "shell-denied",
+          method: "Shell.openExternal",
+          payload: { url: "https://example.com/docs" },
+          timestamp: 1710000000000,
+          traceId: "trace-shell-denied"
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
 })
 
 test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
@@ -6804,7 +6884,7 @@ test("Shell bridge client rejects empty path strings as InvalidArgument", async 
   expect(requests).toEqual([])
 })
 
-test("Shell bridge client rejects NUL bytes in path inputs as InvalidArgument", async () => {
+test("Shell bridge client rejects control characters in path inputs as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(
     Effect.gen(function* () {
@@ -6828,6 +6908,35 @@ test("Shell bridge client rejects NUL bytes in path inputs as InvalidArgument", 
   expectExitFailure(showExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(openExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(trashExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
+test("Shell bridge client rejects unsafe path argv shapes as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const showExit = await Effect.runPromiseExit(client.showItemInFolder("/tmp/../secret"))
+  const openExit = await Effect.runPromiseExit(client.openPath("C:\\Temp\\..\\secret.txt"))
+  const trashExit = await Effect.runPromiseExit(client.trashItem("../secret"))
+  const optionPrefixExit = await Effect.runPromiseExit(client.openPath("-a"))
+
+  expectExitFailure(showExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(trashExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(optionPrefixExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
 })
 

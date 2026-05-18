@@ -54,6 +54,11 @@ pub const SCREEN_GET_POINTER_POINT_METHOD: &str = "Screen.getPointerPoint";
 pub const SCREEN_IS_SUPPORTED_METHOD: &str = "Screen.isSupported";
 pub const SCREEN_DISPLAYS_CHANGED_EVENT: &str = "Screen.DisplaysChanged";
 pub const SCREEN_UNSUPPORTED_REASON: &str = "host-screen-unavailable";
+pub const SHELL_OPEN_EXTERNAL_METHOD: &str = "Shell.openExternal";
+pub const SHELL_SHOW_ITEM_IN_FOLDER_METHOD: &str = "Shell.showItemInFolder";
+pub const SHELL_OPEN_PATH_METHOD: &str = "Shell.openPath";
+pub const SHELL_TRASH_ITEM_METHOD: &str = "Shell.trashItem";
+pub const SHELL_UNSUPPORTED_REASON: &str = "host-shell-unavailable";
 pub const CLIPBOARD_READ_TEXT_METHOD: &str = "Clipboard.readText";
 pub const CLIPBOARD_WRITE_TEXT_METHOD: &str = "Clipboard.writeText";
 pub const CLIPBOARD_READ_HTML_METHOD: &str = "Clipboard.readHtml";
@@ -1197,6 +1202,88 @@ impl ScreenSupportedPayload {
 
     pub fn is_supported(&self) -> bool {
         self.supported
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShellOpenExternalPayload {
+    url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    allowed_schemes: Option<Vec<String>>,
+}
+
+impl ShellOpenExternalPayload {
+    pub fn new(url: impl Into<String>, allowed_schemes: Option<Vec<String>>) -> Self {
+        Self {
+            url: url.into(),
+            allowed_schemes,
+        }
+    }
+
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    pub fn allowed_schemes(&self) -> Option<&[String]> {
+        self.allowed_schemes.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShellShowItemInFolderPayload {
+    path: String,
+}
+
+impl ShellShowItemInFolderPayload {
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into() }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShellOpenPathPayload {
+    path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    allow_executable: Option<bool>,
+}
+
+impl ShellOpenPathPayload {
+    pub fn new(path: impl Into<String>, allow_executable: Option<bool>) -> Self {
+        Self {
+            path: path.into(),
+            allow_executable,
+        }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn allow_executable(&self) -> Option<bool> {
+        self.allow_executable
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShellTrashItemPayload {
+    path: String,
+}
+
+impl ShellTrashItemPayload {
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into() }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
     }
 }
 
@@ -9054,7 +9141,8 @@ mod tests {
         ResidentLifecycleStatePayload, ResidentLifecycleSupportedPayload,
         ResidentLifecycleWindowPolicy, ResumeTicket, ScreenBoundsPayload, ScreenDisplayPayload,
         ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenIsSupportedPayload,
-        ScreenPointPayload, ScreenSupportedPayload, TransactionalFileMutationActorKind,
+        ScreenPointPayload, ScreenSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
+        ShellShowItemInFolderPayload, ShellTrashItemPayload, TransactionalFileMutationActorKind,
         TransactionalFileMutationActorPayload, TransactionalFileMutationCommitPayload,
         TransactionalFileMutationCommitResultPayload, TransactionalFileMutationDiffPayload,
         TransactionalFileMutationEventPayload, TransactionalFileMutationEventPhase,
@@ -10946,6 +11034,44 @@ mod tests {
         let error = serde_json::from_value::<ScreenIsSupportedPayload>(value)
             .expect_err("invalid method should be rejected");
         assert!(error.to_string().contains("unknown variant"));
+    }
+
+    #[test]
+    fn shell_payloads_serialize_canonically() {
+        assert_eq!(
+            serde_json::to_string(&ShellOpenExternalPayload::new(
+                "https://example.com",
+                Some(vec!["myapp".to_string()]),
+            ))
+            .expect("open external should encode"),
+            r#"{"url":"https://example.com","allowedSchemes":["myapp"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ShellShowItemInFolderPayload::new("/tmp/report.txt"))
+                .expect("show item should encode"),
+            r#"{"path":"/tmp/report.txt"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ShellOpenPathPayload::new("/tmp/report.txt", Some(true)))
+                .expect("open path should encode"),
+            r#"{"path":"/tmp/report.txt","allowExecutable":true}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ShellTrashItemPayload::new("/tmp/report.txt"))
+                .expect("trash item should encode"),
+            r#"{"path":"/tmp/report.txt"}"#
+        );
+    }
+
+    #[test]
+    fn shell_payloads_reject_excess_fields() {
+        let value = serde_json::json!({
+            "url": "https://example.com",
+            "shell": true
+        });
+        let error = serde_json::from_value::<ShellOpenExternalPayload>(value)
+            .expect_err("excess field should be rejected");
+        assert!(error.to_string().contains("unknown field `shell`"));
     }
 
     #[test]

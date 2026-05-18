@@ -2308,7 +2308,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Shell.openPath",
@@ -2318,7 +2318,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Shell.showItemInFolder",
@@ -2328,7 +2328,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Shell.trashItem",
@@ -2336,9 +2336,25 @@
       "method": "trashItem",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "windows-trash-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "windows-trash-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "SystemAppearance.getAccentColor",
@@ -2915,10 +2931,10 @@
   ],
   "summary": {
     "total": 187,
-    "routed": 128,
-    "missing": 59,
-    "supported": 128,
-    "partial": 21,
+    "routed": 132,
+    "missing": 55,
+    "supported": 127,
+    "partial": 22,
     "unsupported": 38
   }
 }

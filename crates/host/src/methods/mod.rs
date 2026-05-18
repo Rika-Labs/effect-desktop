@@ -21,6 +21,7 @@ mod resident_lifecycle;
 mod scoped_access_grant;
 mod screen;
 mod selection_context;
+mod shell;
 mod transactional_file_mutation;
 mod transient_window_role;
 mod tray;
@@ -326,6 +327,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::SCREEN_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Window(screen::is_supported),
+    ),
+    route(
+        host_protocol::SHELL_OPEN_EXTERNAL_METHOD,
+        HostMethodDispatcher::Payload(shell::open_external),
+    ),
+    route(
+        host_protocol::SHELL_SHOW_ITEM_IN_FOLDER_METHOD,
+        HostMethodDispatcher::Payload(shell::show_item_in_folder),
+    ),
+    route(
+        host_protocol::SHELL_OPEN_PATH_METHOD,
+        HostMethodDispatcher::Payload(shell::open_path),
+    ),
+    route(
+        host_protocol::SHELL_TRASH_ITEM_METHOD,
+        HostMethodDispatcher::Payload(shell::trash_item),
     ),
     route(
         host_protocol::CLIPBOARD_READ_TEXT_METHOD,
@@ -2776,6 +2793,63 @@ mod tests {
                     "payload",
                     "must be omitted",
                     host_protocol::SCREEN_GET_DISPLAYS_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn shell_open_external_rejects_reserved_scheme_through_router() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-shell-open-external-reserved",
+                    host_protocol::SHELL_OPEN_EXTERNAL_METHOD,
+                    serde_json::json!({ "url": "file:///etc/passwd" }),
+                ),
+                1710000000118,
+            )
+            .expect("shell open external request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-shell-open-external-reserved".to_string(),
+                timestamp: 1710000000118,
+                trace_id: "trace-request-shell-open-external-reserved".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    "reserved-url-scheme",
+                    host_protocol::SHELL_OPEN_EXTERNAL_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn shell_path_methods_reject_traversal_through_router() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-shell-open-path-traversal",
+                    host_protocol::SHELL_OPEN_PATH_METHOD,
+                    serde_json::json!({ "path": "C:\\Temp\\..\\secret.txt" }),
+                ),
+                1710000000119,
+            )
+            .expect("shell open path request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-shell-open-path-traversal".to_string(),
+                timestamp: 1710000000119,
+                trace_id: "trace-request-shell-open-path-traversal".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "path",
+                    "must not contain parent traversal",
+                    host_protocol::SHELL_OPEN_PATH_METHOD,
                 )),
             }
         );
