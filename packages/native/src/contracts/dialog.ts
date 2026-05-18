@@ -19,7 +19,7 @@ const DialogFileFilterExtension = Schema.NonEmptyString.check(
 
 export class DialogFileFilter extends Schema.Class<DialogFileFilter>("DialogFileFilter")({
   name: DialogFileFilterName,
-  extensions: Schema.Array(DialogFileFilterExtension)
+  extensions: Schema.Array(DialogFileFilterExtension).check(Schema.isNonEmpty())
 }) {}
 
 export type DialogFileFilterOptions = Schema.Schema.Type<typeof DialogFileFilter>
@@ -80,7 +80,7 @@ export class DialogOpenResult extends Schema.Class<DialogOpenResult>("DialogOpen
 }) {}
 
 export class DialogSaveResult extends Schema.Class<DialogSaveResult>("DialogSaveResult")({
-  path: BridgeSafeNonEmptyString
+  path: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 
 export class DialogConfirmResult extends Schema.Class<DialogConfirmResult>("DialogConfirmResult")({

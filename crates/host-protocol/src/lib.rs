@@ -27,6 +27,11 @@ pub const GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD: &str = "GlobalShortcut.unregist
 pub const GLOBAL_SHORTCUT_IS_REGISTERED_METHOD: &str = "GlobalShortcut.isRegistered";
 pub const GLOBAL_SHORTCUT_IS_SUPPORTED_METHOD: &str = "GlobalShortcut.isSupported";
 pub const SAFE_STORAGE_IS_AVAILABLE_METHOD: &str = "SafeStorage.isAvailable";
+pub const DIALOG_OPEN_FILE_METHOD: &str = "Dialog.openFile";
+pub const DIALOG_OPEN_DIRECTORY_METHOD: &str = "Dialog.openDirectory";
+pub const DIALOG_SAVE_FILE_METHOD: &str = "Dialog.saveFile";
+pub const DIALOG_MESSAGE_METHOD: &str = "Dialog.message";
+pub const DIALOG_CONFIRM_METHOD: &str = "Dialog.confirm";
 pub const CLIPBOARD_READ_TEXT_METHOD: &str = "Clipboard.readText";
 pub const CLIPBOARD_WRITE_TEXT_METHOD: &str = "Clipboard.writeText";
 pub const CLIPBOARD_READ_HTML_METHOD: &str = "Clipboard.readHtml";
@@ -195,6 +200,381 @@ impl HostVersionPayload {
 
     pub fn protocol_version(&self) -> &str {
         &self.protocol_version
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DialogFileFilterPayload {
+    name: String,
+    extensions: Vec<String>,
+}
+
+impl DialogFileFilterPayload {
+    pub fn new(name: impl Into<String>, extensions: Vec<String>) -> Self {
+        Self {
+            name: name.into(),
+            extensions,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn extensions(&self) -> &[String] {
+        &self.extensions
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DialogOpenFilePayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    filters: Vec<DialogFileFilterPayload>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    multiple: Option<bool>,
+}
+
+impl DialogOpenFilePayload {
+    pub fn new() -> Self {
+        Self {
+            title: None,
+            default_path: None,
+            filters: Vec::new(),
+            multiple: None,
+        }
+    }
+
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub fn with_default_path(mut self, default_path: impl Into<String>) -> Self {
+        self.default_path = Some(default_path.into());
+        self
+    }
+
+    pub fn with_filters(mut self, filters: Vec<DialogFileFilterPayload>) -> Self {
+        self.filters = filters;
+        self
+    }
+
+    pub fn with_multiple(mut self, multiple: bool) -> Self {
+        self.multiple = Some(multiple);
+        self
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    pub fn default_path(&self) -> Option<&str> {
+        self.default_path.as_deref()
+    }
+
+    pub fn filters(&self) -> &[DialogFileFilterPayload] {
+        &self.filters
+    }
+
+    pub fn multiple(&self) -> bool {
+        self.multiple.unwrap_or(false)
+    }
+}
+
+impl Default for DialogOpenFilePayload {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DialogOpenDirectoryPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    multiple: Option<bool>,
+}
+
+impl DialogOpenDirectoryPayload {
+    pub fn new() -> Self {
+        Self {
+            title: None,
+            default_path: None,
+            multiple: None,
+        }
+    }
+
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub fn with_default_path(mut self, default_path: impl Into<String>) -> Self {
+        self.default_path = Some(default_path.into());
+        self
+    }
+
+    pub fn with_multiple(mut self, multiple: bool) -> Self {
+        self.multiple = Some(multiple);
+        self
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    pub fn default_path(&self) -> Option<&str> {
+        self.default_path.as_deref()
+    }
+
+    pub fn multiple(&self) -> bool {
+        self.multiple.unwrap_or(false)
+    }
+}
+
+impl Default for DialogOpenDirectoryPayload {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DialogSaveFilePayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    filters: Vec<DialogFileFilterPayload>,
+}
+
+impl DialogSaveFilePayload {
+    pub fn new() -> Self {
+        Self {
+            title: None,
+            default_path: None,
+            filters: Vec::new(),
+        }
+    }
+
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub fn with_default_path(mut self, default_path: impl Into<String>) -> Self {
+        self.default_path = Some(default_path.into());
+        self
+    }
+
+    pub fn with_filters(mut self, filters: Vec<DialogFileFilterPayload>) -> Self {
+        self.filters = filters;
+        self
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    pub fn default_path(&self) -> Option<&str> {
+        self.default_path.as_deref()
+    }
+
+    pub fn filters(&self) -> &[DialogFileFilterPayload] {
+        &self.filters
+    }
+}
+
+impl Default for DialogSaveFilePayload {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DialogLevelPayload {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DialogMessagePayload {
+    level: DialogLevelPayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
+}
+
+impl DialogMessagePayload {
+    pub fn new(level: DialogLevelPayload, message: impl Into<String>) -> Self {
+        Self {
+            level,
+            title: None,
+            message: message.into(),
+            detail: None,
+        }
+    }
+
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    pub fn level(&self) -> DialogLevelPayload {
+        self.level
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn detail(&self) -> Option<&str> {
+        self.detail.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DialogConfirmPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    confirm_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cancel_label: Option<String>,
+}
+
+impl DialogConfirmPayload {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            title: None,
+            message: message.into(),
+            detail: None,
+            confirm_label: None,
+            cancel_label: None,
+        }
+    }
+
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    pub fn with_labels(
+        mut self,
+        confirm_label: impl Into<String>,
+        cancel_label: impl Into<String>,
+    ) -> Self {
+        self.confirm_label = Some(confirm_label.into());
+        self.cancel_label = Some(cancel_label.into());
+        self
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn detail(&self) -> Option<&str> {
+        self.detail.as_deref()
+    }
+
+    pub fn confirm_label(&self) -> Option<&str> {
+        self.confirm_label.as_deref()
+    }
+
+    pub fn cancel_label(&self) -> Option<&str> {
+        self.cancel_label.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DialogOpenResultPayload {
+    paths: Vec<String>,
+}
+
+impl DialogOpenResultPayload {
+    pub fn new(paths: Vec<String>) -> Self {
+        Self { paths }
+    }
+
+    pub fn paths(&self) -> &[String] {
+        &self.paths
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DialogSaveResultPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+}
+
+impl DialogSaveResultPayload {
+    pub fn selected(path: impl Into<String>) -> Self {
+        Self {
+            path: Some(path.into()),
+        }
+    }
+
+    pub fn canceled() -> Self {
+        Self { path: None }
+    }
+
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DialogConfirmResultPayload {
+    confirmed: bool,
+}
+
+impl DialogConfirmResultPayload {
+    pub fn new(confirmed: bool) -> Self {
+        Self { confirmed }
+    }
+
+    pub fn confirmed(&self) -> bool {
+        self.confirmed
     }
 }
 
@@ -7985,12 +8365,15 @@ mod tests {
         DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
         DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
         DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
-        DiagnosticsBundleWriteResultPayload, DisplayCaptureActorKind, DisplayCaptureActorPayload,
-        DisplayCaptureEventPayload, DisplayCaptureEventPhase, DisplayCaptureGrantKind,
-        DisplayCaptureGrantPayload, DisplayCaptureImagePayload, DisplayCaptureMetadataPayload,
-        DisplayCaptureRegionPayload, DisplayCaptureRequestPayload, DisplayCaptureResultPayload,
-        DisplayCaptureSource, DisplayCaptureSupportedPayload, DisplayCaptureTargetPayload,
-        DistributionParityEventPayload, DistributionParityEventPhase,
+        DiagnosticsBundleWriteResultPayload, DialogConfirmPayload, DialogConfirmResultPayload,
+        DialogFileFilterPayload, DialogLevelPayload, DialogMessagePayload,
+        DialogOpenDirectoryPayload, DialogOpenFilePayload, DialogOpenResultPayload,
+        DialogSaveFilePayload, DialogSaveResultPayload, DisplayCaptureActorKind,
+        DisplayCaptureActorPayload, DisplayCaptureEventPayload, DisplayCaptureEventPhase,
+        DisplayCaptureGrantKind, DisplayCaptureGrantPayload, DisplayCaptureImagePayload,
+        DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload, DisplayCaptureRequestPayload,
+        DisplayCaptureResultPayload, DisplayCaptureSource, DisplayCaptureSupportedPayload,
+        DisplayCaptureTargetPayload, DistributionParityEventPayload, DistributionParityEventPhase,
         DistributionParityEvidenceKind, DistributionParityEvidencePayload,
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
         DistributionParityVerifyResultPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
@@ -8312,6 +8695,104 @@ mod tests {
             serde_json::to_string(&payload).expect("version payload should encode"),
             format!(r#"{{"protocolVersion":"{PROTOCOL_VERSION}"}}"#)
         );
+    }
+
+    #[test]
+    fn dialog_payloads_serialize_canonically() {
+        let filter = DialogFileFilterPayload::new("Text", vec!["txt".to_string()]);
+        assert_eq!(filter.name(), "Text");
+        assert_eq!(filter.extensions(), ["txt"]);
+
+        let open_file = DialogOpenFilePayload::new()
+            .with_title("Open")
+            .with_default_path("/tmp/input.txt")
+            .with_filters(vec![filter.clone()])
+            .with_multiple(true);
+        assert_eq!(open_file.title(), Some("Open"));
+        assert_eq!(open_file.default_path(), Some("/tmp/input.txt"));
+        assert!(open_file.multiple());
+        assert_eq!(
+            serde_json::to_string(&open_file).expect("open file should encode"),
+            r#"{"title":"Open","defaultPath":"/tmp/input.txt","filters":[{"name":"Text","extensions":["txt"]}],"multiple":true}"#
+        );
+
+        let open_directory = DialogOpenDirectoryPayload::new()
+            .with_title("Directory")
+            .with_default_path("/tmp")
+            .with_multiple(true);
+        assert_eq!(open_directory.title(), Some("Directory"));
+        assert_eq!(
+            serde_json::to_string(&open_directory).expect("open directory should encode"),
+            r#"{"title":"Directory","defaultPath":"/tmp","multiple":true}"#
+        );
+
+        let save_file = DialogSaveFilePayload::new()
+            .with_title("Save")
+            .with_default_path("/tmp/report.md")
+            .with_filters(vec![filter]);
+        assert_eq!(save_file.default_path(), Some("/tmp/report.md"));
+        assert_eq!(
+            serde_json::to_string(&save_file).expect("save file should encode"),
+            r#"{"title":"Save","defaultPath":"/tmp/report.md","filters":[{"name":"Text","extensions":["txt"]}]}"#
+        );
+
+        let message = DialogMessagePayload::new(DialogLevelPayload::Warning, "Check input")
+            .with_detail("Details");
+        assert_eq!(message.level(), DialogLevelPayload::Warning);
+        assert_eq!(message.message(), "Check input");
+        assert_eq!(
+            serde_json::to_string(&message).expect("message should encode"),
+            r#"{"level":"warning","message":"Check input","detail":"Details"}"#
+        );
+
+        let confirm = DialogConfirmPayload::new("Proceed?")
+            .with_title("Confirm")
+            .with_labels("Yes", "No");
+        assert_eq!(confirm.confirm_label(), Some("Yes"));
+        assert_eq!(
+            serde_json::to_string(&confirm).expect("confirm should encode"),
+            r#"{"title":"Confirm","message":"Proceed?","confirmLabel":"Yes","cancelLabel":"No"}"#
+        );
+
+        let open_result =
+            DialogOpenResultPayload::new(vec!["/tmp/a.txt".to_string(), "/tmp/b.txt".to_string()]);
+        assert_eq!(open_result.paths(), ["/tmp/a.txt", "/tmp/b.txt"]);
+        assert_eq!(
+            serde_json::to_string(&open_result).expect("open result should encode"),
+            r#"{"paths":["/tmp/a.txt","/tmp/b.txt"]}"#
+        );
+
+        let save_selected = DialogSaveResultPayload::selected("/tmp/report.md");
+        assert_eq!(save_selected.path(), Some("/tmp/report.md"));
+        assert_eq!(
+            serde_json::to_string(&save_selected).expect("save result should encode"),
+            r#"{"path":"/tmp/report.md"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DialogSaveResultPayload::canceled())
+                .expect("cancel result should encode"),
+            r#"{}"#
+        );
+
+        let confirm_result = DialogConfirmResultPayload::new(false);
+        assert!(!confirm_result.confirmed());
+        assert_eq!(
+            serde_json::to_string(&confirm_result).expect("confirm result should encode"),
+            r#"{"confirmed":false}"#
+        );
+    }
+
+    #[test]
+    fn dialog_payloads_reject_excess_fields() {
+        let error =
+            serde_json::from_str::<DialogOpenFilePayload>(r#"{"title":"Open","unexpected":true}"#)
+                .expect_err("dialog open should reject excess fields");
+        assert!(error.to_string().contains("unknown field `unexpected`"));
+
+        let error =
+            serde_json::from_str::<DialogMessagePayload>(r#"{"level":"fatal","message":"bad"}"#)
+                .expect_err("dialog message should reject invalid level");
+        assert!(error.to_string().contains("unknown variant `fatal`"));
     }
 
     #[test]

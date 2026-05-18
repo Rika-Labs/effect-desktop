@@ -9,6 +9,7 @@ import {
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  makeHostProtocolHostUnavailableError,
   RpcCapability,
   rpcSupport,
   type BridgeClientExchange,
@@ -92,6 +93,8 @@ import {
   Dialog,
   DialogClient,
   DialogHandlersLive,
+  DialogOpenDirectory,
+  DialogOpenFile,
   DialogRpcs,
   DialogRpcEvents,
   DialogLive,
@@ -252,7 +255,7 @@ import { makeAppBridgeClientLayer } from "./app.js"
 import { makeClipboardBridgeClientLayer, makeHostClipboardRpcRuntime } from "./clipboard.js"
 import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
 import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
-import { makeDialogBridgeClientLayer } from "./dialog.js"
+import { makeDialogBridgeClientLayer, makeHostDialogRpcRuntime } from "./dialog.js"
 import { makeDockBridgeClientLayer } from "./dock.js"
 import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
 import { makeMenuBridgeClientLayer } from "./menu.js"
@@ -2735,6 +2738,14 @@ test("DialogRpcs declares the Phase 7 Dialog method surface", () => {
   expect([...DialogMethodNames]).toEqual(expectedDialogMethods)
   expect(rpcMethodNames("Dialog", DialogRpcs)).toEqual(expectedDialogMethods)
   expect(Object.keys(DialogRpcEvents)).toEqual([])
+  expect(rpcSupport(DialogOpenFile)).toMatchObject({
+    status: "partial",
+    reason: "linux-zenity-multi-selection-unavailable"
+  })
+  expect(rpcSupport(DialogOpenDirectory)).toMatchObject({
+    status: "partial",
+    reason: "linux-zenity-multi-selection-unavailable"
+  })
 })
 
 test("Dialog service delegates through a substitutable DialogClient port", async () => {
@@ -2813,6 +2824,41 @@ test("Dialog bridge client sends typed host envelopes and decodes outputs", asyn
   ])
 })
 
+test("Dialog bridge client represents save cancellation as data", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = dialogExchange(requests, () => ({ kind: "success", payload: {} }))
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dialog = yield* Dialog
+      return yield* dialog.saveFile({ defaultPath: "/tmp/cancel.txt" })
+    }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
+  )
+
+  expect(result).toBeUndefined()
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Dialog.saveFile", { defaultPath: "/tmp/cancel.txt" }]
+  ])
+})
+
+test("Dialog bridge client preserves host failure errors", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = dialogExchange(requests, () => ({
+    kind: "failure",
+    error: makeHostProtocolHostUnavailableError("Dialog.openFile")
+  }))
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const dialog = yield* Dialog
+      return yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
+    }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "HostUnavailable"))
+  expect(requests.map((request) => request.method)).toEqual(["Dialog.openFile"])
+})
+
 test("Dialog bridge client returns invalid input as typed Effect failures", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(
@@ -2835,6 +2881,45 @@ test("Dialog bridge client returns invalid input as typed Effect failures", asyn
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
+})
+
+test("native host RPC runtime denies protected Dialog calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostDialogRpcRuntime(
+    {
+      "Dialog.openFile": () =>
+        Effect.sync(() => {
+          calls.push("openFile")
+          return new DialogOpenResult({ paths: ["/tmp/secret.txt"] })
+        }),
+      "Dialog.openDirectory": () => Effect.succeed(new DialogOpenResult({ paths: [] })),
+      "Dialog.saveFile": () => Effect.succeed(new DialogSaveResult({ path: "/tmp/report.txt" })),
+      "Dialog.message": () => Effect.void,
+      "Dialog.confirm": () => Effect.succeed(new DialogConfirmResult({ confirmed: true }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "dialog-denied",
+          method: "Dialog.openFile",
+          payload: {},
+          timestamp: 1710000000000,
+          traceId: "trace-dialog-denied"
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
 })
 
 test("ClipboardRpcs declares the Phase 7 Clipboard method surface", () => {
@@ -6780,6 +6865,9 @@ test("Dialog bridge client rejects malformed file filters before transport", asy
   const openFileBadExtensionExit = await Effect.runPromiseExit(
     client.openFile({ filters: [{ name: "Docs", extensions: ["*.txt"] }] })
   )
+  const openFileEmptyExtensionsExit = await Effect.runPromiseExit(
+    client.openFile({ filters: [{ name: "Docs", extensions: [] }] })
+  )
   const openFileControlExtensionExit = await Effect.runPromiseExit(
     client.openFile({ filters: [{ name: "Docs", extensions: ["txt\n"] }] })
   )
@@ -6790,6 +6878,7 @@ test("Dialog bridge client rejects malformed file filters before transport", asy
   expectExitFailure(openFileExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(openFileBadNameExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(openFileBadExtensionExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(openFileEmptyExtensionsExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(openFileControlExtensionExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(openFileNulExtensionExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])

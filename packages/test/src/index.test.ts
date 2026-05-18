@@ -1849,6 +1849,51 @@ test("Clipboard bridge layer propagates host failures through the service", asyn
   FailureAssertions.expectFailureTag(exit, "Unsupported")
 })
 
+test("DialogTest represents save cancellation as data", async () => {
+  const savePath = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dialog = yield* Dialog
+      return yield* dialog.saveFile({ defaultPath: "/tmp/cancel.txt" })
+    }).pipe(Effect.provide(DialogTest({ saveFilePath: null })))
+  )
+
+  expect(savePath).toBeUndefined()
+})
+
+test("Dialog unavailable platform layer returns typed Unsupported failures", async () => {
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const dialog = yield* Dialog
+      yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
+    }).pipe(Effect.provide(makeDialogServiceLayer(makeUnavailableDialogClient())))
+  )
+
+  FailureAssertions.expectFailureTag(exit, "Unsupported")
+})
+
+test("Dialog bridge layer propagates host failures through the service", async () => {
+  const bridge = makeMockBridge()
+  await Effect.runPromise(
+    bridge.fail("Dialog.openFile", {
+      tag: "HostUnavailable",
+      message: "host is unavailable",
+      operation: "Dialog.openFile",
+      recoverable: true
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const dialog = yield* Dialog
+      return yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
+    }).pipe(
+      Effect.provide(Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(bridge.exchange)))
+    )
+  )
+
+  FailureAssertions.expectFailureTag(exit, "HostUnavailable")
+})
+
 const makeUnavailableClipboardClient = (): ClipboardClientApi => {
   const unsupported = (method: string) =>
     new HostProtocolUnsupportedError({
@@ -1877,6 +1922,28 @@ const makeUnavailableClipboardClient = (): ClipboardClientApi => {
           reason: "test clipboard client is unavailable"
         })
       )
+  }
+}
+
+const makeUnavailableDialogClient = (): DialogClientApi => {
+  const unsupported = (method: string) =>
+    new HostProtocolUnsupportedError({
+      tag: "Unsupported",
+      reason: "test dialog client is unavailable",
+      message: `unsupported Dialog method: ${method}`,
+      operation: method,
+      recoverable: false
+    })
+
+  const fail = <A>(method: string): Effect.Effect<A, HostProtocolUnsupportedError, never> =>
+    Effect.fail(unsupported(method))
+
+  return {
+    openFile: () => fail("Dialog.openFile"),
+    openDirectory: () => fail("Dialog.openDirectory"),
+    saveFile: () => fail("Dialog.saveFile"),
+    message: () => fail("Dialog.message"),
+    confirm: () => fail("Dialog.confirm")
   }
 }
 

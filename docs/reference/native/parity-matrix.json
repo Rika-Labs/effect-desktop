@@ -582,7 +582,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Dialog.message",
@@ -592,7 +592,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Dialog.openDirectory",
@@ -600,9 +600,25 @@
       "method": "openDirectory",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "linux-zenity-multi-selection-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "partial",
+            "reason": "linux-zenity-multi-selection-unavailable"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Dialog.openFile",
@@ -610,9 +626,25 @@
       "method": "openFile",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "linux-zenity-multi-selection-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "partial",
+            "reason": "linux-zenity-multi-selection-unavailable"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Dialog.saveFile",
@@ -622,7 +654,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "DisplayCapture.captureDisplay",
@@ -2708,10 +2740,10 @@
   ],
   "summary": {
     "total": 186,
-    "routed": 107,
-    "missing": 79,
-    "supported": 139,
-    "partial": 9,
+    "routed": 112,
+    "missing": 74,
+    "supported": 137,
+    "partial": 11,
     "unsupported": 38
   }
 }

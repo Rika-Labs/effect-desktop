@@ -1,6 +1,6 @@
 ---
 title: Dialog (native)
-description: File, save, and message dialogs.
+description: Native file, save, message, and confirmation dialogs.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Dialog`
 
-Native file/message dialogs.
+Native file, save, message, and confirmation dialogs.
 
 ## Import
 
@@ -18,17 +18,27 @@ import { Dialog, DialogClient, DialogRpcs, DialogError } from "@effect-desktop/n
 
 ## Methods
 
-| Method    | Payload                                           | Success                   |
-| --------- | ------------------------------------------------- | ------------------------- |
-| `open`    | `{ properties?, filters?, defaultPath?, title? }` | `{ canceled, filePaths }` |
-| `save`    | `{ defaultPath?, filters?, title? }`              | `{ canceled, filePath? }` |
-| `message` | `{ type, title, message, buttons? }`              | `{ response: number }`    |
+| Method          | Payload                                                     | Success                  |
+| --------------- | ----------------------------------------------------------- | ------------------------ |
+| `openFile`      | `{ title?, defaultPath?, filters?, multiple? }`             | `{ paths: string[] }`    |
+| `openDirectory` | `{ title?, defaultPath?, multiple? }`                       | `{ paths: string[] }`    |
+| `saveFile`      | `{ title?, defaultPath?, filters? }`                        | `{ path?: string }`      |
+| `message`       | `{ level, title?, message, detail? }`                       | `void`                   |
+| `confirm`       | `{ title?, message, detail?, confirmLabel?, cancelLabel? }` | `{ confirmed: boolean }` |
 
-`properties`: `["openFile" \| "openDirectory" \| "multiSelections" \| "createDirectory"]`.
+`openFile` and `openDirectory` return an empty `paths` array when the user cancels.
+`saveFile` omits `path` when the user cancels. Cancellation is result data, not an error.
+
+The Rust host adapter is backed by native dialogs through `rfd` on macOS and Windows, and through
+`zenity` on Linux. Linux reports cancellation from `zenity` exit code `1` as result data and reports
+spawn failures or unexpected dialog exits as typed host failures. Linux currently rejects
+`multiple: true` with `Unsupported` because `zenity` cannot return multiple arbitrary Unix paths
+without a lossy separator.
 
 ## Errors
 
-`DialogError`.
+`DialogError` is the host protocol error union. Permission denial, unsupported host behavior, invalid
+arguments, invalid host output, and host failures are tagged errors.
 
 ## Test layer
 

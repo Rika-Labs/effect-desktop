@@ -2,6 +2,7 @@ mod activation_registry;
 mod attachment_intake;
 mod clipboard;
 mod diagnostics_bundle;
+mod dialog;
 mod display_capture;
 mod distribution_parity;
 mod dock;
@@ -221,6 +222,26 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD,
         HostMethodDispatcher::Empty(linux::safe_storage_is_available),
+    ),
+    route(
+        host_protocol::DIALOG_OPEN_FILE_METHOD,
+        HostMethodDispatcher::Payload(dialog::open_file),
+    ),
+    route(
+        host_protocol::DIALOG_OPEN_DIRECTORY_METHOD,
+        HostMethodDispatcher::Payload(dialog::open_directory),
+    ),
+    route(
+        host_protocol::DIALOG_SAVE_FILE_METHOD,
+        HostMethodDispatcher::Payload(dialog::save_file),
+    ),
+    route(
+        host_protocol::DIALOG_MESSAGE_METHOD,
+        HostMethodDispatcher::Payload(dialog::message),
+    ),
+    route(
+        host_protocol::DIALOG_CONFIRM_METHOD,
+        HostMethodDispatcher::Payload(dialog::confirm),
     ),
     route(
         host_protocol::CLIPBOARD_READ_TEXT_METHOD,

@@ -376,7 +376,7 @@
     {
       "name": "TestDialogOptions",
       "kind": "interface",
-      "signature": "export interface TestDialogOptions { readonly openFilePaths?: readonly string[] readonly openDirectoryPaths?: readonly string[] readonly saveFilePath?: string readonly confirmResult?: boolean }"
+      "signature": "export interface TestDialogOptions { readonly openFilePaths?: readonly string[] readonly openDirectoryPaths?: readonly string[] readonly saveFilePath?: string | null readonly confirmResult?: boolean }"
     },
     {
       "name": "TestNativeSurface",

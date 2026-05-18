@@ -59,7 +59,7 @@ export interface TestClipboardOptions {
 export interface TestDialogOptions {
   readonly openFilePaths?: readonly string[]
   readonly openDirectoryPaths?: readonly string[]
-  readonly saveFilePath?: string
+  readonly saveFilePath?: string | null
   readonly confirmResult?: boolean
 }
 
@@ -251,8 +251,10 @@ const makeDialogScenario = (options: TestDialogOptions): DialogServiceApi =>
       _input?: DialogOpenDirectoryOptions
     ): Effect.Effect<readonly string[], DialogError> =>
       Effect.succeed([...(options.openDirectoryPaths ?? [])]),
-    saveFile: (_input?: DialogSaveFileOptions): Effect.Effect<string, DialogError> =>
-      Effect.succeed(options.saveFilePath ?? "/tmp/save"),
+    saveFile: (_input?: DialogSaveFileOptions): Effect.Effect<string | undefined, DialogError> =>
+      Effect.succeed(
+        options.saveFilePath === null ? undefined : (options.saveFilePath ?? "/tmp/save")
+      ),
     message: (_input: DialogMessageOptions): Effect.Effect<void, DialogError> => Effect.void,
     confirm: (_input: DialogConfirmOptions): Effect.Effect<boolean, DialogError> =>
       Effect.succeed(options.confirmResult ?? true)

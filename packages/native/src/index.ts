@@ -270,6 +270,8 @@ export {
   DialogHandlersLive,
   DialogLive,
   DialogMethodNames,
+  DialogOpenDirectory,
+  DialogOpenFile,
   DialogRpcEvents,
   DialogRpcs,
   DialogSurface,
