@@ -1820,11 +1820,21 @@ impl WindowRegistry {
     }
 
     fn show(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
-        self.set_visible(window_id, true, host_protocol::WINDOW_SHOW_METHOD)
+        self.set_visible(
+            window_id,
+            true,
+            WindowRegistryEventPhase::Shown,
+            host_protocol::WINDOW_SHOW_METHOD,
+        )
     }
 
     fn hide(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
-        self.set_visible(window_id, false, host_protocol::WINDOW_HIDE_METHOD)
+        self.set_visible(
+            window_id,
+            false,
+            WindowRegistryEventPhase::Hidden,
+            host_protocol::WINDOW_HIDE_METHOD,
+        )
     }
 
     fn focus(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
@@ -2326,6 +2336,7 @@ impl WindowRegistry {
         &self,
         window_id: &str,
         visible: bool,
+        phase: WindowRegistryEventPhase,
         operation: &'static str,
     ) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
@@ -2336,6 +2347,14 @@ impl WindowRegistry {
         };
 
         resources._window.set_visible(visible);
+        if let Err(error) = emit_window_registry_event(window_id, phase) {
+            warn!(
+                event = "host.window.event_emit_failed",
+                error = ?error,
+                window_id,
+                "failed to emit native window visibility event"
+            );
+        }
         Ok(())
     }
 
@@ -4404,7 +4423,7 @@ mod tests {
             .expect("window event test lock should not be poisoned");
         let (receiver, _event_sender_guard) = install_test_window_event_sender();
 
-        emit_window_registry_event("window-1", WindowRegistryEventPhase::Closed)
+        emit_window_registry_event("window-1", WindowRegistryEventPhase::Shown)
             .expect("window event should emit");
 
         let event = receiver
@@ -4426,9 +4445,9 @@ mod tests {
             payload.expect("window event should include payload"),
             serde_json::json!({
                 "type": "window-registry-event",
-                "phase": "closed",
+                "phase": "shown",
                 "windowId": "window-1",
-                "terminal": true
+                "terminal": false
             })
         );
     }

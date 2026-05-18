@@ -82,6 +82,8 @@ export type AppEventRoutingError = AppEventWindowNotOpen
 
 export interface AppEventRouterApi {
   readonly windowOpened: (window: WindowHandle) => Effect.Effect<void, never, never>
+  readonly windowShown: (windowId: string) => Effect.Effect<void, AppEventRoutingError, never>
+  readonly windowHidden: (windowId: string) => Effect.Effect<void, AppEventRoutingError, never>
   readonly windowFocused: (windowId: string) => Effect.Effect<void, AppEventRoutingError, never>
   readonly windowClosed: (windowId: string) => Effect.Effect<void, never, never>
   readonly getCurrentWindow: () => Effect.Effect<Option.Option<WindowHandle>, never, never>
@@ -281,6 +283,28 @@ export function makeAppEventRouter(
         }
       })
 
+    const windowVisibilityChanged = (
+      windowId: string,
+      phase: "shown" | "hidden"
+    ): Effect.Effect<void, AppEventRoutingError, never> =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        if (!hasWindow(current, windowId)) {
+          return yield* Effect.fail(new AppEventWindowNotOpen({ windowId }))
+        }
+
+        const window = windowHandlesById.get(windowId)
+        if (window !== undefined) {
+          yield* publishWindowRegistryEvent(windowRegistryEvents, {
+            type: "window-registry-event",
+            phase,
+            windowId,
+            window,
+            terminal: false
+          })
+        }
+      })
+
     const takePendingEvents = (
       windowId: string,
       event: AppEventName
@@ -454,6 +478,8 @@ export function makeAppEventRouter(
 
     return Object.freeze({
       windowOpened,
+      windowShown: (windowId: string) => windowVisibilityChanged(windowId, "shown"),
+      windowHidden: (windowId: string) => windowVisibilityChanged(windowId, "hidden"),
       windowFocused,
       windowClosed,
       getCurrentWindow: () =>

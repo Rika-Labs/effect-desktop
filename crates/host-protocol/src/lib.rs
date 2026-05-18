@@ -3119,6 +3119,8 @@ impl WindowParentResponse {
 #[serde(rename_all = "camelCase")]
 pub enum WindowRegistryEventPhase {
     Opened,
+    Shown,
+    Hidden,
     Focused,
     Closed,
 }
@@ -12580,6 +12582,20 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&opened).expect("window opened event should encode"),
             r#"{"type":"window-registry-event","phase":"opened","windowId":"window-1","terminal":false}"#
+        );
+
+        let shown = WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::Shown);
+        assert!(!shown.terminal());
+        assert_eq!(
+            serde_json::to_string(&shown).expect("window shown event should encode"),
+            r#"{"type":"window-registry-event","phase":"shown","windowId":"window-1","terminal":false}"#
+        );
+
+        let hidden = WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::Hidden);
+        assert!(!hidden.terminal());
+        assert_eq!(
+            serde_json::to_string(&hidden).expect("window hidden event should encode"),
+            r#"{"type":"window-registry-event","phase":"hidden","windowId":"window-1","terminal":false}"#
         );
 
         let closed = WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::Closed);

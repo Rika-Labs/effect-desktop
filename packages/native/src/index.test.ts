@@ -9045,9 +9045,11 @@ test("Window.events streams renderer-visible lifecycle events from the app route
         const window = yield* Window
         const eventsFiber = yield* window
           .events()
-          .pipe(Stream.take(3), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+          .pipe(Stream.take(5), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
         yield* Effect.sleep("10 millis")
         const created = yield* window.create({ title: "Events" })
+        yield* window.show(created)
+        yield* window.hide(created)
         yield* window.focus(created)
         yield* window.close(created)
 
@@ -9069,6 +9071,8 @@ test("Window.events streams renderer-visible lifecycle events from the app route
     })
   ).toEqual([
     ["opened", "host-window-1", false],
+    ["shown", "host-window-1", false],
+    ["hidden", "host-window-1", false],
     ["focused", "host-window-1", false],
     ["closed", "host-window-1", true]
   ])
@@ -9190,10 +9194,10 @@ test("Window.events strips handles for host-originated events without local reso
               kind: "event",
               method,
               timestamp: 1_710_000_002_675,
-              traceId: "host-window-focused-unknown-event",
+              traceId: "host-window-shown-unknown-event",
               payload: {
                 type: "window-registry-event",
-                phase: "focused",
+                phase: "shown",
                 windowId: "host-focused-window",
                 window: {
                   kind: "window",
@@ -10041,9 +10045,11 @@ test("AppEventRouter emits ordered terminal window registry events", async () =>
       const router = yield* makeAppEventRouter()
       const collected = yield* router
         .windowEvents()
-        .pipe(Stream.take(3), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+        .pipe(Stream.take(5), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
 
       yield* router.windowOpened(handleFor("window-1"))
+      yield* router.windowShown("window-1")
+      yield* router.windowHidden("window-1")
       yield* router.windowFocused("window-1")
       yield* router.windowClosed("window-1")
 
@@ -10060,6 +10066,8 @@ test("AppEventRouter emits ordered terminal window registry events", async () =>
     }))
   ).toEqual([
     { phase: "opened", terminal: false, windowId: "window-1", window: "window-1" },
+    { phase: "shown", terminal: false, windowId: "window-1", window: "window-1" },
+    { phase: "hidden", terminal: false, windowId: "window-1", window: "window-1" },
     { phase: "focused", terminal: false, windowId: "window-1", window: "window-1" },
     { phase: "closed", terminal: true, windowId: "window-1", window: "window-1" }
   ])

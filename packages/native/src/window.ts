@@ -1117,7 +1117,7 @@ const reconcileWindowEvent = (
       return eventWithWindow(event, window)
     }
 
-    if (event.phase === "focused") {
+    if (event.phase === "focused" || event.phase === "shown" || event.phase === "hidden") {
       const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
       return Option.isNone(window)
         ? eventWithoutWindow(event)
@@ -1335,11 +1335,29 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.show")
         yield* host.show(window.id)
+        if (options.appEventRouter !== undefined) {
+          yield* options.appEventRouter
+            .windowShown(window.id)
+            .pipe(
+              Effect.mapError((error) =>
+                makeHostProtocolInvalidStateError(error.windowId, "shown", "Window.show")
+              )
+            )
+        }
       }),
     "Window.hide": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.hide")
         yield* host.hide(window.id)
+        if (options.appEventRouter !== undefined) {
+          yield* options.appEventRouter
+            .windowHidden(window.id)
+            .pipe(
+              Effect.mapError((error) =>
+                makeHostProtocolInvalidStateError(error.windowId, "hidden", "Window.hide")
+              )
+            )
+        }
       }),
     "Window.focus": (input: WindowHandleInput) =>
       Effect.gen(function* () {
