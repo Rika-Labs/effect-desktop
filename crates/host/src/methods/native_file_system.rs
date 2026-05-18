@@ -147,10 +147,10 @@ fn validate_path(path: &str, operation: &'static str) -> Result<(), HostProtocol
             operation,
         ));
     }
-    if !(path.starts_with('/') || is_windows_absolute_path(path) || path.starts_with("\\\\")) {
+    if !is_safe_absolute_path(path) {
         return Err(HostProtocolError::invalid_argument(
             "path",
-            "must be an absolute path",
+            "must be an absolute path without dot segments",
             operation,
         ));
     }
@@ -190,12 +190,38 @@ fn validate_id(
     Ok(())
 }
 
-fn is_windows_absolute_path(path: &str) -> bool {
+fn is_safe_absolute_path(path: &str) -> bool {
+    if path.starts_with('/') {
+        return !has_dot_segment(path.split('/'));
+    }
+
+    if is_windows_drive_absolute_path(path) || is_windows_unc_absolute_path(path) {
+        return !has_dot_segment(path.split(['/', '\\']));
+    }
+
+    false
+}
+
+fn is_windows_drive_absolute_path(path: &str) -> bool {
     let bytes = path.as_bytes();
     bytes.len() >= 3
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
         && matches!(bytes[2], b'/' | b'\\')
+}
+
+fn is_windows_unc_absolute_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("\\\\") else {
+        return false;
+    };
+    let mut parts = rest.split(['/', '\\']).filter(|part| !part.is_empty());
+    parts.next().is_some() && parts.next().is_some()
+}
+
+fn has_dot_segment<'a>(segments: impl Iterator<Item = &'a str>) -> bool {
+    segments
+        .into_iter()
+        .any(|segment| segment == "." || segment == "..")
 }
 
 fn unsupported(operation: &'static str) -> HostProtocolError {
@@ -264,6 +290,18 @@ mod tests {
         assert_eq!(
             stat(Some(json!({ "path": { "path": "/tmp/bad\u{0}path" } })))
                 .expect_err("nul path")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            stat(Some(json!({ "path": { "path": "/tmp/../secret" } })))
+                .expect_err("dot segment path")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            stat(Some(json!({ "path": { "path": "\\\\server" } })))
+                .expect_err("incomplete unc path")
                 .tag(),
             "InvalidArgument"
         );

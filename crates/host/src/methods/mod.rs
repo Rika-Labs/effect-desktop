@@ -5933,7 +5933,7 @@ mod tests {
                 payload: None,
                 error: Some(HostProtocolError::invalid_argument(
                     "path",
-                    "must be an absolute path",
+                    "must be an absolute path without dot segments",
                     host_protocol::NATIVE_FILE_SYSTEM_WATCH_METHOD,
                 )),
             }

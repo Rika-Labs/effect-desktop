@@ -5522,6 +5522,7 @@ test("NativeFileSystem bridge client rejects invalid inputs before transport", a
       Effect.exit(client.open({ path: { path: "" } })),
       Effect.exit(client.stat({ path: { path: "relative.txt" } })),
       Effect.exit(client.watch({ path: { path: "/tmp/bad\u0000path" } })),
+      Effect.exit(client.watch({ path: { path: "/tmp/../secret" } })),
       Effect.exit(client.stopWatching({ watchId: "" }))
     ])
   )

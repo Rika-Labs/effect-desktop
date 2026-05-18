@@ -43,9 +43,11 @@ support.
 
 ## Validation
 
-Path inputs must be non-empty absolute local paths and must not contain NUL
-bytes. Optional handle, watch, and owner-scope identifiers must be non-empty and
-must not contain NUL bytes. Invalid requests fail before host filesystem work.
+Path inputs must be non-empty absolute local paths without control characters or
+dot segments. Drive-relative paths, incomplete UNC paths, and traversal-like
+paths are rejected before native transport or host filesystem work. Optional
+handle, watch, and owner-scope identifiers must be non-empty and must not
+contain NUL bytes. Invalid requests fail before host filesystem work.
 
 ## Errors
 
