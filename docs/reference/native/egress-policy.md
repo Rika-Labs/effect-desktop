@@ -12,6 +12,8 @@ Product-neutral network egress decision service. Callers submit an actor and des
 
 The public service is Layer-first and test-substitutable. `decide` checks `network.connect` permission, asks the host to issue a decision receipt, then evaluates trusted service-layer rules in process using that host-issued `decisionId`. The Rust host adapter does not evaluate or accept caller-supplied policy rules on `decide`; lower native `record` accepts only `decisionId`, `actor`, and `destination`, verifies them against the host-issued receipt, appends the host receipt to the decision log under an OS file lock, and emits a native `decision-recorded` event after the append succeeds. Public service events observe that host or memory-client event source and map the host receipt back to the trusted service-layer decision.
 
+`EgressPolicy` is not a native network transport. It does not perform HTTP fetches, open WebSockets, upload data, bind localhost helpers, stream network progress, or cancel network I/O. Those operations still require a separate native network service and Rust host adapter.
+
 ## Methods
 
 | Method        | Payload                            | Success                                                     |
@@ -71,7 +73,7 @@ Use `makeEgressPolicyMemoryClient()` for deterministic policy decisions, host-re
 
 ## Architecture Debt Sweep
 
-No Effect wrapper debt was found in the touched EgressPolicy, host adapter, or host transport area. The change removed service-local event mirroring in favor of the existing host/memory event source and kept `BridgeRpc` scoped to the native/web boundary.
+No wrapper was removed. `EgressPolicy` is durable policy, audit, and decision-receipt behavior, not a removable Effect wrapper over network transport. The remaining debt for native network parity is the absent `NativeNetwork` service and Rust host transport adapter for HTTP, WebSocket, upload, localhost helper, cancellation, and progress/event streams.
 
 ## Related
 

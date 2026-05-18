@@ -75,17 +75,17 @@ Other windows and workers don't get this declaration; calls from elsewhere fall 
 
 ## Capability shapes
 
-| Kind               | Shape                                                             | Containment |
-| ------------------ | ----------------------------------------------------------------- | ----------- |
-| `filesystem.read`  | `{ kind: "filesystem.read", roots: string[] }`                    | Path-prefix |
-| `filesystem.write` | `{ kind: "filesystem.write", roots: string[] }`                   | Path-prefix |
-| `process.spawn`    | `{ kind: "process.spawn", command: string, args?: string[] }`     | Exact       |
-| `network.connect`  | `{ kind: "network.connect", host: string, port?: number }`        | Exact       |
-| `secrets.read`     | `{ kind: "secrets.read", namespaces: string[] }`                  | Exact       |
-| `secrets.write`    | `{ kind: "secrets.write", namespaces: string[] }`                 | Exact       |
-| `native.invoke`    | `{ kind: "native.invoke", primitive: string, methods: string[] }` | Exact       |
+| Kind               | Shape                                                                                                                                                                           | Containment       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `filesystem.read`  | `{ kind: "filesystem.read", roots: string[] }`                                                                                                                                  | Path-prefix       |
+| `filesystem.write` | `{ kind: "filesystem.write", roots: string[] }`                                                                                                                                 | Path-prefix       |
+| `process.spawn`    | `{ kind: "process.spawn", commands: string[], cwd?: string[], environment: "none" \| "allowlist", shell: false \| "requires-explicit-approval", audit: "always" \| "on-deny" }` | Command allowlist |
+| `network.connect`  | `{ kind: "network.connect", hosts: string[], askUnknownHosts: boolean, audit: AuditPolicy }`                                                                                    | Host allowlist    |
+| `secrets.read`     | `{ kind: "secrets.read", namespaces: string[] }`                                                                                                                                | Exact             |
+| `secrets.write`    | `{ kind: "secrets.write", namespaces: string[] }`                                                                                                                               | Exact             |
+| `native.invoke`    | `{ kind: "native.invoke", primitive: string, methods: string[] }`                                                                                                               | Exact             |
 
-Filesystem capabilities use **path containment** — declaring root `/Users/me/Documents` permits any descendant. Other kinds use **exact match**.
+Filesystem capabilities use **path containment** — declaring root `/Users/me/Documents` permits any descendant. `network.connect` declares an outbound host allowlist for permission and egress-policy checks; it does not provide a native HTTP, WebSocket, upload, or localhost transport service.
 
 ## Granting at runtime
 
