@@ -2183,6 +2183,7 @@ test("native test layers are derived from DesktopRpc surfaces", async () => {
     "FocusedApplicationContext",
     "Job",
     "LocalToolRuntime",
+    "NativeFileSystem",
     "TransientWindowRole",
     "TransactionalFileMutation",
     "WorkspaceIndex",
