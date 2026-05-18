@@ -25,6 +25,11 @@ interception. There is no `WebRequest` service yet for ordered interceptors,
 subresource inspection, response-header mutation, blocking, redirects, or
 request audit.
 
+Subframe identity is not exposed today. Effect Desktop has no `WebViewFrames`
+service, frame handle schema, frame lifecycle stream, `listFrames`, or
+`postToFrame` host route, and the current Wry-backed host path does not provide
+portable stable frame identifiers across macOS, Windows, and Linux.
+
 Proxy configuration, HTTP authentication challenges, and certificate decisions
 are also not part of `WebView`. Those hooks are absent; adding them would
 require a new network-auth service and host adapter.
