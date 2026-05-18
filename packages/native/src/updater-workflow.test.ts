@@ -29,7 +29,7 @@ const makeUpdateLayer = (
   updaterLayer: ReturnType<typeof makeUpdaterServiceLayer>
 ) => UpdateWorkflowLayer.pipe(Layer.provide(Layer.mergeAll(httpLayer, updaterLayer)))
 
-test("UpdateWorkflow fails signature verification as a typed workflow error", async () => {
+test("UpdateWorkflow fails when host update availability is not confirmed", async () => {
   const calls: string[] = []
   const manifest = {
     version: "2.0.0",

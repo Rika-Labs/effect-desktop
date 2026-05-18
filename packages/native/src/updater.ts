@@ -26,6 +26,16 @@ import {
 
 export type UpdaterError = HostProtocolError
 
+const UnsupportedReason = "host-adapter-unimplemented"
+
+const UpdaterSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
+
 export type UpdaterCheckOptions = Schema.Schema.Type<typeof UpdaterCheckInput>
 
 export type UpdaterDownloadOptions = Schema.Schema.Type<typeof UpdaterDownloadInput>
@@ -221,8 +231,8 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 const updaterClientFromRpcClient = (
   client: DesktopRpcClient<UpdaterRpc>,
   onPreparingRestart: () => Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never>
-): UpdaterClientApi => {
-  return Object.freeze({
+): UpdaterClientApi =>
+  Object.freeze({
     check: (input = {}) =>
       decodeUpdaterCheckInput(input, "Updater.check").pipe(
         Effect.flatMap((decoded) =>
@@ -252,7 +262,6 @@ const updaterClientFromRpcClient = (
       runUpdaterRpc(client["Updater.readyForRestart"](undefined), "Updater.readyForRestart"),
     onPreparingRestart
   } satisfies UpdaterClientApi)
-}
 
 const subscribeUpdaterEvent = (
   exchange: BridgeClientExchange,
@@ -299,7 +308,7 @@ function updaterRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: UpdaterSupport
   })
 }
 

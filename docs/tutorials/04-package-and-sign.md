@@ -159,7 +159,7 @@ The update manifest is the canonical signed JSON document that update clients ch
 bun run desktop publish --config desktop.config.ts --channel stable
 ```
 
-Output: a signed `update-manifest.json` (or per-channel file) in your `publishing.outputDir`. The runtime updater service verifies this manifest against the public key embedded in the app before downloading anything.
+Output: a signed `update-manifest.json` (or per-channel file) in your `publishing.outputDir`. Runtime manifest verification is the intended updater contract, but the native host adapter is not implemented yet.
 
 You upload the manifest and artifacts to your distribution host (S3, Cloudflare R2, GitHub Releases — the framework doesn't care). The update channel URL goes into your `Updater` configuration.
 

@@ -19,9 +19,11 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       const capabilities = yield* NativeCapabilities
       const create = yield* capabilities.support("Window.create")
       const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
+      const updaterInstall = yield* capabilities.support("Updater.install")
       return {
         create,
         dockBadge,
+        updaterInstall,
         hasWindowShow: capabilities.manifest.some((fact) => fact.tag === "Window.show")
       }
     }).pipe(Effect.provide(NativeCapabilitiesLive))
@@ -45,6 +47,15 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       }
     ]
   })
+  expect(result.updaterInstall).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
   expect(result.hasWindowShow).toBe(false)
 })
 
@@ -62,7 +73,15 @@ test("NativeCapabilities derives support metadata from selected native layers on
     }).pipe(Effect.provide(makeNativeCapabilitiesLayer(Native.available(Native.Clipboard))))
   )
 
-  expect(result.readText).toEqual({ status: "supported" })
+  expect(result.readText).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
   expect(result.tags).toContain("Clipboard.readText")
   expect(result.tags).not.toContain("Window.create")
   expect(Exit.isFailure(result.missingWindow)).toBe(true)

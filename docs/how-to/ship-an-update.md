@@ -1,14 +1,14 @@
 ---
-title: How to ship an update
-description: Publish a signed update manifest and wire the runtime updater to consume it.
+title: How to prepare a signed update
+description: Publish a signed update manifest for the planned runtime updater.
 kind: how-to
 audience: app-developers
 effect_version: 4
 ---
 
-# How to ship an update
+# How to prepare a signed update
 
-Updates use signed manifests with Ed25519 keys. The CLI publishes; the runtime `Updater` service verifies and applies. There is no opaque "update server" — you host the manifest and artifacts yourself.
+Updates are designed to use signed manifests with Ed25519 keys. The CLI can publish update metadata, but the runtime `Updater` host adapter is not implemented yet, so the current native surface must not be used as production update verification or installation.
 
 ## 1. Generate keys (once)
 
@@ -45,51 +45,31 @@ Produces a signed `update-manifest.json` (one per channel). The manifest binds:
 
 Upload the manifest and artifacts to your distribution host (S3, Cloudflare R2, GitHub Releases, your own CDN). The framework doesn't care where they live.
 
-## 3. Configure the runtime updater
+## 3. Runtime updater status
 
-In your manifest:
+The runtime updater is not executable yet. `UpdaterRpcs` and `UpdaterHandlersLive` describe the planned surface, but the Rust host does not verify manifests, download artifacts, install updates, or restart the app.
+
+Do not wire `UpdaterRpcs` into production apps until #1331 is implemented. The eventual manifest shape is expected to look like this:
+
 
 ```ts
 import { Desktop } from "@effect-desktop/core"
-import { UpdaterRpcs } from "@effect-desktop/native"
 
 export const App = Desktop.make({
   id: "dev.example.notes",
-  windows: { main: { title: "Notes" } },
-  rpcs: Desktop.rpc(UpdaterRpcs, UpdaterHandlersLive)
+  windows: { main: { title: "Notes" } }
 })
 
 // Updater configuration (feedUrl, channel, publicKeys, pollIntervalMs) is
 // declared in desktop.config.ts under the `publishing` and `updater` sections;
-// the runtime UpdaterHandlersLive layer reads it at startup.
+// runtime consumption is planned for UpdaterHandlersLive once the host adapter exists.
 ```
 
-`feedUrl` substitutes `{channel}`. The updater polls per `pollIntervalMs` (or on demand).
+`feedUrl` will substitute `{channel}` once the host updater exists. Polling and on-demand checks are planned behavior, not current runtime behavior.
 
-## 4. Trigger from the renderer
+## 4. Renderer trigger
 
-```tsx
-import { UpdaterRpcs } from "@effect-desktop/native"
-
-function CheckForUpdates() {
-  const updater = DesktopApp.useDesktop(UpdaterRpcs)
-  const check = updater.check.useMutation()
-  const download = updater.download.useMutation()
-  const install = updater.install.useMutation()
-
-  const onCheck = async () => {
-    const result = await check.run({})
-    if (result.available) {
-      await download.run({ version: result.version })
-      await install.run({ version: result.version })
-    }
-  }
-
-  return <button onClick={onCheck}>Check for updates</button>
-}
-```
-
-The runtime verifies the manifest signature against the embedded public key before downloading anything. A bad signature returns `UpdaterError.SignatureInvalid` — no install happens.
+The intended runtime contract is to verify the manifest signature against the embedded public key before downloading anything. The current host adapter is not implemented, so bad-signature handling and install prevention are not executable yet.
 
 ## 5. Rollback
 

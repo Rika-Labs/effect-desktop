@@ -8,15 +8,18 @@ effect_version: 4
 
 # `Updater`
 
-Auto-update service. Verifies signed manifests against the embedded public key before downloading anything.
+Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable, but the native updater host adapter is not implemented yet. Calls through the real native bridge currently have no Rust `Updater.*` route and are reported as `host-adapter-unimplemented` in the parity matrix.
 
 ## Methods
 
-| Method     | Payload       | Success                                                    |
-| ---------- | ------------- | ---------------------------------------------------------- |
-| `check`    | `{}`          | `{ available: boolean, version?: string, notes?: string }` |
-| `download` | `{ version }` | `{ path: string }`                                         |
-| `install`  | `{ version }` | `void`                                                     |
+| Method              | Payload       | Success                                                    | Current support |
+| ------------------- | ------------- | ---------------------------------------------------------- | --------------- |
+| `check`             | `{ currentVersion? }` | `{ available: boolean, version?: string, notes?: string }` | unsupported     |
+| `download`          | `{ version? }` | updater status result                                      | unsupported     |
+| `install`           | `{ version? }` | updater status result                                      | unsupported     |
+| `installAndRestart` | `{ version? }` | updater status result                                      | unsupported     |
+| `getStatus`         | `void`        | updater status result                                      | unsupported     |
+| `readyForRestart`   | `void`        | `void`                                                     | unsupported     |
 
 ## Types
 
@@ -24,11 +27,11 @@ Auto-update service. Verifies signed manifests against the embedded public key b
 
 ## Errors
 
-`UpdaterError` — `SignatureInvalid`, `HashMismatch`, `Unavailable`, `Network`, `Permission`.
+`UpdaterError` is the host protocol error union. Until the Rust adapter exists, native bridge calls fail as missing/unsupported host operations rather than claiming update security.
 
 ## Production checks
 
-`update-install-without-signature` rule fails any `install` path that bypasses verification.
+The current workflow helper does not verify update artifact signatures. It asks the `Updater` service to confirm update availability before staging bytes, which is not a cryptographic proof. Do not use it as a production updater until #1331 wires signed manifest verification, artifact staging, install, and restart through the Rust host.
 
 ## Related
 
