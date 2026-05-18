@@ -22,9 +22,10 @@ Autostart is platform persistence, not generic App lifecycle. It needs a narrow
 surface that can report the mechanism being used: macOS login item, Windows Run
 key, Linux XDG autostart, or unsupported.
 
-The trade-off is keeping the existing broad `App.setOpenAtLogin` unsupported
-while adding a clearer boundary. That avoids pretending the App surface owns
-durable platform policy it does not implement.
+The trade-off was keeping the existing broad `App.setOpenAtLogin` unsupported
+while adding a clearer boundary. A follow-up #1340 architecture-debt pass
+removed that overlap so the App surface no longer pretends to own durable
+autostart policy.
 
 ## Verification
 
@@ -38,18 +39,15 @@ durable platform policy it does not implement.
 
 ## Architecture-Debt Sweep
 
-No wrapper was removed in this ticket.
+No wrapper was removed in the initial boundary ticket.
 
-Debt found: `App.setOpenAtLogin` remains a broad unsupported method that
-overlaps with `Autostart`. This is tracked by still-open issue #1340 and must be
-resolved before that issue is closed. The intended direction is for `Autostart`
-to own login-item policy and for App-level login-item helpers to be removed or
-reduced to explicit delegation once platform adapters exist.
+Debt found: `App.setOpenAtLogin` remained a broad unsupported method that
+overlapped with `Autostart`. The follow-up #1340 architecture-debt pass removed
+that App-level helper so `Autostart` owns login-item policy.
 
 Known remaining debt:
 
 - Real platform adapters must replace the current typed unsupported routes.
 - Permission/audit behavior for real persistence writes must be preserved when
   the adapter moves from unsupported to supported.
-- The overlap with `App.setOpenAtLogin` should be resolved when the host-backed
-  Autostart service is implemented.
+- `Autostart` should remain the only public login-item/autostart surface.

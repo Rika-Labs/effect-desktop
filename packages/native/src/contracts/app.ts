@@ -66,13 +66,6 @@ export const AppSingleInstanceOutput = AppSingleInstanceResult.check(
   )
 )
 
-export class AppOpenAtLoginInput extends Schema.Class<AppOpenAtLoginInput>("AppOpenAtLoginInput")({
-  enabled: Schema.Boolean,
-  args: Schema.optionalKey(Schema.Array(ArgString))
-}) {}
-
-export type AppOpenAtLoginOptions = Schema.Schema.Type<typeof AppOpenAtLoginInput>
-
 export class AppProtocolInput extends Schema.Class<AppProtocolInput>("AppProtocolInput")({
   scheme: ProtocolScheme
 }) {}

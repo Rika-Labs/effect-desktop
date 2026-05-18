@@ -3,7 +3,7 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use host_protocol::HostProtocolError;
-use host_protocol::{AppOpenAtLoginPayload, AppProtocolPayload, AppQuitPayload, AppRestartPayload};
+use host_protocol::{AppProtocolPayload, AppQuitPayload, AppRestartPayload};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -48,23 +48,6 @@ pub(crate) fn request_single_instance_lock(
     Err(unsupported(
         host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
     ))
-}
-
-pub(crate) fn set_open_at_login(
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    reject_null_field(
-        payload.as_ref(),
-        "args",
-        host_protocol::APP_SET_OPEN_AT_LOGIN_METHOD,
-    )?;
-    let input = decode_payload::<AppOpenAtLoginPayload>(
-        payload,
-        host_protocol::APP_SET_OPEN_AT_LOGIN_METHOD,
-    )?;
-    let _enabled = input.enabled();
-    validate_args(input.args(), host_protocol::APP_SET_OPEN_AT_LOGIN_METHOD)?;
-    Err(unsupported(host_protocol::APP_SET_OPEN_AT_LOGIN_METHOD))
 }
 
 pub(crate) fn register_protocol(
@@ -188,7 +171,7 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{focus, quit, register_protocol, restart, set_open_at_login};
+    use super::{focus, quit, register_protocol, restart};
     use host_protocol::HostProtocolError;
     use serde_json::{json, Value};
 
@@ -240,14 +223,6 @@ mod tests {
             HostProtocolError::unsupported(
                 host_protocol::APP_UNSUPPORTED_REASON,
                 host_protocol::APP_RESTART_METHOD,
-            )
-        );
-        assert_eq!(
-            set_open_at_login(Some(json!({ "enabled": true, "args": ["--hidden"] })))
-                .expect_err("set open at login"),
-            HostProtocolError::unsupported(
-                host_protocol::APP_UNSUPPORTED_REASON,
-                host_protocol::APP_SET_OPEN_AT_LOGIN_METHOD,
             )
         );
         assert_eq!(

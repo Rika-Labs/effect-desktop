@@ -222,10 +222,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(app::request_single_instance_lock),
     ),
     route(
-        host_protocol::APP_SET_OPEN_AT_LOGIN_METHOD,
-        HostMethodDispatcher::Payload(app::set_open_at_login),
-    ),
-    route(
         host_protocol::APP_REGISTER_PROTOCOL_METHOD,
         HostMethodDispatcher::Payload(app::register_protocol),
     ),
@@ -1945,8 +1941,8 @@ mod tests {
     }
 
     #[test]
-    fn legacy_app_metadata_methods_are_not_host_routes() {
-        for method in ["App.getInfo", "App.getCommandLine"] {
+    fn legacy_app_methods_owned_by_narrow_surfaces_are_not_host_routes() {
+        for method in ["App.getInfo", "App.getCommandLine", "App.setOpenAtLogin"] {
             let response = test_router()
                 .dispatch_at(
                     request("request-legacy-app-metadata", method),

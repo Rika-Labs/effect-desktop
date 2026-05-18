@@ -18,8 +18,6 @@ import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
-  AppOpenAtLoginInput,
-  type AppOpenAtLoginOptions,
   AppOpenFileEvent,
   AppProtocolInput,
   type AppProtocolOptions,
@@ -68,12 +66,6 @@ export const AppRequestSingleInstanceLock = appRpc(
   AppSingleInstanceOutput,
   { kind: "none" }
 )
-export const AppSetOpenAtLogin = appRpc(
-  "setOpenAtLogin",
-  AppOpenAtLoginInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["setOpenAtLogin"] })
-)
 export const AppRegisterProtocol = appRpc(
   "registerProtocol",
   AppProtocolInput,
@@ -95,7 +87,6 @@ const AppRpcGroup = RpcGroup.make(
   AppRestart,
   AppFocus,
   AppRequestSingleInstanceLock,
-  AppSetOpenAtLogin,
   AppRegisterProtocol
 )
 
@@ -106,7 +97,6 @@ export const AppMethodNames = Object.freeze([
   "restart",
   "focus",
   "requestSingleInstanceLock",
-  "setOpenAtLogin",
   "registerProtocol"
 ] as const)
 
@@ -114,7 +104,6 @@ const AppCapabilityMethods = Object.freeze([
   "quit",
   "restart",
   "focus",
-  "setOpenAtLogin",
   "registerProtocol"
 ] as const satisfies readonly (typeof AppMethodNames)[number][])
 
@@ -125,7 +114,6 @@ export interface AppClientApi {
   readonly restart: (input: AppRestartOptions) => Effect.Effect<void, AppError, never>
   readonly focus: () => Effect.Effect<void, AppError, never>
   readonly requestSingleInstanceLock: () => Effect.Effect<AppSingleInstanceResult, AppError, never>
-  readonly setOpenAtLogin: (input: AppOpenAtLoginOptions) => Effect.Effect<void, AppError, never>
   readonly registerProtocol: (input: AppProtocolOptions) => Effect.Effect<void, AppError, never>
   readonly onSecondInstance: () => Stream.Stream<AppSecondInstanceEvent, AppError, never>
   readonly onOpenFile: () => Stream.Stream<AppOpenFileEvent, AppError, never>
@@ -189,11 +177,6 @@ export const AppHandlersLive = AppRpcGroup.toLayer({
       const app = yield* App
       return yield* app.requestSingleInstanceLock()
     }),
-  "App.setOpenAtLogin": (input) =>
-    Effect.gen(function* () {
-      const app = yield* App
-      yield* app.setOpenAtLogin(input)
-    }),
   "App.registerProtocol": (input) =>
     Effect.gen(function* () {
       const app = yield* App
@@ -220,7 +203,6 @@ const makeAppService = (client: AppClientApi): AppServiceApi => {
     restart: (input) => client.restart(input ?? {}),
     focus: () => client.focus(),
     requestSingleInstanceLock: () => client.requestSingleInstanceLock(),
-    setOpenAtLogin: (input) => client.setOpenAtLogin(input),
     registerProtocol: (input) => client.registerProtocol(input),
     onSecondInstance: () => client.onSecondInstance(),
     onOpenFile: () => client.onOpenFile(),
@@ -250,12 +232,6 @@ const appClientFromRpcClient = (
         client["App.requestSingleInstanceLock"](undefined),
         "App.requestSingleInstanceLock"
       ),
-    setOpenAtLogin: (input) =>
-      decodeAppOpenAtLoginInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          runAppRpc(client["App.setOpenAtLogin"](decoded), "App.setOpenAtLogin")
-        )
-      ),
     registerProtocol: (input) =>
       decodeAppProtocolInput(input).pipe(
         Effect.flatMap((decoded) =>
@@ -284,11 +260,6 @@ const decodeAppRestartInput = (
   input: unknown
 ): Effect.Effect<AppRestartInput, HostProtocolError, never> =>
   decodeInput(AppRestartInput, input, "App.restart")
-
-const decodeAppOpenAtLoginInput = (
-  input: unknown
-): Effect.Effect<AppOpenAtLoginInput, HostProtocolError, never> =>
-  decodeInput(AppOpenAtLoginInput, input, "App.setOpenAtLogin")
 
 const decodeAppProtocolInput = (
   input: unknown

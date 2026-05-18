@@ -60,8 +60,7 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
     "App.quit",
     "App.registerProtocol",
     "App.requestSingleInstanceLock",
-    "App.restart",
-    "App.setOpenAtLogin"
+    "App.restart"
   ]) {
     expect(result.rows.find((row) => row.tag === tag)).toMatchObject({
       hostStatus: "routed",

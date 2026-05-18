@@ -18,7 +18,6 @@ pub const APP_QUIT_METHOD: &str = "App.quit";
 pub const APP_RESTART_METHOD: &str = "App.restart";
 pub const APP_FOCUS_METHOD: &str = "App.focus";
 pub const APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD: &str = "App.requestSingleInstanceLock";
-pub const APP_SET_OPEN_AT_LOGIN_METHOD: &str = "App.setOpenAtLogin";
 pub const APP_REGISTER_PROTOCOL_METHOD: &str = "App.registerProtocol";
 pub const APP_SECOND_INSTANCE_EVENT: &str = "App.onSecondInstance";
 pub const APP_OPEN_FILE_EVENT: &str = "App.onOpenFile";
@@ -391,28 +390,6 @@ impl AppSingleInstancePayload {
 
     pub fn primary_pid(&self) -> Option<u64> {
         self.primary_pid
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AppOpenAtLoginPayload {
-    enabled: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    args: Option<Vec<String>>,
-}
-
-impl AppOpenAtLoginPayload {
-    pub fn new(enabled: bool, args: Option<Vec<String>>) -> Self {
-        Self { enabled, args }
-    }
-
-    pub fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    pub fn args(&self) -> Option<&[String]> {
-        self.args.as_deref()
     }
 }
 
@@ -10934,8 +10911,8 @@ mod tests {
         AppActivationReasonPayload, AppBeforeQuitEventPayload, AppMetadataEnvironmentShapePayload,
         AppMetadataEventPayload, AppMetadataEventPhasePayload, AppMetadataInfoPayload,
         AppMetadataLaunchContextPayload, AppMetadataLaunchReasonPayload, AppMetadataPathsPayload,
-        AppOpenAtLoginPayload, AppOpenFileEventPayload, AppOpenUrlEventPayload, AppProtocolPayload,
-        AppQuitPayload, AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
+        AppOpenFileEventPayload, AppOpenUrlEventPayload, AppProtocolPayload, AppQuitPayload,
+        AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
         AssociationEventPayload, AssociationEventPhasePayload, AssociationFileAssociationPayload,
         AssociationFileAssociationsPayload, AssociationFileAssociationsResultPayload,
         AssociationProtocolPayload, AssociationProtocolStatusPayload, AutostartEnablePayload,
@@ -11159,14 +11136,6 @@ mod tests {
             r#"{"args":["--restarted"]}"#
         );
         assert_eq!(
-            serde_json::to_string(&AppOpenAtLoginPayload::new(
-                true,
-                Some(vec!["--hidden".to_string()])
-            ))
-            .expect("open at login should encode"),
-            r#"{"enabled":true,"args":["--hidden"]}"#
-        );
-        assert_eq!(
             serde_json::to_string(&AppProtocolPayload::new("effect-desktop"))
                 .expect("protocol should encode"),
             r#"{"scheme":"effect-desktop"}"#
@@ -11187,10 +11156,6 @@ mod tests {
         let error = serde_json::from_str::<AppQuitPayload>(r#"{"exitCode":256}"#)
             .expect_err("exit code must be portable");
         assert!(error.to_string().contains("invalid value"));
-
-        let error = serde_json::from_str::<AppOpenAtLoginPayload>(r#"{"args":[]}"#)
-            .expect_err("enabled is required");
-        assert!(error.to_string().contains("missing field `enabled`"));
     }
 
     #[test]

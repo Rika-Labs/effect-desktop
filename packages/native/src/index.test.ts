@@ -551,6 +551,7 @@ test("native capability selections come from their surfaces", () => {
   expect(Native.Permissions.clipboard.readText).toEqual(ClipboardSurface.permissions.readText)
   expect("isSupported" in Native.Clipboard).toBe(false)
   expect("getInfo" in Native.App).toBe(false)
+  expect("setOpenAtLogin" in Native.App).toBe(false)
   expect(declared).toContain("Clipboard.readText")
 })
 
@@ -745,7 +746,6 @@ const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
   "restart",
   "focus",
   "requestSingleInstanceLock",
-  "setOpenAtLogin",
   "registerProtocol"
 ]
 
@@ -1048,7 +1048,6 @@ test("App service delegates through a substitutable AppClient port", async () =>
       yield* app.focus()
       yield* app.quit()
       yield* app.restart({ args: ["--restarted"] })
-      yield* app.setOpenAtLogin({ enabled: true, args: ["--hidden"] })
       yield* app.registerProtocol({ scheme: "effect-desktop" })
       const protocolEvents = yield* app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect)
 
@@ -1063,7 +1062,6 @@ test("App service delegates through a substitutable AppClient port", async () =>
     "focus",
     "quit:-1",
     "restart:--restarted",
-    "setOpenAtLogin:true:--hidden",
     "registerProtocol:effect-desktop"
   ])
 })
@@ -1487,9 +1485,7 @@ test("App bridge client rejects empty or NUL-bearing lifecycle args as InvalidAr
 
   const exits = await Promise.all([
     Effect.runPromiseExit(client.restart({ args: [""] })),
-    Effect.runPromiseExit(client.restart({ args: ["--flag", "value\u0000broken"] })),
-    Effect.runPromiseExit(client.setOpenAtLogin({ enabled: true, args: [""] })),
-    Effect.runPromiseExit(client.setOpenAtLogin({ enabled: true, args: ["bad\u0000arg"] }))
+    Effect.runPromiseExit(client.restart({ args: ["--flag", "value\u0000broken"] }))
   ])
 
   for (const exit of exits) {
@@ -10463,8 +10459,6 @@ const appClient = (calls: string[]): AppClientApi => ({
     recordVoid(calls, `restart:${input.args?.join(" ") ?? ""}`),
   focus: () => recordVoid(calls, "focus"),
   requestSingleInstanceLock: () => Effect.succeed({ acquired: true }),
-  setOpenAtLogin: (input: { readonly enabled: boolean; readonly args?: readonly string[] }) =>
-    recordVoid(calls, `setOpenAtLogin:${input.enabled}:${input.args?.join(" ") ?? ""}`),
   registerProtocol: (input: { readonly scheme: string }) =>
     recordVoid(calls, `registerProtocol:${input.scheme}`),
   onSecondInstance: () =>
