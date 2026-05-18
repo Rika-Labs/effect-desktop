@@ -36,6 +36,12 @@ contract, audio mute command, or auditable permission-response host route.
 The installed WebView provider exposes some callback ingredients, but they are
 not wired into typed Effect streams or permission decisions.
 
+Document output controls are not host-backed today. `captureScreenshot` exists
+as a declared TypeScript bridge contract, but the Rust host has no
+`WebView.captureScreenshot` route, and Effect Desktop has no `WebViewDocument`
+service for capture-page, print-to-PDF, find-in-page, zoom, or user-agent
+controls.
+
 Proxy configuration, HTTP authentication challenges, and certificate decisions
 are also not part of `WebView`. Those hooks are absent; adding them would
 require a new network-auth service and host adapter.
