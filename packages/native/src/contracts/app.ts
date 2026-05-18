@@ -85,11 +85,14 @@ export class AppProtocolInput extends Schema.Class<AppProtocolInput>("AppProtoco
 
 export type AppProtocolOptions = Schema.Schema.Type<typeof AppProtocolInput>
 
+export const AppActivationReason = Schema.Literals(["launch", "open-file", "open-url", "unknown"])
+
 export class AppSecondInstanceEvent extends Schema.Class<AppSecondInstanceEvent>(
   "AppSecondInstanceEvent"
 )({
   argv: Schema.Array(ArgString),
   cwd: BridgeSafeNonEmptyString,
+  activationReason: AppActivationReason,
   traceId: PrintableNonEmptyString
 }) {}
 

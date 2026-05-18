@@ -32,8 +32,10 @@ instance coordination, app metadata, and lifecycle events.
 ## Events
 
 The current TypeScript event streams are `onSecondInstance`, `onOpenFile`,
-`onOpenUrl`, and `onBeforeQuit`. Native event delivery is currently unsupported
-until the host adapter exists.
+`onOpenUrl`, and `onBeforeQuit`. `onSecondInstance` events carry `argv`, `cwd`,
+`activationReason`, and `traceId`; `activationReason` is `"launch"`,
+`"open-file"`, `"open-url"`, or `"unknown"`. Native event delivery is currently
+unsupported until the host adapter exists.
 
 ## Errors
 

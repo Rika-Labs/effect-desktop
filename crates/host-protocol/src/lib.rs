@@ -440,17 +440,33 @@ impl AppProtocolPayload {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AppActivationReasonPayload {
+    Launch,
+    OpenFile,
+    OpenUrl,
+    Unknown,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppSecondInstanceEventPayload {
+    activation_reason: AppActivationReasonPayload,
     argv: Vec<String>,
     cwd: String,
     trace_id: String,
 }
 
 impl AppSecondInstanceEventPayload {
-    pub fn new(argv: Vec<String>, cwd: impl Into<String>, trace_id: impl Into<String>) -> Self {
+    pub fn new(
+        activation_reason: AppActivationReasonPayload,
+        argv: Vec<String>,
+        cwd: impl Into<String>,
+        trace_id: impl Into<String>,
+    ) -> Self {
         Self {
+            activation_reason,
             argv,
             cwd: cwd.into(),
             trace_id: trace_id.into(),
@@ -9859,13 +9875,13 @@ mod tests {
         ActivationRegistryEventPayload, ActivationRegistryEventPhase,
         ActivationRegistryPermissionContextPayload, ActivationRegistrySource,
         ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload,
-        AppBeforeQuitEventPayload, AppCommandLinePayload, AppInfoPayload, AppOpenAtLoginPayload,
-        AppOpenFileEventPayload, AppOpenUrlEventPayload, AppProtocolPayload, AppQuitPayload,
-        AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
-        CanonicalPathPayload, ClipboardCapabilityPayload, ClipboardHtmlPayload,
-        ClipboardImagePayload, ClipboardIsSupportedPayload, ClipboardSupportedPayload,
-        ClipboardTextPayload, CrashReporterBreadcrumbPayload, CrashReporterFlushPayload,
-        CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
+        AppActivationReasonPayload, AppBeforeQuitEventPayload, AppCommandLinePayload,
+        AppInfoPayload, AppOpenAtLoginPayload, AppOpenFileEventPayload, AppOpenUrlEventPayload,
+        AppProtocolPayload, AppQuitPayload, AppRestartPayload, AppSecondInstanceEventPayload,
+        AppSingleInstancePayload, CanonicalPathPayload, ClipboardCapabilityPayload,
+        ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
+        ClipboardSupportedPayload, ClipboardTextPayload, CrashReporterBreadcrumbPayload,
+        CrashReporterFlushPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
         DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
         DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
         DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
@@ -10121,13 +10137,21 @@ mod tests {
     fn app_event_payloads_encode_current_contract() {
         assert_eq!(
             serde_json::to_string(&AppSecondInstanceEventPayload::new(
+                AppActivationReasonPayload::OpenFile,
                 vec!["app".to_string()],
                 "/repo",
                 "trace-second"
             ))
             .expect("second instance event should encode"),
-            r#"{"argv":["app"],"cwd":"/repo","traceId":"trace-second"}"#
+            r#"{"activationReason":"open-file","argv":["app"],"cwd":"/repo","traceId":"trace-second"}"#
         );
+        let error = serde_json::from_str::<AppSecondInstanceEventPayload>(
+            r#"{"argv":["app"],"cwd":"/repo","traceId":"trace-second"}"#,
+        )
+        .expect_err("activation reason should be required");
+        assert!(error
+            .to_string()
+            .contains("missing field `activationReason`"));
         assert_eq!(
             serde_json::to_string(&AppOpenFileEventPayload::new("README.md"))
                 .expect("open file event should encode"),

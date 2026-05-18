@@ -1015,6 +1015,45 @@ test("App bridge client rejects event envelopes for the wrong method", async () 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
+test("App bridge client decodes second-instance activation reasons", async () => {
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+    subscribe: (method) =>
+      method === "App.onSecondInstance"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000400,
+              traceId: "event-trace",
+              method,
+              payload: {
+                activationReason: "open-file",
+                argv: ["app", "README.md"],
+                cwd: "/repo",
+                traceId: "trace-second"
+              }
+            })
+          )
+        : Stream.empty
+  }
+
+  const events = await Effect.runPromise(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+  )
+
+  expect(Array.from(events)).toEqual([
+    new AppSecondInstanceEvent({
+      activationReason: "open-file",
+      argv: ["app", "README.md"],
+      cwd: "/repo",
+      traceId: "trace-second"
+    })
+  ])
+})
+
 test("App bridge client validates protocol registration scheme before host requests", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exits = await Effect.runPromise(
@@ -1163,7 +1202,12 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
               timestamp: 1710000000400,
               traceId: "event-trace",
               method,
-              payload: { argv: ["app", "bad\u0000arg"], cwd: "", traceId: "" }
+              payload: {
+                activationReason: "bad-reason",
+                argv: ["app", "bad\u0000arg"],
+                cwd: "",
+                traceId: ""
+              }
             })
           )
         : Stream.empty
@@ -7592,7 +7636,12 @@ const appClient = (calls: string[]): AppClientApi => ({
     recordVoid(calls, `registerProtocol:${input.scheme}`),
   onSecondInstance: () =>
     Stream.make(
-      new AppSecondInstanceEvent({ argv: ["app", "--second"], cwd: "/repo", traceId: "trace" })
+      new AppSecondInstanceEvent({
+        activationReason: "launch",
+        argv: ["app", "--second"],
+        cwd: "/repo",
+        traceId: "trace"
+      })
     ),
   onOpenFile: () => Stream.make(new AppOpenFileEvent({ path: "README.md" })),
   onOpenUrl: () => Stream.make(new AppOpenUrlEvent({ url: "effect-desktop://open" })),
