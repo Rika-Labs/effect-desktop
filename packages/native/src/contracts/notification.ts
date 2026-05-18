@@ -1,7 +1,7 @@
 import { ResourceHandleSchema, type ResourceHandle } from "@effect-desktop/core"
 import { Schema } from "effect"
 
-import { PrintableNonEmptyString } from "./strings.js"
+import { BridgeSafeNonEmptyString, PrintableNonEmptyString } from "./strings.js"
 
 const WindowResource = ResourceHandleSchema("window", "open")
 const OwnerWindowId = Schema.NonEmptyString
@@ -36,7 +36,8 @@ export class NotificationCloseInput extends Schema.Class<NotificationCloseInput>
 export class NotificationSupportedResult extends Schema.Class<NotificationSupportedResult>(
   "NotificationSupportedResult"
 )({
-  supported: Schema.Boolean
+  supported: Schema.Boolean,
+  reason: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 
 export class NotificationPermissionResult extends Schema.Class<NotificationPermissionResult>(

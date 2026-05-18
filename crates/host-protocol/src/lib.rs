@@ -40,6 +40,14 @@ pub const TRAY_SET_MENU_METHOD: &str = "Tray.setMenu";
 pub const TRAY_DESTROY_METHOD: &str = "Tray.destroy";
 pub const TRAY_IS_SUPPORTED_METHOD: &str = "Tray.isSupported";
 pub const TRAY_ACTIVATED_EVENT: &str = "Tray.Activated";
+pub const NOTIFICATION_SHOW_METHOD: &str = "Notification.show";
+pub const NOTIFICATION_CLOSE_METHOD: &str = "Notification.close";
+pub const NOTIFICATION_IS_SUPPORTED_METHOD: &str = "Notification.isSupported";
+pub const NOTIFICATION_REQUEST_PERMISSION_METHOD: &str = "Notification.requestPermission";
+pub const NOTIFICATION_GET_PERMISSION_STATUS_METHOD: &str = "Notification.getPermissionStatus";
+pub const NOTIFICATION_CLICK_EVENT: &str = "Notification.Click";
+pub const NOTIFICATION_ACTION_EVENT: &str = "Notification.Action";
+pub const NOTIFICATION_UNSUPPORTED_REASON: &str = "host-notification-unavailable";
 pub const CLIPBOARD_READ_TEXT_METHOD: &str = "Clipboard.readText";
 pub const CLIPBOARD_WRITE_TEXT_METHOD: &str = "Clipboard.writeText";
 pub const CLIPBOARD_READ_HTML_METHOD: &str = "Clipboard.readHtml";
@@ -785,6 +793,238 @@ impl TrayActivatedEventPayload {
         Self {
             tray,
             owner_window_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl NotificationResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "notification".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn owner_scope(&self) -> &str {
+        &self.owner_scope
+    }
+
+    pub fn state(&self) -> &str {
+        &self.state
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationWindowResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl NotificationWindowResourcePayload {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn owner_scope(&self) -> &str {
+        &self.owner_scope
+    }
+
+    pub fn state(&self) -> &str {
+        &self.state
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationActionPayload {
+    id: String,
+    label: String,
+}
+
+impl NotificationActionPayload {
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationShowPayload {
+    title: String,
+    body: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    actions: Vec<NotificationActionPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_window: Option<NotificationWindowResourcePayload>,
+}
+
+impl NotificationShowPayload {
+    pub fn new(title: impl Into<String>, body: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            body: body.into(),
+            actions: Vec::new(),
+            owner_window: None,
+        }
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn body(&self) -> &str {
+        &self.body
+    }
+
+    pub fn actions(&self) -> &[NotificationActionPayload] {
+        &self.actions
+    }
+
+    pub fn owner_window(&self) -> Option<&NotificationWindowResourcePayload> {
+        self.owner_window.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationClosePayload {
+    notification: NotificationResourcePayload,
+}
+
+impl NotificationClosePayload {
+    pub fn notification(&self) -> &NotificationResourcePayload {
+        &self.notification
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl NotificationSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NotificationPermissionStatePayload {
+    Granted,
+    Denied,
+    Default,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationPermissionPayload {
+    state: NotificationPermissionStatePayload,
+}
+
+impl NotificationPermissionPayload {
+    pub fn new(state: NotificationPermissionStatePayload) -> Self {
+        Self { state }
+    }
+
+    pub fn state(&self) -> NotificationPermissionStatePayload {
+        self.state
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationClickEventPayload {
+    notification: NotificationResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_window_id: Option<String>,
+}
+
+impl NotificationClickEventPayload {
+    pub fn new(notification: NotificationResourcePayload, owner_window_id: Option<String>) -> Self {
+        Self {
+            notification,
+            owner_window_id,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NotificationActionEventPayload {
+    notification: NotificationResourcePayload,
+    action_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_window_id: Option<String>,
+}
+
+impl NotificationActionEventPayload {
+    pub fn new(
+        notification: NotificationResourcePayload,
+        action_id: impl Into<String>,
+        owner_window_id: Option<String>,
+    ) -> Self {
+        Self {
+            notification,
+            action_id: action_id.into(),
+            owner_window_id,
         }
     }
 }
@@ -8626,6 +8866,9 @@ mod tests {
         LocalToolRuntimeRunPayload, LocalToolRuntimeRunResultPayload, LocalToolRuntimeRunStatus,
         LocalToolRuntimeStdioMode, LocalToolRuntimeStdioPolicyPayload,
         LocalToolRuntimeStopResultPayload, LocalToolRuntimeSupportedPayload,
+        NotificationActionEventPayload, NotificationActionPayload, NotificationClickEventPayload,
+        NotificationPermissionPayload, NotificationPermissionStatePayload,
+        NotificationResourcePayload, NotificationShowPayload, NotificationSupportedPayload,
         RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
         RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
         RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
@@ -8664,7 +8907,7 @@ mod tests {
         DISTRIBUTION_PARITY_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
         EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
         EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, JOB_UNSUPPORTED_REASON,
-        LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, PROTOCOL_VERSION,
+        LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
         TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
         TRAY_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
@@ -10471,6 +10714,87 @@ mod tests {
         });
 
         let error = serde_json::from_value::<TrayCreatePayload>(value)
+            .expect_err("excess field should be rejected");
+        assert!(error.to_string().contains("unknown field `badge`"));
+    }
+
+    #[test]
+    fn notification_payloads_serialize_canonically() {
+        let notification =
+            NotificationResourcePayload::new("notification-1", 0, "notification:notification-1");
+        assert_eq!(
+            serde_json::to_string(&notification).expect("notification handle should encode"),
+            r#"{"kind":"notification","id":"notification-1","generation":0,"ownerScope":"notification:notification-1","state":"open"}"#
+        );
+
+        let show = serde_json::json!({
+            "title": "Build finished",
+            "body": "Open results",
+            "actions": [
+                NotificationActionPayload::new("open", "Open")
+            ],
+            "ownerWindow": {
+                "kind": "window",
+                "id": "window-1",
+                "generation": 0,
+                "ownerScope": "window:window-1",
+                "state": "open"
+            }
+        });
+        let show = serde_json::from_value::<NotificationShowPayload>(show)
+            .expect("notification show should decode");
+        assert_eq!(show.title(), "Build finished");
+        assert_eq!(show.body(), "Open results");
+        assert_eq!(show.actions()[0].id(), "open");
+        assert_eq!(
+            show.owner_window()
+                .expect("owner window should decode")
+                .id(),
+            "window-1"
+        );
+
+        assert_eq!(
+            serde_json::to_string(&NotificationSupportedPayload::unsupported(
+                NOTIFICATION_UNSUPPORTED_REASON,
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-notification-unavailable"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NotificationPermissionPayload::new(
+                NotificationPermissionStatePayload::Granted,
+            ))
+            .expect("permission payload should encode"),
+            r#"{"state":"granted"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NotificationClickEventPayload::new(
+                notification.clone(),
+                Some("window-1".to_string()),
+            ))
+            .expect("click event should encode"),
+            r#"{"notification":{"kind":"notification","id":"notification-1","generation":0,"ownerScope":"notification:notification-1","state":"open"},"ownerWindowId":"window-1"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NotificationActionEventPayload::new(
+                notification,
+                "open",
+                Some("window-1".to_string()),
+            ))
+            .expect("action event should encode"),
+            r#"{"notification":{"kind":"notification","id":"notification-1","generation":0,"ownerScope":"notification:notification-1","state":"open"},"actionId":"open","ownerWindowId":"window-1"}"#
+        );
+    }
+
+    #[test]
+    fn notification_show_rejects_excess_fields() {
+        let value = serde_json::json!({
+            "title": "Build finished",
+            "body": "Open results",
+            "badge": "1"
+        });
+
+        let error = serde_json::from_value::<NotificationShowPayload>(value)
             .expect_err("excess field should be rejected");
         assert!(error.to_string().contains("unknown field `badge`"));
     }

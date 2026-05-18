@@ -7,10 +7,18 @@ import {
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import {
+  type PermissionRegistry,
+  P,
+  type DesktopRpcClient,
+  ResourceRegistry,
+  type ResourceRegistryApi,
+  ResourceRegistryLive
+} from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -30,6 +38,13 @@ import {
 import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const NotificationPlatformSupport = NativeSurface.support.partial("host-notification-unavailable", {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-notification-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-notification-unavailable" },
+    { platform: "linux", status: "supported" }
+  ]
+}) satisfies RpcSupportMetadata
 
 export type NotificationError = HostProtocolError
 
@@ -37,13 +52,15 @@ export const NotificationShow = notificationRpc(
   "show",
   NotificationShowInput,
   NotificationResource,
-  P.nativeInvoke({ primitive: "Notification", methods: ["show"] })
+  P.nativeInvoke({ primitive: "Notification", methods: ["show"] }),
+  NotificationPlatformSupport
 )
 export const NotificationClose = notificationRpc(
   "close",
   NotificationCloseInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Notification", methods: ["close"] })
+  P.nativeInvoke({ primitive: "Notification", methods: ["close"] }),
+  NotificationPlatformSupport
 )
 export const NotificationIsSupported = notificationRpc(
   "isSupported",
@@ -55,13 +72,15 @@ export const NotificationRequestPermission = notificationRpc(
   "requestPermission",
   Schema.Void,
   NotificationPermissionResult,
-  P.nativeInvoke({ primitive: "Notification", methods: ["requestPermission"] })
+  P.nativeInvoke({ primitive: "Notification", methods: ["requestPermission"] }),
+  NotificationPlatformSupport
 )
 export const NotificationGetPermissionStatus = notificationRpc(
   "getPermissionStatus",
   Schema.Void,
   NotificationPermissionResult,
-  { kind: "none" }
+  { kind: "none" },
+  NotificationPlatformSupport
 )
 
 export const NotificationRpcEvents = Object.freeze({
@@ -136,14 +155,22 @@ export interface NotificationServiceApi {
   readonly onAction: () => Stream.Stream<NotificationActionEvent, NotificationError, never>
 }
 
+export interface NotificationServiceOptions {
+  readonly resources: ResourceRegistryApi
+}
+
 export class Notification extends Context.Service<Notification, NotificationServiceApi>()(
   "@effect-desktop/native/Notification"
 ) {
-  static readonly layer = Layer.effect(Notification)(
-    Effect.gen(function* () {
-      const client = yield* NotificationClient
-      return Notification.of(makeNotificationService(client))
-    })
+  static readonly layer = Layer.provide(
+    Layer.effect(Notification)(
+      Effect.gen(function* () {
+        const client = yield* NotificationClient
+        const resources = yield* ResourceRegistry
+        return makeNotificationService(client, { resources })
+      })
+    ),
+    ResourceRegistryLive
   )
 }
 
@@ -154,8 +181,12 @@ export const makeNotificationClientLayer = (
 ): Layer.Layer<NotificationClient> => Layer.succeed(NotificationClient)(client)
 
 export const makeNotificationServiceLayer = (
-  client: NotificationClientApi
-): Layer.Layer<Notification> => Layer.provide(NotificationLive, makeNotificationClientLayer(client))
+  client: NotificationClientApi,
+  options?: NotificationServiceOptions
+): Layer.Layer<Notification> =>
+  options === undefined
+    ? Layer.provide(NotificationLive, makeNotificationClientLayer(client))
+    : Layer.succeed(Notification, makeNotificationService(client, options))
 
 export const makeNotificationBridgeClientLayer = (
   exchange: BridgeClientExchange,
@@ -211,10 +242,60 @@ export const makeHostNotificationRpcRuntime = (
 ): BridgeHandlerRuntime<PermissionRegistry> =>
   NotificationSurface.hostRuntime(handlers, runtimeOptions)
 
-const makeNotificationService = (client: NotificationClientApi): NotificationServiceApi => {
+const makeNotificationService = (
+  client: NotificationClientApi,
+  options: NotificationServiceOptions
+): NotificationServiceApi => {
+  const explicitlyClosed = new Set<string>()
   const service: NotificationServiceApi = {
-    show: (input) => client.show(input),
-    close: (notification) => client.close(notification),
+    show: (input) =>
+      Effect.uninterruptible(
+        Effect.gen(function* () {
+          const shown = yield* client.show(input)
+          const handle = yield* options.resources
+            .register({
+              kind: "notification",
+              id: shown.id,
+              ownerScope: shown.ownerScope,
+              state: "open",
+              reusableId: true,
+              dispose: Effect.gen(function* () {
+                if (explicitlyClosed.has(shown.id)) {
+                  return
+                }
+                yield* client.close(shown)
+              }).pipe(Effect.ignore)
+            })
+            .pipe(
+              Effect.tapError(() => client.close(shown).pipe(Effect.ignore)),
+              Effect.mapError((error) =>
+                makeHostProtocolInvalidArgumentError(
+                  error.field,
+                  error.message,
+                  "Notification.show"
+                )
+              )
+            )
+          return toNotificationHandle(handle)
+        })
+      ),
+    close: (notification) =>
+      Effect.gen(function* () {
+        if (notification.kind !== "notification" || notification.state !== "open") {
+          return yield* Effect.fail(
+            makeHostProtocolInvalidArgumentError(
+              "notification",
+              "must be an open notification handle",
+              "Notification.close"
+            )
+          )
+        }
+        yield* client.close(notification)
+        explicitlyClosed.add(notification.id)
+        yield* options.resources
+          .dispose(notification.id)
+          .pipe(Effect.ensuring(Effect.sync(() => explicitlyClosed.delete(notification.id))))
+      }),
     isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported)),
     requestPermission: () => client.requestPermission().pipe(Effect.map((result) => result.state)),
     getPermissionStatus: () =>
@@ -316,13 +397,19 @@ function notificationRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  capability: RpcCapabilityMetadata,
+  support: RpcSupportMetadata = NativeSurface.support.supported
+) {
   return NativeSurface.rpc("Notification", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support
   })
 }
 

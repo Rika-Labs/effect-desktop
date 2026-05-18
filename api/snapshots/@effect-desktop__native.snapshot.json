@@ -2011,7 +2011,7 @@
     {
       "name": "makeNotificationServiceLayer",
       "kind": "value",
-      "signature": "const makeNotificationServiceLayer: (client: NotificationClientApi) => Layer.Layer<Notification>"
+      "signature": "const makeNotificationServiceLayer: (client: NotificationClientApi, options?: NotificationServiceOptions) => Layer.Layer<Notification>"
     },
     {
       "name": "makePathClientLayer",
@@ -2616,7 +2616,7 @@
     {
       "name": "Notification",
       "kind": "class",
-      "signature": "export class Notification extends Context.Service<Notification, NotificationServiceApi>()( \"@effect-desktop/native/Notification\" ) { static readonly layer = Layer.effect(Notification)( Effect.gen(function* () { const client = yield* NotificationClient return Notification.of(makeNotificationService(client)) }) ) }"
+      "signature": "export class Notification extends Context.Service<Notification, NotificationServiceApi>()( \"@effect-desktop/native/Notification\" ) { static readonly layer = Layer.provide( Layer.effect(Notification)( Effect.gen(function* () { const client = yield* NotificationClient const resources = yield* ResourceRegistry return makeNotificationService(client, { resources }) }) ), ResourceRegistryLive ) }"
     },
     {
       "name": "NotificationClient",

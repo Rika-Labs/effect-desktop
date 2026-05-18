@@ -15,6 +15,7 @@ pub(crate) mod handshake;
 mod job;
 mod local_tool_runtime;
 mod menu;
+mod notification;
 mod realtime_media_session;
 mod resident_lifecycle;
 mod scoped_access_grant;
@@ -72,6 +73,10 @@ type WindowHandler = fn(
 ) -> Result<Option<serde_json::Value>, HostProtocolError>;
 type TrayCreateHandler = fn(
     &dyn WindowMethodHandler,
+    Option<serde_json::Value>,
+    Option<Sender<HostProtocolEnvelope>>,
+) -> Result<Option<serde_json::Value>, HostProtocolError>;
+type EventfulPayloadHandler = fn(
     Option<serde_json::Value>,
     Option<Sender<HostProtocolEnvelope>>,
 ) -> Result<Option<serde_json::Value>, HostProtocolError>;
@@ -158,6 +163,7 @@ enum HostMethodDispatcher {
     Empty(EmptyHandler),
     Window(WindowHandler),
     TrayCreate(TrayCreateHandler),
+    EventfulPayload(EventfulPayloadHandler),
     WindowDestroy,
     UnsupportedGlobalShortcut,
     EgressRecord,
@@ -280,6 +286,26 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::TRAY_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(tray::is_supported),
+    ),
+    route(
+        host_protocol::NOTIFICATION_SHOW_METHOD,
+        HostMethodDispatcher::EventfulPayload(notification::show_with_event_sender),
+    ),
+    route(
+        host_protocol::NOTIFICATION_CLOSE_METHOD,
+        HostMethodDispatcher::Payload(notification::close),
+    ),
+    route(
+        host_protocol::NOTIFICATION_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Empty(notification::is_supported),
+    ),
+    route(
+        host_protocol::NOTIFICATION_REQUEST_PERMISSION_METHOD,
+        HostMethodDispatcher::Empty(notification::request_permission),
+    ),
+    route(
+        host_protocol::NOTIFICATION_GET_PERMISSION_STATUS_METHOD,
+        HostMethodDispatcher::Empty(notification::get_permission_status),
     ),
     route(
         host_protocol::CLIPBOARD_READ_TEXT_METHOD,
@@ -737,6 +763,19 @@ impl HostMethodDispatcher {
                     handler(&*router.window, request.payload, event_sender),
                 )
             }
+            Self::EventfulPayload(handler) => {
+                let event_sender = router
+                    .runtime_event_sender
+                    .lock()
+                    .ok()
+                    .and_then(|sender| sender.clone());
+                dispatch_result_frame(
+                    request.id,
+                    request.timestamp,
+                    request.trace_id,
+                    handler(request.payload, event_sender),
+                )
+            }
             Self::WindowDestroy => {
                 let destroy_payload = request.payload.clone();
                 let result = window::destroy(&*router.window, request.payload);
@@ -972,6 +1011,7 @@ impl HostMethodRouter {
         self.window
             .clear_runtime_trays()
             .map_err(|error| format!("{error:?}"))?;
+        notification::clear_runtime_notifications().map_err(|error| format!("{error:?}"))?;
         realtime_media_session::close_all_sessions("host.runtime.disconnect")
             .map_err(|error| format!("{error:?}"))?;
         let runtime_ids = self.drain_local_tool_runtime_ids()?;
@@ -2977,6 +3017,63 @@ mod tests {
             parsed["artifacts"]["logs"]["unavailable"]["reason"],
             "collector-unavailable"
         );
+    }
+
+    #[test]
+    fn notification_is_supported_routes_to_host_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-notification-supported",
+                    host_protocol::NOTIFICATION_IS_SUPPORTED_METHOD,
+                ),
+                1710000000188,
+            )
+            .expect("notification support should return response");
+
+        #[cfg(target_os = "linux")]
+        let expected_payload = serde_json::json!({ "supported": true });
+        #[cfg(not(target_os = "linux"))]
+        let expected_payload = serde_json::json!({
+            "supported": false,
+            "reason": host_protocol::NOTIFICATION_UNSUPPORTED_REASON
+        });
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-notification-supported".to_string(),
+                timestamp: 1710000000188,
+                trace_id: "trace-request-notification-supported".to_string(),
+                payload: Some(expected_payload),
+                error: None,
+            }
+        );
+    }
+
+    #[test]
+    fn notification_show_rejects_invalid_payload_before_native_work() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-notification-show-invalid",
+                    host_protocol::NOTIFICATION_SHOW_METHOD,
+                    serde_json::json!({
+                        "title": "",
+                        "body": "Open results"
+                    }),
+                ),
+                1710000000189,
+            )
+            .expect("notification show should return response");
+
+        assert!(matches!(
+            response,
+            HostProtocolEnvelope::Response {
+                error: Some(HostProtocolError::InvalidArgument { .. }),
+                ..
+            }
+        ));
     }
 
     #[test]

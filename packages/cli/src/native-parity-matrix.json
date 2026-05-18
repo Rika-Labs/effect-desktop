@@ -1556,9 +1556,26 @@
       "method": "close",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "host-notification-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Notification.getPermissionStatus",
@@ -1566,9 +1583,26 @@
       "method": "getPermissionStatus",
       "capability": "none",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "host-notification-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Notification.isSupported",
@@ -1578,7 +1612,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Notification.requestPermission",
@@ -1586,9 +1620,26 @@
       "method": "requestPermission",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "host-notification-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Notification.show",
@@ -1596,9 +1647,26 @@
       "method": "show",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "partial",
+        "reason": "host-notification-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Path.appData",
@@ -2847,10 +2915,10 @@
   ],
   "summary": {
     "total": 187,
-    "routed": 119,
-    "missing": 68,
-    "supported": 132,
-    "partial": 17,
+    "routed": 124,
+    "missing": 63,
+    "supported": 128,
+    "partial": 21,
     "unsupported": 38
   }
 }

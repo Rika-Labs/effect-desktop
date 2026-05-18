@@ -260,7 +260,10 @@ import { makeDialogBridgeClientLayer, makeHostDialogRpcRuntime } from "./dialog.
 import { makeDockBridgeClientLayer } from "./dock.js"
 import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
 import { makeMenuBridgeClientLayer } from "./menu.js"
-import { makeNotificationBridgeClientLayer } from "./notification.js"
+import {
+  makeHostNotificationRpcRuntime,
+  makeNotificationBridgeClientLayer
+} from "./notification.js"
 import { makePathBridgeClientLayer } from "./path.js"
 import { makePowerMonitorBridgeClientLayer } from "./power-monitor.js"
 import { makeProtocolBridgeClientLayer } from "./protocol.js"
@@ -3549,6 +3552,104 @@ test("Notification action stream rejects malformed actionId payloads as InvalidO
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
     expect(label).toBeDefined()
   }
+})
+
+test("native host RPC runtime denies protected Notification calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostNotificationRpcRuntime(
+    {
+      "Notification.show": () =>
+        Effect.sync(() => {
+          calls.push("show")
+          return notificationHandle
+        }),
+      "Notification.close": () => Effect.void,
+      "Notification.isSupported": () =>
+        Effect.succeed(new NotificationSupportedResult({ supported: true })),
+      "Notification.requestPermission": () =>
+        Effect.succeed(new NotificationPermissionResult({ state: "granted" })),
+      "Notification.getPermissionStatus": () =>
+        Effect.succeed(new NotificationPermissionResult({ state: "default" }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "notification-denied",
+          method: "Notification.show",
+          payload: { title: "Build finished", body: "Open results" },
+          timestamp: 1710000000000,
+          traceId: "trace-notification-denied"
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("Notification service cleans up scoped resources through ResourceRegistry", async () => {
+  const calls: string[] = []
+  const resources = await Effect.runPromise(makeResourceRegistry())
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const notification = yield* Notification
+      const shown = yield* notification.show({ title: "Build finished", body: "Open results" })
+      yield* resources.closeScope(shown.ownerScope)
+    }).pipe(Effect.provide(makeNotificationServiceLayer(notificationClient(calls), { resources })))
+  )
+
+  const snapshot = await Effect.runPromise(resources.list())
+  expect(snapshot.entries).toHaveLength(0)
+  expect(calls).toContain("close:notification-1")
+})
+
+test("Notification service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-notification-unavailable",
+    message: "unsupported Notification.show",
+    operation: "Notification.show",
+    recoverable: false
+  })
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const unsupportedClient: NotificationClientApi = {
+    ...notificationClient([]),
+    show: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: NotificationClientApi = {
+    ...notificationClient([]),
+    show: () => Effect.fail(makeHostProtocolHostUnavailableError("Notification.show"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const notification = yield* Notification
+      return yield* Effect.exit(
+        notification.show({ title: "Build finished", body: "Open results" })
+      )
+    }).pipe(Effect.provide(makeNotificationServiceLayer(unsupportedClient, { resources })))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const notification = yield* Notification
+      return yield* Effect.exit(
+        notification.show({ title: "Build finished", body: "Open results" })
+      )
+    }).pipe(Effect.provide(makeNotificationServiceLayer(hostFailureClient, { resources })))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("PathRpcs declares the Phase 7 Path method surface", () => {
