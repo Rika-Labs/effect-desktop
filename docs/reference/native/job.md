@@ -12,6 +12,8 @@ effect_version: 4
 
 This surface does not execute arbitrary work. Application or framework code owns the actual work and binds it to a stable job id. The native layer owns the durable state record, generation-stamped handle, progress, interruption state, and event stream.
 
+`Job` is not a download transport. It can record lifecycle state for work a caller already owns, but it does not fetch bytes, choose destinations, pause/resume network transfers, or provide download-specific terminal events.
+
 ## Methods
 
 | Method           | Payload                                  | Success                  |

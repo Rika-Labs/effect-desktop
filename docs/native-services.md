@@ -103,7 +103,7 @@ Native service authors should use the internal native surface authoring path, no
 | `Shell`                     | Open path, external URL                 | [native/shell](reference/native/shell.md)                                             |
 | `SystemAppearance`          | Theme, accent                           | [native/system-appearance](reference/native/system-appearance.md)                     |
 | `Tray`                      | Tray icon and menu                      | [native/tray](reference/native/tray.md)                                               |
-| `Updater`                   | Check, download, install                | [native/updater](reference/native/updater.md)                                         |
+| `Updater`                   | Update-specific lifecycle               | [native/updater](reference/native/updater.md)                                         |
 | `WebView`                   | Embedded WebView, no network-auth hooks | [native/webview](reference/native/webview.md)                                         |
 | `Window`                    | Window lifecycle                        | [native/window](reference/native/window.md)                                           |
 

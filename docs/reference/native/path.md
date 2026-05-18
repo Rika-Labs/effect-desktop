@@ -10,6 +10,8 @@ effect_version: 4
 
 Platform-specific base-directory lookups. Each method returns a canonical absolute path from the native host; renderer code should not duplicate operating-system directory rules.
 
+`Path.downloads` only resolves the user's downloads directory. It does not start downloads, choose per-download destinations, own sessions, emit progress, or cancel transfers.
+
 ## Methods
 
 | Method      | Success            |
