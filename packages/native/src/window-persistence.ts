@@ -490,6 +490,7 @@ const hostErrorReason = (error: HostProtocolError): WindowPersistenceErrorReason
     case "UpdateDowngradeRefused":
     case "UpdateDownloadTruncated":
     case "UpdateStaleNotarization":
+    case "UpdateSignatureInvalid":
       return "host-failed"
   }
 }

@@ -153,6 +153,10 @@ pub const HOST_PROTOCOL_ERROR_SPECS: &[HostProtocolErrorSpec] = &[
         recoverable: false,
     },
     HostProtocolErrorSpec {
+        tag: "UpdateSignatureInvalid",
+        recoverable: false,
+    },
+    HostProtocolErrorSpec {
         tag: "SettingsMigrationFailed",
         recoverable: false,
     },
@@ -740,6 +744,23 @@ pub enum HostProtocolError {
         #[serde(skip_serializing_if = "Option::is_none")]
         docs_url: Option<String>,
     },
+    UpdateSignatureInvalid {
+        artifact: String,
+        key_version: u32,
+        message: String,
+        operation: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        platform: Option<HostProtocolPlatform>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cause: Option<Value>,
+        recoverable: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        remediation: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        docs_url: Option<String>,
+    },
     SettingsMigrationFailed {
         schema_version: u32,
         cause: String,
@@ -857,6 +878,7 @@ impl HostProtocolError {
             Self::UpdateDowngradeRefused { .. } => "UpdateDowngradeRefused",
             Self::UpdateDownloadTruncated { .. } => "UpdateDownloadTruncated",
             Self::UpdateStaleNotarization { .. } => "UpdateStaleNotarization",
+            Self::UpdateSignatureInvalid { .. } => "UpdateSignatureInvalid",
             Self::SettingsMigrationFailed { .. } => "SettingsMigrationFailed",
             Self::SettingsRecoveredFromBackup { .. } => "SettingsRecoveredFromBackup",
             Self::EventLogSegmentCorrupt { .. } => "EventLogSegmentCorrupt",
@@ -901,6 +923,7 @@ impl HostProtocolError {
             Self::UpdateDowngradeRefused { recoverable, .. } => *recoverable,
             Self::UpdateDownloadTruncated { recoverable, .. } => *recoverable,
             Self::UpdateStaleNotarization { recoverable, .. } => *recoverable,
+            Self::UpdateSignatureInvalid { recoverable, .. } => *recoverable,
             Self::SettingsMigrationFailed { recoverable, .. } => *recoverable,
             Self::SettingsRecoveredFromBackup { recoverable, .. } => *recoverable,
             Self::EventLogSegmentCorrupt { recoverable, .. } => *recoverable,

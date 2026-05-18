@@ -134,6 +134,7 @@ const nativeBoundaryReason = (error: HostProtocolError): NativeBoundaryErrorReas
     case "UpdateDowngradeRefused":
     case "UpdateDownloadTruncated":
     case "UpdateStaleNotarization":
+    case "UpdateSignatureInvalid":
     case "SettingsMigrationFailed":
     case "SettingsRecoveredFromBackup":
     case "EventLogSegmentCorrupt":

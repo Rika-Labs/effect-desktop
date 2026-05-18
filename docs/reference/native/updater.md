@@ -31,6 +31,8 @@ Auto-update service contract. The TypeScript surface is Schema-typed and test-su
 
 `UpdaterError` is the host protocol error union. Until the Rust adapter exists, native bridge calls fail as typed `Unsupported` host operations rather than claiming update security.
 
+The host protocol includes `UpdateSignatureInvalid` for the future verifier's terminal bad-signature path. The current adapter does not emit it yet because manifest verification is not wired through the runtime host.
+
 ## Production checks
 
 The current workflow helper does not verify update artifact signatures. It asks the `Updater` service to confirm update availability before staging bytes, which is not a cryptographic proof. Do not use it as a production updater until #1331 wires signed manifest verification, artifact staging, install, and restart through the Rust host.

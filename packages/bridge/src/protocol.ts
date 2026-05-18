@@ -92,6 +92,7 @@ export const HOST_PROTOCOL_ERROR_SPECS = [
   { tag: "UpdateDowngradeRefused", recoverable: false },
   { tag: "UpdateDownloadTruncated", recoverable: true },
   { tag: "UpdateStaleNotarization", recoverable: false },
+  { tag: "UpdateSignatureInvalid", recoverable: false },
   { tag: "SettingsMigrationFailed", recoverable: false },
   { tag: "SettingsRecoveredFromBackup", recoverable: true },
   { tag: "EventLogSegmentCorrupt", recoverable: false },
@@ -570,6 +571,19 @@ export class HostProtocolUpdateStaleNotarizationError extends Schema.Class<HostP
   }
 }
 
+export class HostProtocolUpdateSignatureInvalidError extends Schema.Class<HostProtocolUpdateSignatureInvalidError>(
+  "HostProtocolUpdateSignatureInvalidError"
+)({
+  tag: Schema.Literal("UpdateSignatureInvalid"),
+  artifact: Schema.String,
+  keyVersion: UInt32,
+  ...HostProtocolErrorCommonFields
+}) {
+  get _tag(): "UpdateSignatureInvalid" {
+    return this.tag
+  }
+}
+
 export class HostProtocolSettingsMigrationFailedError extends Schema.Class<HostProtocolSettingsMigrationFailedError>(
   "HostProtocolSettingsMigrationFailedError"
 )({
@@ -665,6 +679,7 @@ export const HostProtocolError = Schema.Union([
   HostProtocolUpdateDowngradeRefusedError,
   HostProtocolUpdateDownloadTruncatedError,
   HostProtocolUpdateStaleNotarizationError,
+  HostProtocolUpdateSignatureInvalidError,
   HostProtocolSettingsMigrationFailedError,
   HostProtocolSettingsRecoveredFromBackupError,
   HostProtocolEventLogSegmentCorruptError,
