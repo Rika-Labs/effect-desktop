@@ -219,7 +219,8 @@ const subscribeAppEvent = <A>(
   exchange: BridgeClientExchange | undefined,
   method: "App.onSecondInstance" | "App.onOpenFile" | "App.onOpenUrl" | "App.onBeforeQuit",
   schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, AppError, never> => subscribeNativeEvent(exchange, method, schema)
+): Stream.Stream<A, AppError, never> =>
+  subscribeNativeEvent(exchange, method, schema, StrictParseOptions)
 
 const decodeAppQuitInput = (
   input: unknown

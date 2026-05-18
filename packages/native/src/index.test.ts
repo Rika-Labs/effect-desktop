@@ -1094,7 +1094,7 @@ test("App bridge client decodes event streams without host requests", async () =
               timestamp: 1710000000400,
               traceId: "event-trace",
               method,
-              payload: { path: "README.md", ignoredByRenderer: true }
+              payload: { path: "README.md" }
             })
           )
         : Stream.empty
@@ -1112,6 +1112,69 @@ test("App bridge client decodes event streams without host requests", async () =
 
   expect(Array.from(eventResult)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
   expect(requests).toEqual([])
+})
+
+test("App bridge client rejects lifecycle events with excess fields as InvalidOutput", async () => {
+  const cases = [
+    {
+      method: "App.onOpenFile",
+      payload: { path: "README.md", ignoredByRenderer: true }
+    },
+    {
+      method: "App.onOpenUrl",
+      payload: { url: "effect-desktop://open", ignoredByRenderer: true }
+    },
+    {
+      method: "App.onBeforeQuit",
+      payload: { traceId: "trace-before-quit", ignoredByRenderer: true }
+    },
+    {
+      method: "App.onSecondInstance",
+      payload: {
+        activationReason: "launch",
+        argv: ["app"],
+        cwd: "/repo",
+        traceId: "trace-second",
+        ignoredByRenderer: true
+      }
+    }
+  ] as const
+
+  for (const { method, payload } of cases) {
+    const exchange: BridgeClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (eventMethod) =>
+        eventMethod === method
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000401,
+                traceId: "event-trace",
+                method: eventMethod,
+                payload
+              })
+            )
+          : Stream.empty
+    }
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const app = yield* App
+        if (method === "App.onOpenFile") {
+          return yield* Effect.exit(app.onOpenFile().pipe(Stream.take(1), Stream.runCollect))
+        }
+        if (method === "App.onOpenUrl") {
+          return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
+        }
+        if (method === "App.onBeforeQuit") {
+          return yield* Effect.exit(app.onBeforeQuit().pipe(Stream.take(1), Stream.runCollect))
+        }
+        return yield* Effect.exit(app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
 })
 
 test("App bridge client rejects event envelopes for the wrong method", async () => {
