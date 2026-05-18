@@ -92,6 +92,31 @@ export {
   type NativeSurfaceSelection
 } from "./native.js"
 export {
+  makeNativeHostMethodInventoryLayer,
+  makeNativeParityMatrix,
+  makeNativeParityMatrixLayer,
+  makeNativeParityMatrixResult,
+  NativeHostMethodInventory,
+  NativeHostMethodInventorySnapshot,
+  type NativeHostMethodInventoryApi,
+  type NativeHostMethodInventorySnapshotType,
+  NativeParityHostStatus,
+  NativeParityMatrix,
+  type NativeParityMatrixApi,
+  NativeParityMatrixError,
+  NativeParityMatrixErrorReason,
+  NativeParityMatrixResult,
+  NativeParityMatrixRow,
+  NativeParityMatrixSummary,
+  NativeParityPlatform,
+  NativeParityPlatformSupport,
+  NativeParitySupport,
+  NativeParitySupportStatus,
+  type NativeParityMatrixResultType,
+  type NativeParityMatrixRowType,
+  type NativeParityMatrixSummaryType
+} from "./parity-matrix.js"
+export {
   Clipboard,
   ClipboardClient,
   ClipboardHandlersLive,
