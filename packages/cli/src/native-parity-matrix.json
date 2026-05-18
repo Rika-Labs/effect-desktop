@@ -728,7 +728,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "CrashReporter.recordBreadcrumb",
@@ -756,7 +756,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "CrashReporter.start",
@@ -784,7 +784,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "DiagnosticsBundle.collect",
@@ -3759,8 +3759,8 @@
   ],
   "summary": {
     "total": 187,
-    "routed": 148,
-    "missing": 39,
+    "routed": 151,
+    "missing": 36,
     "supported": 81,
     "partial": 22,
     "unsupported": 84

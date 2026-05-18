@@ -33,8 +33,8 @@ storage, permission enforcement, and report inspection are implemented.
 ## Errors
 
 `CrashReporterError` is the host protocol error union. Until the host adapter is
-implemented, bridge calls reach an unsupported or missing-method host path rather
-than native crash capture.
+implemented, bridge calls decode through Rust `CrashReporter.*` routes and then
+fail closed as typed `Unsupported` rather than native crash capture.
 
 ## Redaction
 

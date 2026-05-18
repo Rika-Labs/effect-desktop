@@ -86,6 +86,10 @@ pub const UPDATER_GET_STATUS_METHOD: &str = "Updater.getStatus";
 pub const UPDATER_READY_FOR_RESTART_METHOD: &str = "Updater.readyForRestart";
 pub const UPDATER_PREPARING_RESTART_EVENT: &str = "Updater.PreparingRestart";
 pub const UPDATER_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const CRASH_REPORTER_START_METHOD: &str = "CrashReporter.start";
+pub const CRASH_REPORTER_RECORD_BREADCRUMB_METHOD: &str = "CrashReporter.recordBreadcrumb";
+pub const CRASH_REPORTER_FLUSH_METHOD: &str = "CrashReporter.flush";
+pub const CRASH_REPORTER_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const REALTIME_MEDIA_SESSION_OPEN_METHOD: &str = "RealtimeMediaSession.open";
 pub const REALTIME_MEDIA_SESSION_CLOSE_METHOD: &str = "RealtimeMediaSession.close";
 pub const REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD: &str = "RealtimeMediaSession.selectDevice";
@@ -1658,6 +1662,130 @@ impl UpdaterPreparingRestartPayload {
 
     pub fn deadline_ms(&self) -> u64 {
         self.deadline_ms
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CrashReporterStartPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enabled: Option<bool>,
+}
+
+impl CrashReporterStartPayload {
+    pub fn new(enabled: Option<bool>) -> Self {
+        Self { enabled }
+    }
+
+    pub fn enabled(&self) -> Option<bool> {
+        self.enabled
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CrashReporterBreadcrumbPayload {
+    category: String,
+    message: String,
+    #[serde(default, skip_serializing_if = "OptionalJsonValue::is_missing")]
+    details: OptionalJsonValue,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timestamp: Option<f64>,
+}
+
+impl CrashReporterBreadcrumbPayload {
+    pub fn new(
+        category: impl Into<String>,
+        message: impl Into<String>,
+        details: Option<Value>,
+        timestamp: Option<f64>,
+    ) -> Self {
+        Self {
+            category: category.into(),
+            message: message.into(),
+            details: OptionalJsonValue::from_option(details),
+            timestamp,
+        }
+    }
+
+    pub fn category(&self) -> &str {
+        &self.category
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn details(&self) -> Option<&Value> {
+        self.details.as_value()
+    }
+
+    pub fn timestamp(&self) -> Option<f64> {
+        self.timestamp
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+enum OptionalJsonValue {
+    #[default]
+    Missing,
+    Present(Value),
+}
+
+impl OptionalJsonValue {
+    fn from_option(value: Option<Value>) -> Self {
+        match value {
+            Some(value) => Self::Present(value),
+            None => Self::Missing,
+        }
+    }
+
+    fn is_missing(&self) -> bool {
+        matches!(self, Self::Missing)
+    }
+
+    fn as_value(&self) -> Option<&Value> {
+        match self {
+            Self::Missing => None,
+            Self::Present(value) => Some(value),
+        }
+    }
+}
+
+impl Serialize for OptionalJsonValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Missing => serializer.serialize_unit(),
+            Self::Present(value) => value.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for OptionalJsonValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Value::deserialize(deserializer).map(Self::Present)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CrashReporterFlushPayload {
+    flushed: u64,
+}
+
+impl CrashReporterFlushPayload {
+    pub fn new(flushed: u64) -> Self {
+        Self { flushed }
+    }
+
+    pub fn flushed(&self) -> u64 {
+        self.flushed
     }
 }
 
@@ -9329,6 +9457,7 @@ mod tests {
         ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload, CanonicalPathPayload,
         ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
         ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
+        CrashReporterBreadcrumbPayload, CrashReporterFlushPayload, CrashReporterStartPayload,
         DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
         DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
         DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
@@ -9426,7 +9555,8 @@ mod tests {
         WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
-        CLIPBOARD_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
+        CLIPBOARD_UNSUPPORTED_REASON, CRASH_REPORTER_UNSUPPORTED_REASON,
+        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, DISPLAY_CAPTURE_UNSUPPORTED_REASON,
         DISTRIBUTION_PARITY_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
         EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
@@ -9892,6 +10022,77 @@ mod tests {
         )
         .expect_err("excess updater check field should be rejected");
         assert!(error.to_string().contains("unknown field `signature`"));
+    }
+
+    #[test]
+    fn crash_reporter_payloads_encode_current_contract() {
+        let start = CrashReporterStartPayload::new(Some(true));
+        assert_eq!(start.enabled(), Some(true));
+        assert_eq!(
+            serde_json::to_string(&start).expect("crash reporter start should encode"),
+            r#"{"enabled":true}"#
+        );
+
+        let breadcrumb = CrashReporterBreadcrumbPayload::new(
+            "startup",
+            "renderer ready",
+            Some(serde_json::json!({ "windowId": "window-1" })),
+            Some(1710000000000.0),
+        );
+        assert_eq!(breadcrumb.category(), "startup");
+        assert_eq!(breadcrumb.message(), "renderer ready");
+        assert_eq!(
+            breadcrumb.details(),
+            Some(&serde_json::json!({ "windowId": "window-1" }))
+        );
+        assert_eq!(breadcrumb.timestamp(), Some(1710000000000.0));
+        assert_eq!(
+            serde_json::to_string(&breadcrumb).expect("crash reporter breadcrumb should encode"),
+            r#"{"category":"startup","message":"renderer ready","details":{"windowId":"window-1"},"timestamp":1710000000000.0}"#
+        );
+
+        let null_details = CrashReporterBreadcrumbPayload::new(
+            "startup",
+            "null detail",
+            Some(serde_json::Value::Null),
+            None,
+        );
+        assert_eq!(null_details.details(), Some(&serde_json::Value::Null));
+        assert_eq!(
+            serde_json::to_string(&null_details)
+                .expect("crash reporter null details should encode"),
+            r#"{"category":"startup","message":"null detail","details":null}"#
+        );
+
+        let decoded_null_details = serde_json::from_str::<CrashReporterBreadcrumbPayload>(
+            r#"{"category":"startup","message":"null detail","details":null}"#,
+        )
+        .expect("null details should decode");
+        assert_eq!(
+            decoded_null_details.details(),
+            Some(&serde_json::Value::Null)
+        );
+
+        let flush = CrashReporterFlushPayload::new(3);
+        assert_eq!(flush.flushed(), 3);
+        assert_eq!(
+            serde_json::to_string(&flush).expect("crash reporter flush should encode"),
+            r#"{"flushed":3}"#
+        );
+
+        assert_eq!(
+            CRASH_REPORTER_UNSUPPORTED_REASON,
+            "host-adapter-unimplemented"
+        );
+    }
+
+    #[test]
+    fn crash_reporter_payloads_reject_excess_fields() {
+        let error = serde_json::from_str::<CrashReporterStartPayload>(
+            r#"{"enabled":true,"submitUrl":"https://example.invalid"}"#,
+        )
+        .expect_err("excess crash reporter start field should be rejected");
+        assert!(error.to_string().contains("unknown field `submitUrl`"));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 mod activation_registry;
 mod attachment_intake;
 mod clipboard;
+mod crash_reporter;
 mod diagnostics_bundle;
 mod dialog;
 mod display_capture;
@@ -442,6 +443,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::UPDATER_READY_FOR_RESTART_METHOD,
         HostMethodDispatcher::Payload(updater::ready_for_restart),
+    ),
+    route(
+        host_protocol::CRASH_REPORTER_START_METHOD,
+        HostMethodDispatcher::Payload(crash_reporter::start),
+    ),
+    route(
+        host_protocol::CRASH_REPORTER_RECORD_BREADCRUMB_METHOD,
+        HostMethodDispatcher::Payload(crash_reporter::record_breadcrumb),
+    ),
+    route(
+        host_protocol::CRASH_REPORTER_FLUSH_METHOD,
+        HostMethodDispatcher::Payload(crash_reporter::flush),
     ),
     route(
         host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
@@ -3239,6 +3252,63 @@ mod tests {
                     "version",
                     "must not include control characters",
                     host_protocol::UPDATER_INSTALL_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn crash_reporter_start_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-crash-reporter-start",
+                    host_protocol::CRASH_REPORTER_START_METHOD,
+                    serde_json::json!({ "enabled": true }),
+                ),
+                1710000000112,
+            )
+            .expect("crash reporter start should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-crash-reporter-start".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-crash-reporter-start".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::CRASH_REPORTER_UNSUPPORTED_REASON,
+                    host_protocol::CRASH_REPORTER_START_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn crash_reporter_invalid_payload_rejects_before_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-crash-reporter-invalid",
+                    host_protocol::CRASH_REPORTER_RECORD_BREADCRUMB_METHOD,
+                    serde_json::json!({ "category": "bad\ncategory", "message": "bad" }),
+                ),
+                1710000000112,
+            )
+            .expect("crash reporter breadcrumb should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-crash-reporter-invalid".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-crash-reporter-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "category",
+                    "must not include ASCII control characters",
+                    host_protocol::CRASH_REPORTER_RECORD_BREADCRUMB_METHOD,
                 )),
             }
         );
