@@ -36,9 +36,11 @@ import {
   WindowBoundsInput,
   type WindowBoundsType,
   type WindowCreateOptions,
+  WindowFullscreenInput,
   type WindowHandle,
   WindowHandleInput,
-  WindowResource
+  WindowResource,
+  WindowState
 } from "./contracts/window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type WindowError = HostProtocolError
@@ -91,6 +93,36 @@ export const WindowCenter = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["center"] })
 )
+export const WindowMinimize = windowRpc(
+  "minimize",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["minimize"] })
+)
+export const WindowMaximize = windowRpc(
+  "maximize",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["maximize"] })
+)
+export const WindowRestore = windowRpc(
+  "restore",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["restore"] })
+)
+export const WindowSetFullscreen = windowRpc(
+  "setFullscreen",
+  WindowFullscreenInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
+)
+export const WindowGetState = windowRpc(
+  "getState",
+  WindowHandleInput,
+  WindowState,
+  P.nativeInvoke({ primitive: "Window", methods: ["getState"] })
+)
 
 const makeWindowRpcGroup = () =>
   RpcGroup.make(
@@ -101,7 +133,12 @@ const makeWindowRpcGroup = () =>
     WindowFocus,
     WindowGetBounds,
     WindowSetBounds,
-    WindowCenter
+    WindowCenter,
+    WindowMinimize,
+    WindowMaximize,
+    WindowRestore,
+    WindowSetFullscreen,
+    WindowGetState
   )
 
 const WindowRpcGroup = makeWindowRpcGroup()
@@ -126,7 +163,12 @@ export const WindowMethodNames = Object.freeze([
   "focus",
   "getBounds",
   "setBounds",
-  "center"
+  "center",
+  "minimize",
+  "maximize",
+  "restore",
+  "setFullscreen",
+  "getState"
 ] as const)
 
 export interface WindowClientApi {
@@ -141,6 +183,14 @@ export interface WindowClientApi {
     bounds: WindowBoundsType
   ) => Effect.Effect<void, WindowError, never>
   readonly center: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly minimize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly maximize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly restore: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly setFullscreen: (
+    window: WindowHandle,
+    fullscreen: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly getState: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
 }
 
 export class WindowClient extends Context.Service<WindowClient, WindowClientApi>()(
@@ -217,6 +267,31 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
     Effect.gen(function* () {
       const window = yield* Window
       yield* window.center(input.window)
+    }),
+  "Window.minimize": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.minimize(input.window)
+    }),
+  "Window.maximize": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.maximize(input.window)
+    }),
+  "Window.restore": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.restore(input.window)
+    }),
+  "Window.setFullscreen": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setFullscreen(input.window, input.fullscreen)
+    }),
+  "Window.getState": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.getState(input.window)
     })
 })
 
@@ -262,7 +337,12 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     focus: (window) => client.focus(window),
     getBounds: (window) => client.getBounds(window),
     setBounds: (window, bounds) => client.setBounds(window, bounds),
-    center: (window) => client.center(window)
+    center: (window) => client.center(window),
+    minimize: (window) => client.minimize(window),
+    maximize: (window) => client.maximize(window),
+    restore: (window) => client.restore(window),
+    setFullscreen: (window, fullscreen) => client.setFullscreen(window, fullscreen),
+    getState: (window) => client.getState(window)
   }
 
   return Object.freeze(service)
@@ -317,13 +397,38 @@ function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
         const decoded = yield* decodeWindowBoundsInput(window, bounds, "Window.setBounds")
         yield* runWindowRpc(client["Window.setBounds"](decoded), "Window.setBounds")
       }),
-    center: (window) => runWindowHandleRpc(client, "Window.center", window)
+    center: (window) => runWindowHandleRpc(client, "Window.center", window),
+    minimize: (window) => runWindowHandleRpc(client, "Window.minimize", window),
+    maximize: (window) => runWindowHandleRpc(client, "Window.maximize", window),
+    restore: (window) => runWindowHandleRpc(client, "Window.restore", window),
+    setFullscreen: (window, fullscreen) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowFullscreenInput(
+          window,
+          fullscreen,
+          "Window.setFullscreen"
+        )
+        yield* runWindowRpc(client["Window.setFullscreen"](decoded), "Window.setFullscreen")
+      }),
+    getState: (window) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowHandleInput(window, "Window.getState")
+        const state = yield* runWindowRpc(client["Window.getState"](decoded), "Window.getState")
+        return yield* decodeWindowState(state, "Window.getState")
+      })
   } satisfies WindowClientApi)
 }
 
 const runWindowHandleRpc = (
   client: WindowRpcClient,
-  operation: "Window.show" | "Window.hide" | "Window.focus" | "Window.center",
+  operation:
+    | "Window.show"
+    | "Window.hide"
+    | "Window.focus"
+    | "Window.center"
+    | "Window.minimize"
+    | "Window.maximize"
+    | "Window.restore",
   window: WindowHandle
 ): Effect.Effect<void, WindowError, never> =>
   Effect.gen(function* () {
@@ -352,11 +457,35 @@ const decodeWindowBoundsInput = (
     )
   )
 
+const decodeWindowFullscreenInput = (
+  window: WindowHandle,
+  fullscreen: boolean,
+  operation: string
+): Effect.Effect<WindowFullscreenInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowFullscreenInput)(
+    { window, fullscreen },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
 const decodeWindowBounds = (
   input: unknown,
   operation: string
 ): Effect.Effect<WindowBounds, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowBounds)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
+  )
+
+const decodeWindowState = (
+  input: unknown,
+  operation: string
+): Effect.Effect<WindowState, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowState)(input, StrictParseOptions).pipe(
     Effect.mapError((error) =>
       makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
     )
@@ -500,6 +629,36 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.center")
         yield* host.center(window.id)
+      }),
+    "Window.minimize": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.minimize")
+        yield* host.minimize(window.id)
+      }),
+    "Window.maximize": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.maximize")
+        yield* host.maximize(window.id)
+      }),
+    "Window.restore": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.restore")
+        yield* host.restore(window.id)
+      }),
+    "Window.setFullscreen": (input: WindowFullscreenInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setFullscreen"
+        )
+        yield* host.setFullscreen(window.id, input.fullscreen)
+      }),
+    "Window.getState": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.getState")
+        const state = yield* host.getState(window.id)
+        return yield* decodeWindowState(state, "Window.getState")
       })
   }
 }

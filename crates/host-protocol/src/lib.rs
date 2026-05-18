@@ -51,6 +51,11 @@ pub const WINDOW_FOCUS_METHOD: &str = "Window.focus";
 pub const WINDOW_GET_BOUNDS_METHOD: &str = "Window.getBounds";
 pub const WINDOW_SET_BOUNDS_METHOD: &str = "Window.setBounds";
 pub const WINDOW_CENTER_METHOD: &str = "Window.center";
+pub const WINDOW_MINIMIZE_METHOD: &str = "Window.minimize";
+pub const WINDOW_MAXIMIZE_METHOD: &str = "Window.maximize";
+pub const WINDOW_RESTORE_METHOD: &str = "Window.restore";
+pub const WINDOW_SET_FULLSCREEN_METHOD: &str = "Window.setFullscreen";
+pub const WINDOW_GET_STATE_METHOD: &str = "Window.getState";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
 pub const DOCK_SET_BADGE_TEXT_METHOD: &str = "Dock.setBadgeText";
@@ -2757,6 +2762,60 @@ impl WindowSetBoundsPayload {
 
     pub fn bounds(&self) -> &WindowBoundsPayload {
         &self.bounds
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetFullscreenPayload {
+    window_id: String,
+    fullscreen: bool,
+}
+
+impl WindowSetFullscreenPayload {
+    pub fn new(window_id: impl Into<String>, fullscreen: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            fullscreen,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn fullscreen(&self) -> bool {
+        self.fullscreen
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowStatePayload {
+    minimized: bool,
+    maximized: bool,
+    fullscreen: bool,
+}
+
+impl WindowStatePayload {
+    pub fn new(minimized: bool, maximized: bool, fullscreen: bool) -> Self {
+        Self {
+            minimized,
+            maximized,
+            fullscreen,
+        }
+    }
+
+    pub fn minimized(&self) -> bool {
+        self.minimized
+    }
+
+    pub fn maximized(&self) -> bool {
+        self.maximized
+    }
+
+    pub fn fullscreen(&self) -> bool {
+        self.fullscreen
     }
 }
 
@@ -10430,10 +10489,11 @@ mod tests {
         TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
         UpdaterStatusPayload, UpdaterStatusState, WindowBoundsPayload, WindowCreatePayload,
-        WindowCreateResponse, WindowDestroyPayload, WindowSetBoundsPayload, WindowTitleBarStyle,
-        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
-        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
-        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WindowCreateResponse, WindowDestroyPayload, WindowSetBoundsPayload,
+        WindowSetFullscreenPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
+        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
+        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
         WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
@@ -11453,6 +11513,24 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&set_bounds).expect("window set bounds payload should encode"),
             r#"{"windowId":"window-1","bounds":{"x":10.0,"y":20.0,"width":640.0,"height":480.0}}"#
+        );
+
+        let set_fullscreen = WindowSetFullscreenPayload::new("window-1", true);
+        assert_eq!(set_fullscreen.window_id(), "window-1");
+        assert!(set_fullscreen.fullscreen());
+        assert_eq!(
+            serde_json::to_string(&set_fullscreen)
+                .expect("window set fullscreen payload should encode"),
+            r#"{"windowId":"window-1","fullscreen":true}"#
+        );
+
+        let state = WindowStatePayload::new(false, true, true);
+        assert!(!state.minimized());
+        assert!(state.maximized());
+        assert!(state.fullscreen());
+        assert_eq!(
+            serde_json::to_string(&state).expect("window state payload should encode"),
+            r#"{"minimized":false,"maximized":true,"fullscreen":true}"#
         );
     }
 

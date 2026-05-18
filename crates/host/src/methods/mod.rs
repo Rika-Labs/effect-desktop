@@ -312,6 +312,26 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::center),
     ),
     route(
+        host_protocol::WINDOW_MINIMIZE_METHOD,
+        HostMethodDispatcher::Window(window::minimize),
+    ),
+    route(
+        host_protocol::WINDOW_MAXIMIZE_METHOD,
+        HostMethodDispatcher::Window(window::maximize),
+    ),
+    route(
+        host_protocol::WINDOW_RESTORE_METHOD,
+        HostMethodDispatcher::Window(window::restore),
+    ),
+    route(
+        host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+        HostMethodDispatcher::Window(window::set_fullscreen),
+    ),
+    route(
+        host_protocol::WINDOW_GET_STATE_METHOD,
+        HostMethodDispatcher::Window(window::get_state),
+    ),
+    route(
         host_protocol::WINDOW_DESTROY_METHOD,
         HostMethodDispatcher::WindowDestroy,
     ),
@@ -3211,6 +3231,85 @@ mod tests {
     }
 
     #[test]
+    fn window_state_methods_route_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+
+        let get_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-state",
+                    host_protocol::WINDOW_GET_STATE_METHOD,
+                    serde_json::json!({
+                        "windowId": "window-1"
+                    }),
+                ),
+                1710000000112,
+            )
+            .expect("window get state should return response");
+        assert_eq!(
+            get_response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-state".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-window-get-state".to_string(),
+                payload: Some(serde_json::json!({
+                    "minimized": false,
+                    "maximized": false,
+                    "fullscreen": false
+                })),
+                error: None,
+            }
+        );
+
+        for (id, method, payload) in [
+            (
+                "request-window-minimize",
+                host_protocol::WINDOW_MINIMIZE_METHOD,
+                serde_json::json!({ "windowId": "window-1" }),
+            ),
+            (
+                "request-window-maximize",
+                host_protocol::WINDOW_MAXIMIZE_METHOD,
+                serde_json::json!({ "windowId": "window-1" }),
+            ),
+            (
+                "request-window-set-fullscreen",
+                host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+                serde_json::json!({ "windowId": "window-1", "fullscreen": true }),
+            ),
+            (
+                "request-window-restore",
+                host_protocol::WINDOW_RESTORE_METHOD,
+                serde_json::json!({ "windowId": "window-1" }),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000113)
+                .expect("window state request should return response");
+
+            assert_eq!(
+                response,
+                HostProtocolEnvelope::Response {
+                    id: id.to_string(),
+                    timestamp: 1710000000113,
+                    trace_id: format!("trace-{id}"),
+                    payload: None,
+                    error: None,
+                }
+            );
+        }
+
+        assert_eq!(fake.minimized(), vec!["window-1".to_string()]);
+        assert_eq!(fake.maximized(), vec!["window-1".to_string()]);
+        assert_eq!(fake.fullscreen(), vec![("window-1".to_string(), true)]);
+        assert_eq!(fake.restored(), vec!["window-1".to_string()]);
+    }
+
+    #[test]
     fn dock_set_badge_text_routes_to_window_handler() {
         let fake = Arc::new(FakeWindowHandler::new(
             Ok(WindowCreateResponse::new("window-unused")),
@@ -5777,6 +5876,10 @@ mod tests {
         shown: Mutex<Vec<String>>,
         hidden: Mutex<Vec<String>>,
         focused: Mutex<Vec<String>>,
+        minimized: Mutex<Vec<String>>,
+        maximized: Mutex<Vec<String>>,
+        restored: Mutex<Vec<String>>,
+        fullscreen: Mutex<Vec<(String, bool)>>,
         dock_badge_labels: Mutex<Vec<Option<String>>>,
     }
 
@@ -5792,6 +5895,10 @@ mod tests {
                 shown: Mutex::new(Vec::new()),
                 hidden: Mutex::new(Vec::new()),
                 focused: Mutex::new(Vec::new()),
+                minimized: Mutex::new(Vec::new()),
+                maximized: Mutex::new(Vec::new()),
+                restored: Mutex::new(Vec::new()),
+                fullscreen: Mutex::new(Vec::new()),
                 dock_badge_labels: Mutex::new(Vec::new()),
             }
         }
@@ -5828,6 +5935,34 @@ mod tests {
             self.focused
                 .lock()
                 .expect("fake focused requests should lock")
+                .clone()
+        }
+
+        fn minimized(&self) -> Vec<String> {
+            self.minimized
+                .lock()
+                .expect("fake minimized requests should lock")
+                .clone()
+        }
+
+        fn maximized(&self) -> Vec<String> {
+            self.maximized
+                .lock()
+                .expect("fake maximized requests should lock")
+                .clone()
+        }
+
+        fn restored(&self) -> Vec<String> {
+            self.restored
+                .lock()
+                .expect("fake restored requests should lock")
+                .clone()
+        }
+
+        fn fullscreen(&self) -> Vec<(String, bool)> {
+            self.fullscreen
+                .lock()
+                .expect("fake fullscreen requests should lock")
                 .clone()
         }
     }
@@ -5886,6 +6021,49 @@ mod tests {
 
         fn center(&self, _window_id: &str) -> Result<(), HostProtocolError> {
             Ok(())
+        }
+
+        fn minimize(&self, window_id: &str) -> Result<(), HostProtocolError> {
+            self.minimized
+                .lock()
+                .expect("fake minimized requests should lock")
+                .push(window_id.to_string());
+            Ok(())
+        }
+
+        fn maximize(&self, window_id: &str) -> Result<(), HostProtocolError> {
+            self.maximized
+                .lock()
+                .expect("fake maximized requests should lock")
+                .push(window_id.to_string());
+            Ok(())
+        }
+
+        fn restore(&self, window_id: &str) -> Result<(), HostProtocolError> {
+            self.restored
+                .lock()
+                .expect("fake restored requests should lock")
+                .push(window_id.to_string());
+            Ok(())
+        }
+
+        fn set_fullscreen(
+            &self,
+            window_id: &str,
+            fullscreen: bool,
+        ) -> Result<(), HostProtocolError> {
+            self.fullscreen
+                .lock()
+                .expect("fake fullscreen requests should lock")
+                .push((window_id.to_string(), fullscreen));
+            Ok(())
+        }
+
+        fn get_state(
+            &self,
+            _window_id: &str,
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
+            Ok(host_protocol::WindowStatePayload::new(false, false, false))
         }
 
         fn set_dock_badge_label(

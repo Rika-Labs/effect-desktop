@@ -646,7 +646,7 @@
     {
       "name": "HostWindowClient",
       "kind": "interface",
-      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setFullscreen: ( windowId: string, fullscreen: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly getState: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "HostWindowClientOptions",
@@ -1084,14 +1084,39 @@
       "signature": "const WINDOW_GET_BOUNDS_METHOD: \"Window.getBounds\""
     },
     {
+      "name": "WINDOW_GET_STATE_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_GET_STATE_METHOD: \"Window.getState\""
+    },
+    {
       "name": "WINDOW_HIDE_METHOD",
       "kind": "value",
       "signature": "const WINDOW_HIDE_METHOD: \"Window.hide\""
     },
     {
+      "name": "WINDOW_MAXIMIZE_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_MAXIMIZE_METHOD: \"Window.maximize\""
+    },
+    {
+      "name": "WINDOW_MINIMIZE_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_MINIMIZE_METHOD: \"Window.minimize\""
+    },
+    {
+      "name": "WINDOW_RESTORE_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_RESTORE_METHOD: \"Window.restore\""
+    },
+    {
       "name": "WINDOW_SET_BOUNDS_METHOD",
       "kind": "value",
       "signature": "const WINDOW_SET_BOUNDS_METHOD: \"Window.setBounds\""
+    },
+    {
+      "name": "WINDOW_SET_FULLSCREEN_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_FULLSCREEN_METHOD: \"Window.setFullscreen\""
     },
     {
       "name": "WINDOW_SHOW_METHOD",
@@ -1132,6 +1157,16 @@
       "name": "WindowSetBoundsPayload",
       "kind": "class",
       "signature": "export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>( \"WindowSetBoundsPayload\" )({ windowId: Schema.NonEmptyString, bounds: WindowBoundsPayload }) {}"
+    },
+    {
+      "name": "WindowSetFullscreenPayload",
+      "kind": "class",
+      "signature": "export class WindowSetFullscreenPayload extends Schema.Class<WindowSetFullscreenPayload>( \"WindowSetFullscreenPayload\" )({ windowId: Schema.NonEmptyString, fullscreen: Schema.Boolean }) {}"
+    },
+    {
+      "name": "WindowStatePayload",
+      "kind": "class",
+      "signature": "export class WindowStatePayload extends Schema.Class<WindowStatePayload>(\"WindowStatePayload\")({ minimized: Schema.Boolean, maximized: Schema.Boolean, fullscreen: Schema.Boolean }) {}"
     },
     {
       "name": "wipeSecretBytes",

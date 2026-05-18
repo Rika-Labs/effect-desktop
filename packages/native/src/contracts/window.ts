@@ -67,6 +67,19 @@ export class WindowBoundsInput extends Schema.Class<WindowBoundsInput>("WindowBo
   bounds: WindowBounds
 }) {}
 
+export class WindowFullscreenInput extends Schema.Class<WindowFullscreenInput>(
+  "WindowFullscreenInput"
+)({
+  window: WindowResource,
+  fullscreen: Schema.Boolean
+}) {}
+
+export class WindowState extends Schema.Class<WindowState>("WindowState")({
+  minimized: Schema.Boolean,
+  maximized: Schema.Boolean,
+  fullscreen: Schema.Boolean
+}) {}
+
 export class WindowTitleInput extends Schema.Class<WindowTitleInput>("WindowTitleInput")({
   window: WindowResource,
   title: Schema.String

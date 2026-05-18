@@ -8,7 +8,7 @@ use host_protocol::{
     HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
     ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
-    WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
+    WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse, WindowStatePayload,
 };
 use std::{
     collections::{HashMap, VecDeque},
@@ -23,7 +23,7 @@ use tao::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopWindowTarget},
     monitor::MonitorHandle,
-    window::{Window, WindowBuilder},
+    window::{Fullscreen, Window, WindowBuilder},
 };
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -81,6 +81,23 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
     ) -> std::result::Result<(), HostProtocolError>;
 
     fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn maximize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn restore(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_fullscreen(
+        &self,
+        window_id: &str,
+        fullscreen: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn get_state(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
     fn set_dock_badge_label(
         &self,
@@ -213,6 +230,27 @@ enum WindowCommand {
         window_id: String,
         reply: Sender<WindowCommandReply>,
     },
+    Minimize {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    Maximize {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    Restore {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetFullscreen {
+        window_id: String,
+        fullscreen: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    GetState {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
     SetDockBadgeLabel {
         label: Option<String>,
         operation: &'static str,
@@ -288,6 +326,7 @@ enum WindowCommandResponse {
     Destroyed,
     WindowUpdated,
     WindowBounds(WindowBoundsPayload),
+    WindowState(WindowStatePayload),
     DockBadgeLabelSet,
     DockAttentionRequested,
     DockMenuSet,
@@ -407,6 +446,7 @@ impl WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
@@ -466,6 +506,10 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window create received bounds response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
+            WindowCommandResponse::WindowState(_) => Err(HostProtocolError::internal(
+                "window create received state response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
             WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
             | WindowCommandResponse::TrayDestroyed
@@ -514,6 +558,10 @@ impl WindowMethodHandler for WindowMethodPort {
             )),
             WindowCommandResponse::WindowBounds(_) => Err(HostProtocolError::internal(
                 "window destroy received bounds response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
+            WindowCommandResponse::WindowState(_) => Err(HostProtocolError::internal(
+                "window destroy received state response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
             WindowCommandResponse::TrayCreated(_)
@@ -574,6 +622,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
@@ -616,6 +665,84 @@ impl WindowMethodHandler for WindowMethodPort {
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CENTER_METHOD)
     }
 
+    fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Minimize {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_MINIMIZE_METHOD)
+    }
+
+    fn maximize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Maximize {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_MAXIMIZE_METHOD)
+    }
+
+    fn restore(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Restore {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_RESTORE_METHOD)
+    }
+
+    fn set_fullscreen(
+        &self,
+        window_id: &str,
+        fullscreen: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetFullscreen {
+            window_id: window_id.to_string(),
+            fullscreen,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_FULLSCREEN_METHOD)
+    }
+
+    fn get_state(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetState {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowState(state) => Ok(state),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+                "window get state received unrelated response",
+                host_protocol::WINDOW_GET_STATE_METHOD,
+            )),
+        }
+    }
+
     fn set_dock_badge_label(
         &self,
         label: Option<String>,
@@ -634,6 +761,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
@@ -663,6 +791,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
@@ -695,6 +824,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::MenuSet
@@ -727,6 +857,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::DockAttentionRequested
@@ -761,6 +892,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
             | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::DockAttentionRequested
@@ -1212,6 +1344,82 @@ impl WindowRegistry {
             ._window
             .set_outer_position(LogicalPosition::new(bounds.x(), bounds.y()));
         Ok(())
+    }
+
+    fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_MINIMIZE_METHOD,
+            ));
+        };
+
+        resources._window.set_minimized(true);
+        Ok(())
+    }
+
+    fn maximize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_MAXIMIZE_METHOD,
+            ));
+        };
+
+        resources._window.set_maximized(true);
+        Ok(())
+    }
+
+    fn restore(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_RESTORE_METHOD,
+            ));
+        };
+
+        resources._window.set_minimized(false);
+        resources._window.set_maximized(false);
+        resources._window.set_fullscreen(None);
+        Ok(())
+    }
+
+    fn set_fullscreen(
+        &self,
+        window_id: &str,
+        fullscreen: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+            ));
+        };
+
+        resources._window.set_fullscreen(if fullscreen {
+            Some(Fullscreen::Borderless(None))
+        } else {
+            None
+        });
+        Ok(())
+    }
+
+    fn get_state(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_GET_STATE_METHOD,
+            ));
+        };
+
+        Ok(WindowStatePayload::new(
+            resources._window.is_minimized(),
+            resources._window.is_maximized(),
+            resources._window.fullscreen().is_some(),
+        ))
     }
 
     fn set_visible(
@@ -1699,6 +1907,45 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::Minimize { window_id, reply } => {
+                let result = self
+                    .minimize(&window_id)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::Maximize { window_id, reply } => {
+                let result = self
+                    .maximize(&window_id)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::Restore { window_id, reply } => {
+                let result = self
+                    .restore(&window_id)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetFullscreen {
+                window_id,
+                fullscreen,
+                reply,
+            } => {
+                let result = self
+                    .set_fullscreen(&window_id, fullscreen)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GetState { window_id, reply } => {
+                let result = self
+                    .get_state(&window_id)
+                    .map(WindowCommandResponse::WindowState);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::SetDockBadgeLabel {
                 label,
                 operation,
@@ -1841,6 +2088,7 @@ fn unexpected_tray_response(
         WindowCommandResponse::Destroyed => "tray command received window destroy response",
         WindowCommandResponse::WindowUpdated => "tray command received window lifecycle response",
         WindowCommandResponse::WindowBounds(_) => "tray command received window bounds response",
+        WindowCommandResponse::WindowState(_) => "tray command received window state response",
         WindowCommandResponse::DockBadgeLabelSet => "tray command received dock badge response",
         WindowCommandResponse::DockAttentionRequested => {
             "tray command received dock attention response"
@@ -1867,6 +2115,7 @@ fn unexpected_screen_response(
         WindowCommandResponse::Destroyed => "screen command received window destroy response",
         WindowCommandResponse::WindowUpdated => "screen command received window lifecycle response",
         WindowCommandResponse::WindowBounds(_) => "screen command received window bounds response",
+        WindowCommandResponse::WindowState(_) => "screen command received window state response",
         WindowCommandResponse::DockBadgeLabelSet => "screen command received dock badge response",
         WindowCommandResponse::DockAttentionRequested => {
             "screen command received dock attention response"

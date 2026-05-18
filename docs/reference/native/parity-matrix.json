@@ -4083,6 +4083,16 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.getState",
+      "surface": "Window",
+      "method": "getState",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.hide",
       "surface": "Window",
       "method": "hide",
@@ -4093,9 +4103,49 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.maximize",
+      "surface": "Window",
+      "method": "maximize",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.minimize",
+      "surface": "Window",
+      "method": "minimize",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.restore",
+      "surface": "Window",
+      "method": "restore",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.setBounds",
       "surface": "Window",
       "method": "setBounds",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setFullscreen",
+      "surface": "Window",
+      "method": "setFullscreen",
       "capability": "native",
       "support": {
         "status": "supported"
@@ -4154,10 +4204,10 @@
     }
   ],
   "summary": {
-    "total": 205,
-    "routed": 183,
+    "total": 210,
+    "routed": 188,
     "missing": 22,
-    "supported": 87,
+    "supported": 92,
     "partial": 22,
     "unsupported": 96
   }

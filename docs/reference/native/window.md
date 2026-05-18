@@ -1,6 +1,6 @@
 ---
 title: Window (native)
-description: Native window lifecycle — create, show, hide, focus, close.
+description: Native window lifecycle and state controls.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Window`
 
-Native window lifecycle. The runtime calls `Window.create` to open windows; the renderer calls through `useDesktop(WindowSupportedRpcs)` or the React adapter's window mutations.
+Native window lifecycle and state controls. The runtime calls `Window.create` to open windows; the renderer calls through `useDesktop(WindowSupportedRpcs)` or the React adapter's window mutations.
 
 ## Import
 
@@ -31,18 +31,23 @@ import {
 
 ## Methods
 
-| Method      | Payload               | Success        | Description                    |
-| ----------- | --------------------- | -------------- | ------------------------------ |
-| `create`    | `WindowCreateOptions` | `WindowHandle` | Open a native window.          |
-| `show`      | `WindowHandle`        | `void`         | Make an existing window show.  |
-| `hide`      | `WindowHandle`        | `void`         | Hide an existing window.       |
-| `focus`     | `WindowHandle`        | `void`         | Request focus for a window.    |
-| `getBounds` | `WindowHandle`        | `WindowBounds` | Read logical window bounds.    |
-| `setBounds` | `WindowBoundsInput`   | `void`         | Move and resize a window.      |
-| `center`    | `WindowHandle`        | `void`         | Center in the current display. |
-| `close`     | `WindowHandle`        | `void`         | Destroy a native window.       |
+| Method          | Payload                 | Success        | Description                                       |
+| --------------- | ----------------------- | -------------- | ------------------------------------------------- |
+| `create`        | `WindowCreateOptions`   | `WindowHandle` | Open a native window.                             |
+| `show`          | `WindowHandle`          | `void`         | Make an existing window show.                     |
+| `hide`          | `WindowHandle`          | `void`         | Hide an existing window.                          |
+| `focus`         | `WindowHandle`          | `void`         | Request focus for a window.                       |
+| `getBounds`     | `WindowHandle`          | `WindowBounds` | Read logical window bounds.                       |
+| `setBounds`     | `WindowBoundsInput`     | `void`         | Move and resize a window.                         |
+| `center`        | `WindowHandle`          | `void`         | Center in the current display.                    |
+| `minimize`      | `WindowHandle`          | `void`         | Minimize a window.                                |
+| `maximize`      | `WindowHandle`          | `void`         | Maximize a window.                                |
+| `restore`       | `WindowHandle`          | `void`         | Clear minimized, maximized, and fullscreen state. |
+| `setFullscreen` | `WindowFullscreenInput` | `void`         | Enter or exit borderless fullscreen.              |
+| `getState`      | `WindowHandle`          | `WindowState`  | Read minimized, maximized, and fullscreen state.  |
+| `close`         | `WindowHandle`          | `void`         | Destroy a native window.                          |
 
-`WindowMethodNames = ["create", "close", "show", "hide", "focus", "getBounds", "setBounds", "center"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Blur and a separate close-vs-destroy host lifecycle remain reserved for later phases because Tao exposes `set_visible`, `set_focus`, bounds primitives, and destruction, but not a portable blur primitive.
+`WindowMethodNames = ["create", "close", "show", "hide", "focus", "getBounds", "setBounds", "center", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Blur, simple fullscreen, a separate close-vs-destroy host lifecycle, and host-backed state change events remain reserved for later phases.
 
 ## Errors
 

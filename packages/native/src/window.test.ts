@@ -12,6 +12,11 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   expect(rpcSupport(request("Window.getBounds"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setBounds"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.center"))).toEqual({ status: "supported" })
+  expect(rpcSupport(request("Window.minimize"))).toEqual({ status: "supported" })
+  expect(rpcSupport(request("Window.maximize"))).toEqual({ status: "supported" })
+  expect(rpcSupport(request("Window.restore"))).toEqual({ status: "supported" })
+  expect(rpcSupport(request("Window.setFullscreen"))).toEqual({ status: "supported" })
+  expect(rpcSupport(request("Window.getState"))).toEqual({ status: "supported" })
   expect(WindowRpcs.requests.has("Window.setVibrancy")).toBe(false)
 })
 

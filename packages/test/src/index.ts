@@ -35,8 +35,13 @@ import {
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_MAXIMIZE_METHOD,
+  WINDOW_MINIMIZE_METHOD,
+  WINDOW_RESTORE_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SHOW_METHOD,
   hostProtocolErrorRecoverableDefault,
   makeHostProtocolInvalidStateError,
@@ -213,10 +218,17 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           request.method === WINDOW_HIDE_METHOD ||
           request.method === WINDOW_FOCUS_METHOD ||
           request.method === WINDOW_GET_BOUNDS_METHOD ||
-          request.method === WINDOW_CENTER_METHOD
+          request.method === WINDOW_CENTER_METHOD ||
+          request.method === WINDOW_MINIMIZE_METHOD ||
+          request.method === WINDOW_MAXIMIZE_METHOD ||
+          request.method === WINDOW_RESTORE_METHOD ||
+          request.method === WINDOW_GET_STATE_METHOD
         ) {
           yield* readWindowId(request.payload, request.method)
-        } else if (request.method === WINDOW_SET_BOUNDS_METHOD) {
+        } else if (
+          request.method === WINDOW_SET_BOUNDS_METHOD ||
+          request.method === WINDOW_SET_FULLSCREEN_METHOD
+        ) {
           yield* readWindowId(request.payload, request.method)
         }
 
@@ -783,7 +795,12 @@ export const runHeadless = <A, E, R>(
         focus: (windowId) => rawWindow.focus(windowId),
         getBounds: (windowId) => rawWindow.getBounds(windowId),
         setBounds: (windowId, bounds) => rawWindow.setBounds(windowId, bounds),
-        center: (windowId) => rawWindow.center(windowId)
+        center: (windowId) => rawWindow.center(windowId),
+        minimize: (windowId) => rawWindow.minimize(windowId),
+        maximize: (windowId) => rawWindow.maximize(windowId),
+        restore: (windowId) => rawWindow.restore(windowId),
+        setFullscreen: (windowId, fullscreen) => rawWindow.setFullscreen(windowId, fullscreen),
+        getState: (windowId) => rawWindow.getState(windowId)
       }
     }
 
@@ -870,6 +887,9 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_HIDE_METHOD:
     case WINDOW_FOCUS_METHOD:
     case WINDOW_CENTER_METHOD:
+    case WINDOW_MINIMIZE_METHOD:
+    case WINDOW_MAXIMIZE_METHOD:
+    case WINDOW_RESTORE_METHOD:
       return (request, state) =>
         Effect.gen(function* () {
           const windowId = yield* readWindowId(request.payload, request.method)
@@ -886,7 +906,17 @@ const defaultFixture = (method: string): HeadlessFixture => {
           }
           return { x: 0, y: 0, width: 640, height: 480 }
         })
+    case WINDOW_GET_STATE_METHOD:
+      return (request, state) =>
+        Effect.gen(function* () {
+          const windowId = yield* readWindowId(request.payload, request.method)
+          if (!state.windows.has(windowId)) {
+            return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
+          }
+          return { minimized: false, maximized: false, fullscreen: false }
+        })
     case WINDOW_SET_BOUNDS_METHOD:
+    case WINDOW_SET_FULLSCREEN_METHOD:
       return (request, state) =>
         Effect.gen(function* () {
           const windowId = yield* readWindowId(request.payload, request.method)

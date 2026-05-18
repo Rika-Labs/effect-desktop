@@ -13,8 +13,13 @@ import {
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_MAXIMIZE_METHOD,
+  WINDOW_MINIMIZE_METHOD,
+  WINDOW_RESTORE_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolHostUnavailableError,
   RpcCapability,
@@ -384,6 +389,7 @@ import {
   WebViewNavigationBlockedEvent,
   WebViewScreenshot,
   WindowBounds,
+  WindowState,
   type NotificationHandle,
   type TrayHandle,
   type WebViewHandle,
@@ -681,7 +687,12 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "focus",
   "getBounds",
   "setBounds",
-  "center"
+  "center",
+  "minimize",
+  "maximize",
+  "restore",
+  "setFullscreen",
+  "getState"
 ]
 
 const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
@@ -7378,6 +7389,11 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.getBounds"]
     void client["Window.setBounds"]
     void client["Window.center"]
+    void client["Window.minimize"]
+    void client["Window.maximize"]
+    void client["Window.restore"]
+    void client["Window.setFullscreen"]
+    void client["Window.getState"]
   }
   void assertSupportedWindowClient
   expect(supportedWindowMethods).toEqual([
@@ -7388,7 +7404,12 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.focus",
     "Window.getBounds",
     "Window.setBounds",
-    "Window.center"
+    "Window.center",
+    "Window.minimize",
+    "Window.maximize",
+    "Window.restore",
+    "Window.setFullscreen",
+    "Window.getState"
   ])
   expect(WindowRpcs.requests.has("Window.show")).toBe(true)
   expect("spec" in WindowRpcs).toBe(false)
@@ -7413,7 +7434,16 @@ test("Window service delegates through a substitutable WindowClient port", async
         return new WindowBounds({ x: 10, y: 20, width: 640, height: 480 })
       }),
     setBounds: (_window, bounds) => recordVoid(calls, `setBounds:${bounds.width}x${bounds.height}`),
-    center: () => recordVoid(calls, "center")
+    center: () => recordVoid(calls, "center"),
+    minimize: () => recordVoid(calls, "minimize"),
+    maximize: () => recordVoid(calls, "maximize"),
+    restore: () => recordVoid(calls, "restore"),
+    setFullscreen: (_window, fullscreen) => recordVoid(calls, `setFullscreen:${fullscreen}`),
+    getState: () =>
+      Effect.sync(() => {
+        calls.push("getState")
+        return new WindowState({ minimized: false, maximized: true, fullscreen: true })
+      })
   }
 
   const result = await Effect.runPromise(
@@ -7429,14 +7459,22 @@ test("Window service delegates through a substitutable WindowClient port", async
         new WindowBounds({ x: bounds.x, y: bounds.y, width: 800, height: 600 })
       )
       yield* window.center(created)
+      yield* window.minimize(created)
+      yield* window.maximize(created)
+      yield* window.setFullscreen(created, true)
+      const state = yield* window.getState(created)
+      yield* window.restore(created)
       yield* window.close(created)
 
-      return { bounds, created }
+      return { bounds, created, state }
     }).pipe(Effect.provide(makeWindowServiceLayer(client)))
   )
 
   expect(result.created).toEqual(windowHandle)
   expect(result.bounds).toEqual(new WindowBounds({ x: 10, y: 20, width: 640, height: 480 }))
+  expect(result.state).toEqual(
+    new WindowState({ minimized: false, maximized: true, fullscreen: true })
+  )
   expect(calls).toEqual([
     "create:Main",
     "show",
@@ -7445,6 +7483,11 @@ test("Window service delegates through a substitutable WindowClient port", async
     "getBounds",
     "setBounds:800x600",
     "center",
+    "minimize",
+    "maximize",
+    "setFullscreen:true",
+    "getState",
+    "restore",
     "close"
   ])
 })
@@ -7483,6 +7526,11 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "get-bounds-request",
       "set-bounds-request",
       "center-request",
+      "minimize-request",
+      "maximize-request",
+      "set-fullscreen-request",
+      "get-state-request",
+      "restore-request",
       "destroy-request"
     ]),
     nextTraceId: nextId([
@@ -7493,11 +7541,17 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "get-bounds-trace",
       "set-bounds-trace",
       "center-trace",
+      "minimize-trace",
+      "maximize-trace",
+      "set-fullscreen-trace",
+      "get-state-trace",
+      "restore-trace",
       "destroy-trace"
     ]),
     now: nextNumber([
       1_710_000_000_000, 1_710_000_000_001, 1_710_000_000_002, 1_710_000_000_003, 1_710_000_000_004,
-      1_710_000_000_005, 1_710_000_000_006, 1_710_000_000_007
+      1_710_000_000_005, 1_710_000_000_006, 1_710_000_000_007, 1_710_000_000_008, 1_710_000_000_009,
+      1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012
     ])
   })
   const program = Effect.gen(function* () {
@@ -7520,10 +7574,15 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       new WindowBounds({ x: 30, y: 40, width: bounds.width, height: bounds.height })
     )
     yield* window.center(created)
+    yield* window.minimize(created)
+    yield* window.maximize(created)
+    yield* window.setFullscreen(created, true)
+    const state = yield* window.getState(created)
+    yield* window.restore(created)
     yield* window.close(created)
     const afterClose = yield* registry.list()
 
-    return { created, duringLifetime, afterClose }
+    return { created, duringLifetime, afterClose, state }
   }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
 
   const result = await Effect.runPromise(program)
@@ -7539,6 +7598,9 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     "host-window-1"
   ])
   expect(result.afterClose.entries).toEqual([])
+  expect(result.state).toEqual(
+    new WindowState({ minimized: false, maximized: true, fullscreen: true })
+  )
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [
       WINDOW_CREATE_METHOD,
@@ -7589,6 +7651,37 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     ],
     [
       WINDOW_CENTER_METHOD,
+      {
+        windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_MINIMIZE_METHOD,
+      {
+        windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_MAXIMIZE_METHOD,
+      {
+        windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_SET_FULLSCREEN_METHOD,
+      {
+        windowId: "host-window-1",
+        fullscreen: true
+      }
+    ],
+    [
+      WINDOW_GET_STATE_METHOD,
+      {
+        windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_RESTORE_METHOD,
       {
         windowId: "host-window-1"
       }
@@ -9284,7 +9377,13 @@ const noopWindowClient: WindowClientApi = {
   focus: () => Effect.void,
   getBounds: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
   setBounds: () => Effect.void,
-  center: () => Effect.void
+  center: () => Effect.void,
+  minimize: () => Effect.void,
+  maximize: () => Effect.void,
+  restore: () => Effect.void,
+  setFullscreen: () => Effect.void,
+  getState: () =>
+    Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false }))
 }
 
 const handleFor = (id: string): WindowHandle => ({
@@ -9308,7 +9407,9 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
           ? { payload: { windowId: "host-window-1" } }
           : request.method === WINDOW_GET_BOUNDS_METHOD
             ? { payload: { x: 10, y: 20, width: 640, height: 480 } }
-            : {})
+            : request.method === WINDOW_GET_STATE_METHOD
+              ? { payload: { minimized: false, maximized: true, fullscreen: true } }
+              : {})
       })
     )
   }

@@ -11,8 +11,13 @@ import {
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_MAXIMIZE_METHOD,
+  WINDOW_MINIMIZE_METHOD,
+  WINDOW_RESTORE_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
@@ -158,6 +163,49 @@ test("host window client requests Window.getBounds, Window.setBounds, and Window
       { windowId: "window-1", bounds: { x: 30, y: 40, width: 800, height: 600 } }
     ],
     [WINDOW_CENTER_METHOD, { windowId: "window-1" }]
+  ])
+})
+
+test("host window client requests Window.minimize, Window.maximize, Window.restore, fullscreen, and state", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests), {
+    nextRequestId: nextId([
+      "request-window-minimize",
+      "request-window-maximize",
+      "request-window-set-fullscreen",
+      "request-window-get-state",
+      "request-window-restore"
+    ]),
+    nextTraceId: nextId([
+      "trace-window-minimize",
+      "trace-window-maximize",
+      "trace-window-set-fullscreen",
+      "trace-window-get-state",
+      "trace-window-restore"
+    ]),
+    now: nextNumber([
+      1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019, 1_710_000_000_020
+    ])
+  })
+
+  const state = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* client.minimize("window-1")
+      yield* client.maximize("window-1")
+      yield* client.setFullscreen("window-1", true)
+      const current = yield* client.getState("window-1")
+      yield* client.restore("window-1")
+      return current
+    })
+  )
+
+  expect(state).toEqual({ minimized: false, maximized: true, fullscreen: true })
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_MINIMIZE_METHOD, { windowId: "window-1" }],
+    [WINDOW_MAXIMIZE_METHOD, { windowId: "window-1" }],
+    [WINDOW_SET_FULLSCREEN_METHOD, { windowId: "window-1", fullscreen: true }],
+    [WINDOW_GET_STATE_METHOD, { windowId: "window-1" }],
+    [WINDOW_RESTORE_METHOD, { windowId: "window-1" }]
   ])
 })
 
@@ -314,7 +362,16 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                   height: 480
                 }
               }
-            : base
+            : request.method === WINDOW_GET_STATE_METHOD
+              ? {
+                  ...base,
+                  payload: {
+                    minimized: false,
+                    maximized: true,
+                    fullscreen: true
+                  }
+                }
+              : base
       )
     )
   }

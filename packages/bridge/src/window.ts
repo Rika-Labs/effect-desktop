@@ -3,14 +3,19 @@ import { Clock, Effect, Schema } from "effect"
 import {
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
-  WINDOW_CREATE_METHOD,
   WINDOW_CENTER_METHOD,
+  WINDOW_CREATE_METHOD,
+  WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_MAXIMIZE_METHOD,
+  WINDOW_MINIMIZE_METHOD,
+  WINDOW_RESTORE_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SHOW_METHOD,
-  WINDOW_DESTROY_METHOD,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   type HostProtocolError
@@ -85,6 +90,19 @@ export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>
   bounds: WindowBoundsPayload
 }) {}
 
+export class WindowSetFullscreenPayload extends Schema.Class<WindowSetFullscreenPayload>(
+  "WindowSetFullscreenPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  fullscreen: Schema.Boolean
+}) {}
+
+export class WindowStatePayload extends Schema.Class<WindowStatePayload>("WindowStatePayload")({
+  minimized: Schema.Boolean,
+  maximized: Schema.Boolean,
+  fullscreen: Schema.Boolean
+}) {}
+
 export interface WindowCreateInput {
   readonly title?: string
   readonly width?: number
@@ -122,6 +140,16 @@ export interface HostWindowClient {
     bounds: WindowBoundsInput
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly setFullscreen: (
+    windowId: string,
+    fullscreen: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly getState: (
+    windowId: string
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
   readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
 }
 
@@ -179,6 +207,29 @@ export const makeHostWindowClient = (
       }),
     center: (windowId) =>
       sendWindowLifecycleCommand(windowId, WINDOW_CENTER_METHOD, exchange, resolved),
+    minimize: (windowId) =>
+      sendWindowLifecycleCommand(windowId, WINDOW_MINIMIZE_METHOD, exchange, resolved),
+    maximize: (windowId) =>
+      sendWindowLifecycleCommand(windowId, WINDOW_MAXIMIZE_METHOD, exchange, resolved),
+    restore: (windowId) =>
+      sendWindowLifecycleCommand(windowId, WINDOW_RESTORE_METHOD, exchange, resolved),
+    setFullscreen: (windowId, fullscreen) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetFullscreenPayload(windowId, fullscreen)
+        const request = yield* makeRequest(WINDOW_SET_FULLSCREEN_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    getState: (windowId) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeWindowIdPayload(windowId, WINDOW_GET_STATE_METHOD)
+        const request = yield* makeRequest(WINDOW_GET_STATE_METHOD, resolved, payload)
+        const response = yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+        return yield* decodeStateResponse(response.payload, WINDOW_GET_STATE_METHOD)
+      }),
     destroy: (windowId) =>
       Effect.gen(function* () {
         const payload = yield* encodeDestroyPayload(windowId)
@@ -240,6 +291,8 @@ const decodeUnknownWindowCreateResponse = Schema.decodeUnknownSync(WindowCreateR
 const decodeUnknownWindowDestroyPayload = Schema.decodeUnknownSync(WindowDestroyPayload)
 const decodeUnknownWindowBoundsPayload = Schema.decodeUnknownSync(WindowBoundsPayload)
 const decodeUnknownWindowSetBoundsPayload = Schema.decodeUnknownSync(WindowSetBoundsPayload)
+const decodeUnknownWindowSetFullscreenPayload = Schema.decodeUnknownSync(WindowSetFullscreenPayload)
+const decodeUnknownWindowStatePayload = Schema.decodeUnknownSync(WindowStatePayload)
 
 const encodeCreatePayload = (
   input: WindowCreateInput
@@ -275,6 +328,16 @@ const encodeSetBoundsPayload = (
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_BOUNDS_METHOD)
   })
 
+const encodeSetFullscreenPayload = (
+  windowId: string,
+  fullscreen: boolean
+): Effect.Effect<WindowSetFullscreenPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetFullscreenPayload({ windowId, fullscreen }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_FULLSCREEN_METHOD)
+  })
+
 const decodeCreateResponse = (
   payload: unknown
 ): Effect.Effect<WindowCreateResponse, HostProtocolError, never> =>
@@ -290,6 +353,15 @@ const decodeBoundsResponse = (
 ): Effect.Effect<WindowBoundsPayload, HostProtocolError, never> =>
   Effect.try({
     try: () => decodeUnknownWindowBoundsPayload(payload, StrictParseOptions),
+    catch: (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  })
+
+const decodeStateResponse = (
+  payload: unknown,
+  operation: string
+): Effect.Effect<WindowStatePayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowStatePayload(payload, StrictParseOptions),
     catch: (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   })
 

@@ -38,6 +38,7 @@ import {
   ScreenDisplaysChangedEvent,
   ScreenPoint,
   WindowBounds,
+  WindowState,
   type ClipboardCapability,
   type ClipboardImageOptions,
   type DialogConfirmOptions,
@@ -373,7 +374,13 @@ const makeWindowScenario = (
     getBounds: (_window): Effect.Effect<WindowBounds, WindowError, never> =>
       Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
     setBounds: (_window, _bounds): Effect.Effect<void, WindowError, never> => Effect.void,
-    center: (_window): Effect.Effect<void, WindowError, never> => Effect.void
+    center: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    minimize: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    maximize: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    restore: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    setFullscreen: (_window, _fullscreen): Effect.Effect<void, WindowError, never> => Effect.void,
+    getState: (_window): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false }))
   } satisfies WindowServiceApi)
 
 function testNativeSurface(surface: {
