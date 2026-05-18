@@ -86,10 +86,10 @@ fn validate_arg(arg: &str, operation: &'static str) -> Result<(), HostProtocolEr
             operation,
         ));
     }
-    if arg.contains('\0') {
+    if arg.chars().any(char::is_control) {
         return Err(HostProtocolError::invalid_argument(
             "args",
-            "entries must not contain NUL bytes",
+            "entries must not contain control characters",
             operation,
         ));
     }
@@ -150,6 +150,18 @@ mod tests {
         assert_eq!(
             enable(Some(json!({ "args": ["bad\0arg"] })))
                 .expect_err("nul arg")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            enable(Some(json!({ "args": ["bad\narg"] })))
+                .expect_err("control arg")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            enable(Some(json!({ "args": ["bad\u{85}arg"] })))
+                .expect_err("unicode control arg")
                 .tag(),
             "InvalidArgument"
         );

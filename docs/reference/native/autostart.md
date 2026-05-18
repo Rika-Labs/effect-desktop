@@ -44,8 +44,9 @@ the host adapter exists.
 
 ## Validation
 
-`enable.args` entries must be non-empty strings and must not contain NUL bytes.
-Invalid launch arguments are rejected before native transport.
+`enable.args` entries must be non-empty strings and must not contain Unicode
+control characters. Invalid launch arguments are rejected before native
+transport.
 
 ## Errors
 

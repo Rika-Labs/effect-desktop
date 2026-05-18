@@ -4887,7 +4887,9 @@ test("Autostart bridge client rejects invalid launch args before transport", asy
   const exits = await Effect.runPromise(
     Effect.all([
       Effect.exit(client.enable({ args: [""] })),
-      Effect.exit(client.enable({ args: ["bad\u0000arg"] }))
+      Effect.exit(client.enable({ args: ["bad\u0000arg"] })),
+      Effect.exit(client.enable({ args: ["bad\narg"] })),
+      Effect.exit(client.enable({ args: ["bad\u0085arg"] }))
     ])
   )
 

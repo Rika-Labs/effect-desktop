@@ -2,8 +2,13 @@ import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString } from "./strings.js"
 
-// eslint-disable-next-line no-control-regex -- Launch args must reject NUL.
-const ArgString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]*$/))
+const ArgString = Schema.NonEmptyString.check(
+  Schema.makeFilter(
+    (value) => !hasControlCharacter(value) || "must not contain Unicode control characters"
+  )
+)
+
+const hasControlCharacter = (value: string): boolean => /\p{Cc}/u.test(value)
 
 export class AutostartEnableInput extends Schema.Class<AutostartEnableInput>(
   "AutostartEnableInput"
