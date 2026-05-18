@@ -30,10 +30,13 @@ import {
   HostProtocolResponseEnvelope,
   HostProtocolStreamByRequestEnvelope,
   HostProtocolUnsupportedError,
+  WINDOW_CENTER_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
+  WINDOW_GET_BOUNDS_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SHOW_METHOD,
   hostProtocolErrorRecoverableDefault,
   makeHostProtocolInvalidStateError,
@@ -208,8 +211,12 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
         } else if (
           request.method === WINDOW_SHOW_METHOD ||
           request.method === WINDOW_HIDE_METHOD ||
-          request.method === WINDOW_FOCUS_METHOD
+          request.method === WINDOW_FOCUS_METHOD ||
+          request.method === WINDOW_GET_BOUNDS_METHOD ||
+          request.method === WINDOW_CENTER_METHOD
         ) {
+          yield* readWindowId(request.payload, request.method)
+        } else if (request.method === WINDOW_SET_BOUNDS_METHOD) {
           yield* readWindowId(request.payload, request.method)
         }
 
@@ -773,7 +780,10 @@ export const runHeadless = <A, E, R>(
           }),
         show: (windowId) => rawWindow.show(windowId),
         hide: (windowId) => rawWindow.hide(windowId),
-        focus: (windowId) => rawWindow.focus(windowId)
+        focus: (windowId) => rawWindow.focus(windowId),
+        getBounds: (windowId) => rawWindow.getBounds(windowId),
+        setBounds: (windowId, bounds) => rawWindow.setBounds(windowId, bounds),
+        center: (windowId) => rawWindow.center(windowId)
       }
     }
 
@@ -859,6 +869,24 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_SHOW_METHOD:
     case WINDOW_HIDE_METHOD:
     case WINDOW_FOCUS_METHOD:
+    case WINDOW_CENTER_METHOD:
+      return (request, state) =>
+        Effect.gen(function* () {
+          const windowId = yield* readWindowId(request.payload, request.method)
+          if (!state.windows.has(windowId)) {
+            return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
+          }
+        })
+    case WINDOW_GET_BOUNDS_METHOD:
+      return (request, state) =>
+        Effect.gen(function* () {
+          const windowId = yield* readWindowId(request.payload, request.method)
+          if (!state.windows.has(windowId)) {
+            return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
+          }
+          return { x: 0, y: 0, width: 640, height: 480 }
+        })
+    case WINDOW_SET_BOUNDS_METHOD:
       return (request, state) =>
         Effect.gen(function* () {
           const windowId = yield* readWindowId(request.payload, request.method)

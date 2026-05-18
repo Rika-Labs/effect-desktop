@@ -646,7 +646,7 @@
     {
       "name": "HostWindowClient",
       "kind": "interface",
-      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "HostWindowClientOptions",
@@ -1059,6 +1059,11 @@
       "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never>"
     },
     {
+      "name": "WINDOW_CENTER_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_CENTER_METHOD: \"Window.center\""
+    },
+    {
       "name": "WINDOW_CREATE_METHOD",
       "kind": "value",
       "signature": "const WINDOW_CREATE_METHOD: \"Window.create\""
@@ -1074,14 +1079,34 @@
       "signature": "const WINDOW_FOCUS_METHOD: \"Window.focus\""
     },
     {
+      "name": "WINDOW_GET_BOUNDS_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_GET_BOUNDS_METHOD: \"Window.getBounds\""
+    },
+    {
       "name": "WINDOW_HIDE_METHOD",
       "kind": "value",
       "signature": "const WINDOW_HIDE_METHOD: \"Window.hide\""
     },
     {
+      "name": "WINDOW_SET_BOUNDS_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_BOUNDS_METHOD: \"Window.setBounds\""
+    },
+    {
       "name": "WINDOW_SHOW_METHOD",
       "kind": "value",
       "signature": "const WINDOW_SHOW_METHOD: \"Window.show\""
+    },
+    {
+      "name": "WindowBoundsInput",
+      "kind": "interface",
+      "signature": "export interface WindowBoundsInput { readonly x: number readonly y: number readonly width: number readonly height: number }"
+    },
+    {
+      "name": "WindowBoundsPayload",
+      "kind": "class",
+      "signature": "export class WindowBoundsPayload extends Schema.Class<WindowBoundsPayload>(\"WindowBoundsPayload\")({ x: Schema.Number.check(Schema.isFinite()), y: Schema.Number.check(Schema.isFinite()), width: PositiveFiniteNumber, height: PositiveFiniteNumber }) {}"
     },
     {
       "name": "WindowCreateInput",
@@ -1102,6 +1127,11 @@
       "name": "WindowDestroyPayload",
       "kind": "class",
       "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.NonEmptyString }) {}"
+    },
+    {
+      "name": "WindowSetBoundsPayload",
+      "kind": "class",
+      "signature": "export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>( \"WindowSetBoundsPayload\" )({ windowId: Schema.NonEmptyString, bounds: WindowBoundsPayload }) {}"
     },
     {
       "name": "wipeSecretBytes",

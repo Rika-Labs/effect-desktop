@@ -300,6 +300,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::focus),
     ),
     route(
+        host_protocol::WINDOW_GET_BOUNDS_METHOD,
+        HostMethodDispatcher::Window(window::get_bounds),
+    ),
+    route(
+        host_protocol::WINDOW_SET_BOUNDS_METHOD,
+        HostMethodDispatcher::Window(window::set_bounds),
+    ),
+    route(
+        host_protocol::WINDOW_CENTER_METHOD,
+        HostMethodDispatcher::Window(window::center),
+    ),
+    route(
         host_protocol::WINDOW_DESTROY_METHOD,
         HostMethodDispatcher::WindowDestroy,
     ),
@@ -1746,8 +1758,8 @@ mod tests {
     use super::HostMethodRouter;
     use crate::window::{TrayCreateRequest, WindowCreateRequest, WindowMethodHandler};
     use host_protocol::{
-        ClipboardSupportedPayload, HostProtocolEnvelope, HostProtocolError, WindowCreateResponse,
-        PROTOCOL_VERSION,
+        ClipboardSupportedPayload, HostProtocolEnvelope, HostProtocolError, WindowBoundsPayload,
+        WindowCreateResponse, PROTOCOL_VERSION,
     };
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
@@ -3121,6 +3133,81 @@ mod tests {
                 )),
             }
         );
+    }
+
+    #[test]
+    fn window_bounds_methods_route_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+
+        let get_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-bounds",
+                    host_protocol::WINDOW_GET_BOUNDS_METHOD,
+                    serde_json::json!({
+                        "windowId": "window-1"
+                    }),
+                ),
+                1710000000110,
+            )
+            .expect("window get bounds should return response");
+        assert_eq!(
+            get_response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-bounds".to_string(),
+                timestamp: 1710000000110,
+                trace_id: "trace-request-window-get-bounds".to_string(),
+                payload: Some(serde_json::json!({
+                    "x": 10.0,
+                    "y": 20.0,
+                    "width": 640.0,
+                    "height": 480.0
+                })),
+                error: None,
+            }
+        );
+
+        for (id, method, payload) in [
+            (
+                "request-window-set-bounds",
+                host_protocol::WINDOW_SET_BOUNDS_METHOD,
+                serde_json::json!({
+                    "windowId": "window-1",
+                    "bounds": {
+                        "x": 30.0,
+                        "y": 40.0,
+                        "width": 800.0,
+                        "height": 600.0
+                    }
+                }),
+            ),
+            (
+                "request-window-center",
+                host_protocol::WINDOW_CENTER_METHOD,
+                serde_json::json!({
+                    "windowId": "window-1"
+                }),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000111)
+                .expect("window bounds request should return response");
+
+            assert_eq!(
+                response,
+                HostProtocolEnvelope::Response {
+                    id: id.to_string(),
+                    timestamp: 1710000000111,
+                    trace_id: format!("trace-{id}"),
+                    payload: None,
+                    error: None,
+                }
+            );
+        }
     }
 
     #[test]
@@ -5782,6 +5869,22 @@ mod tests {
                 .lock()
                 .expect("fake focused requests should lock")
                 .push(window_id.to_string());
+            Ok(())
+        }
+
+        fn get_bounds(&self, _window_id: &str) -> Result<WindowBoundsPayload, HostProtocolError> {
+            Ok(WindowBoundsPayload::new(10.0, 20.0, 640.0, 480.0))
+        }
+
+        fn set_bounds(
+            &self,
+            _window_id: &str,
+            _bounds: &WindowBoundsPayload,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn center(&self, _window_id: &str) -> Result<(), HostProtocolError> {
             Ok(())
         }
 

@@ -7,9 +7,12 @@ import {
   HostProtocolNotFoundError,
   HostProtocolResponseEnvelope,
   WINDOW_CREATE_METHOD,
+  WINDOW_CENTER_METHOD,
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
+  WINDOW_GET_BOUNDS_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
@@ -122,6 +125,42 @@ test("host window client requests Window.show, Window.hide, and Window.focus", a
   ])
 })
 
+test("host window client requests Window.getBounds, Window.setBounds, and Window.center", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests), {
+    nextRequestId: nextId([
+      "request-window-get-bounds",
+      "request-window-set-bounds",
+      "request-window-center"
+    ]),
+    nextTraceId: nextId([
+      "trace-window-get-bounds",
+      "trace-window-set-bounds",
+      "trace-window-center"
+    ]),
+    now: nextNumber([1710000000013, 1710000000014, 1710000000015])
+  })
+
+  const bounds = await Effect.runPromise(
+    Effect.gen(function* () {
+      const current = yield* client.getBounds("window-1")
+      yield* client.setBounds("window-1", { x: 30, y: 40, width: 800, height: 600 })
+      yield* client.center("window-1")
+      return current
+    })
+  )
+
+  expect(bounds).toEqual({ x: 10, y: 20, width: 640, height: 480 })
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_GET_BOUNDS_METHOD, { windowId: "window-1" }],
+    [
+      WINDOW_SET_BOUNDS_METHOD,
+      { windowId: "window-1", bounds: { x: 30, y: 40, width: 800, height: 600 } }
+    ],
+    [WINDOW_CENTER_METHOD, { windowId: "window-1" }]
+  ])
+})
+
 test("host window client rejects invalid create bounds before crossing the host boundary", async () => {
   const invalidInputs: ReadonlyArray<unknown> = [
     { width: 0 },
@@ -168,6 +207,17 @@ test("host window client rejects empty lifecycle window ids before crossing the 
   )
   await expectEffectFailure(
     client.focus(""),
+    (error) => error instanceof HostProtocolInvalidArgumentError
+  )
+  expect(requests).toEqual([])
+})
+
+test("host window client rejects invalid setBounds payload before crossing the host boundary", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests))
+
+  await expectEffectFailure(
+    client.setBounds("window-1", { x: 0, y: 0, width: 0, height: 100 }),
     (error) => error instanceof HostProtocolInvalidArgumentError
   )
   expect(requests).toEqual([])
@@ -254,7 +304,17 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                 windowId: "window-1"
               }
             }
-          : base
+          : request.method === WINDOW_GET_BOUNDS_METHOD
+            ? {
+                ...base,
+                payload: {
+                  x: 10,
+                  y: 20,
+                  width: 640,
+                  height: 480
+                }
+              }
+            : base
       )
     )
   }

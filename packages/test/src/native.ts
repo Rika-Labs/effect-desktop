@@ -37,6 +37,7 @@ import {
   ScreenDisplay,
   ScreenDisplaysChangedEvent,
   ScreenPoint,
+  WindowBounds,
   type ClipboardCapability,
   type ClipboardImageOptions,
   type DialogConfirmOptions,
@@ -368,7 +369,11 @@ const makeWindowScenario = (
       }),
     show: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
     hide: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    focus: (_window): Effect.Effect<void, WindowError, never> => Effect.void
+    focus: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    getBounds: (_window): Effect.Effect<WindowBounds, WindowError, never> =>
+      Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
+    setBounds: (_window, _bounds): Effect.Effect<void, WindowError, never> => Effect.void,
+    center: (_window): Effect.Effect<void, WindowError, never> => Effect.void
   } satisfies WindowServiceApi)
 
 function testNativeSurface(surface: {

@@ -5,6 +5,7 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostWindowClientOptions,
   type HostWindowExchange,
+  type WindowBoundsInput as HostWindowBoundsInput,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -31,6 +32,9 @@ import { type AppEventRouterApi, windowScope } from "./app-events.js"
 export * from "./contracts/window.js"
 import {
   WindowCreateInput,
+  WindowBounds,
+  WindowBoundsInput,
+  type WindowBoundsType,
   type WindowCreateOptions,
   type WindowHandle,
   WindowHandleInput,
@@ -69,9 +73,36 @@ export const WindowFocus = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["focus"] })
 )
+export const WindowGetBounds = windowRpc(
+  "getBounds",
+  WindowHandleInput,
+  WindowBounds,
+  P.nativeInvoke({ primitive: "Window", methods: ["getBounds"] })
+)
+export const WindowSetBounds = windowRpc(
+  "setBounds",
+  WindowBoundsInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
+)
+export const WindowCenter = windowRpc(
+  "center",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["center"] })
+)
 
 const makeWindowRpcGroup = () =>
-  RpcGroup.make(WindowCreate, WindowClose, WindowShow, WindowHide, WindowFocus)
+  RpcGroup.make(
+    WindowCreate,
+    WindowClose,
+    WindowShow,
+    WindowHide,
+    WindowFocus,
+    WindowGetBounds,
+    WindowSetBounds,
+    WindowCenter
+  )
 
 const WindowRpcGroup = makeWindowRpcGroup()
 
@@ -92,7 +123,10 @@ export const WindowMethodNames = Object.freeze([
   "close",
   "show",
   "hide",
-  "focus"
+  "focus",
+  "getBounds",
+  "setBounds",
+  "center"
 ] as const)
 
 export interface WindowClientApi {
@@ -101,6 +135,12 @@ export interface WindowClientApi {
   readonly show: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly hide: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly focus: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly getBounds: (window: WindowHandle) => Effect.Effect<WindowBounds, WindowError, never>
+  readonly setBounds: (
+    window: WindowHandle,
+    bounds: WindowBoundsType
+  ) => Effect.Effect<void, WindowError, never>
+  readonly center: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
 }
 
 export class WindowClient extends Context.Service<WindowClient, WindowClientApi>()(
@@ -162,6 +202,21 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
     Effect.gen(function* () {
       const window = yield* Window
       yield* window.focus(input.window)
+    }),
+  "Window.getBounds": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.getBounds(input.window)
+    }),
+  "Window.setBounds": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setBounds(input.window, input.bounds)
+    }),
+  "Window.center": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.center(input.window)
     })
 })
 
@@ -204,7 +259,10 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     close: (window) => client.close(window),
     show: (window) => client.show(window),
     hide: (window) => client.hide(window),
-    focus: (window) => client.focus(window)
+    focus: (window) => client.focus(window),
+    getBounds: (window) => client.getBounds(window),
+    setBounds: (window, bounds) => client.setBounds(window, bounds),
+    center: (window) => client.center(window)
   }
 
   return Object.freeze(service)
@@ -247,26 +305,62 @@ function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
       }),
     show: (window) => runWindowHandleRpc(client, "Window.show", window),
     hide: (window) => runWindowHandleRpc(client, "Window.hide", window),
-    focus: (window) => runWindowHandleRpc(client, "Window.focus", window)
+    focus: (window) => runWindowHandleRpc(client, "Window.focus", window),
+    getBounds: (window) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowHandleInput(window, "Window.getBounds")
+        const bounds = yield* runWindowRpc(client["Window.getBounds"](decoded), "Window.getBounds")
+        return yield* decodeWindowBounds(bounds, "Window.getBounds")
+      }),
+    setBounds: (window, bounds) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowBoundsInput(window, bounds, "Window.setBounds")
+        yield* runWindowRpc(client["Window.setBounds"](decoded), "Window.setBounds")
+      }),
+    center: (window) => runWindowHandleRpc(client, "Window.center", window)
   } satisfies WindowClientApi)
 }
 
 const runWindowHandleRpc = (
   client: WindowRpcClient,
-  operation: "Window.show" | "Window.hide" | "Window.focus",
+  operation: "Window.show" | "Window.hide" | "Window.focus" | "Window.center",
   window: WindowHandle
 ): Effect.Effect<void, WindowError, never> =>
   Effect.gen(function* () {
-    const decoded = yield* Schema.decodeUnknownEffect(WindowHandleInput)(
-      { window },
-      StrictParseOptions
-    ).pipe(
-      Effect.mapError((error) =>
-        makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
-      )
-    )
+    const decoded = yield* decodeWindowHandleInput(window, operation)
     yield* runWindowRpc(client[operation](decoded), operation)
   })
+
+const decodeWindowHandleInput = (
+  window: WindowHandle,
+  operation: string
+): Effect.Effect<WindowHandleInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowHandleInput)({ window }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowBoundsInput = (
+  window: WindowHandle,
+  bounds: WindowBoundsType,
+  operation: string
+): Effect.Effect<WindowBoundsInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowBoundsInput)({ window, bounds }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowBounds = (
+  input: unknown,
+  operation: string
+): Effect.Effect<WindowBounds, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowBounds)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
+  )
 
 const decodeWindowHandle = (
   input: unknown,
@@ -386,6 +480,26 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
               )
             )
         }
+      }),
+    "Window.getBounds": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.getBounds")
+        const bounds = yield* host.getBounds(window.id)
+        return yield* decodeWindowBounds(bounds, "Window.getBounds")
+      }),
+    "Window.setBounds": (input: WindowBoundsInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setBounds"
+        )
+        yield* host.setBounds(window.id, toHostWindowBoundsInput(input.bounds))
+      }),
+    "Window.center": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.center")
+        yield* host.center(window.id)
       })
   }
 }
@@ -433,6 +547,14 @@ const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOption
     ...(input.trafficLights === undefined ? {} : { trafficLights: input.trafficLights })
   }
 }
+
+const toHostWindowBoundsInput = (bounds: WindowBoundsType): HostWindowBoundsInput =>
+  Object.freeze({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height
+  })
 
 const toWindowHandle = (handle: WindowHandle): WindowHandle =>
   Object.freeze({

@@ -4,8 +4,11 @@ import {
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   WINDOW_CREATE_METHOD,
+  WINDOW_CENTER_METHOD,
   WINDOW_FOCUS_METHOD,
+  WINDOW_GET_BOUNDS_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SHOW_METHOD,
   WINDOW_DESTROY_METHOD,
   makeHostProtocolInvalidArgumentError,
@@ -68,6 +71,20 @@ export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>(
   windowId: Schema.NonEmptyString
 }) {}
 
+export class WindowBoundsPayload extends Schema.Class<WindowBoundsPayload>("WindowBoundsPayload")({
+  x: Schema.Number.check(Schema.isFinite()),
+  y: Schema.Number.check(Schema.isFinite()),
+  width: PositiveFiniteNumber,
+  height: PositiveFiniteNumber
+}) {}
+
+export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>(
+  "WindowSetBoundsPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  bounds: WindowBoundsPayload
+}) {}
+
 export interface WindowCreateInput {
   readonly title?: string
   readonly width?: number
@@ -75,6 +92,13 @@ export interface WindowCreateInput {
   readonly titleBarStyle?: Schema.Schema.Type<typeof WindowTitleBarStyle>
   readonly vibrancy?: Schema.Schema.Type<typeof WindowVibrancyMaterial>
   readonly trafficLights?: Schema.Schema.Type<typeof WindowTrafficLights>
+}
+
+export interface WindowBoundsInput {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
 }
 
 export interface HostWindowExchange {
@@ -90,6 +114,14 @@ export interface HostWindowClient {
   readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly getBounds: (
+    windowId: string
+  ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
+  readonly setBounds: (
+    windowId: string,
+    bounds: WindowBoundsInput
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
 }
 
@@ -128,6 +160,25 @@ export const makeHostWindowClient = (
       sendWindowLifecycleCommand(windowId, WINDOW_HIDE_METHOD, exchange, resolved),
     focus: (windowId) =>
       sendWindowLifecycleCommand(windowId, WINDOW_FOCUS_METHOD, exchange, resolved),
+    getBounds: (windowId) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeWindowIdPayload(windowId, WINDOW_GET_BOUNDS_METHOD)
+        const request = yield* makeRequest(WINDOW_GET_BOUNDS_METHOD, resolved, payload)
+        const response = yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+        return yield* decodeBoundsResponse(response.payload, WINDOW_GET_BOUNDS_METHOD)
+      }),
+    setBounds: (windowId, bounds) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetBoundsPayload(windowId, bounds)
+        const request = yield* makeRequest(WINDOW_SET_BOUNDS_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    center: (windowId) =>
+      sendWindowLifecycleCommand(windowId, WINDOW_CENTER_METHOD, exchange, resolved),
     destroy: (windowId) =>
       Effect.gen(function* () {
         const payload = yield* encodeDestroyPayload(windowId)
@@ -187,6 +238,8 @@ const requireSuccess = (
 const decodeUnknownWindowCreatePayload = Schema.decodeUnknownSync(WindowCreatePayload)
 const decodeUnknownWindowCreateResponse = Schema.decodeUnknownSync(WindowCreateResponse)
 const decodeUnknownWindowDestroyPayload = Schema.decodeUnknownSync(WindowDestroyPayload)
+const decodeUnknownWindowBoundsPayload = Schema.decodeUnknownSync(WindowBoundsPayload)
+const decodeUnknownWindowSetBoundsPayload = Schema.decodeUnknownSync(WindowSetBoundsPayload)
 
 const encodeCreatePayload = (
   input: WindowCreateInput
@@ -213,6 +266,15 @@ const encodeWindowIdPayload = (
     catch: (error) => invalidArgument("windowId", error, method)
   })
 
+const encodeSetBoundsPayload = (
+  windowId: string,
+  bounds: WindowBoundsInput
+): Effect.Effect<WindowSetBoundsPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowSetBoundsPayload({ windowId, bounds }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_BOUNDS_METHOD)
+  })
+
 const decodeCreateResponse = (
   payload: unknown
 ): Effect.Effect<WindowCreateResponse, HostProtocolError, never> =>
@@ -220,6 +282,15 @@ const decodeCreateResponse = (
     try: () => decodeUnknownWindowCreateResponse(payload, StrictParseOptions),
     catch: (error) =>
       makeHostProtocolInvalidOutputError(WINDOW_CREATE_METHOD, formatUnknownError(error))
+  })
+
+const decodeBoundsResponse = (
+  payload: unknown,
+  operation: string
+): Effect.Effect<WindowBoundsPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowBoundsPayload(payload, StrictParseOptions),
+    catch: (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   })
 
 const makeRequest = (

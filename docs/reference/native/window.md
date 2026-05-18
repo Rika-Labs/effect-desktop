@@ -31,15 +31,18 @@ import {
 
 ## Methods
 
-| Method   | Payload               | Success        | Description                   |
-| -------- | --------------------- | -------------- | ----------------------------- |
-| `create` | `WindowCreateOptions` | `WindowHandle` | Open a native window.         |
-| `show`   | `WindowHandle`        | `void`         | Make an existing window show. |
-| `hide`   | `WindowHandle`        | `void`         | Hide an existing window.      |
-| `focus`  | `WindowHandle`        | `void`         | Request focus for a window.   |
-| `close`  | `WindowHandle`        | `void`         | Destroy a native window.      |
+| Method      | Payload               | Success        | Description                    |
+| ----------- | --------------------- | -------------- | ------------------------------ |
+| `create`    | `WindowCreateOptions` | `WindowHandle` | Open a native window.          |
+| `show`      | `WindowHandle`        | `void`         | Make an existing window show.  |
+| `hide`      | `WindowHandle`        | `void`         | Hide an existing window.       |
+| `focus`     | `WindowHandle`        | `void`         | Request focus for a window.    |
+| `getBounds` | `WindowHandle`        | `WindowBounds` | Read logical window bounds.    |
+| `setBounds` | `WindowBoundsInput`   | `void`         | Move and resize a window.      |
+| `center`    | `WindowHandle`        | `void`         | Center in the current display. |
+| `close`     | `WindowHandle`        | `void`         | Destroy a native window.       |
 
-`WindowMethodNames = ["create", "close", "show", "hide", "focus"]`. Blur and a separate close-vs-destroy host lifecycle remain reserved for later phases because the Tao host currently exposes `set_visible`, `set_focus`, and destruction, but not a portable blur primitive.
+`WindowMethodNames = ["create", "close", "show", "hide", "focus", "getBounds", "setBounds", "center"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Blur and a separate close-vs-destroy host lifecycle remain reserved for later phases because Tao exposes `set_visible`, `set_focus`, bounds primitives, and destruction, but not a portable blur primitive.
 
 ## Errors
 

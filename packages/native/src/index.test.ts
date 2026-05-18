@@ -9,9 +9,12 @@ import {
   HostProtocolUnsupportedError,
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
+  WINDOW_CENTER_METHOD,
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
+  WINDOW_GET_BOUNDS_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolHostUnavailableError,
   RpcCapability,
@@ -380,6 +383,7 @@ import {
   UpdaterStatusState,
   WebViewNavigationBlockedEvent,
   WebViewScreenshot,
+  WindowBounds,
   type NotificationHandle,
   type TrayHandle,
   type WebViewHandle,
@@ -674,7 +678,10 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "close",
   "show",
   "hide",
-  "focus"
+  "focus",
+  "getBounds",
+  "setBounds",
+  "center"
 ]
 
 const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
@@ -7368,6 +7375,9 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.show"]
     void client["Window.hide"]
     void client["Window.focus"]
+    void client["Window.getBounds"]
+    void client["Window.setBounds"]
+    void client["Window.center"]
   }
   void assertSupportedWindowClient
   expect(supportedWindowMethods).toEqual([
@@ -7375,7 +7385,10 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.close",
     "Window.show",
     "Window.hide",
-    "Window.focus"
+    "Window.focus",
+    "Window.getBounds",
+    "Window.setBounds",
+    "Window.center"
   ])
   expect(WindowRpcs.requests.has("Window.show")).toBe(true)
   expect("spec" in WindowRpcs).toBe(false)
@@ -7393,7 +7406,14 @@ test("Window service delegates through a substitutable WindowClient port", async
     close: () => recordVoid(calls, "close"),
     show: () => recordVoid(calls, "show"),
     hide: () => recordVoid(calls, "hide"),
-    focus: () => recordVoid(calls, "focus")
+    focus: () => recordVoid(calls, "focus"),
+    getBounds: () =>
+      Effect.sync(() => {
+        calls.push("getBounds")
+        return new WindowBounds({ x: 10, y: 20, width: 640, height: 480 })
+      }),
+    setBounds: (_window, bounds) => recordVoid(calls, `setBounds:${bounds.width}x${bounds.height}`),
+    center: () => recordVoid(calls, "center")
   }
 
   const result = await Effect.runPromise(
@@ -7403,14 +7423,30 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.show(created)
       yield* window.hide(created)
       yield* window.focus(created)
+      const bounds = yield* window.getBounds(created)
+      yield* window.setBounds(
+        created,
+        new WindowBounds({ x: bounds.x, y: bounds.y, width: 800, height: 600 })
+      )
+      yield* window.center(created)
       yield* window.close(created)
 
-      return { created }
+      return { bounds, created }
     }).pipe(Effect.provide(makeWindowServiceLayer(client)))
   )
 
   expect(result.created).toEqual(windowHandle)
-  expect(calls).toEqual(["create:Main", "show", "hide", "focus", "close"])
+  expect(result.bounds).toEqual(new WindowBounds({ x: 10, y: 20, width: 640, height: 480 }))
+  expect(calls).toEqual([
+    "create:Main",
+    "show",
+    "hide",
+    "focus",
+    "getBounds",
+    "setBounds:800x600",
+    "center",
+    "close"
+  ])
 })
 
 test("Window service can be composed from a separately provided WindowClient", async () => {
@@ -7444,6 +7480,9 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "show-request",
       "hide-request",
       "focus-request",
+      "get-bounds-request",
+      "set-bounds-request",
+      "center-request",
       "destroy-request"
     ]),
     nextTraceId: nextId([
@@ -7451,10 +7490,14 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "show-trace",
       "hide-trace",
       "focus-trace",
+      "get-bounds-trace",
+      "set-bounds-trace",
+      "center-trace",
       "destroy-trace"
     ]),
     now: nextNumber([
-      1_710_000_000_000, 1_710_000_000_001, 1_710_000_000_002, 1_710_000_000_003, 1_710_000_000_004
+      1_710_000_000_000, 1_710_000_000_001, 1_710_000_000_002, 1_710_000_000_003, 1_710_000_000_004,
+      1_710_000_000_005, 1_710_000_000_006, 1_710_000_000_007
     ])
   })
   const program = Effect.gen(function* () {
@@ -7471,6 +7514,12 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     yield* window.show(created)
     yield* window.hide(created)
     yield* window.focus(created)
+    const bounds = yield* window.getBounds(created)
+    yield* window.setBounds(
+      created,
+      new WindowBounds({ x: 30, y: 40, width: bounds.width, height: bounds.height })
+    )
+    yield* window.center(created)
     yield* window.close(created)
     const afterClose = yield* registry.list()
 
@@ -7516,6 +7565,30 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     ],
     [
       WINDOW_FOCUS_METHOD,
+      {
+        windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_GET_BOUNDS_METHOD,
+      {
+        windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_SET_BOUNDS_METHOD,
+      {
+        windowId: "host-window-1",
+        bounds: {
+          x: 30,
+          y: 40,
+          width: 640,
+          height: 480
+        }
+      }
+    ],
+    [
+      WINDOW_CENTER_METHOD,
       {
         windowId: "host-window-1"
       }
@@ -8073,6 +8146,9 @@ test("host WindowClient adapter exposes only supported callable methods", async 
   expect("show" in client).toBe(true)
   expect("hide" in client).toBe(true)
   expect("focus" in client).toBe(true)
+  expect("getBounds" in client).toBe(true)
+  expect("setBounds" in client).toBe(true)
+  expect("center" in client).toBe(true)
   expect("setVibrancy" in client).toBe(false)
 })
 
@@ -9205,7 +9281,10 @@ const noopWindowClient: WindowClientApi = {
   close: () => Effect.void,
   show: () => Effect.void,
   hide: () => Effect.void,
-  focus: () => Effect.void
+  focus: () => Effect.void,
+  getBounds: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
+  setBounds: () => Effect.void,
+  center: () => Effect.void
 }
 
 const handleFor = (id: string): WindowHandle => ({
@@ -9227,7 +9306,9 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
         traceId: request.traceId,
         ...(request.method === WINDOW_CREATE_METHOD
           ? { payload: { windowId: "host-window-1" } }
-          : {})
+          : request.method === WINDOW_GET_BOUNDS_METHOD
+            ? { payload: { x: 10, y: 20, width: 640, height: 480 } }
+            : {})
       })
     )
   }

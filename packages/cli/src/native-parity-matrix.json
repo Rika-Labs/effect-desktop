@@ -4032,6 +4032,16 @@
       "hostStatus": "missing"
     },
     {
+      "tag": "Window.center",
+      "surface": "Window",
+      "method": "center",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.close",
       "surface": "Window",
       "method": "close",
@@ -4063,9 +4073,29 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.getBounds",
+      "surface": "Window",
+      "method": "getBounds",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.hide",
       "surface": "Window",
       "method": "hide",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setBounds",
+      "surface": "Window",
+      "method": "setBounds",
       "capability": "native",
       "support": {
         "status": "supported"
@@ -4124,10 +4154,10 @@
     }
   ],
   "summary": {
-    "total": 202,
-    "routed": 180,
+    "total": 205,
+    "routed": 183,
     "missing": 22,
-    "supported": 84,
+    "supported": 87,
     "partial": 22,
     "unsupported": 96
   }

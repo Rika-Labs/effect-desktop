@@ -53,6 +53,20 @@ export class WindowHandleInput extends Schema.Class<WindowHandleInput>("WindowHa
   window: WindowResource
 }) {}
 
+export class WindowBounds extends Schema.Class<WindowBounds>("WindowBounds")({
+  x: Schema.Number.check(Schema.isFinite()),
+  y: Schema.Number.check(Schema.isFinite()),
+  width: PositiveFiniteNumber,
+  height: PositiveFiniteNumber
+}) {}
+
+export type WindowBoundsType = Schema.Schema.Type<typeof WindowBounds>
+
+export class WindowBoundsInput extends Schema.Class<WindowBoundsInput>("WindowBoundsInput")({
+  window: WindowResource,
+  bounds: WindowBounds
+}) {}
+
 export class WindowTitleInput extends Schema.Class<WindowTitleInput>("WindowTitleInput")({
   window: WindowResource,
   title: Schema.String

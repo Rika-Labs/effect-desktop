@@ -8,7 +8,7 @@ use host_protocol::{
     HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
     ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
-    WindowCreatePayload, WindowCreateResponse,
+    WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
 };
 use std::{
     collections::{HashMap, VecDeque},
@@ -19,7 +19,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tao::{
-    dpi::LogicalSize,
+    dpi::{LogicalPosition, LogicalSize},
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopWindowTarget},
     monitor::MonitorHandle,
@@ -68,6 +68,19 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
     fn hide(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
     fn focus(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn get_bounds(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError>;
+
+    fn set_bounds(
+        &self,
+        window_id: &str,
+        bounds: &WindowBoundsPayload,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
     fn set_dock_badge_label(
         &self,
@@ -187,6 +200,19 @@ enum WindowCommand {
         window_id: String,
         reply: Sender<WindowCommandReply>,
     },
+    GetBounds {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetBounds {
+        window_id: String,
+        bounds: WindowBoundsPayload,
+        reply: Sender<WindowCommandReply>,
+    },
+    Center {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
     SetDockBadgeLabel {
         label: Option<String>,
         operation: &'static str,
@@ -261,6 +287,7 @@ enum WindowCommandResponse {
     Created(WindowCreateResponse),
     Destroyed,
     WindowUpdated,
+    WindowBounds(WindowBoundsPayload),
     DockBadgeLabelSet,
     DockAttentionRequested,
     DockMenuSet,
@@ -379,6 +406,7 @@ impl WindowMethodPort {
             WindowCommandResponse::WindowUpdated => Ok(()),
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
@@ -434,6 +462,10 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window create received lifecycle response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
+            WindowCommandResponse::WindowBounds(_) => Err(HostProtocolError::internal(
+                "window create received bounds response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
             WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
             | WindowCommandResponse::TrayDestroyed
@@ -480,6 +512,10 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window destroy received lifecycle response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
+            WindowCommandResponse::WindowBounds(_) => Err(HostProtocolError::internal(
+                "window destroy received bounds response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
             WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
             | WindowCommandResponse::TrayDestroyed
@@ -523,6 +559,63 @@ impl WindowMethodHandler for WindowMethodPort {
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_FOCUS_METHOD)
     }
 
+    fn get_bounds(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetBounds {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowBounds(bounds) => Ok(bounds),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+                "window get bounds received unrelated response",
+                host_protocol::WINDOW_GET_BOUNDS_METHOD,
+            )),
+        }
+    }
+
+    fn set_bounds(
+        &self,
+        window_id: &str,
+        bounds: &WindowBoundsPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetBounds {
+            window_id: window_id.to_string(),
+            bounds: bounds.clone(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_BOUNDS_METHOD)
+    }
+
+    fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Center {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CENTER_METHOD)
+    }
+
     fn set_dock_badge_label(
         &self,
         label: Option<String>,
@@ -540,6 +633,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
@@ -568,6 +662,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
@@ -599,6 +694,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::MenuSet
@@ -630,6 +726,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::DockAttentionRequested
@@ -663,6 +760,7 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::DockAttentionRequested
@@ -1059,6 +1157,60 @@ impl WindowRegistry {
         };
 
         resources._window.set_focus();
+        Ok(())
+    }
+
+    fn get_bounds(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_GET_BOUNDS_METHOD,
+            ));
+        };
+        window_bounds(&resources._window, host_protocol::WINDOW_GET_BOUNDS_METHOD)
+    }
+
+    fn set_bounds(
+        &self,
+        window_id: &str,
+        bounds: &WindowBoundsPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_BOUNDS_METHOD,
+            ));
+        };
+
+        resources
+            ._window
+            .set_outer_position(LogicalPosition::new(bounds.x(), bounds.y()));
+        resources
+            ._window
+            .set_inner_size(LogicalSize::new(bounds.width(), bounds.height()));
+        Ok(())
+    }
+
+    fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_CENTER_METHOD,
+            ));
+        };
+        let Some(monitor) = resources._window.current_monitor() else {
+            return Err(HostProtocolError::unsupported(
+                "window monitor unavailable",
+                host_protocol::WINDOW_CENTER_METHOD,
+            ));
+        };
+        let bounds = centered_window_bounds(&resources._window, &monitor)?;
+        resources
+            ._window
+            .set_outer_position(LogicalPosition::new(bounds.x(), bounds.y()));
         Ok(())
     }
 
@@ -1522,6 +1674,31 @@ impl WindowRegistry {
                 );
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::GetBounds { window_id, reply } => {
+                let result = self
+                    .get_bounds(&window_id)
+                    .map(WindowCommandResponse::WindowBounds);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetBounds {
+                window_id,
+                bounds,
+                reply,
+            } => {
+                let result = self
+                    .set_bounds(&window_id, &bounds)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::Center { window_id, reply } => {
+                let result = self
+                    .center(&window_id)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::SetDockBadgeLabel {
                 label,
                 operation,
@@ -1663,6 +1840,7 @@ fn unexpected_tray_response(
         WindowCommandResponse::Created(_) => "tray command received window create response",
         WindowCommandResponse::Destroyed => "tray command received window destroy response",
         WindowCommandResponse::WindowUpdated => "tray command received window lifecycle response",
+        WindowCommandResponse::WindowBounds(_) => "tray command received window bounds response",
         WindowCommandResponse::DockBadgeLabelSet => "tray command received dock badge response",
         WindowCommandResponse::DockAttentionRequested => {
             "tray command received dock attention response"
@@ -1688,6 +1866,7 @@ fn unexpected_screen_response(
         WindowCommandResponse::Created(_) => "screen command received window create response",
         WindowCommandResponse::Destroyed => "screen command received window destroy response",
         WindowCommandResponse::WindowUpdated => "screen command received window lifecycle response",
+        WindowCommandResponse::WindowBounds(_) => "screen command received window bounds response",
         WindowCommandResponse::DockBadgeLabelSet => "screen command received dock badge response",
         WindowCommandResponse::DockAttentionRequested => {
             "screen command received dock attention response"
@@ -1703,6 +1882,48 @@ fn unexpected_screen_response(
         WindowCommandResponse::ScreenSupported(_) => "screen command received support response",
     };
     HostProtocolError::internal(message, operation)
+}
+
+fn window_bounds(
+    window: &Window,
+    operation: &'static str,
+) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
+    let scale = window.scale_factor();
+    let position = window.outer_position().map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to read window position: {error}"),
+            operation,
+        )
+    })?;
+    let size = window.inner_size();
+
+    Ok(WindowBoundsPayload::new(
+        f64::from(position.x) / scale,
+        f64::from(position.y) / scale,
+        f64::from(size.width) / scale,
+        f64::from(size.height) / scale,
+    ))
+}
+
+fn centered_window_bounds(
+    window: &Window,
+    monitor: &MonitorHandle,
+) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
+    let current = window_bounds(window, host_protocol::WINDOW_CENTER_METHOD)?;
+    let scale = monitor.scale_factor();
+    let position = monitor.position();
+    let size = monitor.size();
+    let monitor_x = f64::from(position.x) / scale;
+    let monitor_y = f64::from(position.y) / scale;
+    let monitor_width = f64::from(size.width) / scale;
+    let monitor_height = f64::from(size.height) / scale;
+
+    Ok(WindowBoundsPayload::new(
+        monitor_x + ((monitor_width - current.width()) / 2.0),
+        monitor_y + ((monitor_height - current.height()) / 2.0),
+        current.width(),
+        current.height(),
+    ))
 }
 
 fn screen_display_payload(

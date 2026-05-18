@@ -48,6 +48,9 @@ pub const WINDOW_CREATE_METHOD: &str = "Window.create";
 pub const WINDOW_SHOW_METHOD: &str = "Window.show";
 pub const WINDOW_HIDE_METHOD: &str = "Window.hide";
 pub const WINDOW_FOCUS_METHOD: &str = "Window.focus";
+pub const WINDOW_GET_BOUNDS_METHOD: &str = "Window.getBounds";
+pub const WINDOW_SET_BOUNDS_METHOD: &str = "Window.setBounds";
+pub const WINDOW_CENTER_METHOD: &str = "Window.center";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
 pub const DOCK_SET_BADGE_TEXT_METHOD: &str = "Dock.setBadgeText";
@@ -2695,6 +2698,66 @@ impl WindowCreateResponse {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowDestroyPayload {
     window_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowBoundsPayload {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl WindowBoundsPayload {
+    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    pub fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub fn y(&self) -> f64 {
+        self.y
+    }
+
+    pub fn width(&self) -> f64 {
+        self.width
+    }
+
+    pub fn height(&self) -> f64 {
+        self.height
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetBoundsPayload {
+    window_id: String,
+    bounds: WindowBoundsPayload,
+}
+
+impl WindowSetBoundsPayload {
+    pub fn new(window_id: impl Into<String>, bounds: WindowBoundsPayload) -> Self {
+        Self {
+            window_id: window_id.into(),
+            bounds,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn bounds(&self) -> &WindowBoundsPayload {
+        &self.bounds
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -10366,11 +10429,12 @@ mod tests {
         TransientWindowZOrderPolicy, TrayActivatedEventPayload, TrayCreatePayload,
         TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
-        UpdaterStatusPayload, UpdaterStatusState, WindowCreatePayload, WindowCreateResponse,
-        WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
-        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
-        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
-        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        UpdaterStatusPayload, UpdaterStatusState, WindowBoundsPayload, WindowCreatePayload,
+        WindowCreateResponse, WindowDestroyPayload, WindowSetBoundsPayload, WindowTitleBarStyle,
+        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
+        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
+        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
         CLIPBOARD_UNSUPPORTED_REASON, CRASH_REPORTER_UNSUPPORTED_REASON,
@@ -11368,6 +11432,27 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&payload).expect("window destroy payload should encode"),
             r#"{"windowId":"window-1"}"#
+        );
+    }
+
+    #[test]
+    fn window_bounds_payloads_serialize_canonically() {
+        let bounds = WindowBoundsPayload::new(10.0, 20.0, 640.0, 480.0);
+        assert_eq!(bounds.x(), 10.0);
+        assert_eq!(bounds.y(), 20.0);
+        assert_eq!(bounds.width(), 640.0);
+        assert_eq!(bounds.height(), 480.0);
+        assert_eq!(
+            serde_json::to_string(&bounds).expect("window bounds payload should encode"),
+            r#"{"x":10.0,"y":20.0,"width":640.0,"height":480.0}"#
+        );
+
+        let set_bounds = WindowSetBoundsPayload::new("window-1", bounds);
+        assert_eq!(set_bounds.window_id(), "window-1");
+        assert_eq!(set_bounds.bounds().width(), 640.0);
+        assert_eq!(
+            serde_json::to_string(&set_bounds).expect("window set bounds payload should encode"),
+            r#"{"windowId":"window-1","bounds":{"x":10.0,"y":20.0,"width":640.0,"height":480.0}}"#
         );
     }
 
