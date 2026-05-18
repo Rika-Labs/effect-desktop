@@ -43,7 +43,7 @@ surface. Use [`Association`](association.md) for those contracts.
 
 ## Validation
 
-Schemes must match `^[a-z][a-z0-9+.-]*$` and cannot be reserved browser or host schemes such as `app`, `file`, `http`, `https`, `data`, or `javascript`.
+Schemes must match `^[a-z][a-z0-9+.-]*$` and cannot be reserved browser or host schemes such as `app`, `file`, `http`, `https`, `data`, `javascript`, or `vbscript`.
 
 `serveAsset.root` must be a non-empty absolute local path to an existing scoped directory, not a filesystem root. It rejects control characters and traversal segments. URL paths for `serveRoute.route` and `deny.path` must start with `/` and reject malformed percent escapes, encoded traversal, backslashes, control characters, and `.` or `..` segments before native transport.
 

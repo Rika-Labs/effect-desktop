@@ -4430,6 +4430,9 @@ test("Protocol bridge client validates custom schemes and path boundaries", asyn
       yield* client.serveRoute({ scheme: "myapp", route: "/settings" })
       yield* client.deny({ scheme: "assets", path: "/private" })
       const reservedSchemeExit = yield* Effect.exit(client.registerAppProtocol({ scheme: "app" }))
+      const dangerousSchemeExit = yield* Effect.exit(
+        client.registerAppProtocol({ scheme: "vbscript" })
+      )
       const uppercaseSchemeExit = yield* Effect.exit(
         client.registerAppProtocol({ scheme: "MyApp" })
       )
@@ -4448,6 +4451,7 @@ test("Protocol bridge client validates custom schemes and path boundaries", asyn
       )
       return {
         broadRootExit,
+        dangerousSchemeExit,
         encodedBackslashTraversalExit,
         encodedTraversalExit,
         relativeDenyExit,
@@ -4468,6 +4472,7 @@ test("Protocol bridge client validates custom schemes and path boundaries", asyn
   )
 
   expectExitFailure(result.reservedSchemeExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(result.dangerousSchemeExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(result.uppercaseSchemeExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(result.traversalExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(result.encodedTraversalExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -4696,6 +4701,7 @@ test("Association bridge client rejects invalid schemes and file extensions befo
   const exits = await Effect.runPromise(
     Effect.all([
       Effect.exit(client.isDefaultProtocolClient({ scheme: "http" })),
+      Effect.exit(client.isDefaultProtocolClient({ scheme: "vbscript" })),
       Effect.exit(client.setDefaultProtocolClient({ scheme: "bad scheme" })),
       Effect.exit(client.isDefaultProtocolClient({ scheme: "App" })),
       Effect.exit(client.getFileAssociations({ extensions: ["txt"] })),

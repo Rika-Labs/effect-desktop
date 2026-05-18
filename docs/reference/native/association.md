@@ -40,7 +40,7 @@ exists.
 
 Protocol schemes use the same custom-scheme contract as `Protocol`: lowercase
 ASCII schemes matching `^[a-z][a-z0-9+.-]*$`, excluding reserved schemes such as
-`app`, `file`, `http`, `https`, `data`, and `javascript`.
+`app`, `file`, `http`, `https`, `data`, `javascript`, and `vbscript`.
 
 File extensions must start with `.`, contain at least one ASCII alphanumeric
 character after the dot, and may contain ASCII letters, digits, `.`, `_`, and

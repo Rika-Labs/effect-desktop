@@ -17,6 +17,7 @@ const RESERVED_SCHEMES: &[&str] = &[
     "http",
     "https",
     "javascript",
+    "vbscript",
     "chrome",
     "view-source",
 ];
@@ -225,6 +226,12 @@ mod tests {
         assert_eq!(
             is_default_protocol_client(Some(json!({ "scheme": "https" })))
                 .expect_err("reserved scheme")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            is_default_protocol_client(Some(json!({ "scheme": "vbscript" })))
+                .expect_err("dangerous scheme")
                 .tag(),
             "InvalidArgument"
         );

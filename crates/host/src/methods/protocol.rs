@@ -22,6 +22,7 @@ const RESERVED_SCHEMES: &[&str] = &[
     "http",
     "https",
     "javascript",
+    "vbscript",
     "chrome",
     "view-source",
 ];
@@ -509,6 +510,11 @@ mod tests {
     fn protocol_methods_reject_reserved_schemes_and_unsafe_paths() {
         assert!(serve_asset(Some(serde_json::json!({
             "scheme": "app",
+            "root": "/app/assets"
+        })))
+        .is_err());
+        assert!(serve_asset(Some(serde_json::json!({
+            "scheme": "vbscript",
             "root": "/app/assets"
         })))
         .is_err());
