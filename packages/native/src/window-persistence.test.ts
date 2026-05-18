@@ -1,11 +1,15 @@
 /** @effect-diagnostics strictEffectProvide:off */
 import { expect, test } from "bun:test"
 import {
+  type BridgeClientExchange,
+  HostProtocolRequestEnvelope,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
+  WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_STATE_METHOD,
   makeHostProtocolHostUnavailableError
 } from "@effect-desktop/bridge"
-import { makeResourceId } from "@effect-desktop/core"
+import { ResourceRegistry, makeResourceId, makeResourceRegistry } from "@effect-desktop/core"
 import { Effect, Exit, Fiber, Layer, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
@@ -21,12 +25,16 @@ import {
   WindowPersistence,
   WindowPersistenceError,
   WindowPersistenceRestoreResult,
+  ScreenLive,
+  WindowLive,
   makeScreenServiceLayer,
   makeWindowPersistenceLayer,
   makeWindowServiceLayer,
   type ScreenClientApi,
   type WindowClientApi
 } from "./index.js"
+import { makeScreenBridgeClientLayer } from "./screen.js"
+import { makeWindowBridgeClientLayer } from "./window.js"
 
 test("WindowPersistence saves and restores stale display state onto the current primary display", () => {
   const calls: WindowPersistenceCalls = { setBounds: [], fullscreen: [] }
@@ -89,6 +97,40 @@ test("WindowPersistence saves and restores stale display state onto the current 
         })
       )
     )
+  )
+})
+
+test("WindowPersistence save uses the renderer bridge path for window and screen state", () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* WindowPersistence
+
+      yield* service.save(windowHandle, { zoom: 1.5 })
+
+      expect(requests.map((request) => request.method)).toEqual([
+        WINDOW_GET_BOUNDS_METHOD,
+        WINDOW_GET_STATE_METHOD,
+        "Screen.getDisplays"
+      ])
+      expect(requests[0]?.payload).toMatchObject({ window: windowHandle })
+      expect(requests[1]?.payload).toMatchObject({ window: windowHandle })
+    }).pipe(Effect.provide(bridgeFixtureLayer({ requests })))
+  )
+})
+
+test("WindowPersistence rejects malformed save options before bridge transport", () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* WindowPersistence
+      const exit = yield* Effect.exit(service.save(windowHandle, { zoom: Number.NaN }))
+
+      expectWindowPersistenceFailure(exit, "invalid-input", "WindowPersistence.save")
+      expect(requests).toEqual([])
+    }).pipe(Effect.provide(bridgeFixtureLayer({ requests })))
   )
 })
 
@@ -352,6 +394,56 @@ const fixtureLayer = (options: {
     )
   )
 }
+
+const bridgeFixtureLayer = (options: {
+  readonly requests: HostProtocolRequestEnvelope[]
+}): Layer.Layer<WindowPersistence, never, never> => {
+  const exchange = windowPersistenceBridgeExchange(options.requests)
+  const registry = Effect.runSync(makeResourceRegistry())
+  fixtureSequence += 1
+  return Layer.provide(
+    makeWindowPersistenceLayer({
+      path: `window-persistence-bridge-test-${String(fixtureSequence)}.json`
+    }),
+    Layer.mergeAll(
+      Layer.provide(
+        WindowLive,
+        Layer.provide(
+          makeWindowBridgeClientLayer(exchange),
+          Layer.succeed(ResourceRegistry)(registry)
+        )
+      ),
+      Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange)),
+      KeyValueStore.layerMemory
+    )
+  )
+}
+
+const windowPersistenceBridgeExchange = (
+  requests: HostProtocolRequestEnvelope[]
+): BridgeClientExchange => ({
+  request: (request) =>
+    Effect.sync(() => {
+      requests.push(request)
+      switch (request.method) {
+        case WINDOW_GET_BOUNDS_METHOD:
+          return { kind: "success", payload: { x: 100, y: 120, width: 800, height: 600 } }
+        case WINDOW_GET_STATE_METHOD:
+          return {
+            kind: "success",
+            payload: { minimized: false, maximized: false, fullscreen: false }
+          }
+        case "Screen.getDisplays":
+          return {
+            kind: "success",
+            payload: { displays: [primaryDisplay()] }
+          }
+        default:
+          throw new Error(`unexpected bridge request: ${request.method}`)
+      }
+    }),
+  subscribe: () => Stream.empty
+})
 
 const makeWindowClient = (
   calls: WindowPersistenceCalls,
