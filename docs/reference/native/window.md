@@ -59,6 +59,13 @@ import {
 
 `WindowMethodNames = ["create", "close", "show", "hide", "focus", "getCurrent", "getById", "list", "getBounds", "setBounds", "center", "setTitle", "setResizable", "setDecorations", "setAlwaysOnTop", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
+The chrome surface is not complete. `Window.create` accepts macOS creation-time
+`titleBarStyle`, `vibrancy`, and `trafficLights` options, and `setDecorations`
+is mutable through the host. Effect Desktop does not yet expose a
+`WindowChrome` service, mutable titlebar-style or vibrancy commands, shadow or
+transparency controls, mutable traffic-light placement, or a platform support
+matrix for those chrome features.
+
 The z-order and attention surface is not complete Electron-style window chrome.
 Effect Desktop does not yet expose window-scoped skip-taskbar, badge, flash, or
 attention lifecycle events, and the existing progress and attention controls
