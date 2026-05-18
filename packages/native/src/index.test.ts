@@ -5056,6 +5056,58 @@ test("RecentDocuments bridge client sends typed host envelopes and decodes event
   ])
 })
 
+test("RecentDocuments bridge client accepts safe absolute document paths", async () => {
+  const cases = [
+    "/tmp/report.txt",
+    "/tmp/a\\..\\b.txt",
+    "C:\\tmp\\report.txt",
+    "\\\\server\\share\\report.txt",
+    "\\\\server/share/report.txt"
+  ] as const
+
+  for (const path of cases) {
+    const requests: HostProtocolRequestEnvelope[] = []
+    const result = await runScopedPromise(
+      Effect.gen(function* () {
+        const recentDocuments = yield* RecentDocuments
+        yield* recentDocuments.add({ path: { path } })
+        const documents = yield* recentDocuments.list()
+        const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
+        return { documents, events }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            RecentDocumentsLive,
+            makeRecentDocumentsBridgeClientLayer(
+              recentDocumentsExchange(
+                requests,
+                (request) =>
+                  request.method === "RecentDocuments.list"
+                    ? { kind: "success", payload: { documents: [{ path: { path } }] } }
+                    : { kind: "success", payload: undefined },
+                path
+              )
+            )
+          )
+        )
+      )
+    )
+
+    expect(result.documents).toEqual(
+      new RecentDocumentsListResult({
+        documents: [new RecentDocument({ path: new CanonicalPath({ path }) })]
+      })
+    )
+    expect(Array.from(result.events)).toEqual([
+      new RecentDocumentsEvent({ phase: "document-added", path: new CanonicalPath({ path }) })
+    ])
+    expect(requests.map((request) => [request.method, request.payload])).toEqual([
+      ["RecentDocuments.add", { path: { path } }],
+      ["RecentDocuments.list", null]
+    ])
+  }
+})
+
 test("RecentDocuments bridge client rejects invalid paths before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(
@@ -5077,7 +5129,15 @@ test("RecentDocuments bridge client rejects invalid paths before transport", asy
     Effect.all([
       Effect.exit(client.add({ path: { path: "" } })),
       Effect.exit(client.add({ path: { path: "relative.txt" } })),
-      Effect.exit(client.add({ path: { path: "/tmp/bad\u0000path" } }))
+      Effect.exit(client.add({ path: { path: "/tmp/bad\u0000path" } })),
+      Effect.exit(client.add({ path: { path: "/tmp/bad\npath" } })),
+      Effect.exit(client.add({ path: { path: "/tmp/bad\u0085path" } })),
+      Effect.exit(client.add({ path: { path: "/tmp/../secret.txt" } })),
+      Effect.exit(client.add({ path: { path: "C:relative.txt" } })),
+      Effect.exit(client.add({ path: { path: "C:\\tmp\\..\\secret.txt" } })),
+      Effect.exit(client.add({ path: { path: "\\\\" } })),
+      Effect.exit(client.add({ path: { path: "\\\\server" } })),
+      Effect.exit(client.add({ path: { path: "\\\\/server/share" } }))
     ])
   )
 
@@ -5085,6 +5145,49 @@ test("RecentDocuments bridge client rejects invalid paths before transport", asy
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   }
   expect(requests).toEqual([])
+})
+
+test("RecentDocuments bridge client rejects unsafe list and event paths as InvalidOutput", async () => {
+  const invalidListExchange = recentDocumentsExchange([], (request) =>
+    request.method === "RecentDocuments.list"
+      ? { kind: "success", payload: { documents: [{ path: { path: "/tmp/../secret.txt" } }] } }
+      : { kind: "success", payload: undefined }
+  )
+  const invalidEventExchange = recentDocumentsExchange(
+    [],
+    () => ({ kind: "success", payload: undefined }),
+    "/tmp/bad\u0085path"
+  )
+
+  const listExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      return yield* Effect.exit(recentDocuments.list())
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          RecentDocumentsLive,
+          makeRecentDocumentsBridgeClientLayer(invalidListExchange)
+        )
+      )
+    )
+  )
+  const eventExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      return yield* Effect.exit(recentDocuments.events().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          RecentDocumentsLive,
+          makeRecentDocumentsBridgeClientLayer(invalidEventExchange)
+        )
+      )
+    )
+  )
+
+  expectExitFailure(listExit, (error) => hasErrorTag(error, "InvalidOutput"))
+  expectExitFailure(eventExit, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
 test("native host RPC runtime denies protected RecentDocuments calls before handlers run", async () => {
@@ -11480,7 +11583,8 @@ const autostartExchange = (
 
 const recentDocumentsExchange = (
   requests: HostProtocolRequestEnvelope[],
-  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse,
+  eventPath = "/tmp/report.txt"
 ): BridgeClientExchange => ({
   request: (request) => {
     requests.push(request)
@@ -11494,7 +11598,7 @@ const recentDocumentsExchange = (
             timestamp: 1710000000100,
             traceId: "event-trace",
             method,
-            payload: { phase: "document-added", path: { path: "/tmp/report.txt" } }
+            payload: { phase: "document-added", path: { path: eventPath } }
           })
         )
       : Stream.empty

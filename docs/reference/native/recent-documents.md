@@ -31,8 +31,9 @@ the host adapter exists.
 
 ## Validation
 
-`add.path` must be a non-empty absolute local path and must not contain NUL
-bytes. Relative paths are rejected before native transport.
+`add.path` must be a non-empty absolute platform path with no Unicode control
+characters and no `.` or `..` path segments. Relative paths, drive-relative
+Windows paths, and incomplete UNC roots are rejected before native transport.
 
 ## Errors
 

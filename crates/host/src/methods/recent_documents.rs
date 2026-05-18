@@ -62,21 +62,31 @@ fn validate_path(path: &str, operation: &'static str) -> Result<(), HostProtocol
             operation,
         ));
     }
-    if path.contains('\0') {
+    if path.chars().any(char::is_control) {
         return Err(HostProtocolError::invalid_argument(
             "path",
-            "must not contain NUL bytes",
+            "must not contain control characters",
             operation,
         ));
     }
-    if !(path.starts_with('/') || is_windows_absolute_path(path) || path.starts_with("\\\\")) {
+    if !is_safe_absolute_path(path) {
         return Err(HostProtocolError::invalid_argument(
             "path",
-            "must be an absolute path",
+            "must be an absolute path without dot segments",
             operation,
         ));
     }
     Ok(())
+}
+
+fn is_safe_absolute_path(path: &str) -> bool {
+    if path.starts_with('/') {
+        return !has_dot_path_segment(path, '/');
+    }
+    if is_windows_absolute_path(path) || is_windows_unc_absolute_path(path) {
+        return !has_windows_dot_path_segment(path);
+    }
+    false
 }
 
 fn is_windows_absolute_path(path: &str) -> bool {
@@ -85,6 +95,27 @@ fn is_windows_absolute_path(path: &str) -> bool {
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
         && matches!(bytes[2], b'/' | b'\\')
+}
+
+fn is_windows_unc_absolute_path(path: &str) -> bool {
+    if !path.starts_with("\\\\") {
+        return false;
+    }
+    let mut segments = path.split(['\\', '/']);
+    matches!(segments.next(), Some(""))
+        && matches!(segments.next(), Some(""))
+        && segments.next().is_some_and(|segment| !segment.is_empty())
+        && segments.next().is_some_and(|segment| !segment.is_empty())
+}
+
+fn has_dot_path_segment(path: &str, separator: char) -> bool {
+    path.split(separator)
+        .any(|segment| matches!(segment, "." | ".."))
+}
+
+fn has_windows_dot_path_segment(path: &str) -> bool {
+    path.split(['\\', '/'])
+        .any(|segment| matches!(segment, "." | ".."))
 }
 
 fn unsupported(operation: &'static str) -> HostProtocolError {
@@ -136,6 +167,56 @@ mod tests {
         assert_eq!(
             add(Some(json!({ "path": { "path": "/tmp/bad\u{0}path" } })))
                 .expect_err("nul path")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "/tmp/bad\npath" } })))
+                .expect_err("control path")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "/tmp/bad\u{85}path" } })))
+                .expect_err("unicode control path")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "/tmp/../secret.txt" } })))
+                .expect_err("dot segment path")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "C:relative.txt" } })))
+                .expect_err("drive-relative path")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            add(Some(
+                json!({ "path": { "path": "C:\\tmp\\..\\secret.txt" } })
+            ))
+            .expect_err("windows dot segment path")
+            .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "\\\\" } })))
+                .expect_err("unc root")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "\\\\server" } })))
+                .expect_err("unc server")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "\\\\/server/share" } })))
+                .expect_err("mixed unc prefix")
                 .tag(),
             "InvalidArgument"
         );
