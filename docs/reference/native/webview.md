@@ -42,6 +42,11 @@ as a declared TypeScript bridge contract, but the Rust host has no
 service for capture-page, print-to-PDF, find-in-page, zoom, or user-agent
 controls.
 
+Inspection controls are not host-backed today. `devtools open` is capability
+metadata only; Effect Desktop has no `WebViewInspection` service,
+`openDevTools`, `closeDevTools`, debugger attach/detach contract, or audited
+host permission path for inspector access.
+
 Proxy configuration, HTTP authentication challenges, and certificate decisions
 are also not part of `WebView`. Those hooks are absent; adding them would
 require a new network-auth service and host adapter.
