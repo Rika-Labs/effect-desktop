@@ -196,7 +196,7 @@
     {
       "name": "PowerEvent",
       "kind": "type",
-      "signature": "export type PowerEvent = | PowerMonitorSuspendEvent | PowerMonitorResumeEvent | PowerMonitorShutdownEvent | PowerMonitorSourceChangedEvent"
+      "signature": "export type PowerEvent = | PowerMonitorSuspendEvent | PowerMonitorResumeEvent | PowerMonitorShutdownEvent | PowerMonitorLockScreenEvent | PowerMonitorUnlockScreenEvent | PowerMonitorSourceChangedEvent"
     },
     {
       "name": "PowerState",
@@ -406,7 +406,7 @@
     {
       "name": "usePower",
       "kind": "value",
-      "signature": "const usePower: (streams: { readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never>; readonly onResume: () => Stream.Stream<PowerMonitorResumeEvent, PowerMonitorError, never>; readonly onShutdown: () => Stream.Stream<PowerMonitorShutdownEvent, PowerMonitorError, never>; readonly onPowerSourceChanged: () => Stream.Stream<PowerMonitorSourceChangedEvent, PowerMonitorError, never>; }) => PowerState"
+      "signature": "const usePower: (streams: { readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never>; readonly onResume: () => Stream.Stream<PowerMonitorResumeEvent, PowerMonitorError, never>; readonly onShutdown: () => Stream.Stream<PowerMonitorShutdownEvent, PowerMonitorError, never>; readonly onLockScreen: () => Stream.Stream<PowerMonitorLockScreenEvent, PowerMonitorError, never>; readonly onUnlockScreen: () => Stream.Stream<PowerMonitorUnlockScreenEvent, PowerMonitorError, never>; readonly onPowerSourceChanged: () => Stream.Stream<PowerMonitorSourceChangedEvent, PowerMonitorError, never>; }) => PowerState"
     },
     {
       "name": "useResource",

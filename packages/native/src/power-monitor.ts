@@ -15,12 +15,14 @@ import { NativeSurface } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import {
   PowerMonitorIsSupportedInput,
+  PowerMonitorLockScreenEvent,
   type PowerMonitorMethod,
   PowerMonitorResumeEvent,
   PowerMonitorShutdownEvent,
   PowerMonitorSourceChangedEvent,
   PowerMonitorSupportedResult,
-  PowerMonitorSuspendEvent
+  PowerMonitorSuspendEvent,
+  PowerMonitorUnlockScreenEvent
 } from "./contracts/power-monitor.js"
 
 export type PowerMonitorError = HostProtocolError
@@ -39,7 +41,7 @@ export const PowerMonitorIsSupported = NativeSurface.rpc("PowerMonitor", "isSupp
   payload: PowerMonitorIsSupportedInput,
   success: PowerMonitorSupportedResult,
   authority: NativeSurface.authority.none,
-  endpoint: "mutation",
+  endpoint: "query",
   support: PowerMonitorSupport
 })
 
@@ -47,6 +49,8 @@ export const PowerMonitorRpcEvents = Object.freeze({
   Suspend: { payload: PowerMonitorSuspendEvent },
   Resume: { payload: PowerMonitorResumeEvent },
   Shutdown: { payload: PowerMonitorShutdownEvent },
+  LockScreen: { payload: PowerMonitorLockScreenEvent },
+  UnlockScreen: { payload: PowerMonitorUnlockScreenEvent },
   PowerSourceChanged: { payload: PowerMonitorSourceChangedEvent }
 })
 
@@ -62,6 +66,12 @@ export interface PowerMonitorClientApi {
   readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never>
   readonly onResume: () => Stream.Stream<PowerMonitorResumeEvent, PowerMonitorError, never>
   readonly onShutdown: () => Stream.Stream<PowerMonitorShutdownEvent, PowerMonitorError, never>
+  readonly onLockScreen: () => Stream.Stream<PowerMonitorLockScreenEvent, PowerMonitorError, never>
+  readonly onUnlockScreen: () => Stream.Stream<
+    PowerMonitorUnlockScreenEvent,
+    PowerMonitorError,
+    never
+  >
   readonly onPowerSourceChanged: () => Stream.Stream<
     PowerMonitorSourceChangedEvent,
     PowerMonitorError,
@@ -93,6 +103,8 @@ export class PowerMonitor extends Context.Service<PowerMonitor, PowerMonitorServ
         onSuspend: () => client.onSuspend(),
         onResume: () => client.onResume(),
         onShutdown: () => client.onShutdown(),
+        onLockScreen: () => client.onLockScreen(),
+        onUnlockScreen: () => client.onUnlockScreen(),
         onPowerSourceChanged: () => client.onPowerSourceChanged(),
         isSupported: (method) =>
           client.isSupported(method).pipe(Effect.map((result) => result.supported))
@@ -153,6 +165,14 @@ const powerMonitorClientFromRpcClient = (
       subscribePowerMonitorEvent(exchange, "PowerMonitor.Resume", PowerMonitorResumeEvent),
     onShutdown: () =>
       subscribePowerMonitorEvent(exchange, "PowerMonitor.Shutdown", PowerMonitorShutdownEvent),
+    onLockScreen: () =>
+      subscribePowerMonitorEvent(exchange, "PowerMonitor.LockScreen", PowerMonitorLockScreenEvent),
+    onUnlockScreen: () =>
+      subscribePowerMonitorEvent(
+        exchange,
+        "PowerMonitor.UnlockScreen",
+        PowerMonitorUnlockScreenEvent
+      ),
     onPowerSourceChanged: () =>
       subscribePowerMonitorEvent(
         exchange,

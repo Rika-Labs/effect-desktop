@@ -62,6 +62,8 @@ Calls `Screen.getDisplays`.
     | PowerMonitorSuspendEvent
     | PowerMonitorResumeEvent
     | PowerMonitorShutdownEvent
+    | PowerMonitorLockScreenEvent
+    | PowerMonitorUnlockScreenEvent
     | PowerMonitorSourceChangedEvent
 }
 ```

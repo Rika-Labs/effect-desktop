@@ -96,7 +96,7 @@ Native service authors should use the internal native surface authoring path, no
 | `Notification`              | System notifications                    | [native/notification](reference/native/notification.md)                               |
 | `Path`                      | Platform path lookup                    | [native/path](reference/native/path.md)                                               |
 | `Protocol`                  | App protocol routing                    | [native/protocol](reference/native/protocol.md)                                       |
-| `PowerMonitor`              | Power source events                     | [native/power-monitor](reference/native/power-monitor.md)                             |
+| `PowerMonitor`              | Power lifecycle events                  | [native/power-monitor](reference/native/power-monitor.md)                             |
 | `RealtimeMediaSession`      | Realtime media sessions                 | [native/realtime-media-session](reference/native/realtime-media-session.md)           |
 | `SafeStorage`               | Credential-store boundary               | [native/safe-storage](reference/native/safe-storage.md)                               |
 | `Screen`                    | Displays, pointer                       | [native/screen](reference/native/screen.md)                                           |

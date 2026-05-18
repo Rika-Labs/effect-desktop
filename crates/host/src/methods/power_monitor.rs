@@ -53,17 +53,21 @@ mod tests {
         let payload = is_supported(Some(json!({ "method": "onSuspend" })))
             .expect("support query should return payload");
         assert_eq!(payload, Some(json!({ "supported": false })));
+
+        let payload = is_supported(Some(json!({ "method": "onLockScreen" })))
+            .expect("lock support query should return payload");
+        assert_eq!(payload, Some(json!({ "supported": false })));
     }
 
     #[test]
     fn power_monitor_support_rejects_unknown_methods() {
-        let error = is_supported(Some(json!({ "method": "onLockScreen" })))
+        let error = is_supported(Some(json!({ "method": "onDisplayOff" })))
             .expect_err("unknown method should reject");
         assert_eq!(
             error,
             host_protocol::HostProtocolError::invalid_argument(
                 "payload",
-                "unknown variant `onLockScreen`, expected one of `onSuspend`, `onResume`, `onShutdown`, `onPowerSourceChanged`",
+                "unknown variant `onDisplayOff`, expected one of `onSuspend`, `onResume`, `onShutdown`, `onLockScreen`, `onUnlockScreen`, `onPowerSourceChanged`",
                 host_protocol::POWER_MONITOR_IS_SUPPORTED_METHOD,
             )
         );

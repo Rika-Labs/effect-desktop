@@ -149,6 +149,8 @@ pub const POWER_MONITOR_IS_SUPPORTED_METHOD: &str = "PowerMonitor.isSupported";
 pub const POWER_MONITOR_SUSPEND_EVENT: &str = "PowerMonitor.Suspend";
 pub const POWER_MONITOR_RESUME_EVENT: &str = "PowerMonitor.Resume";
 pub const POWER_MONITOR_SHUTDOWN_EVENT: &str = "PowerMonitor.Shutdown";
+pub const POWER_MONITOR_LOCK_SCREEN_EVENT: &str = "PowerMonitor.LockScreen";
+pub const POWER_MONITOR_UNLOCK_SCREEN_EVENT: &str = "PowerMonitor.UnlockScreen";
 pub const POWER_MONITOR_POWER_SOURCE_CHANGED_EVENT: &str = "PowerMonitor.PowerSourceChanged";
 pub const SYSTEM_APPEARANCE_GET_APPEARANCE_METHOD: &str = "SystemAppearance.getAppearance";
 pub const SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD: &str = "SystemAppearance.getAccentColor";
@@ -2714,6 +2716,8 @@ pub enum PowerMonitorMethodPayload {
     OnSuspend,
     OnResume,
     OnShutdown,
+    OnLockScreen,
+    OnUnlockScreen,
     OnPowerSourceChanged,
 }
 
@@ -12047,10 +12051,21 @@ mod tests {
 
     #[test]
     fn power_monitor_payloads_reject_unknown_methods_and_excess_fields() {
+        let lock_screen =
+            PowerMonitorIsSupportedPayload::new(PowerMonitorMethodPayload::OnLockScreen);
+        assert_eq!(
+            lock_screen.method(),
+            PowerMonitorMethodPayload::OnLockScreen
+        );
+        assert_eq!(
+            serde_json::to_string(&lock_screen).expect("power monitor lock support should encode"),
+            r#"{"method":"onLockScreen"}"#
+        );
+
         let error =
-            serde_json::from_str::<PowerMonitorIsSupportedPayload>(r#"{"method":"onLockScreen"}"#)
+            serde_json::from_str::<PowerMonitorIsSupportedPayload>(r#"{"method":"onDisplayOff"}"#)
                 .expect_err("unknown power monitor method should be rejected");
-        assert!(error.to_string().contains("unknown variant `onLockScreen`"));
+        assert!(error.to_string().contains("unknown variant `onDisplayOff`"));
 
         let error = serde_json::from_str::<PowerMonitorIsSupportedPayload>(
             r#"{"method":"onSuspend","watch":true}"#,

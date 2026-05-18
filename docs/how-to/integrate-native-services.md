@@ -118,6 +118,8 @@ function StatusBar(props: {
     onSuspend: props.powerMonitor.onSuspend,
     onResume: props.powerMonitor.onResume,
     onShutdown: props.powerMonitor.onShutdown,
+    onLockScreen: props.powerMonitor.onLockScreen,
+    onUnlockScreen: props.powerMonitor.onUnlockScreen,
     onPowerSourceChanged: props.powerMonitor.onPowerSourceChanged
   })
   return (

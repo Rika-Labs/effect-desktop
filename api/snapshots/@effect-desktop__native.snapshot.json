@@ -3121,7 +3121,7 @@
     {
       "name": "PowerMonitor",
       "kind": "class",
-      "signature": "export class PowerMonitor extends Context.Service<PowerMonitor, PowerMonitorServiceApi>()( \"@effect-desktop/native/PowerMonitor\" ) { static readonly layer = Layer.effect(PowerMonitor)( Effect.gen(function* () { const client = yield* PowerMonitorClient return PowerMonitor.of({ onSuspend: () => client.onSuspend(), onResume: () => client.onResume(), onShutdown: () => client.onShutdown(), onPowerSourceChanged: () => client.onPowerSourceChanged(), isSupported: (method) => client.isSupported(method).pipe(Effect.map((result) => result.supported)) } satisfies PowerMonitorServiceApi) }) ) }"
+      "signature": "export class PowerMonitor extends Context.Service<PowerMonitor, PowerMonitorServiceApi>()( \"@effect-desktop/native/PowerMonitor\" ) { static readonly layer = Layer.effect(PowerMonitor)( Effect.gen(function* () { const client = yield* PowerMonitorClient return PowerMonitor.of({ onSuspend: () => client.onSuspend(), onResume: () => client.onResume(), onShutdown: () => client.onShutdown(), onLockScreen: () => client.onLockScreen(), onUnlockScreen: () => client.onUnlockScreen(), onPowerSourceChanged: () => client.onPowerSourceChanged(), isSupported: (method) => client.isSupported(method).pipe(Effect.map((result) => result.supported)) } satisfies PowerMonitorServiceApi) }) ) }"
     },
     {
       "name": "PowerMonitorClient",
@@ -3131,7 +3131,7 @@
     {
       "name": "PowerMonitorClientApi",
       "kind": "interface",
-      "signature": "export interface PowerMonitorClientApi { readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never> readonly onResume: () => Stream.Stream<PowerMonitorResumeEvent, PowerMonitorError, never> readonly onShutdown: () => Stream.Stream<PowerMonitorShutdownEvent, PowerMonitorError, never> readonly onPowerSourceChanged: () => Stream.Stream< PowerMonitorSourceChangedEvent, PowerMonitorError, never > readonly isSupported: ( method: PowerMonitorMethod ) => Effect.Effect<PowerMonitorSupportedResult, PowerMonitorError, never> }"
+      "signature": "export interface PowerMonitorClientApi { readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never> readonly onResume: () => Stream.Stream<PowerMonitorResumeEvent, PowerMonitorError, never> readonly onShutdown: () => Stream.Stream<PowerMonitorShutdownEvent, PowerMonitorError, never> readonly onLockScreen: () => Stream.Stream<PowerMonitorLockScreenEvent, PowerMonitorError, never> readonly onUnlockScreen: () => Stream.Stream< PowerMonitorUnlockScreenEvent, PowerMonitorError, never > readonly onPowerSourceChanged: () => Stream.Stream< PowerMonitorSourceChangedEvent, PowerMonitorError, never > readonly isSupported: ( method: PowerMonitorMethod ) => Effect.Effect<PowerMonitorSupportedResult, PowerMonitorError, never> }"
     },
     {
       "name": "PowerMonitorError",
@@ -3161,7 +3161,7 @@
     {
       "name": "PowerMonitorRpcEvents",
       "kind": "type",
-      "signature": "const PowerMonitorRpcEvents: Readonly<{ Suspend: { payload: typeof PowerMonitorSuspendEvent; }; Resume: { payload: typeof PowerMonitorResumeEvent; }; Shutdown: { payload: typeof PowerMonitorShutdownEvent; }; PowerSourceChanged: { payload: typeof PowerMonitorSourceChangedEvent; }; }>"
+      "signature": "const PowerMonitorRpcEvents: Readonly<{ Suspend: { payload: typeof PowerMonitorSuspendEvent; }; Resume: { payload: typeof PowerMonitorResumeEvent; }; Shutdown: { payload: typeof PowerMonitorShutdownEvent; }; LockScreen: { payload: typeof PowerMonitorLockScreenEvent; }; UnlockScreen: { payload: typeof PowerMonitorUnlockScreenEvent; }; PowerSourceChanged: { payload: typeof PowerMonitorSourceChangedEvent; }; }>"
     },
     {
       "name": "PowerMonitorRpcHandlers",

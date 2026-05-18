@@ -389,10 +389,12 @@ import {
   NotificationPermissionResult,
   NotificationSupportedResult,
   CanonicalPath,
+  PowerMonitorLockScreenEvent,
   PowerMonitorResumeEvent,
   PowerMonitorShutdownEvent,
   PowerMonitorSourceChangedEvent,
   PowerMonitorSuspendEvent,
+  PowerMonitorUnlockScreenEvent,
   RecentDocument,
   RecentDocumentsEvent,
   RecentDocumentsListResult,
@@ -6942,6 +6944,8 @@ test("PowerMonitorRpcs declares the Phase 8 event-only surface", () => {
     "Suspend",
     "Resume",
     "Shutdown",
+    "LockScreen",
+    "UnlockScreen",
     "PowerSourceChanged"
   ])
 })
@@ -6954,7 +6958,10 @@ test("PowerMonitor bridge client decodes power event streams", async () => {
         suspend: yield* power.onSuspend().pipe(Stream.take(1), Stream.runCollect),
         resume: yield* power.onResume().pipe(Stream.take(1), Stream.runCollect),
         shutdown: yield* power.onShutdown().pipe(Stream.take(1), Stream.runCollect),
+        lock: yield* power.onLockScreen().pipe(Stream.take(1), Stream.runCollect),
+        unlock: yield* power.onUnlockScreen().pipe(Stream.take(1), Stream.runCollect),
         source: yield* power.onPowerSourceChanged().pipe(Stream.take(1), Stream.runCollect),
+        lockSupported: yield* power.isSupported("onLockScreen"),
         sourceSupported: yield* power.isSupported("onPowerSourceChanged")
       }
     }).pipe(
@@ -6967,19 +6974,31 @@ test("PowerMonitor bridge client decodes power event streams", async () => {
   expect(Array.from(result.suspend)).toEqual([new PowerMonitorSuspendEvent({ reason: "sleep" })])
   expect(Array.from(result.resume)).toEqual([new PowerMonitorResumeEvent({ reason: "wake" })])
   expect(Array.from(result.shutdown)).toEqual([new PowerMonitorShutdownEvent({ reason: "system" })])
+  expect(Array.from(result.lock)).toEqual([new PowerMonitorLockScreenEvent({ reason: "locked" })])
+  expect(Array.from(result.unlock)).toEqual([
+    new PowerMonitorUnlockScreenEvent({ reason: "unlocked" })
+  ])
   expect(Array.from(result.source)).toEqual([
     new PowerMonitorSourceChangedEvent({ source: "battery" })
   ])
+  expect(result.lockSupported).toBe(true)
   expect(result.sourceSupported).toBe(true)
 })
 
 test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", async () => {
   const cases: ReadonlyArray<{
-    readonly method: "PowerMonitor.Suspend" | "PowerMonitor.Resume" | "PowerMonitor.Shutdown"
+    readonly method:
+      | "PowerMonitor.Suspend"
+      | "PowerMonitor.Resume"
+      | "PowerMonitor.Shutdown"
+      | "PowerMonitor.LockScreen"
+      | "PowerMonitor.UnlockScreen"
   }> = [
     { method: "PowerMonitor.Suspend" },
     { method: "PowerMonitor.Resume" },
-    { method: "PowerMonitor.Shutdown" }
+    { method: "PowerMonitor.Shutdown" },
+    { method: "PowerMonitor.LockScreen" },
+    { method: "PowerMonitor.UnlockScreen" }
   ]
 
   for (const { method } of cases) {
@@ -7009,7 +7028,11 @@ test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", 
             ? power.onSuspend().pipe(Stream.take(1), Stream.runCollect)
             : method === "PowerMonitor.Resume"
               ? power.onResume().pipe(Stream.take(1), Stream.runCollect)
-              : power.onShutdown().pipe(Stream.take(1), Stream.runCollect)
+              : method === "PowerMonitor.Shutdown"
+                ? power.onShutdown().pipe(Stream.take(1), Stream.runCollect)
+                : method === "PowerMonitor.LockScreen"
+                  ? power.onLockScreen().pipe(Stream.take(1), Stream.runCollect)
+                  : power.onUnlockScreen().pipe(Stream.take(1), Stream.runCollect)
         )
       }).pipe(
         Effect.provide(Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange)))
@@ -11601,17 +11624,37 @@ const powerMonitorExchange = (): BridgeClientExchange => ({
                 payload: { reason: "system" }
               })
             )
-          : method === "PowerMonitor.PowerSourceChanged"
+          : method === "PowerMonitor.LockScreen"
             ? Stream.make(
                 new HostProtocolEventEnvelope({
                   kind: "event",
                   timestamp: 1710000000713,
                   traceId: "event-trace",
                   method,
-                  payload: { source: "battery" }
+                  payload: { reason: "locked" }
                 })
               )
-            : Stream.empty
+            : method === "PowerMonitor.UnlockScreen"
+              ? Stream.make(
+                  new HostProtocolEventEnvelope({
+                    kind: "event",
+                    timestamp: 1710000000714,
+                    traceId: "event-trace",
+                    method,
+                    payload: { reason: "unlocked" }
+                  })
+                )
+              : method === "PowerMonitor.PowerSourceChanged"
+                ? Stream.make(
+                    new HostProtocolEventEnvelope({
+                      kind: "event",
+                      timestamp: 1710000000715,
+                      traceId: "event-trace",
+                      method,
+                      payload: { source: "battery" }
+                    })
+                  )
+                : Stream.empty
 })
 
 const dockExchange = (

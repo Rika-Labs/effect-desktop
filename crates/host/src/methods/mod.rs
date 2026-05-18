@@ -4419,7 +4419,7 @@ mod tests {
                 request_with_payload(
                     "request-power-monitor-invalid",
                     host_protocol::POWER_MONITOR_IS_SUPPORTED_METHOD,
-                    serde_json::json!({ "method": "onLockScreen" }),
+                    serde_json::json!({ "method": "onDisplayOff" }),
                 ),
                 1710000000112,
             )

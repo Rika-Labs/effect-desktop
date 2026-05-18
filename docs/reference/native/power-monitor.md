@@ -22,8 +22,8 @@ implemented.
 | ------------- | ------------ | ------------------------ | --------------- |
 | `isSupported` | `{ method }` | `{ supported: boolean }` | unsupported     |
 
-`method` is one of `onSuspend`, `onResume`, `onShutdown`, or
-`onPowerSourceChanged`.
+`method` is one of `onSuspend`, `onResume`, `onShutdown`, `onLockScreen`,
+`onUnlockScreen`, or `onPowerSourceChanged`.
 
 ## Events
 
@@ -32,9 +32,9 @@ The current TypeScript event streams are:
 - `onSuspend()` emits `PowerMonitorSuspendEvent`.
 - `onResume()` emits `PowerMonitorResumeEvent`.
 - `onShutdown()` emits `PowerMonitorShutdownEvent`.
+- `onLockScreen()` emits `PowerMonitorLockScreenEvent`.
+- `onUnlockScreen()` emits `PowerMonitorUnlockScreenEvent`.
 - `onPowerSourceChanged()` emits `PowerMonitorSourceChangedEvent`.
-
-Lock and unlock events are not exposed by the current TypeScript contract.
 
 ## Errors
 
