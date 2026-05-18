@@ -25,12 +25,22 @@ import {
 
 export type PowerMonitorError = HostProtocolError
 
+const UnsupportedReason = "host-adapter-unimplemented"
+
+const PowerMonitorSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
+
 export const PowerMonitorIsSupported = NativeSurface.rpc("PowerMonitor", "isSupported", {
   payload: PowerMonitorIsSupportedInput,
   success: PowerMonitorSupportedResult,
   authority: NativeSurface.authority.none,
   endpoint: "mutation",
-  support: NativeSurface.support.supported
+  support: PowerMonitorSupport
 })
 
 export const PowerMonitorRpcEvents = Object.freeze({
@@ -135,8 +145,8 @@ export const makeHostPowerMonitorRpcRuntime = (
 const powerMonitorClientFromRpcClient = (
   client: DesktopRpcClient<PowerMonitorRpc>,
   exchange: BridgeClientExchange | undefined
-): PowerMonitorClientApi => {
-  return Object.freeze({
+): PowerMonitorClientApi =>
+  Object.freeze({
     onSuspend: () =>
       subscribePowerMonitorEvent(exchange, "PowerMonitor.Suspend", PowerMonitorSuspendEvent),
     onResume: () =>
@@ -155,7 +165,6 @@ const powerMonitorClientFromRpcClient = (
         "PowerMonitor.isSupported"
       )
   } satisfies PowerMonitorClientApi)
-}
 
 const subscribePowerMonitorEvent = <A>(
   exchange: BridgeClientExchange | undefined,

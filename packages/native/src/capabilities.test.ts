@@ -21,11 +21,13 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
       const updaterInstall = yield* capabilities.support("Updater.install")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
+      const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
       return {
         create,
         dockBadge,
         updaterInstall,
         crashReporterStart,
+        powerMonitorIsSupported,
         hasWindowShow: capabilities.manifest.some((fact) => fact.tag === "Window.show")
       }
     }).pipe(Effect.provide(NativeCapabilitiesLive))
@@ -59,6 +61,15 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     ]
   })
   expect(result.crashReporterStart).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.powerMonitorIsSupported).toEqual({
     status: "unsupported",
     reason: "host-adapter-unimplemented",
     platforms: [

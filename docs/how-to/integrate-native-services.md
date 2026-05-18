@@ -118,7 +118,10 @@ function StatusBar() {
 }
 ```
 
-These are convenience hooks over the matching RPC clients; under the hood they call `Screen.getDisplays`, `SystemAppearance.theme`, and `PowerMonitor` events.
+These are convenience hooks over the matching RPC clients; under the hood they
+call `Screen.getDisplays`, `SystemAppearance.theme`, and the TypeScript
+`PowerMonitor` event streams. Native OS power-event delivery is currently
+unsupported until the PowerMonitor host adapter is implemented.
 
 ## Support checks
 

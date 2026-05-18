@@ -127,7 +127,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Path`                      | `home`                      | `supported`   | `Path.home`                               | `routed`    |
 | `Path`                      | `logs`                      | `supported`   | `Path.logs`                               | `routed`    |
 | `Path`                      | `temp`                      | `supported`   | `Path.temp`                               | `routed`    |
-| `PowerMonitor`              | `isSupported`               | `supported`   | `PowerMonitor.isSupported`                | `missing`   |
+| `PowerMonitor`              | `isSupported`               | `unsupported` | `PowerMonitor.isSupported`                | `missing`   |
 | `Protocol`                  | `deny`                      | `supported`   | `Protocol.deny`                           | `routed`    |
 | `Protocol`                  | `registerAppProtocol`       | `supported`   | `Protocol.registerAppProtocol`            | `routed`    |
 | `Protocol`                  | `serveAsset`                | `supported`   | `Protocol.serveAsset`                     | `routed`    |

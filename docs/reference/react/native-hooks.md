@@ -51,10 +51,11 @@ Calls `Screen.getDisplays`.
 ## `usePower()` → `PowerState`
 
 ```ts
-{ event?: "suspend" | "resume" | "shutdown" | "lock-screen" | "unlock-screen" }
+{ event?: "suspend" | "resume" | "shutdown" | "power-source-changed" }
 ```
 
-Subscribes to `PowerMonitor` events.
+Consumes the TypeScript `PowerMonitor` event streams. Native OS event delivery is
+currently unsupported until the PowerMonitor host adapter is implemented.
 
 ## Related
 

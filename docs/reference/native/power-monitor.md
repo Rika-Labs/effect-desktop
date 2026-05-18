@@ -1,6 +1,6 @@
 ---
 title: PowerMonitor (native)
-description: System power and sleep events.
+description: Power monitor API status and event contract.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -10,21 +10,42 @@ effect_version: 4
 
 System power and sleep events.
 
+The TypeScript surface is present for contract and bridge-event decoding work,
+but the Rust host power monitor adapter is not implemented. The native surface
+reports `unsupported` on macOS, Windows, and Linux until host power watchers,
+permission enforcement, platform support mapping, and event delivery are
+implemented.
+
 ## Methods
 
-| Method        | Payload      | Success                  |
-| ------------- | ------------ | ------------------------ |
-| `isSupported` | `{ method }` | `{ supported: boolean }` |
+| Method        | Payload      | Success                  | Runtime support |
+| ------------- | ------------ | ------------------------ | --------------- |
+| `isSupported` | `{ method }` | `{ supported: boolean }` | unsupported     |
 
-Event stream of `"suspend" \| "resume" \| "shutdown" \| "lock-screen" \| "unlock-screen"`.
+`method` is one of `onSuspend`, `onResume`, `onShutdown`, or
+`onPowerSourceChanged`.
+
+## Events
+
+The current TypeScript event streams are:
+
+- `onSuspend()` emits `PowerMonitorSuspendEvent`.
+- `onResume()` emits `PowerMonitorResumeEvent`.
+- `onShutdown()` emits `PowerMonitorShutdownEvent`.
+- `onPowerSourceChanged()` emits `PowerMonitorSourceChangedEvent`.
+
+Lock and unlock events are not exposed by the current TypeScript contract.
 
 ## Errors
 
-`PowerMonitorError`.
+`PowerMonitorError` is the host protocol error union. Until the host adapter is
+implemented, bridge calls and subscriptions reach an unsupported or missing host
+path rather than real OS power events.
 
 ## React hook
 
-`usePower()` from `@effect-desktop/react`.
+`usePower()` from `@effect-desktop/react` consumes the TypeScript streams, but it
+does not provide native OS events until the host adapter exists.
 
 ## Related
 
