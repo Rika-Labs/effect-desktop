@@ -1,4 +1,5 @@
 mod activation_registry;
+mod app;
 mod attachment_intake;
 mod clipboard;
 mod crash_reporter;
@@ -197,6 +198,38 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::HOST_VERSION_METHOD,
         HostMethodDispatcher::Version,
+    ),
+    route(
+        host_protocol::APP_GET_INFO_METHOD,
+        HostMethodDispatcher::Payload(app::get_info),
+    ),
+    route(
+        host_protocol::APP_GET_COMMAND_LINE_METHOD,
+        HostMethodDispatcher::Payload(app::get_command_line),
+    ),
+    route(
+        host_protocol::APP_QUIT_METHOD,
+        HostMethodDispatcher::Payload(app::quit),
+    ),
+    route(
+        host_protocol::APP_RESTART_METHOD,
+        HostMethodDispatcher::Payload(app::restart),
+    ),
+    route(
+        host_protocol::APP_FOCUS_METHOD,
+        HostMethodDispatcher::Payload(app::focus),
+    ),
+    route(
+        host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
+        HostMethodDispatcher::Payload(app::request_single_instance_lock),
+    ),
+    route(
+        host_protocol::APP_SET_OPEN_AT_LOGIN_METHOD,
+        HostMethodDispatcher::Payload(app::set_open_at_login),
+    ),
+    route(
+        host_protocol::APP_REGISTER_PROTOCOL_METHOD,
+        HostMethodDispatcher::Payload(app::register_protocol),
     ),
     route(
         host_protocol::WINDOW_CREATE_METHOD,
@@ -2552,6 +2585,78 @@ mod tests {
             progress_error,
             Some(HostProtocolError::InvalidState { .. })
         ));
+    }
+
+    #[test]
+    fn app_lifecycle_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-quit",
+                    host_protocol::APP_QUIT_METHOD,
+                    serde_json::json!({ "exitCode": 0 }),
+                ),
+                1710000000125,
+            )
+            .expect("app quit should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-quit".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-quit".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::APP_UNSUPPORTED_REASON,
+                    host_protocol::APP_QUIT_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn app_void_routes_reject_present_payloads() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-info-object",
+                    host_protocol::APP_GET_INFO_METHOD,
+                    serde_json::json!({}),
+                ),
+                1710000000125,
+            )
+            .expect("app get info should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("app get info should reject present payload");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    #[test]
+    fn app_lifecycle_routes_reject_malformed_payloads() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-restart-invalid",
+                    host_protocol::APP_RESTART_METHOD,
+                    serde_json::json!({ "args": ["bad\0arg"] }),
+                ),
+                1710000000125,
+            )
+            .expect("app restart should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("app restart should reject malformed args");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
     }
 
     #[test]

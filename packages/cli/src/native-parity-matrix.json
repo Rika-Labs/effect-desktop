@@ -120,7 +120,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "App.getCommandLine",
@@ -148,7 +148,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "App.getInfo",
@@ -176,7 +176,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "App.quit",
@@ -204,7 +204,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "App.registerProtocol",
@@ -232,7 +232,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "App.requestSingleInstanceLock",
@@ -260,7 +260,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "App.restart",
@@ -288,7 +288,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "App.setOpenAtLogin",
@@ -316,7 +316,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "AttachmentIntake.dispose",
@@ -3759,8 +3759,8 @@
   ],
   "summary": {
     "total": 187,
-    "routed": 157,
-    "missing": 30,
+    "routed": 165,
+    "missing": 22,
     "supported": 81,
     "partial": 22,
     "unsupported": 84

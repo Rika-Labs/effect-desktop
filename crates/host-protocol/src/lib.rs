@@ -14,6 +14,18 @@ use serde_json::Value;
 pub const HOST_PING_METHOD: &str = "host.ping";
 pub const HOST_VERSION_METHOD: &str = "host.version";
 pub const PROTOCOL_VERSION: &str = env!("EFFECT_DESKTOP_HOST_PROTOCOL_VERSION");
+pub const APP_GET_INFO_METHOD: &str = "App.getInfo";
+pub const APP_GET_COMMAND_LINE_METHOD: &str = "App.getCommandLine";
+pub const APP_QUIT_METHOD: &str = "App.quit";
+pub const APP_RESTART_METHOD: &str = "App.restart";
+pub const APP_FOCUS_METHOD: &str = "App.focus";
+pub const APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD: &str = "App.requestSingleInstanceLock";
+pub const APP_SET_OPEN_AT_LOGIN_METHOD: &str = "App.setOpenAtLogin";
+pub const APP_REGISTER_PROTOCOL_METHOD: &str = "App.registerProtocol";
+pub const APP_SECOND_INSTANCE_EVENT: &str = "App.onSecondInstance";
+pub const APP_OPEN_FILE_EVENT: &str = "App.onOpenFile";
+pub const APP_OPEN_URL_EVENT: &str = "App.onOpenUrl";
+pub const APP_BEFORE_QUIT_EVENT: &str = "App.onBeforeQuit";
 pub const WINDOW_CREATE_METHOD: &str = "Window.create";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
@@ -246,6 +258,7 @@ pub const LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON: &str = "host-adapter-unimplemen
 pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const SCOPED_ACCESS_GRANT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const APP_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const CLIPBOARD_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRAY_UNSUPPORTED_REASON: &str = "host-tray-unavailable";
 
@@ -264,6 +277,222 @@ impl HostVersionPayload {
 
     pub fn protocol_version(&self) -> &str {
         &self.protocol_version
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppInfoPayload {
+    id: String,
+    name: String,
+    version: String,
+}
+
+impl AppInfoPayload {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, version: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            version: version.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppCommandLinePayload {
+    argv: Vec<String>,
+    cwd: String,
+}
+
+impl AppCommandLinePayload {
+    pub fn new(argv: Vec<String>, cwd: impl Into<String>) -> Self {
+        Self {
+            argv,
+            cwd: cwd.into(),
+        }
+    }
+
+    pub fn argv(&self) -> &[String] {
+        &self.argv
+    }
+
+    pub fn cwd(&self) -> &str {
+        &self.cwd
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppQuitPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exit_code: Option<u8>,
+}
+
+impl AppQuitPayload {
+    pub fn new(exit_code: Option<u8>) -> Self {
+        Self { exit_code }
+    }
+
+    pub fn exit_code(&self) -> Option<u8> {
+        self.exit_code
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppRestartPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    args: Option<Vec<String>>,
+}
+
+impl AppRestartPayload {
+    pub fn new(args: Option<Vec<String>>) -> Self {
+        Self { args }
+    }
+
+    pub fn args(&self) -> Option<&[String]> {
+        self.args.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppSingleInstancePayload {
+    acquired: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    primary_pid: Option<u64>,
+}
+
+impl AppSingleInstancePayload {
+    pub fn acquired() -> Self {
+        Self {
+            acquired: true,
+            primary_pid: None,
+        }
+    }
+
+    pub fn owned_by(primary_pid: u64) -> Self {
+        Self {
+            acquired: false,
+            primary_pid: Some(primary_pid),
+        }
+    }
+
+    pub fn is_acquired(&self) -> bool {
+        self.acquired
+    }
+
+    pub fn primary_pid(&self) -> Option<u64> {
+        self.primary_pid
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppOpenAtLoginPayload {
+    enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    args: Option<Vec<String>>,
+}
+
+impl AppOpenAtLoginPayload {
+    pub fn new(enabled: bool, args: Option<Vec<String>>) -> Self {
+        Self { enabled, args }
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn args(&self) -> Option<&[String]> {
+        self.args.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppProtocolPayload {
+    scheme: String,
+}
+
+impl AppProtocolPayload {
+    pub fn new(scheme: impl Into<String>) -> Self {
+        Self {
+            scheme: scheme.into(),
+        }
+    }
+
+    pub fn scheme(&self) -> &str {
+        &self.scheme
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppSecondInstanceEventPayload {
+    argv: Vec<String>,
+    cwd: String,
+    trace_id: String,
+}
+
+impl AppSecondInstanceEventPayload {
+    pub fn new(argv: Vec<String>, cwd: impl Into<String>, trace_id: impl Into<String>) -> Self {
+        Self {
+            argv,
+            cwd: cwd.into(),
+            trace_id: trace_id.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppOpenFileEventPayload {
+    path: String,
+}
+
+impl AppOpenFileEventPayload {
+    pub fn new(path: impl Into<String>) -> Self {
+        Self { path: path.into() }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppOpenUrlEventPayload {
+    url: String,
+}
+
+impl AppOpenUrlEventPayload {
+    pub fn new(url: impl Into<String>) -> Self {
+        Self { url: url.into() }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppBeforeQuitEventPayload {
+    trace_id: String,
+}
+
+impl AppBeforeQuitEventPayload {
+    pub fn new(trace_id: impl Into<String>) -> Self {
+        Self {
+            trace_id: trace_id.into(),
+        }
     }
 }
 
@@ -9629,24 +9858,28 @@ mod tests {
         ActivationRegistryActorKind, ActivationRegistryActorPayload,
         ActivationRegistryEventPayload, ActivationRegistryEventPhase,
         ActivationRegistryPermissionContextPayload, ActivationRegistrySource,
-        ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload, CanonicalPathPayload,
-        ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
-        ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
-        CrashReporterBreadcrumbPayload, CrashReporterFlushPayload, CrashReporterStartPayload,
-        DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
-        DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
-        DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
-        DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
-        DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
-        DiagnosticsBundleWriteResultPayload, DialogConfirmPayload, DialogConfirmResultPayload,
-        DialogFileFilterPayload, DialogLevelPayload, DialogMessagePayload,
-        DialogOpenDirectoryPayload, DialogOpenFilePayload, DialogOpenResultPayload,
-        DialogSaveFilePayload, DialogSaveResultPayload, DisplayCaptureActorKind,
-        DisplayCaptureActorPayload, DisplayCaptureEventPayload, DisplayCaptureEventPhase,
-        DisplayCaptureGrantKind, DisplayCaptureGrantPayload, DisplayCaptureImagePayload,
-        DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload, DisplayCaptureRequestPayload,
-        DisplayCaptureResultPayload, DisplayCaptureSource, DisplayCaptureSupportedPayload,
-        DisplayCaptureTargetPayload, DistributionParityEventPayload, DistributionParityEventPhase,
+        ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload,
+        AppBeforeQuitEventPayload, AppCommandLinePayload, AppInfoPayload, AppOpenAtLoginPayload,
+        AppOpenFileEventPayload, AppOpenUrlEventPayload, AppProtocolPayload, AppQuitPayload,
+        AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
+        CanonicalPathPayload, ClipboardCapabilityPayload, ClipboardHtmlPayload,
+        ClipboardImagePayload, ClipboardIsSupportedPayload, ClipboardSupportedPayload,
+        ClipboardTextPayload, CrashReporterBreadcrumbPayload, CrashReporterFlushPayload,
+        CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
+        DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
+        DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
+        DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
+        DiagnosticsBundleSourceSummaryPayload, DiagnosticsBundleSupportedPayload,
+        DiagnosticsBundleWritePayload, DiagnosticsBundleWriteResultPayload, DialogConfirmPayload,
+        DialogConfirmResultPayload, DialogFileFilterPayload, DialogLevelPayload,
+        DialogMessagePayload, DialogOpenDirectoryPayload, DialogOpenFilePayload,
+        DialogOpenResultPayload, DialogSaveFilePayload, DialogSaveResultPayload,
+        DisplayCaptureActorKind, DisplayCaptureActorPayload, DisplayCaptureEventPayload,
+        DisplayCaptureEventPhase, DisplayCaptureGrantKind, DisplayCaptureGrantPayload,
+        DisplayCaptureImagePayload, DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload,
+        DisplayCaptureRequestPayload, DisplayCaptureResultPayload, DisplayCaptureSource,
+        DisplayCaptureSupportedPayload, DisplayCaptureTargetPayload,
+        DistributionParityEventPayload, DistributionParityEventPhase,
         DistributionParityEvidenceKind, DistributionParityEvidencePayload,
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
         DistributionParityVerifyResultPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
@@ -9816,6 +10049,99 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "cancel envelope requires id or resourceId"
+        );
+    }
+
+    #[test]
+    fn app_payloads_encode_current_contract() {
+        assert_eq!(
+            serde_json::to_string(&AppInfoPayload::new(
+                "dev.effect-desktop.test",
+                "Effect Desktop Test",
+                "0.0.0"
+            ))
+            .expect("app info should encode"),
+            r#"{"id":"dev.effect-desktop.test","name":"Effect Desktop Test","version":"0.0.0"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppCommandLinePayload::new(
+                vec!["app".to_string()],
+                "/repo"
+            ))
+            .expect("command line should encode"),
+            r#"{"argv":["app"],"cwd":"/repo"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppQuitPayload::new(Some(0))).expect("quit should encode"),
+            r#"{"exitCode":0}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppRestartPayload::new(Some(vec![
+                "--restarted".to_string()
+            ])))
+            .expect("restart should encode"),
+            r#"{"args":["--restarted"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppOpenAtLoginPayload::new(
+                true,
+                Some(vec!["--hidden".to_string()])
+            ))
+            .expect("open at login should encode"),
+            r#"{"enabled":true,"args":["--hidden"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppProtocolPayload::new("effect-desktop"))
+                .expect("protocol should encode"),
+            r#"{"scheme":"effect-desktop"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppSingleInstancePayload::owned_by(1234))
+                .expect("single instance should encode"),
+            r#"{"acquired":false,"primaryPid":1234}"#
+        );
+    }
+
+    #[test]
+    fn app_payloads_reject_excess_fields_and_invalid_shapes() {
+        let error = serde_json::from_str::<AppQuitPayload>(r#"{"exitCode":0,"force":true}"#)
+            .expect_err("excess quit field should be rejected");
+        assert!(error.to_string().contains("unknown field `force`"));
+
+        let error = serde_json::from_str::<AppQuitPayload>(r#"{"exitCode":256}"#)
+            .expect_err("exit code must be portable");
+        assert!(error.to_string().contains("invalid value"));
+
+        let error = serde_json::from_str::<AppOpenAtLoginPayload>(r#"{"args":[]}"#)
+            .expect_err("enabled is required");
+        assert!(error.to_string().contains("missing field `enabled`"));
+    }
+
+    #[test]
+    fn app_event_payloads_encode_current_contract() {
+        assert_eq!(
+            serde_json::to_string(&AppSecondInstanceEventPayload::new(
+                vec!["app".to_string()],
+                "/repo",
+                "trace-second"
+            ))
+            .expect("second instance event should encode"),
+            r#"{"argv":["app"],"cwd":"/repo","traceId":"trace-second"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppOpenFileEventPayload::new("README.md"))
+                .expect("open file event should encode"),
+            r#"{"path":"README.md"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppOpenUrlEventPayload::new("effect-desktop://open"))
+                .expect("open url event should encode"),
+            r#"{"url":"effect-desktop://open"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AppBeforeQuitEventPayload::new("trace-before-quit"))
+                .expect("before quit event should encode"),
+            r#"{"traceId":"trace-before-quit"}"#
         );
     }
 

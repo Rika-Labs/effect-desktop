@@ -38,8 +38,9 @@ until the host adapter exists.
 ## Errors
 
 `AppError` is the host protocol error union. Until the host adapter is
-implemented, bridge calls and subscriptions reach an unsupported or missing host
-path rather than real app lifecycle behavior.
+implemented, App methods decode through Rust `App.*` routes and fail closed as
+typed `Unsupported`. Subscriptions still do not have native lifecycle event
+sources.
 
 ## Notes
 
