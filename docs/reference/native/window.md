@@ -59,6 +59,13 @@ import {
 
 `WindowMethodNames = ["create", "close", "show", "hide", "focus", "getCurrent", "getById", "list", "getBounds", "setBounds", "center", "setTitle", "setResizable", "setDecorations", "setAlwaysOnTop", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
+The placement surface is not complete. `getBounds`, `setBounds`, and `center`
+are host-routed logical-coordinate operations, but Effect Desktop does not yet
+expose display-relative placement, work-area clipping, or move/resize state
+events. The current Screen adapter reports `workArea` from Tao monitor bounds,
+so placement code cannot yet distinguish reserved OS work areas from full
+display bounds.
+
 The chrome surface is not complete. `Window.create` accepts macOS creation-time
 `titleBarStyle`, `vibrancy`, and `trafficLights` options, and `setDecorations`
 is mutable through the host. Effect Desktop does not yet expose a
