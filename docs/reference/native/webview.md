@@ -10,6 +10,11 @@ effect_version: 4
 
 Embedded browser views inside desktop windows.
 
+The Rust host currently attaches the application WebView during `Window.create`.
+It does not expose routed `WebView.*` RPC methods yet, so the public `WebView`
+RPC surface is declared but fail-closed in capability metadata until a host
+adapter owns those methods.
+
 ## Import
 
 ```ts
@@ -52,8 +57,11 @@ Desktop.make({
 
 ## Status
 
-The contract is declared through `WebViewRpcs`, and platform-limited operations
-are exposed through typed support checks.
+The contract is declared through `WebViewRpcs`. Runtime WebView attachment is
+currently owned by `Window.create`; direct `WebView.*` bridge methods are
+unsupported with `host-adapter-unimplemented` until explicit host routes exist.
+`webViewCapability(...)` remains a local platform and runtime-mode feature
+helper; it does not prove that the direct WebView RPC host path is routed.
 
 ## Related
 

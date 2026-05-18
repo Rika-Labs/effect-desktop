@@ -38,6 +38,14 @@ import {
 import { isSupportedImageHeader } from "./contracts/image.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
+const WebViewUnsupportedReason = "host-adapter-unimplemented"
+const WebViewRpcSupport = NativeSurface.support.unsupported(WebViewUnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: WebViewUnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: WebViewUnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: WebViewUnsupportedReason }
+  ]
+})
 
 export const WebViewCreate = webviewRpc(
   "create",
@@ -499,7 +507,7 @@ function webviewRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: WebViewRpcSupport
   })
 }
 
