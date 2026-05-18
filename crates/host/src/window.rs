@@ -21,7 +21,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tao::{
-    dpi::{LogicalPosition, LogicalSize},
+    dpi::{LogicalPosition, LogicalSize, PhysicalPosition},
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopWindowTarget},
     monitor::MonitorHandle,
@@ -95,6 +95,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
     ) -> std::result::Result<(), HostProtocolError>;
 
     fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn center_on_display(
+        &self,
+        window_id: &str,
+        display_id: &str,
+    ) -> std::result::Result<(), HostProtocolError>;
 
     fn set_title(&self, window_id: &str, title: &str)
         -> std::result::Result<(), HostProtocolError>;
@@ -288,6 +294,11 @@ enum WindowCommand {
     },
     Center {
         window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    CenterOnDisplay {
+        window_id: String,
+        display_id: String,
         reply: Sender<WindowCommandReply>,
     },
     SetTitle {
@@ -831,6 +842,21 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CENTER_METHOD)
+    }
+
+    fn center_on_display(
+        &self,
+        window_id: &str,
+        display_id: &str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::CenterOnDisplay {
+            window_id: window_id.to_string(),
+            display_id: display_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD)
     }
 
     fn set_title(
@@ -1865,6 +1891,36 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn center_on_display(
+        &self,
+        window_id: &str,
+        display_id: &str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+            ));
+        };
+        let Some(monitor) = resources
+            ._window
+            .available_monitors()
+            .find(|monitor| screen_display_id(monitor) == display_id)
+        else {
+            return Err(HostProtocolError::not_found(
+                format!("ScreenDisplay:{display_id}"),
+                host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+            ));
+        };
+        let position = centered_window_physical_position_for_operation(
+            &resources._window,
+            &monitor,
+            host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+        )?;
+        resources._window.set_outer_position(position);
+        Ok(())
+    }
+
     fn set_title(
         &self,
         window_id: &str,
@@ -2557,6 +2613,17 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::CenterOnDisplay {
+                window_id,
+                display_id,
+                reply,
+            } => {
+                let result = self
+                    .center_on_display(&window_id, &display_id)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::SetTitle {
                 window_id,
                 title,
@@ -2926,7 +2993,15 @@ fn centered_window_bounds(
     window: &Window,
     monitor: &MonitorHandle,
 ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
-    let current = window_bounds(window, host_protocol::WINDOW_CENTER_METHOD)?;
+    centered_window_bounds_for_operation(window, monitor, host_protocol::WINDOW_CENTER_METHOD)
+}
+
+fn centered_window_bounds_for_operation(
+    window: &Window,
+    monitor: &MonitorHandle,
+    operation: &'static str,
+) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
+    let current = window_bounds(window, operation)?;
     let scale = monitor.scale_factor();
     let position = monitor.position();
     let size = monitor.size();
@@ -2941,6 +3016,49 @@ fn centered_window_bounds(
         current.width(),
         current.height(),
     ))
+}
+
+fn centered_window_physical_position_for_operation(
+    window: &Window,
+    monitor: &MonitorHandle,
+    operation: &'static str,
+) -> std::result::Result<PhysicalPosition<i32>, HostProtocolError> {
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let window_size = window.inner_size();
+    let x = centered_physical_axis(
+        monitor_position.x,
+        monitor_size.width,
+        window_size.width,
+        "x",
+        operation,
+    )?;
+    let y = centered_physical_axis(
+        monitor_position.y,
+        monitor_size.height,
+        window_size.height,
+        "y",
+        operation,
+    )?;
+
+    Ok(PhysicalPosition::new(x, y))
+}
+
+fn centered_physical_axis(
+    origin: i32,
+    container_size: u32,
+    item_size: u32,
+    axis: &str,
+    operation: &'static str,
+) -> std::result::Result<i32, HostProtocolError> {
+    let offset = (i64::from(container_size) - i64::from(item_size)) / 2;
+    let centered = i64::from(origin) + offset;
+    i32::try_from(centered).map_err(|_| {
+        HostProtocolError::internal(
+            format!("computed {axis} position is outside host coordinate range"),
+            operation,
+        )
+    })
 }
 
 fn screen_display_payload(
@@ -3718,7 +3836,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
-        clear_window_runtime_event_state, control_flow_for_lifecycle_event,
+        centered_physical_axis, clear_window_runtime_event_state, control_flow_for_lifecycle_event,
         control_flow_for_window_state, emit_window_registry_event,
         handle_native_window_close_requested, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
@@ -3916,6 +4034,30 @@ mod tests {
         };
 
         assert!(is_screen_displays_changed_window_event(&event));
+    }
+
+    #[test]
+    fn center_on_display_uses_physical_monitor_coordinates() {
+        assert_eq!(
+            centered_physical_axis(
+                3840,
+                2560,
+                960,
+                "x",
+                host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD
+            ),
+            Ok(4640)
+        );
+        assert_eq!(
+            centered_physical_axis(
+                -1920,
+                1920,
+                2560,
+                "x",
+                host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD
+            ),
+            Ok(-2240)
+        );
     }
 
     #[test]

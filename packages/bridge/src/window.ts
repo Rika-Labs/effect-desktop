@@ -5,6 +5,7 @@ import {
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   WINDOW_CENTER_METHOD,
+  WINDOW_CENTER_ON_DISPLAY_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_CANCEL_ATTENTION_METHOD,
   WINDOW_DESTROY_METHOD,
@@ -134,6 +135,13 @@ export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>
   bounds: WindowBoundsPayload
 }) {}
 
+export class WindowCenterOnDisplayPayload extends Schema.Class<WindowCenterOnDisplayPayload>(
+  "WindowCenterOnDisplayPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  displayId: Schema.NonEmptyString
+}) {}
+
 export class WindowSetTitlePayload extends Schema.Class<WindowSetTitlePayload>(
   "WindowSetTitlePayload"
 )({
@@ -247,6 +255,10 @@ export interface HostWindowClient {
     bounds: WindowBoundsInput
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly centerOnDisplay: (
+    windowId: string,
+    displayId: string
+  ) => Effect.Effect<void, HostProtocolError, never>
   readonly setTitle: (
     windowId: string,
     title: string
@@ -365,6 +377,14 @@ export const makeHostWindowClient = (
       }),
     center: (windowId) =>
       sendWindowLifecycleCommand(windowId, WINDOW_CENTER_METHOD, exchange, resolved),
+    centerOnDisplay: (windowId, displayId) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeCenterOnDisplayPayload(windowId, displayId)
+        const request = yield* makeRequest(WINDOW_CENTER_ON_DISPLAY_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     setTitle: (windowId, title) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetTitlePayload(windowId, title)
@@ -503,6 +523,9 @@ const decodeUnknownWindowListResponse = Schema.decodeUnknownSync(WindowListRespo
 const decodeUnknownWindowRegistryEventPayload = Schema.decodeUnknownSync(WindowRegistryEventPayload)
 const decodeUnknownWindowBoundsPayload = Schema.decodeUnknownSync(WindowBoundsPayload)
 const decodeUnknownWindowSetBoundsPayload = Schema.decodeUnknownSync(WindowSetBoundsPayload)
+const decodeUnknownWindowCenterOnDisplayPayload = Schema.decodeUnknownSync(
+  WindowCenterOnDisplayPayload
+)
 const decodeUnknownWindowSetTitlePayload = Schema.decodeUnknownSync(WindowSetTitlePayload)
 const decodeUnknownWindowSetResizablePayload = Schema.decodeUnknownSync(WindowSetResizablePayload)
 const decodeUnknownWindowSetDecorationsPayload = Schema.decodeUnknownSync(
@@ -550,6 +573,16 @@ const encodeSetBoundsPayload = (
   Effect.try({
     try: () => decodeUnknownWindowSetBoundsPayload({ windowId, bounds }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_BOUNDS_METHOD)
+  })
+
+const encodeCenterOnDisplayPayload = (
+  windowId: string,
+  displayId: string
+): Effect.Effect<WindowCenterOnDisplayPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowCenterOnDisplayPayload({ windowId, displayId }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_CENTER_ON_DISPLAY_METHOD)
   })
 
 const encodeSetTitlePayload = (

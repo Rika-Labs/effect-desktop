@@ -4,11 +4,11 @@
 
 use crate::window::{WindowCreateRequest, WindowMethodHandler};
 use host_protocol::{
-    HostProtocolError, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowRequestAttentionPayload,
-    WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
-    WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
-    WindowSetTitlePayload, WindowStatePayload,
+    HostProtocolError, WindowBoundsPayload, WindowCenterOnDisplayPayload, WindowCreatePayload,
+    WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
+    WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
+    WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
+    WindowSetResizablePayload, WindowSetTitlePayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -127,6 +127,16 @@ pub(crate) fn center(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_CENTER_METHOD)?;
     handler.center(payload.window_id())?;
+
+    Ok(None)
+}
+
+pub(crate) fn center_on_display(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_center_on_display_payload(payload)?;
+    handler.center_on_display(payload.window_id(), payload.display_id())?;
 
     Ok(None)
 }
@@ -371,6 +381,50 @@ fn decode_set_bounds_payload(payload: Value) -> Result<WindowSetBoundsPayload, H
             "payload",
             "bounds size must be finite and positive",
             host_protocol::WINDOW_SET_BOUNDS_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_center_on_display_payload(
+    payload: Option<Value>,
+) -> Result<WindowCenterOnDisplayPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_center_on_display_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD
+            ),
+            host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+        )),
+    }
+}
+
+fn decode_center_on_display_payload(
+    payload: Value,
+) -> Result<WindowCenterOnDisplayPayload, HostProtocolError> {
+    let payload: WindowCenterOnDisplayPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+        ));
+    }
+    if payload.display_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "displayId must be non-empty",
+            host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
         ));
     }
     Ok(payload)

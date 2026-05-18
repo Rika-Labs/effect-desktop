@@ -549,6 +549,7 @@ const makeWindowClient = (
       calls.setBounds.push(bounds)
     }),
   center: () => Effect.void,
+  centerOnDisplay: () => Effect.void,
   setTitle: () => Effect.void,
   setResizable: () => Effect.void,
   setDecorations: () => Effect.void,

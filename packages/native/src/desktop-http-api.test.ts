@@ -33,6 +33,7 @@ const windowClient: WindowClientApi = {
   getBounds: () => Effect.succeed({ x: 0, y: 0, width: 640, height: 480 }),
   setBounds: () => Effect.void,
   center: () => Effect.void,
+  centerOnDisplay: () => Effect.void,
   setTitle: () => Effect.void,
   setResizable: () => Effect.void,
   setDecorations: () => Effect.void,

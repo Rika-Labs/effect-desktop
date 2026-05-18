@@ -4054,6 +4054,16 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.centerOnDisplay",
+      "surface": "Window",
+      "method": "centerOnDisplay",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.close",
       "surface": "Window",
       "method": "close",
@@ -4327,10 +4337,10 @@
     }
   ],
   "summary": {
-    "total": 224,
-    "routed": 202,
+    "total": 225,
+    "routed": 203,
     "missing": 22,
-    "supported": 107,
+    "supported": 108,
     "partial": 22,
     "unsupported": 95
   }

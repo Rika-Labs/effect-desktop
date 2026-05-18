@@ -56,6 +56,7 @@ pub const WINDOW_LIST_METHOD: &str = "Window.list";
 pub const WINDOW_GET_BOUNDS_METHOD: &str = "Window.getBounds";
 pub const WINDOW_SET_BOUNDS_METHOD: &str = "Window.setBounds";
 pub const WINDOW_CENTER_METHOD: &str = "Window.center";
+pub const WINDOW_CENTER_ON_DISPLAY_METHOD: &str = "Window.centerOnDisplay";
 pub const WINDOW_SET_TITLE_METHOD: &str = "Window.setTitle";
 pub const WINDOW_SET_RESIZABLE_METHOD: &str = "Window.setResizable";
 pub const WINDOW_SET_DECORATIONS_METHOD: &str = "Window.setDecorations";
@@ -3233,6 +3234,30 @@ impl WindowSetBoundsPayload {
 
     pub fn bounds(&self) -> &WindowBoundsPayload {
         &self.bounds
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowCenterOnDisplayPayload {
+    window_id: String,
+    display_id: String,
+}
+
+impl WindowCenterOnDisplayPayload {
+    pub fn new(window_id: impl Into<String>, display_id: impl Into<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+            display_id: display_id.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn display_id(&self) -> &str {
+        &self.display_id
     }
 }
 
@@ -11148,15 +11173,16 @@ mod tests {
         TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
         UpdaterStatusPayload, UpdaterStatusState, WindowAttentionType, WindowBoundsPayload,
-        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowListResponse,
-        WindowLookupResponse, WindowProgressState, WindowRegistryEventPayload,
-        WindowRegistryEventPhase, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
-        WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
-        WindowSetProgressPayload, WindowSetResizablePayload, WindowSetTitlePayload,
-        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
-        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
-        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
-        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowCenterOnDisplayPayload, WindowCreatePayload, WindowCreateResponse,
+        WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowProgressState,
+        WindowRegistryEventPayload, WindowRegistryEventPhase, WindowRequestAttentionPayload,
+        WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
+        WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
+        WindowSetTitlePayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
+        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
+        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
         CLIPBOARD_UNSUPPORTED_REASON, CRASH_REPORTER_UNSUPPORTED_REASON,
@@ -12411,6 +12437,15 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&set_bounds).expect("window set bounds payload should encode"),
             r#"{"windowId":"window-1","bounds":{"x":10.0,"y":20.0,"width":640.0,"height":480.0}}"#
+        );
+
+        let center_on_display = WindowCenterOnDisplayPayload::new("window-1", "display-1");
+        assert_eq!(center_on_display.window_id(), "window-1");
+        assert_eq!(center_on_display.display_id(), "display-1");
+        assert_eq!(
+            serde_json::to_string(&center_on_display)
+                .expect("window center-on-display payload should encode"),
+            r#"{"windowId":"window-1","displayId":"display-1"}"#
         );
 
         let set_title = WindowSetTitlePayload::new("window-1", "Main");

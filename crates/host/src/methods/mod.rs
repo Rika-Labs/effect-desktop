@@ -310,6 +310,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::center),
     ),
     route(
+        host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+        HostMethodDispatcher::Window(window::center_on_display),
+    ),
+    route(
         host_protocol::WINDOW_SET_TITLE_METHOD,
         HostMethodDispatcher::Window(window::set_title),
     ),
@@ -3453,6 +3457,14 @@ mod tests {
                 host_protocol::WINDOW_CENTER_METHOD,
                 serde_json::json!({
                     "windowId": "window-1"
+                }),
+            ),
+            (
+                "request-window-center-on-display",
+                host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+                serde_json::json!({
+                    "windowId": "window-1",
+                    "displayId": "display-1"
                 }),
             ),
         ] {
@@ -6623,6 +6635,14 @@ mod tests {
         }
 
         fn center(&self, _window_id: &str) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn center_on_display(
+            &self,
+            _window_id: &str,
+            _display_id: &str,
+        ) -> Result<(), HostProtocolError> {
             Ok(())
         }
 

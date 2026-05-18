@@ -11,6 +11,7 @@ import {
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_CENTER_METHOD,
+  WINDOW_CENTER_ON_DISPLAY_METHOD,
   WINDOW_DESTROY_METHOD,
   WINDOW_EVENT_METHOD,
   WINDOW_FOCUS_METHOD,
@@ -733,6 +734,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "getBounds",
   "setBounds",
   "center",
+  "centerOnDisplay",
   "setTitle",
   "setResizable",
   "setDecorations",
@@ -8111,6 +8113,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.getBounds",
     "Window.setBounds",
     "Window.center",
+    "Window.centerOnDisplay",
     "Window.setTitle",
     "Window.setResizable",
     "Window.setDecorations",
@@ -8141,6 +8144,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.getBounds"]
     void client["Window.setBounds"]
     void client["Window.center"]
+    void client["Window.centerOnDisplay"]
     void client["Window.setTitle"]
     void client["Window.setResizable"]
     void client["Window.setDecorations"]
@@ -8169,6 +8173,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.getBounds",
     "Window.setBounds",
     "Window.center",
+    "Window.centerOnDisplay",
     "Window.setTitle",
     "Window.setResizable",
     "Window.setDecorations",
@@ -8270,6 +8275,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       }),
     setBounds: (_window, bounds) => recordVoid(calls, `setBounds:${bounds.width}x${bounds.height}`),
     center: () => recordVoid(calls, "center"),
+    centerOnDisplay: (_window, displayId) => recordVoid(calls, `centerOnDisplay:${displayId}`),
     setTitle: (_window, title) => recordVoid(calls, `setTitle:${title}`),
     setResizable: (_window, resizable) => recordVoid(calls, `setResizable:${resizable}`),
     setDecorations: (_window, decorations) => recordVoid(calls, `setDecorations:${decorations}`),
@@ -8315,6 +8321,7 @@ test("Window service delegates through a substitutable WindowClient port", async
         new WindowBounds({ x: bounds.x, y: bounds.y, width: 800, height: 600 })
       )
       yield* window.center(created)
+      yield* window.centerOnDisplay(created, "display-1")
       yield* window.setTitle(created, "Renamed")
       yield* window.setResizable(created, false)
       yield* window.setDecorations(created, true)
@@ -8355,6 +8362,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "getBounds",
     "setBounds:800x600",
     "center",
+    "centerOnDisplay:display-1",
     "setTitle:Renamed",
     "setResizable:false",
     "setDecorations:true",
@@ -8406,6 +8414,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "get-bounds-request",
       "set-bounds-request",
       "center-request",
+      "center-on-display-request",
       "set-title-request",
       "set-resizable-request",
       "set-decorations-request",
@@ -8428,6 +8437,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "get-bounds-trace",
       "set-bounds-trace",
       "center-trace",
+      "center-on-display-trace",
       "set-title-trace",
       "set-resizable-trace",
       "set-decorations-trace",
@@ -8446,7 +8456,8 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       1_710_000_000_000, 1_710_000_000_001, 1_710_000_000_002, 1_710_000_000_003, 1_710_000_000_004,
       1_710_000_000_005, 1_710_000_000_006, 1_710_000_000_007, 1_710_000_000_008, 1_710_000_000_009,
       1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
-      1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019
+      1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019,
+      1_710_000_000_020
     ])
   })
   const program = Effect.gen(function* () {
@@ -8469,6 +8480,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       new WindowBounds({ x: 30, y: 40, width: bounds.width, height: bounds.height })
     )
     yield* window.center(created)
+    yield* window.centerOnDisplay(created, "display-1")
     yield* window.setTitle(created, "Renamed")
     yield* window.setResizable(created, false)
     yield* window.setDecorations(created, true)
@@ -8563,6 +8575,13 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       WINDOW_CENTER_METHOD,
       {
         windowId: "host-window-1"
+      }
+    ],
+    [
+      WINDOW_CENTER_ON_DISPLAY_METHOD,
+      {
+        windowId: "host-window-1",
+        displayId: "display-1"
       }
     ],
     [
@@ -10191,6 +10210,7 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
       )
       const unknownExit = yield* Effect.exit(client.focus(windowHandle))
       const created = yield* client.create({})
+      const invalidDisplayExit = yield* Effect.exit(client.centerOnDisplay(created, ""))
       const staleExit = yield* Effect.exit(
         client.hide({
           ...created,
@@ -10199,7 +10219,7 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
       )
       yield* client.close(created)
       const repeatedCloseExit = yield* Effect.exit(client.close(created))
-      return { malformedInputExit, repeatedCloseExit, staleExit, unknownExit }
+      return { invalidDisplayExit, malformedInputExit, repeatedCloseExit, staleExit, unknownExit }
     }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(rpcExchange, registry)))
   )
 
@@ -10215,6 +10235,12 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
   expectExitFailure(
     result.staleExit,
     (error) => error instanceof HostProtocolStaleHandleError && error.operation === "Window.hide"
+  )
+  expectExitFailure(
+    result.invalidDisplayExit,
+    (error) =>
+      error instanceof HostProtocolInvalidArgumentError &&
+      error.operation === "Window.centerOnDisplay"
   )
   expectExitFailure(
     result.repeatedCloseExit,
@@ -10274,6 +10300,7 @@ test("host WindowClient adapter exposes only supported callable methods", async 
   expect("getBounds" in client).toBe(true)
   expect("setBounds" in client).toBe(true)
   expect("center" in client).toBe(true)
+  expect("centerOnDisplay" in client).toBe(true)
   expect("setVibrancy" in client).toBe(false)
 })
 
@@ -11486,6 +11513,7 @@ const noopWindowClient: WindowClientApi = {
   getBounds: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
   setBounds: () => Effect.void,
   center: () => Effect.void,
+  centerOnDisplay: () => Effect.void,
   setTitle: () => Effect.void,
   setResizable: () => Effect.void,
   setDecorations: () => Effect.void,

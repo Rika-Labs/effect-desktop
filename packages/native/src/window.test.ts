@@ -13,6 +13,7 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   expect(rpcSupport(request("Window.getBounds"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setBounds"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.center"))).toEqual({ status: "supported" })
+  expect(rpcSupport(request("Window.centerOnDisplay"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setTitle"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setResizable"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setDecorations"))).toEqual({ status: "supported" })

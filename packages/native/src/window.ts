@@ -44,6 +44,7 @@ import {
   type WindowBoundsType,
   type WindowCreateOptions,
   WindowDecorationsInput,
+  WindowDisplayInput,
   WindowFullscreenInput,
   type WindowHandle,
   WindowHandleInput,
@@ -140,6 +141,12 @@ export const WindowCenter = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["center"] })
 )
+export const WindowCenterOnDisplay = windowRpc(
+  "centerOnDisplay",
+  WindowDisplayInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["centerOnDisplay"] })
+)
 export const WindowSetTitle = windowRpc(
   "setTitle",
   WindowTitleInput,
@@ -228,6 +235,7 @@ const makeWindowRpcGroup = () =>
     WindowGetBounds,
     WindowSetBounds,
     WindowCenter,
+    WindowCenterOnDisplay,
     WindowSetTitle,
     WindowSetResizable,
     WindowSetDecorations,
@@ -275,6 +283,7 @@ export const WindowMethodNames = Object.freeze([
   "getBounds",
   "setBounds",
   "center",
+  "centerOnDisplay",
   "setTitle",
   "setResizable",
   "setDecorations",
@@ -310,6 +319,10 @@ export interface WindowClientApi {
     bounds: WindowBoundsType
   ) => Effect.Effect<void, WindowError, never>
   readonly center: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly centerOnDisplay: (
+    window: WindowHandle,
+    displayId: string
+  ) => Effect.Effect<void, WindowError, never>
   readonly setTitle: (
     window: WindowHandle,
     title: string
@@ -456,6 +469,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       yield* window.center(input.window)
     }),
+  "Window.centerOnDisplay": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.centerOnDisplay(input.window, input.displayId)
+    }),
   "Window.setTitle": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -565,6 +583,7 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     getBounds: (window) => client.getBounds(window),
     setBounds: (window, bounds) => client.setBounds(window, bounds),
     center: (window) => client.center(window),
+    centerOnDisplay: (window, displayId) => client.centerOnDisplay(window, displayId),
     setTitle: (window, title) => client.setTitle(window, title),
     setResizable: (window, resizable) => client.setResizable(window, resizable),
     setDecorations: (window, decorations) => client.setDecorations(window, decorations),
@@ -660,6 +679,11 @@ function windowClientFromRpcClient(
         yield* runWindowRpc(client["Window.setBounds"](decoded), "Window.setBounds")
       }),
     center: (window) => runWindowHandleRpc(client, "Window.center", window),
+    centerOnDisplay: (window, displayId) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowDisplayInput(window, displayId, "Window.centerOnDisplay")
+        yield* runWindowRpc(client["Window.centerOnDisplay"](decoded), "Window.centerOnDisplay")
+      }),
     setTitle: (window, title) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowTitleInput(window, title, "Window.setTitle")
@@ -766,6 +790,17 @@ const decodeWindowBoundsInput = (
   operation: string
 ): Effect.Effect<WindowBoundsInput, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowBoundsInput)({ window, bounds }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowDisplayInput = (
+  window: WindowHandle,
+  displayId: string,
+  operation: string
+): Effect.Effect<WindowDisplayInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowDisplayInput)({ window, displayId }, StrictParseOptions).pipe(
     Effect.mapError((error) =>
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
@@ -1213,6 +1248,15 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.center")
         yield* host.center(window.id)
+      }),
+    "Window.centerOnDisplay": (input: WindowDisplayInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.centerOnDisplay"
+        )
+        yield* host.centerOnDisplay(window.id, input.displayId)
       }),
     "Window.setTitle": (input: WindowTitleInput) =>
       Effect.gen(function* () {

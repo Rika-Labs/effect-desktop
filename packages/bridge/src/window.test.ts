@@ -10,6 +10,7 @@ import {
   WINDOW_CANCEL_ATTENTION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_CENTER_METHOD,
+  WINDOW_CENTER_ON_DISPLAY_METHOD,
   WINDOW_DESTROY_METHOD,
   WINDOW_EVENT_METHOD,
   WINDOW_FOCUS_METHOD,
@@ -241,20 +242,22 @@ test("host window client fails Window.Event subscriptions when exchange cannot s
   )
 })
 
-test("host window client requests Window.getBounds, Window.setBounds, and Window.center", async () => {
+test("host window client requests Window.getBounds, Window.setBounds, Window.center, and Window.centerOnDisplay", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = makeHostWindowClient(windowExchange(requests), {
     nextRequestId: nextId([
       "request-window-get-bounds",
       "request-window-set-bounds",
-      "request-window-center"
+      "request-window-center",
+      "request-window-center-on-display"
     ]),
     nextTraceId: nextId([
       "trace-window-get-bounds",
       "trace-window-set-bounds",
-      "trace-window-center"
+      "trace-window-center",
+      "trace-window-center-on-display"
     ]),
-    now: nextNumber([1710000000013, 1710000000014, 1710000000015])
+    now: nextNumber([1710000000013, 1710000000014, 1710000000015, 1710000000016])
   })
 
   const bounds = await Effect.runPromise(
@@ -262,6 +265,7 @@ test("host window client requests Window.getBounds, Window.setBounds, and Window
       const current = yield* client.getBounds("window-1")
       yield* client.setBounds("window-1", { x: 30, y: 40, width: 800, height: 600 })
       yield* client.center("window-1")
+      yield* client.centerOnDisplay("window-1", "display-1")
       return current
     })
   )
@@ -273,7 +277,8 @@ test("host window client requests Window.getBounds, Window.setBounds, and Window
       WINDOW_SET_BOUNDS_METHOD,
       { windowId: "window-1", bounds: { x: 30, y: 40, width: 800, height: 600 } }
     ],
-    [WINDOW_CENTER_METHOD, { windowId: "window-1" }]
+    [WINDOW_CENTER_METHOD, { windowId: "window-1" }],
+    [WINDOW_CENTER_ON_DISPLAY_METHOD, { windowId: "window-1", displayId: "display-1" }]
   ])
 })
 
