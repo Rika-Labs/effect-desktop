@@ -30,6 +30,12 @@ service, frame handle schema, frame lifecycle stream, `listFrames`, or
 `postToFrame` host route, and the current Wry-backed host path does not provide
 portable stable frame identifiers across macOS, Windows, and Linux.
 
+Runtime event coverage is not exposed today. Effect Desktop has no
+`WebViewRuntime` service, crash/unresponsive/media/file-input/drag-drop event
+contract, audio mute command, or auditable permission-response host route.
+The installed WebView provider exposes some callback ingredients, but they are
+not wired into typed Effect streams or permission decisions.
+
 Proxy configuration, HTTP authentication challenges, and certificate decisions
 are also not part of `WebView`. Those hooks are absent; adding them would
 require a new network-auth service and host adapter.
