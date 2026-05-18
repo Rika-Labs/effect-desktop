@@ -10,7 +10,9 @@ effect_version: 4
 
 > Full reference: [`reference/services/command.md`](reference/services/command.md).
 
-Commands are logical actions that can be bound to menus, global shortcuts, context menus, devtools, or app UI. The `CommandRegistry` keeps the list; bindings reference command **ids**, not implementations.
+Commands are logical actions that can be bound to menus, shortcut contracts, context menus, devtools, or app UI. The `CommandRegistry` keeps the list; bindings reference command **ids**, not implementations.
+
+Current host status: menu and context-menu command binding is available at the TypeScript service boundary with substitutable clients. Host-backed global shortcut registration and real pressed events remain unimplemented until the native shortcut adapter exists.
 
 ## Public surface
 
@@ -31,7 +33,7 @@ if (CommandRegistry === undefined || CommandsDevtools === undefined) {
 
 ## Rule
 
-Menus and shortcuts invoke command **ids**. They do not duplicate command implementation per binding.
+Menus and shortcut bindings invoke command **ids**. They do not duplicate command implementation per binding.
 
 ## Where to go next
 

@@ -1,6 +1,6 @@
 ---
 title: GlobalShortcut (native)
-description: OS-level keyboard shortcuts bound to commands.
+description: Global shortcut command-binding contract.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,17 +8,17 @@ effect_version: 4
 
 # `GlobalShortcut`
 
-OS-level keyboard shortcuts. The TypeScript service defines the command-binding contract, but native registration is not implemented in the host adapter yet.
+Global shortcut command-binding contract. The TypeScript service defines registration, support probing, pressed-event decoding, and command invocation, but native OS registration is not implemented in the host adapter yet.
 
 ## Methods
 
-| Method          | Payload                                 | Success                 |
-| --------------- | --------------------------------------- | ----------------------- |
-| `register`      | `{ accelerator, registrarWindow }`      | `void`                  |
-| `unregister`    | `{ accelerator }`                       | `void`                  |
-| `unregisterAll` | `void`                                  | `void`                  |
-| `isRegistered`  | `{ accelerator }`                       | `{ registered: false }` |
-| `isSupported`   | `void`                                  | support result          |
+| Method          | Payload                            | Success                 |
+| --------------- | ---------------------------------- | ----------------------- |
+| `register`      | `{ accelerator, registrarWindow }` | `void`                  |
+| `unregister`    | `{ accelerator }`                  | `void`                  |
+| `unregisterAll` | `void`                             | `void`                  |
+| `isRegistered`  | `{ accelerator }`                  | `{ registered: false }` |
+| `isSupported`   | `void`                             | support result          |
 
 ## Types
 
