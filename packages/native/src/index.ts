@@ -710,6 +710,25 @@ export {
   type RealtimeMediaSessionServiceApi
 } from "./realtime-media-session.js"
 export {
+  RecentDocuments,
+  RecentDocumentsClient,
+  RecentDocumentsHandlersLive,
+  RecentDocumentsLive,
+  RecentDocumentsMethodNames,
+  RecentDocumentsRpcEvents,
+  RecentDocumentsRpcs,
+  RecentDocumentsSurface,
+  makeHostRecentDocumentsRpcRuntime,
+  makeRecentDocumentsBridgeClientLayer,
+  makeRecentDocumentsClientLayer,
+  makeRecentDocumentsServiceLayer,
+  type RecentDocumentsClientApi,
+  type RecentDocumentsError,
+  type RecentDocumentsRpc,
+  type RecentDocumentsRpcHandlers,
+  type RecentDocumentsServiceApi
+} from "./recent-documents.js"
+export {
   PowerMonitor,
   PowerMonitorClient,
   PowerMonitorHandlersLive,

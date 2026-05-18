@@ -23,6 +23,7 @@ mod path;
 mod power_monitor;
 pub(crate) mod protocol;
 mod realtime_media_session;
+mod recent_documents;
 mod resident_lifecycle;
 mod scoped_access_grant;
 mod screen;
@@ -243,6 +244,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::ASSOCIATION_GET_FILE_ASSOCIATIONS_METHOD,
         HostMethodDispatcher::Payload(association::get_file_associations),
+    ),
+    route(
+        host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
+        HostMethodDispatcher::Payload(recent_documents::add),
+    ),
+    route(
+        host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD,
+        HostMethodDispatcher::Payload(recent_documents::clear),
+    ),
+    route(
+        host_protocol::RECENT_DOCUMENTS_LIST_METHOD,
+        HostMethodDispatcher::Payload(recent_documents::list),
     ),
     route(
         host_protocol::WINDOW_CREATE_METHOD,
@@ -2718,6 +2731,56 @@ mod tests {
         } = response
         else {
             panic!("association route should reject malformed extensions");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    #[test]
+    fn recent_documents_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-recent-document-add",
+                    host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
+                    serde_json::json!({ "path": { "path": "/tmp/report.txt" } }),
+                ),
+                1710000000127,
+            )
+            .expect("recent document add should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-recent-document-add".to_string(),
+                timestamp: 1710000000127,
+                trace_id: "trace-request-recent-document-add".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::RECENT_DOCUMENTS_UNSUPPORTED_REASON,
+                    host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn recent_documents_routes_reject_malformed_payloads() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-recent-document-invalid",
+                    host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
+                    serde_json::json!({ "path": { "path": "relative.txt" } }),
+                ),
+                1710000000127,
+            )
+            .expect("recent document invalid request should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("recent document route should reject malformed paths");
         };
         assert_eq!(error.tag(), "InvalidArgument");
     }

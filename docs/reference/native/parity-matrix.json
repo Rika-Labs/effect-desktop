@@ -2363,6 +2363,90 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "RecentDocuments.add",
+      "surface": "RecentDocuments",
+      "method": "add",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RecentDocuments.clear",
+      "surface": "RecentDocuments",
+      "method": "clear",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RecentDocuments.list",
+      "surface": "RecentDocuments",
+      "method": "list",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "ResidentLifecycle.disable",
       "surface": "ResidentLifecycle",
       "method": "disable",
@@ -3842,11 +3926,11 @@
     }
   ],
   "summary": {
-    "total": 190,
-    "routed": 168,
+    "total": 193,
+    "routed": 171,
     "missing": 22,
     "supported": 81,
     "partial": 22,
-    "unsupported": 87
+    "unsupported": 90
   }
 }

@@ -33,6 +33,7 @@ import { PathSurface } from "./path.js"
 import { PowerMonitorSurface } from "./power-monitor.js"
 import { ProtocolSurface } from "./protocol.js"
 import { RealtimeMediaSessionSurface } from "./realtime-media-session.js"
+import { RecentDocumentsSurface } from "./recent-documents.js"
 import { ResidentLifecycleSurface } from "./resident-lifecycle.js"
 import { SafeStorageSurface } from "./safe-storage.js"
 import { ScopedAccessGrantSurface } from "./scoped-access-grant.js"
@@ -76,6 +77,7 @@ const BuiltInSurfaces = Object.freeze([
   PowerMonitorSurface,
   ProtocolSurface,
   RealtimeMediaSessionSurface,
+  RecentDocumentsSurface,
   ResidentLifecycleSurface,
   SafeStorageSurface,
   ScopedAccessGrantSurface,
@@ -125,6 +127,7 @@ const Path = PathSurface.selection
 const PowerMonitor = PowerMonitorSurface.selection
 const Protocol = ProtocolSurface.selection
 const RealtimeMediaSession = RealtimeMediaSessionSurface.selection
+const RecentDocuments = RecentDocumentsSurface.selection
 const ResidentLifecycle = ResidentLifecycleSurface.selection
 const SafeStorage = SafeStorageSurface.selection
 const ScopedAccessGrant = ScopedAccessGrantSurface.selection
@@ -174,6 +177,7 @@ export const Permissions = Object.freeze({
   powerMonitor: PowerMonitorSurface.permissions,
   protocol: ProtocolSurface.permissions,
   realtimeMediaSession: RealtimeMediaSessionSurface.permissions,
+  recentDocuments: RecentDocumentsSurface.permissions,
   residentLifecycle: ResidentLifecycleSurface.permissions,
   safeStorage: SafeStorageSurface.permissions,
   scopedAccessGrant: ScopedAccessGrantSurface.permissions,
@@ -218,6 +222,7 @@ export const Native = Object.freeze({
   PowerMonitor,
   Protocol,
   RealtimeMediaSession,
+  RecentDocuments,
   ResidentLifecycle,
   SafeStorage,
   ScopedAccessGrant,

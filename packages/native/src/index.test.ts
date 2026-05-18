@@ -155,6 +155,11 @@ import {
   PowerMonitorLive,
   PowerMonitorMethodNames,
   PowerMonitorSurface,
+  RecentDocuments,
+  RecentDocumentsLive,
+  RecentDocumentsMethodNames,
+  RecentDocumentsRpcEvents,
+  RecentDocumentsRpcs,
   SafeStorage,
   SafeStorageHandlersLive,
   SafeStorageRpcs,
@@ -233,6 +238,7 @@ import {
   makeNotificationServiceLayer,
   makePathServiceLayer,
   makeProtocolServiceLayer,
+  makeRecentDocumentsServiceLayer,
   makeSafeStorageServiceLayer,
   makeShellServiceLayer,
   makeTrayServiceLayer,
@@ -251,6 +257,7 @@ import {
   type NotificationClientApi,
   type PathClientApi,
   type ProtocolClientApi,
+  type RecentDocumentsClientApi,
   type SafeStorageClientApi,
   type ScreenClientApi,
   type ShellClientApi,
@@ -276,6 +283,10 @@ import {
 import { makeHostPathRpcRuntime, makePathBridgeClientLayer } from "./path.js"
 import { makePowerMonitorBridgeClientLayer } from "./power-monitor.js"
 import { makeHostProtocolRpcRuntime, makeProtocolBridgeClientLayer } from "./protocol.js"
+import {
+  makeHostRecentDocumentsRpcRuntime,
+  makeRecentDocumentsBridgeClientLayer
+} from "./recent-documents.js"
 import { makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
@@ -320,6 +331,9 @@ import {
   PowerMonitorShutdownEvent,
   PowerMonitorSourceChangedEvent,
   PowerMonitorSuspendEvent,
+  RecentDocument,
+  RecentDocumentsEvent,
+  RecentDocumentsListResult,
   ScreenBounds,
   ScreenDisplay,
   ScreenDisplaysChangedEvent,
@@ -734,6 +748,12 @@ const expectedAssociationMethods: Array<(typeof AssociationMethodNames)[number]>
   "isDefaultProtocolClient",
   "setDefaultProtocolClient",
   "getFileAssociations"
+]
+
+const expectedRecentDocumentsMethods: Array<(typeof RecentDocumentsMethodNames)[number]> = [
+  "add",
+  "clear",
+  "list"
 ]
 
 const expectedSafeStorageMethods: Array<(typeof SafeStorageMethodNames)[number]> = [
@@ -4372,6 +4392,197 @@ test("Association service propagates unsupported platform and host failure", asy
   expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
+test("RecentDocumentsRpcs declares the Phase 8 RecentDocuments method and event surface", () => {
+  expect([...RecentDocumentsMethodNames]).toEqual(expectedRecentDocumentsMethods)
+  expect(Array.from(RecentDocumentsRpcs.requests.keys())).toEqual([
+    "RecentDocuments.add",
+    "RecentDocuments.clear",
+    "RecentDocuments.list"
+  ])
+  expect(rpcMethodNames("RecentDocuments", RecentDocumentsRpcs)).toEqual(
+    expectedRecentDocumentsMethods
+  )
+  expect(Object.keys(RecentDocumentsRpcEvents)).toEqual(["Event"])
+})
+
+test("RecentDocuments service delegates through a substitutable RecentDocumentsClient port", async () => {
+  const calls: string[] = []
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      yield* recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+      yield* recentDocuments.clear()
+      const documents = yield* recentDocuments.list()
+      const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { documents, events }
+    }).pipe(Effect.provide(makeRecentDocumentsServiceLayer(recentDocumentsClient(calls))))
+  )
+
+  expect(result.documents).toEqual(
+    new RecentDocumentsListResult({
+      documents: [new RecentDocument({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })]
+    })
+  )
+  expect(Array.from(result.events)).toEqual([
+    new RecentDocumentsEvent({
+      phase: "document-added",
+      path: new CanonicalPath({ path: "/tmp/report.txt" })
+    })
+  ])
+  expect(calls).toEqual(["add:/tmp/report.txt", "clear", "list", "events"])
+})
+
+test("RecentDocuments bridge client sends typed host envelopes and decodes events and results", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = recentDocumentsExchange(requests, (request) =>
+    request.method === "RecentDocuments.list"
+      ? {
+          kind: "success",
+          payload: { documents: [{ path: { path: "/tmp/report.txt" } }] }
+        }
+      : { kind: "success", payload: undefined }
+  )
+
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      yield* recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+      yield* recentDocuments.clear()
+      const documents = yield* recentDocuments.list()
+      const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { documents, events }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(RecentDocumentsLive, makeRecentDocumentsBridgeClientLayer(exchange))
+      )
+    )
+  )
+
+  expect(result.documents).toEqual(
+    new RecentDocumentsListResult({
+      documents: [new RecentDocument({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })]
+    })
+  )
+  expect(Array.from(result.events)).toEqual([
+    new RecentDocumentsEvent({
+      phase: "document-added",
+      path: new CanonicalPath({ path: "/tmp/report.txt" })
+    })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["RecentDocuments.add", { path: { path: "/tmp/report.txt" } }],
+    ["RecentDocuments.clear", null],
+    ["RecentDocuments.list", null]
+  ])
+})
+
+test("RecentDocuments bridge client rejects invalid paths before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* RecentDocuments
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          RecentDocumentsLive,
+          makeRecentDocumentsBridgeClientLayer(
+            recentDocumentsExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const exits = await Effect.runPromise(
+    Effect.all([
+      Effect.exit(client.add({ path: { path: "" } })),
+      Effect.exit(client.add({ path: { path: "relative.txt" } })),
+      Effect.exit(client.add({ path: { path: "/tmp/bad\u0000path" } }))
+    ])
+  )
+
+  for (const exit of exits) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  expect(requests).toEqual([])
+})
+
+test("native host RPC runtime denies protected RecentDocuments calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostRecentDocumentsRpcRuntime(
+    {
+      "RecentDocuments.add": (input) =>
+        Effect.sync(() => {
+          calls.push(`add:${input.path.path}`)
+        }),
+      "RecentDocuments.clear": () => Effect.void,
+      "RecentDocuments.list": () => Effect.succeed(new RecentDocumentsListResult({ documents: [] }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "recent-documents-denied",
+          method: "RecentDocuments.add",
+          timestamp: 1710000000000,
+          traceId: "trace-recent-documents-denied",
+          payload: { path: { path: "/tmp/report.txt" } }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("RecentDocuments service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-adapter-unimplemented",
+    message: "unsupported RecentDocuments.add",
+    operation: "RecentDocuments.add",
+    recoverable: false
+  })
+  const unsupportedClient: RecentDocumentsClientApi = {
+    ...recentDocumentsClient([]),
+    add: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: RecentDocumentsClientApi = {
+    ...recentDocumentsClient([]),
+    add: () => Effect.fail(makeHostProtocolHostUnavailableError("RecentDocuments.add"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      return yield* Effect.exit(
+        recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+      )
+    }).pipe(Effect.provide(makeRecentDocumentsServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      return yield* Effect.exit(
+        recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+      )
+    }).pipe(Effect.provide(makeRecentDocumentsServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+})
+
 test("SafeStorageRpcs declares the Phase 8 SafeStorage method surface", () => {
   expect([...SafeStorageMethodNames]).toEqual(expectedSafeStorageMethods)
   expect(rpcMethodNames("SafeStorage", SafeStorageRpcs)).toEqual(expectedSafeStorageMethods)
@@ -7925,6 +8136,26 @@ const associationClient = (calls: string[]): AssociationClientApi => ({
     })
 })
 
+const recentDocumentsClient = (calls: string[]): RecentDocumentsClientApi => ({
+  add: (input) => recordVoid(calls, `add:${input.path.path}`),
+  clear: () => recordVoid(calls, "clear"),
+  list: () =>
+    Effect.sync(() => {
+      calls.push("list")
+      return new RecentDocumentsListResult({
+        documents: [new RecentDocument({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })]
+      })
+    }),
+  events: () =>
+    Stream.sync(() => {
+      calls.push("events")
+      return new RecentDocumentsEvent({
+        phase: "document-added",
+        path: new CanonicalPath({ path: "/tmp/report.txt" })
+      })
+    })
+})
+
 const webViewClient = (calls: string[]): WebViewClientApi => ({
   create: (input) =>
     Effect.sync(() => {
@@ -8429,6 +8660,28 @@ const associationExchange = (
             traceId: "event-trace",
             method,
             payload: { phase: "failed", reason: "host-adapter-unimplemented" }
+          })
+        )
+      : Stream.empty
+})
+
+const recentDocumentsExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "RecentDocuments.Event"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000100,
+            traceId: "event-trace",
+            method,
+            payload: { phase: "document-added", path: { path: "/tmp/report.txt" } }
           })
         )
       : Stream.empty

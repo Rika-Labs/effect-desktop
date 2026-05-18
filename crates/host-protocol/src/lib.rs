@@ -32,6 +32,10 @@ pub const ASSOCIATION_SET_DEFAULT_PROTOCOL_CLIENT_METHOD: &str =
     "Association.setDefaultProtocolClient";
 pub const ASSOCIATION_GET_FILE_ASSOCIATIONS_METHOD: &str = "Association.getFileAssociations";
 pub const ASSOCIATION_EVENT: &str = "Association.Event";
+pub const RECENT_DOCUMENTS_ADD_METHOD: &str = "RecentDocuments.add";
+pub const RECENT_DOCUMENTS_CLEAR_METHOD: &str = "RecentDocuments.clear";
+pub const RECENT_DOCUMENTS_LIST_METHOD: &str = "RecentDocuments.list";
+pub const RECENT_DOCUMENTS_EVENT: &str = "RecentDocuments.Event";
 pub const WINDOW_CREATE_METHOD: &str = "Window.create";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
@@ -266,6 +270,7 @@ pub const SCOPED_ACCESS_GRANT_UNSUPPORTED_REASON: &str = "host-adapter-unimpleme
 pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const APP_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const ASSOCIATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const RECENT_DOCUMENTS_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const CLIPBOARD_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRAY_UNSUPPORTED_REASON: &str = "host-tray-unavailable";
 
@@ -618,6 +623,78 @@ pub struct AssociationEventPayload {
 impl AssociationEventPayload {
     pub fn new(phase: AssociationEventPhasePayload, reason: Option<String>) -> Self {
         Self { phase, reason }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RecentDocumentsAddPayload {
+    path: CanonicalPathPayload,
+}
+
+impl RecentDocumentsAddPayload {
+    pub fn new(path: CanonicalPathPayload) -> Self {
+        Self { path }
+    }
+
+    pub fn path(&self) -> &CanonicalPathPayload {
+        &self.path
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RecentDocumentPayload {
+    path: CanonicalPathPayload,
+}
+
+impl RecentDocumentPayload {
+    pub fn new(path: CanonicalPathPayload) -> Self {
+        Self { path }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RecentDocumentsListResultPayload {
+    documents: Vec<RecentDocumentPayload>,
+}
+
+impl RecentDocumentsListResultPayload {
+    pub fn new(documents: Vec<RecentDocumentPayload>) -> Self {
+        Self { documents }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RecentDocumentsEventPhasePayload {
+    DocumentAdded,
+    Cleared,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RecentDocumentsEventPayload {
+    phase: RecentDocumentsEventPhasePayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    path: Option<CanonicalPathPayload>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl RecentDocumentsEventPayload {
+    pub fn new(
+        phase: RecentDocumentsEventPhasePayload,
+        path: Option<CanonicalPathPayload>,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            phase,
+            path,
+            reason,
+        }
     }
 }
 
@@ -10060,15 +10137,17 @@ mod tests {
         RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
         RealtimeMediaSessionInterruptPayload, RealtimeMediaSessionSelectDevicePayload,
         RealtimeMediaSessionState, RealtimeMediaSessionStateEventPayload,
-        RealtimeMediaSessionSupportedPayload, RendererResumeDeniedPayload,
-        RendererResumeDeniedReason, RendererResumePayload, RendererResumedPayload,
-        ResidentLifecycleBackgroundAvailability, ResidentLifecycleDisablePayload,
-        ResidentLifecycleEnablePayload, ResidentLifecycleEventPayload, ResidentLifecycleEventPhase,
-        ResidentLifecyclePolicyPayload, ResidentLifecycleProcessPolicy,
-        ResidentLifecycleStatePayload, ResidentLifecycleSupportedPayload,
-        ResidentLifecycleWindowPolicy, ResumeTicket, ScreenBoundsPayload, ScreenDisplayPayload,
-        ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenIsSupportedPayload,
-        ScreenPointPayload, ScreenSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
+        RealtimeMediaSessionSupportedPayload, RecentDocumentPayload, RecentDocumentsAddPayload,
+        RecentDocumentsEventPayload, RecentDocumentsEventPhasePayload,
+        RecentDocumentsListResultPayload, RendererResumeDeniedPayload, RendererResumeDeniedReason,
+        RendererResumePayload, RendererResumedPayload, ResidentLifecycleBackgroundAvailability,
+        ResidentLifecycleDisablePayload, ResidentLifecycleEnablePayload,
+        ResidentLifecycleEventPayload, ResidentLifecycleEventPhase, ResidentLifecyclePolicyPayload,
+        ResidentLifecycleProcessPolicy, ResidentLifecycleStatePayload,
+        ResidentLifecycleSupportedPayload, ResidentLifecycleWindowPolicy, ResumeTicket,
+        ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
+        ScreenDisplaysResultPayload, ScreenIsSupportedPayload, ScreenPointPayload,
+        ScreenSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
         ShellShowItemInFolderPayload, ShellTrashItemPayload, SystemAppearanceAccentColorPayload,
         SystemAppearanceBooleanPayload, SystemAppearanceColorPayload,
         SystemAppearanceIsSupportedPayload, SystemAppearanceMethodPayload,
@@ -10328,6 +10407,48 @@ mod tests {
             r#"{"phase":"changed","reason":"unexpected"}"#,
         )
         .expect_err("unknown association event phase should be rejected");
+        assert!(error.to_string().contains("unknown variant `changed`"));
+    }
+
+    #[test]
+    fn recent_documents_payloads_encode_current_contract() {
+        assert_eq!(
+            serde_json::to_string(&RecentDocumentsAddPayload::new(CanonicalPathPayload::new(
+                "/tmp/report.txt"
+            )))
+            .expect("recent document add should encode"),
+            r#"{"path":{"path":"/tmp/report.txt"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&RecentDocumentsListResultPayload::new(vec![
+                RecentDocumentPayload::new(CanonicalPathPayload::new("/tmp/report.txt"))
+            ]))
+            .expect("recent document list should encode"),
+            r#"{"documents":[{"path":{"path":"/tmp/report.txt"}}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&RecentDocumentsEventPayload::new(
+                RecentDocumentsEventPhasePayload::DocumentAdded,
+                Some(CanonicalPathPayload::new("/tmp/report.txt")),
+                None,
+            ))
+            .expect("recent document event should encode"),
+            r#"{"phase":"document-added","path":{"path":"/tmp/report.txt"}}"#
+        );
+    }
+
+    #[test]
+    fn recent_documents_payloads_reject_excess_fields() {
+        let error = serde_json::from_str::<RecentDocumentsAddPayload>(
+            r#"{"path":{"path":"/tmp/report.txt"},"x":true}"#,
+        )
+        .expect_err("excess recent document field should be rejected");
+        assert!(error.to_string().contains("unknown field `x`"));
+
+        let error = serde_json::from_str::<RecentDocumentsEventPayload>(
+            r#"{"phase":"changed","reason":"unexpected"}"#,
+        )
+        .expect_err("unknown recent document event phase should be rejected");
         assert!(error.to_string().contains("unknown variant `changed`"));
     }
 
