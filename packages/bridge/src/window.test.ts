@@ -17,6 +17,7 @@ import {
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
   WINDOW_GET_CURRENT_METHOD,
+  WINDOW_GET_PARENT_METHOD,
   WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
   WINDOW_LIST_METHOD,
@@ -175,20 +176,22 @@ test("host window client requests Window.show, Window.hide, and Window.focus", a
   ])
 })
 
-test("host window client requests Window.getCurrent, Window.getById, and Window.list", async () => {
+test("host window client requests Window.getCurrent, Window.getById, Window.list, and Window.getParent", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = makeHostWindowClient(windowExchange(requests), {
     nextRequestId: nextId([
       "request-window-get-current",
       "request-window-get-by-id",
-      "request-window-list"
+      "request-window-list",
+      "request-window-get-parent"
     ]),
     nextTraceId: nextId([
       "trace-window-get-current",
       "trace-window-get-by-id",
-      "trace-window-list"
+      "trace-window-list",
+      "trace-window-get-parent"
     ]),
-    now: nextNumber([1_710_000_000_013, 1_710_000_000_014, 1_710_000_000_015])
+    now: nextNumber([1_710_000_000_013, 1_710_000_000_014, 1_710_000_000_015, 1_710_000_000_016])
   })
 
   const result = await Effect.runPromise(
@@ -196,17 +199,20 @@ test("host window client requests Window.getCurrent, Window.getById, and Window.
       const current = yield* client.getCurrent()
       const byId = yield* client.getById("window-1")
       const listed = yield* client.list()
-      return { byId, current, listed }
+      const parent = yield* client.getParent("window-1")
+      return { byId, current, listed, parent }
     })
   )
 
   expect(result.current.windowId).toBe("window-1")
   expect(result.byId.windowId).toBe("window-1")
   expect(result.listed.windows.map((window) => window.windowId)).toEqual(["window-1", "window-2"])
+  expect(result.parent.parentWindowId).toBe("window-parent")
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [WINDOW_GET_CURRENT_METHOD, undefined],
     [WINDOW_GET_BY_ID_METHOD, { windowId: "window-1" }],
-    [WINDOW_LIST_METHOD, undefined]
+    [WINDOW_LIST_METHOD, undefined],
+    [WINDOW_GET_PARENT_METHOD, { windowId: "window-1" }]
   ])
 })
 
@@ -619,26 +625,33 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                     windows: [{ windowId: "window-1" }, { windowId: "window-2" }]
                   }
                 }
-              : request.method === WINDOW_GET_BOUNDS_METHOD
+              : request.method === WINDOW_GET_PARENT_METHOD
                 ? {
                     ...base,
                     payload: {
-                      x: 10,
-                      y: 20,
-                      width: 640,
-                      height: 480
+                      parentWindowId: "window-parent"
                     }
                   }
-                : request.method === WINDOW_GET_STATE_METHOD
+                : request.method === WINDOW_GET_BOUNDS_METHOD
                   ? {
                       ...base,
                       payload: {
-                        minimized: false,
-                        maximized: true,
-                        fullscreen: true
+                        x: 10,
+                        y: 20,
+                        width: 640,
+                        height: 480
                       }
                     }
-                  : base
+                  : request.method === WINDOW_GET_STATE_METHOD
+                    ? {
+                        ...base,
+                        payload: {
+                          minimized: false,
+                          maximized: true,
+                          fullscreen: true
+                        }
+                      }
+                    : base
       )
     )
   },

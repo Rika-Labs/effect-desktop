@@ -53,6 +53,7 @@ pub const WINDOW_FOCUS_METHOD: &str = "Window.focus";
 pub const WINDOW_GET_CURRENT_METHOD: &str = "Window.getCurrent";
 pub const WINDOW_GET_BY_ID_METHOD: &str = "Window.getById";
 pub const WINDOW_LIST_METHOD: &str = "Window.list";
+pub const WINDOW_GET_PARENT_METHOD: &str = "Window.getParent";
 pub const WINDOW_GET_BOUNDS_METHOD: &str = "Window.getBounds";
 pub const WINDOW_SET_BOUNDS_METHOD: &str = "Window.setBounds";
 pub const WINDOW_CENTER_METHOD: &str = "Window.center";
@@ -3094,6 +3095,23 @@ impl WindowListResponse {
 
     pub fn windows(&self) -> &[WindowLookupResponse] {
         &self.windows
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowParentResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent_window_id: Option<String>,
+}
+
+impl WindowParentResponse {
+    pub fn new(parent_window_id: Option<String>) -> Self {
+        Self { parent_window_id }
+    }
+
+    pub fn parent_window_id(&self) -> Option<&str> {
+        self.parent_window_id.as_deref()
     }
 }
 
@@ -11283,16 +11301,16 @@ mod tests {
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
         UpdaterStatusPayload, UpdaterStatusState, WindowAttentionType, WindowBoundsPayload,
         WindowCenterOnDisplayPayload, WindowCreatePayload, WindowCreateResponse,
-        WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowProgressState,
-        WindowRegistryEventPayload, WindowRegistryEventPhase, WindowRequestAttentionPayload,
-        WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
-        WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
-        WindowSetSkipTaskbarPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
-        WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
-        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
-        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
-        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
-        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowParentResponse,
+        WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
+        WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
+        WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
+        WindowSetResizablePayload, WindowSetSkipTaskbarPayload, WindowSetTitlePayload,
+        WindowSetTrafficLightsPayload, WindowStateEventPayload, WindowStatePayload,
+        WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
+        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
+        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
+        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
         CLIPBOARD_UNSUPPORTED_REASON, CRASH_REPORTER_UNSUPPORTED_REASON,
@@ -12434,6 +12452,20 @@ mod tests {
             r#"{"windowId":"window-1"}"#
         );
 
+        let parent = WindowParentResponse::new(Some("window-parent".to_string()));
+        assert_eq!(parent.parent_window_id(), Some("window-parent"));
+        assert_eq!(
+            serde_json::to_string(&parent).expect("window parent response should encode"),
+            r#"{"parentWindowId":"window-parent"}"#
+        );
+
+        let root_parent = WindowParentResponse::new(None);
+        assert_eq!(root_parent.parent_window_id(), None);
+        assert_eq!(
+            serde_json::to_string(&root_parent).expect("root window parent response should encode"),
+            r#"{}"#
+        );
+
         let list = WindowListResponse::new(vec![
             WindowLookupResponse::new("window-1"),
             WindowLookupResponse::new("window-2"),
@@ -12466,6 +12498,15 @@ mod tests {
             r#"{"windows":[{"windowId":"window-1"}],"unknown":true}"#,
         )
         .expect_err("excess window list response fields must fail");
+        assert!(
+            error.to_string().contains("unknown field `unknown`"),
+            "unexpected error: {error}"
+        );
+
+        let error = serde_json::from_str::<WindowParentResponse>(
+            r#"{"parentWindowId":"window-parent","unknown":true}"#,
+        )
+        .expect_err("excess window parent response fields must fail");
         assert!(
             error.to_string().contains("unknown field `unknown`"),
             "unexpected error: {error}"

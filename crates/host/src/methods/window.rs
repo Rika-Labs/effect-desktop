@@ -6,10 +6,10 @@ use crate::window::{WindowCreateRequest, WindowMethodHandler};
 use host_protocol::{
     HostProtocolError, WindowBoundsPayload, WindowCenterOnDisplayPayload, WindowCreatePayload,
     WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
-    WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
-    WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
-    WindowSetResizablePayload, WindowSetSkipTaskbarPayload, WindowSetTitlePayload,
-    WindowSetTrafficLightsPayload, WindowStatePayload,
+    WindowParentResponse, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
+    WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
+    WindowSetProgressPayload, WindowSetResizablePayload, WindowSetSkipTaskbarPayload,
+    WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -100,6 +100,16 @@ pub(crate) fn list(
         response,
         host_protocol::WINDOW_LIST_METHOD,
     )?))
+}
+
+pub(crate) fn get_parent(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_window_payload(payload, host_protocol::WINDOW_GET_PARENT_METHOD)?;
+    let response = handler.get_parent(payload.window_id())?;
+
+    Ok(Some(encode_parent_response(response)?))
 }
 
 pub(crate) fn get_bounds(
@@ -827,6 +837,18 @@ fn encode_list_response(
         HostProtocolError::internal(
             format!("failed to encode {operation} response payload: {error}"),
             operation,
+        )
+    })
+}
+
+fn encode_parent_response(payload: WindowParentResponse) -> Result<Value, HostProtocolError> {
+    serde_json::to_value(payload).map_err(|error| {
+        HostProtocolError::internal(
+            format!(
+                "failed to encode {} response payload: {error}",
+                host_protocol::WINDOW_GET_PARENT_METHOD
+            ),
+            host_protocol::WINDOW_GET_PARENT_METHOD,
         )
     })
 }

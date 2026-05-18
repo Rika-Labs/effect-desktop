@@ -18,6 +18,7 @@ import {
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
   WINDOW_GET_CURRENT_METHOD,
+  WINDOW_GET_PARENT_METHOD,
   WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
   WINDOW_MAXIMIZE_METHOD,
@@ -733,6 +734,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "getCurrent",
   "getById",
   "list",
+  "getParent",
   "getBounds",
   "setBounds",
   "center",
@@ -8113,6 +8115,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.getCurrent",
     "Window.getById",
     "Window.list",
+    "Window.getParent",
     WINDOW_SUBSCRIBE_EVENTS_METHOD,
     "Window.getBounds",
     "Window.setBounds",
@@ -8146,6 +8149,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.getCurrent"]
     void client["Window.getById"]
     void client["Window.list"]
+    void client["Window.getParent"]
     void client[WINDOW_SUBSCRIBE_EVENTS_METHOD]
     void client["Window.getBounds"]
     void client["Window.setBounds"]
@@ -8177,6 +8181,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.getCurrent",
     "Window.getById",
     "Window.list",
+    "Window.getParent",
     WINDOW_SUBSCRIBE_EVENTS_METHOD,
     "Window.getBounds",
     "Window.setBounds",
@@ -8278,6 +8283,11 @@ test("Window service delegates through a substitutable WindowClient port", async
         calls.push("list")
         return [windowHandle]
       }),
+    getParent: () =>
+      Effect.sync(() => {
+        calls.push("getParent")
+        return undefined
+      }),
     getBounds: () =>
       Effect.sync(() => {
         calls.push("getBounds")
@@ -8328,6 +8338,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       const current = yield* window.getCurrent()
       const byId = yield* window.getById(String(created.id))
       const windows = yield* window.list()
+      const parent = yield* window.getParent(created)
       const bounds = yield* window.getBounds(created)
       yield* window.setBounds(
         created,
@@ -8353,7 +8364,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.destroy(created)
       yield* window.close(created)
 
-      return { bounds, byId, created, current, event, state, windows }
+      return { bounds, byId, created, current, event, parent, state, windows }
     }).pipe(Effect.provide(makeWindowServiceLayer(client)))
   )
 
@@ -8361,6 +8372,7 @@ test("Window service delegates through a substitutable WindowClient port", async
   expect(result.current).toEqual(windowHandle)
   expect(result.byId).toEqual(windowHandle)
   expect(result.windows).toEqual([windowHandle])
+  expect(result.parent).toBeUndefined()
   expect(result.bounds).toEqual(new WindowBounds({ x: 10, y: 20, width: 640, height: 480 }))
   expect(result.state).toEqual(
     new WindowState({ minimized: false, maximized: true, fullscreen: true })
@@ -8379,6 +8391,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "getCurrent",
     "getById:window-1",
     "list",
+    "getParent",
     "getBounds",
     "setBounds:800x600",
     "center",
@@ -8854,7 +8867,9 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
                             windows: [{ windowId: "host-parent" }, { windowId: "host-child" }]
                           }
                         }
-                      : {})
+                      : request.method === WINDOW_GET_PARENT_METHOD
+                        ? { payload: { parentWindowId: "host-parent" } }
+                        : {})
             })
           )
         }
@@ -8868,6 +8883,7 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
             "get-current-parent-request",
             "create-child-request",
             "list-request",
+            "get-parent-request",
             "get-by-id-request",
             "focus-child-request",
             "get-current-child-request",
@@ -8880,6 +8896,7 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
             "get-current-parent-trace",
             "create-child-trace",
             "list-trace",
+            "get-parent-trace",
             "get-by-id-trace",
             "focus-child-trace",
             "get-current-child-trace",
@@ -8890,7 +8907,7 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
           now: nextNumber([
             1_710_000_002_000, 1_710_000_002_001, 1_710_000_002_002, 1_710_000_002_003,
             1_710_000_002_004, 1_710_000_002_005, 1_710_000_002_006, 1_710_000_002_007,
-            1_710_000_002_008, 1_710_000_002_009
+            1_710_000_002_008, 1_710_000_002_009, 1_710_000_002_010
           ])
         },
         router
@@ -8901,6 +8918,7 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
         const currentParent = yield* window.getCurrent()
         const child = yield* window.create({ title: "Child", parent })
         const listed = yield* window.list()
+        const childParent = yield* window.getParent(child)
         const parentById = yield* window.getById(String(parent.id))
         yield* window.focus(child)
         const currentChild = yield* window.getCurrent()
@@ -8908,7 +8926,16 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
         const closedChildExit = yield* Effect.exit(window.getById(String(child.id)))
         yield* window.close(parent)
 
-        return { child, closedChildExit, currentChild, currentParent, listed, parent, parentById }
+        return {
+          child,
+          childParent,
+          closedChildExit,
+          currentChild,
+          currentParent,
+          listed,
+          parent,
+          parentById
+        }
       }).pipe(
         Effect.provide(
           Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
@@ -8918,6 +8945,7 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
   )
 
   expect(result.currentParent.id).toBe(result.parent.id)
+  expect(result.childParent?.id).toBe(result.parent.id)
   expect(result.parentById.id).toBe(result.parent.id)
   expect(result.currentChild.id).toBe(result.child.id)
   expect(result.listed.map((window) => String(window.id)).sort()).toEqual([
@@ -8933,6 +8961,7 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
     ["Window.getCurrent", undefined],
     [WINDOW_CREATE_METHOD, { title: "Child", parentWindowId: "host-parent" }],
     ["Window.list", undefined],
+    [WINDOW_GET_PARENT_METHOD, { windowId: "host-child" }],
     ["Window.getById", { windowId: "host-parent" }],
     [WINDOW_FOCUS_METHOD, { windowId: "host-child" }],
     ["Window.getCurrent", undefined],
@@ -11637,6 +11666,7 @@ const noopWindowClient: WindowClientApi = {
   getCurrent: () => Effect.succeed(windowHandle),
   getById: () => Effect.succeed(windowHandle),
   list: () => Effect.succeed([windowHandle]),
+  getParent: () => Effect.succeed(undefined),
   getBounds: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
   setBounds: () => Effect.void,
   center: () => Effect.void,
@@ -11682,11 +11712,13 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
             ? { payload: { windowId: "host-window-1" } }
             : request.method === "Window.list"
               ? { payload: { windows: [{ windowId: "host-window-1" }] } }
-              : request.method === WINDOW_GET_BOUNDS_METHOD
-                ? { payload: { x: 10, y: 20, width: 640, height: 480 } }
-                : request.method === WINDOW_GET_STATE_METHOD
-                  ? { payload: { minimized: false, maximized: true, fullscreen: true } }
-                  : {})
+              : request.method === WINDOW_GET_PARENT_METHOD
+                ? { payload: {} }
+                : request.method === WINDOW_GET_BOUNDS_METHOD
+                  ? { payload: { x: 10, y: 20, width: 640, height: 480 } }
+                  : request.method === WINDOW_GET_STATE_METHOD
+                    ? { payload: { minimized: false, maximized: true, fullscreen: true } }
+                    : {})
       })
     )
   }

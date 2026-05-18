@@ -38,6 +38,7 @@ import {
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
   WINDOW_GET_CURRENT_METHOD,
+  WINDOW_GET_PARENT_METHOD,
   WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
   WINDOW_LIST_METHOD,
@@ -238,6 +239,7 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           request.method === WINDOW_HIDE_METHOD ||
           request.method === WINDOW_FOCUS_METHOD ||
           request.method === WINDOW_GET_BY_ID_METHOD ||
+          request.method === WINDOW_GET_PARENT_METHOD ||
           request.method === WINDOW_GET_BOUNDS_METHOD ||
           request.method === WINDOW_CENTER_METHOD ||
           request.method === WINDOW_SET_TITLE_METHOD ||
@@ -824,6 +826,7 @@ export const runHeadless = <A, E, R>(
         getCurrent: () => rawWindow.getCurrent(),
         getById: (windowId) => rawWindow.getById(windowId),
         list: () => rawWindow.list(),
+        getParent: (windowId) => rawWindow.getParent(windowId),
         getBounds: (windowId) => rawWindow.getBounds(windowId),
         setBounds: (windowId, bounds) => rawWindow.setBounds(windowId, bounds),
         center: (windowId) => rawWindow.center(windowId),
@@ -931,6 +934,7 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_HIDE_METHOD:
     case WINDOW_FOCUS_METHOD:
     case WINDOW_GET_BY_ID_METHOD:
+    case WINDOW_GET_PARENT_METHOD:
     case WINDOW_CENTER_METHOD:
     case WINDOW_SET_TITLE_METHOD:
     case WINDOW_SET_RESIZABLE_METHOD:
@@ -950,6 +954,10 @@ const defaultFixture = (method: string): HeadlessFixture => {
           }
           if (request.method === WINDOW_GET_BY_ID_METHOD) {
             return { windowId }
+          }
+          if (request.method === WINDOW_GET_PARENT_METHOD) {
+            const parentWindowId = state.windows.get(windowId)?.parentWindowId
+            return parentWindowId === undefined ? {} : { parentWindowId }
           }
           return undefined
         })

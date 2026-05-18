@@ -51,6 +51,7 @@ import {
   WindowHandleInput,
   WindowListResult,
   WindowLookupInput,
+  WindowParentResult,
   WindowProgressInput,
   type WindowProgressOptions,
   WindowRegistryEvent,
@@ -145,6 +146,12 @@ export const WindowList = windowRpc(
   Schema.Void,
   WindowListResult,
   P.nativeInvoke({ primitive: "Window", methods: ["list"] })
+)
+export const WindowGetParent = windowRpc(
+  "getParent",
+  WindowHandleInput,
+  WindowParentResult,
+  P.nativeInvoke({ primitive: "Window", methods: ["getParent"] })
 )
 export const WindowSubscribeEvents = windowRpc(
   "subscribeEvents",
@@ -274,6 +281,7 @@ const makeWindowRpcGroup = () =>
     WindowGetCurrent,
     WindowGetById,
     WindowList,
+    WindowGetParent,
     WindowSubscribeEvents,
     WindowGetBounds,
     WindowSetBounds,
@@ -325,6 +333,7 @@ export const WindowMethodNames = Object.freeze([
   "getCurrent",
   "getById",
   "list",
+  "getParent",
   "getBounds",
   "setBounds",
   "center",
@@ -360,6 +369,9 @@ export interface WindowClientApi {
   readonly getCurrent: () => Effect.Effect<WindowHandle, WindowError, never>
   readonly getById: (windowId: string) => Effect.Effect<WindowHandle, WindowError, never>
   readonly list: () => Effect.Effect<readonly WindowHandle[], WindowError, never>
+  readonly getParent: (
+    window: WindowHandle
+  ) => Effect.Effect<WindowHandle | undefined, WindowError, never>
   readonly getBounds: (window: WindowHandle) => Effect.Effect<WindowBounds, WindowError, never>
   readonly setBounds: (
     window: WindowHandle,
@@ -507,6 +519,12 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       return new WindowListResult({ windows: yield* window.list() })
     }),
+  "Window.getParent": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      const parent = yield* window.getParent(input.window)
+      return new WindowParentResult(parent === undefined ? {} : { parent })
+    }),
   "Window.subscribeEvents": () =>
     Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),
   "Window.getBounds": (input) =>
@@ -645,6 +663,7 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     getCurrent: () => client.getCurrent(),
     getById: (windowId) => client.getById(windowId),
     list: () => client.list(),
+    getParent: (window) => client.getParent(window),
     getBounds: (window) => client.getBounds(window),
     setBounds: (window, bounds) => client.setBounds(window, bounds),
     center: (window) => client.center(window),
@@ -733,6 +752,23 @@ function windowClientFromRpcClient(
           )
         )
         return decoded.windows
+      }),
+    getParent: (window) =>
+      Effect.gen(function* () {
+        const decodedInput = yield* decodeWindowHandleInput(window, "Window.getParent")
+        const result = yield* runWindowRpc(
+          client["Window.getParent"](decodedInput),
+          "Window.getParent"
+        )
+        const decoded = yield* Schema.decodeUnknownEffect(WindowParentResult)(
+          result,
+          StrictParseOptions
+        ).pipe(
+          Effect.mapError((error) =>
+            makeHostProtocolInvalidOutputError("Window.getParent", formatUnknownError(error))
+          )
+        )
+        return decoded.parent
       }),
     getBounds: (window) =>
       Effect.gen(function* () {
@@ -1359,6 +1395,21 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           { concurrency: "unbounded" }
         )
         return new WindowListResult({ windows: freshWindows })
+      }),
+    "Window.getParent": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.getParent")
+        const parent = yield* host.getParent(window.id)
+        if (parent.parentWindowId === undefined) {
+          return new WindowParentResult({})
+        }
+        const parentWindow = yield* lookupKnownFreshWindow(
+          parent.parentWindowId,
+          knownWindowIds,
+          windowHandleById,
+          "Window.getParent"
+        )
+        return new WindowParentResult({ parent: parentWindow })
       }),
     "Window.subscribeEvents": () =>
       Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),

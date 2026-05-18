@@ -403,6 +403,16 @@ const makeWindowScenario = (
       Ref.get(windows).pipe(
         Effect.map((records) => [...records.values()].map((record) => record.window))
       ),
+    getParent: (window): Effect.Effect<WindowHandle | undefined, WindowError, never> =>
+      Ref.get(windows).pipe(
+        Effect.flatMap((records) => {
+          const record = records.get(window.id)
+          if (record === undefined) {
+            return Effect.fail(notFoundWindow(window.id, "Window.getParent"))
+          }
+          return Effect.succeed(record.input.parent)
+        })
+      ),
     getBounds: (_window): Effect.Effect<WindowBounds, WindowError, never> =>
       Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
     setBounds: (_window, _bounds): Effect.Effect<void, WindowError, never> => Effect.void,

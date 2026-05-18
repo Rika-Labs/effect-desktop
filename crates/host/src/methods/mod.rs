@@ -298,6 +298,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::list),
     ),
     route(
+        host_protocol::WINDOW_GET_PARENT_METHOD,
+        HostMethodDispatcher::Window(window::get_parent),
+    ),
+    route(
         host_protocol::WINDOW_GET_BOUNDS_METHOD,
         HostMethodDispatcher::Window(window::get_bounds),
     ),
@@ -3354,6 +3358,27 @@ mod tests {
             }
         );
 
+        let parent_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-parent",
+                    host_protocol::WINDOW_GET_PARENT_METHOD,
+                    serde_json::json!({ "windowId": "window-1" }),
+                ),
+                1710000000113,
+            )
+            .expect("window get parent should return response");
+        assert_eq!(
+            parent_response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-parent".to_string(),
+                timestamp: 1710000000113,
+                trace_id: "trace-request-window-get-parent".to_string(),
+                payload: Some(serde_json::json!({ "parentWindowId": "window-parent" })),
+                error: None,
+            }
+        );
+
         assert_eq!(fake.lookup_ids(), vec!["window-1".to_string()]);
     }
 
@@ -3405,6 +3430,31 @@ mod tests {
                     "payload",
                     "windowId must be non-empty",
                     host_protocol::WINDOW_GET_BY_ID_METHOD,
+                )),
+            }
+        );
+
+        let invalid_get_parent = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-parent-invalid",
+                    host_protocol::WINDOW_GET_PARENT_METHOD,
+                    serde_json::json!({ "windowId": "" }),
+                ),
+                1710000000115,
+            )
+            .expect("invalid window get parent should return response");
+        assert_eq!(
+            invalid_get_parent,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-parent-invalid".to_string(),
+                timestamp: 1710000000115,
+                trace_id: "trace-request-window-get-parent-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "payload",
+                    "windowId must be non-empty",
+                    host_protocol::WINDOW_GET_PARENT_METHOD,
                 )),
             }
         );
@@ -6648,6 +6698,15 @@ mod tests {
                 host_protocol::WindowLookupResponse::new("window-1"),
                 host_protocol::WindowLookupResponse::new("window-2"),
             ]))
+        }
+
+        fn get_parent(
+            &self,
+            _window_id: &str,
+        ) -> Result<host_protocol::WindowParentResponse, HostProtocolError> {
+            Ok(host_protocol::WindowParentResponse::new(Some(
+                "window-parent".to_string(),
+            )))
         }
 
         fn get_bounds(&self, _window_id: &str) -> Result<WindowBoundsPayload, HostProtocolError> {

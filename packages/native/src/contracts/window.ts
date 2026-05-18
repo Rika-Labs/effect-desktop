@@ -71,6 +71,10 @@ export class WindowListResult extends Schema.Class<WindowListResult>("WindowList
   windows: Schema.Array(WindowResource)
 }) {}
 
+export class WindowParentResult extends Schema.Class<WindowParentResult>("WindowParentResult")({
+  parent: Schema.optionalKey(WindowResource)
+}) {}
+
 export class WindowSubscribeEventsResult extends Schema.Class<WindowSubscribeEventsResult>(
   "WindowSubscribeEventsResult"
 )({
