@@ -2,11 +2,14 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  type BridgeClientResponse,
   HostProtocolRequestEnvelope,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_BY_ID_METHOD,
   WINDOW_GET_STATE_METHOD,
+  WINDOW_SET_BOUNDS_METHOD,
   makeHostProtocolHostUnavailableError
 } from "@effect-desktop/bridge"
 import { ResourceRegistry, makeResourceId, makeResourceRegistry } from "@effect-desktop/core"
@@ -131,6 +134,59 @@ test("WindowPersistence rejects malformed save options before bridge transport",
       expectWindowPersistenceFailure(exit, "invalid-input", "WindowPersistence.save")
       expect(requests).toEqual([])
     }).pipe(Effect.provide(bridgeFixtureLayer({ requests })))
+  )
+})
+
+test("WindowPersistence restore uses the renderer bridge path for display and window updates", () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* WindowPersistence
+
+      yield* service.save(windowHandle)
+      requests.length = 0
+      const restored = yield* service.restore(windowHandle)
+
+      expect(restored.restored).toBe(true)
+      expect(requests.map((request) => request.method)).toEqual([
+        "Screen.getDisplays",
+        WINDOW_GET_STATE_METHOD,
+        WINDOW_SET_BOUNDS_METHOD
+      ])
+      expect(requests[2]?.payload).toMatchObject({
+        window: windowHandle,
+        bounds: { x: 100, y: 120, width: 800, height: 600 }
+      })
+    }).pipe(Effect.provide(bridgeFixtureLayer({ requests })))
+  )
+})
+
+test("WindowPersistence clear and events validate window access through the bridge", () => {
+  const clearRequests: HostProtocolRequestEnvelope[] = []
+  const eventsRequests: HostProtocolRequestEnvelope[] = []
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      yield* Effect.gen(function* () {
+        const service = yield* WindowPersistence
+        yield* service.clear(windowHandle)
+      }).pipe(Effect.provide(bridgeFixtureLayer({ requests: clearRequests })))
+
+      const eventsDenied = yield* Effect.gen(function* () {
+        const service = yield* WindowPersistence
+        return yield* service.events(windowHandle).pipe(Stream.runDrain, Effect.flip)
+      }).pipe(
+        Effect.provide(bridgeFixtureLayer({ requests: eventsRequests, denyWindowLookup: true }))
+      )
+
+      expect(clearRequests.map((request) => request.method)).toEqual([WINDOW_GET_BY_ID_METHOD])
+      expect(eventsRequests.map((request) => request.method)).toEqual([WINDOW_GET_BY_ID_METHOD])
+      expect(eventsDenied).toMatchObject({
+        reason: "denied",
+        operation: "WindowPersistence.events"
+      })
+    })
   )
 })
 
@@ -397,8 +453,9 @@ const fixtureLayer = (options: {
 
 const bridgeFixtureLayer = (options: {
   readonly requests: HostProtocolRequestEnvelope[]
+  readonly denyWindowLookup?: boolean
 }): Layer.Layer<WindowPersistence, never, never> => {
-  const exchange = windowPersistenceBridgeExchange(options.requests)
+  const exchange = windowPersistenceBridgeExchange(options)
   const registry = Effect.runSync(makeResourceRegistry())
   fixtureSequence += 1
   return Layer.provide(
@@ -419,31 +476,59 @@ const bridgeFixtureLayer = (options: {
   )
 }
 
-const windowPersistenceBridgeExchange = (
-  requests: HostProtocolRequestEnvelope[]
-): BridgeClientExchange => ({
+const windowPersistenceBridgeExchange = (options: {
+  readonly requests: HostProtocolRequestEnvelope[]
+  readonly denyWindowLookup?: boolean
+}): BridgeClientExchange => ({
   request: (request) =>
     Effect.sync(() => {
-      requests.push(request)
-      switch (request.method) {
-        case WINDOW_GET_BOUNDS_METHOD:
-          return { kind: "success", payload: { x: 100, y: 120, width: 800, height: 600 } }
-        case WINDOW_GET_STATE_METHOD:
-          return {
-            kind: "success",
-            payload: { minimized: false, maximized: false, fullscreen: false }
-          }
-        case "Screen.getDisplays":
-          return {
-            kind: "success",
-            payload: { displays: [primaryDisplay()] }
-          }
-        default:
-          throw new Error(`unexpected bridge request: ${request.method}`)
-      }
-    }),
+      options.requests.push(request)
+    }).pipe(Effect.flatMap(() => windowPersistenceBridgeResponse(options, request))),
   subscribe: () => Stream.empty
 })
+
+const windowPersistenceBridgeResponse = (
+  options: {
+    readonly denyWindowLookup?: boolean
+  },
+  request: HostProtocolRequestEnvelope
+): Effect.Effect<BridgeClientResponse, HostProtocolPermissionDeniedError, never> => {
+  switch (request.method) {
+    case WINDOW_GET_BOUNDS_METHOD:
+      return Effect.succeed({
+        kind: "success",
+        payload: { x: 100, y: 120, width: 800, height: 600 }
+      })
+    case WINDOW_GET_BY_ID_METHOD:
+      if (options.denyWindowLookup === true) {
+        return Effect.fail(
+          new HostProtocolPermissionDeniedError({
+            tag: "PermissionDenied",
+            capability: "native.invoke",
+            resource: WINDOW_GET_BY_ID_METHOD,
+            message: "denied",
+            operation: WINDOW_GET_BY_ID_METHOD,
+            recoverable: false
+          })
+        )
+      }
+      return Effect.succeed({ kind: "success", payload: windowHandle })
+    case WINDOW_GET_STATE_METHOD:
+      return Effect.succeed({
+        kind: "success",
+        payload: { minimized: false, maximized: false, fullscreen: false }
+      })
+    case WINDOW_SET_BOUNDS_METHOD:
+      return Effect.succeed({ kind: "success", payload: undefined })
+    case "Screen.getDisplays":
+      return Effect.succeed({
+        kind: "success",
+        payload: { displays: [primaryDisplay()] }
+      })
+    default:
+      return Effect.die(`unexpected bridge request: ${request.method}`)
+  }
+}
 
 const makeWindowClient = (
   calls: WindowPersistenceCalls,
