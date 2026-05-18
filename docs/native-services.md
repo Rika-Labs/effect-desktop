@@ -124,6 +124,8 @@ Platform-limited operations must be guarded through support metadata or `isSuppo
 
 The generated [native parity matrix](reference/native/parity-matrix.md) is the docs/doctor reporting artifact. It is generated from `Native.all` schema docs and the Rust host router, and the generator writes the same JSON snapshot to the docs tree and the CLI package. `desktop doctor` decodes the bundled CLI snapshot for its `native-capabilities` probe, so installed CLIs do not depend on a repository-local docs path.
 
+Native boundary failures use the closed `HostProtocolError` Schema vocabulary on every native RPC surface. Application code that needs a smaller decision surface can use `NativeBoundaryErrors` or `normalizeNativeBoundaryEffect` to classify host-protocol failures into `denied`, `unsupported`, `missing-host-method`, `invalid-input`, `invalid-output`, or `host-failed` without string parsing.
+
 ## Where to go next
 
 - [How-to: integrate native services](how-to/integrate-native-services.md)

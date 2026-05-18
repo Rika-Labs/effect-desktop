@@ -92,6 +92,17 @@ export {
   type NativeSurfaceSelection
 } from "./native.js"
 export {
+  classifyNativeBoundaryError,
+  decodeNativeBoundaryError,
+  encodeNativeBoundaryError,
+  NativeBoundaryError,
+  NativeBoundaryErrorReason,
+  NativeBoundaryErrors,
+  NativeBoundaryErrorsLive,
+  normalizeNativeBoundaryEffect,
+  type NativeBoundaryErrorsApi
+} from "./native-boundary-error.js"
+export {
   makeNativeHostMethodInventoryLayer,
   makeNativeParityMatrix,
   makeNativeParityMatrixLayer,

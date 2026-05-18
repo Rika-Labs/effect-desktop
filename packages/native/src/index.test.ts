@@ -4349,6 +4349,9 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
     expect(Layer.isLayer(surface.clientLayer)).toBe(true)
     expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
     expect(surface.schemaDocs.map((doc) => doc.tag)).toEqual(Array.from(tags))
+    expect(surface.schemaDocs.map((doc) => doc.error)).toEqual(
+      tags.map(() => HostProtocolErrorSchema)
+    )
   }
 })
 
