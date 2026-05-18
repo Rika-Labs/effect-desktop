@@ -75,6 +75,14 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
     hostStatus: "missing",
     support: { status: "unsupported", reason: "host-adapter-unimplemented" }
   })
+  expect(result.rows.find((row) => row.tag === "SafeStorage.isAvailable")).toMatchObject({
+    hostStatus: "routed",
+    support: { status: "supported" }
+  })
+  expect(result.rows.find((row) => row.tag === "SafeStorage.set")).toMatchObject({
+    hostStatus: "missing",
+    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
+  })
   expect(result.rows.find((row) => row.tag === "Window.close")).toMatchObject({
     hostMethod: "Window.destroy",
     hostStatus: "routed"
@@ -82,6 +90,17 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
   expect(result.rows.find((row) => row.tag === "EgressPolicy.record")).toMatchObject({
     hostStatus: "routed"
   })
+})
+
+test("NativeParityMatrix does not mark missing host methods as supported", async () => {
+  const result = await buildNativeParityMatrix()
+  const falseSupportedRows = result.rows.filter(
+    (row) =>
+      row.hostStatus === "missing" &&
+      (row.support.status === "supported" || row.support.status === "partial")
+  )
+
+  expect(falseSupportedRows).toEqual([])
 })
 
 test("NativeParityMatrix service exposes generated and missing rows from an injected inventory", async () => {

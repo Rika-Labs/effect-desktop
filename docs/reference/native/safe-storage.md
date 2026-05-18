@@ -10,7 +10,7 @@ effect_version: 4
 
 Lower-level credential-store boundary for scoped secret bytes. Most apps use [`Secrets`](../services/secrets.md) instead, which adds namespace permissions, redaction, key derivation, and auditing on top.
 
-The current native host only routes availability probing. Mutating or reading secret bytes requires a real platform adapter; until those host methods exist, bridge calls fail instead of falling back to plaintext storage.
+The current native host only routes availability probing. Mutating or reading secret bytes requires a real platform adapter; until those host methods exist, `set`, `get`, `delete`, and `list` report `host-adapter-unimplemented` in capability metadata and bridge calls fail instead of falling back to plaintext storage.
 
 ## Methods
 

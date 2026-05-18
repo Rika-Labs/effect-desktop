@@ -27,6 +27,17 @@ import {
 } from "./contracts/safe-storage.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const HostAdapterUnimplementedReason = "host-adapter-unimplemented"
+const SafeStorageHostUnsupportedSupport = NativeSurface.support.unsupported(
+  HostAdapterUnimplementedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: HostAdapterUnimplementedReason },
+      { platform: "windows", status: "unsupported", reason: HostAdapterUnimplementedReason },
+      { platform: "linux", status: "unsupported", reason: HostAdapterUnimplementedReason }
+    ]
+  }
+)
 
 export type SafeStorageError = HostProtocolError
 
@@ -303,12 +314,14 @@ function safeStorageRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+  const support =
+    method === "isAvailable" ? NativeSurface.support.supported : SafeStorageHostUnsupportedSupport
   return NativeSurface.rpc("SafeStorage", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support
   })
 }
 
