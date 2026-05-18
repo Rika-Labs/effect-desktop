@@ -1,6 +1,6 @@
 ---
 title: Secrets
-description: App-level facade over native SafeStorage with redacted byte handling.
+description: App-level facade over SafeStorage with redacted byte handling.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,9 @@ effect_version: 4
 
 # `Secrets`
 
-App-level facade over native `SafeStorage` (Keychain, Credential Manager, libsecret). Bytes ride as `Redacted<Uint8Array>` so they can't accidentally hit logs.
+App-level facade over `SafeStorage`. Bytes ride as `Redacted<Uint8Array>` so they can't accidentally hit logs.
+
+Current host status: native `SafeStorage` only routes availability probing. Secret read/write/list/delete calls require a provided test or platform storage layer until the macOS, Windows, and Linux host adapters exist. Missing storage fails as `StorageUnavailable`; there is no plaintext fallback.
 
 ## Import
 

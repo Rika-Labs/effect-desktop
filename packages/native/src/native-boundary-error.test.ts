@@ -43,7 +43,7 @@ test("NativeBoundaryErrors test layer proves success and normalized native failu
               tag: "Unsupported",
               reason: "not available on linux",
               message: "unsupported",
-              operation: "SafeStorage.encryptString",
+              operation: "SafeStorage.set",
               platform: "linux",
               recoverable: false
             })

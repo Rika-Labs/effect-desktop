@@ -39,7 +39,7 @@ if (Settings === undefined || testDouble.length === 0) {
 
 ## Rule
 
-Use **schemas** for stored data. Treat migrations as startup work. Keep secrets in `Redacted` values or OS-backed safe storage.
+Use **schemas** for stored data. Treat migrations as startup work. Keep secrets in `Redacted` values and only persist them through a SafeStorage adapter that fails loudly when platform storage is unavailable.
 
 ## Where to go next
 
