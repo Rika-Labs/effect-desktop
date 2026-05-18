@@ -28,6 +28,11 @@ Browser permission prompts are not handled by `WebView` today. Camera,
 microphone, notifications, geolocation, clipboard, and display-capture
 decisions still need explicit profile/session-partitioned host wiring.
 
+Browsing data is not managed by `WebView` today. Cache, cookies, local storage,
+IndexedDB, and history cannot be cleared by profile, session, or data type
+because the current host WebView attachment has no partitioned browser data
+store contract.
+
 ## Import
 
 ```ts

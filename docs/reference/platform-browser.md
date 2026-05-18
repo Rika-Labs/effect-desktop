@@ -10,6 +10,10 @@ effect_version: 4
 
 `@effect-desktop/platform-browser` exposes Effect layers for renderer-side persistence — IndexedDB, SQLite WASM (in a Web Worker), and PGlite.
 
+This package does not clear native WebView browsing data. Cache, cookies, local
+storage, IndexedDB, and history remain under the host WebView data store, and
+Effect Desktop does not yet expose a profile/session-partitioned clearing API.
+
 ## Import
 
 ```ts
