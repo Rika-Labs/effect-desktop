@@ -70,6 +70,11 @@ import {
   AssociationMethodNames,
   AssociationRpcs,
   AssociationRpcEvents,
+  Autostart,
+  AutostartLive,
+  AutostartMethodNames,
+  AutostartRpcEvents,
+  AutostartRpcs,
   Native,
   NativeCapabilities,
   NativeCapabilitiesLive,
@@ -219,6 +224,7 @@ import {
   WindowMethodNames,
   makeAssociationServiceLayer,
   makeAppServiceLayer,
+  makeAutostartServiceLayer,
   makeClipboardServiceLayer,
   makeContextMenuServiceLayer,
   makeCrashReporterMemoryClient,
@@ -248,6 +254,7 @@ import {
   wipeSecretBytes,
   type AppClientApi,
   type AssociationClientApi,
+  type AutostartClientApi,
   type ClipboardClientApi,
   type ContextMenuClientApi,
   type DialogClientApi,
@@ -269,6 +276,7 @@ import {
 } from "./index.js"
 import { makeAppBridgeClientLayer } from "./app.js"
 import { makeAssociationBridgeClientLayer, makeHostAssociationRpcRuntime } from "./association.js"
+import { makeAutostartBridgeClientLayer, makeHostAutostartRpcRuntime } from "./autostart.js"
 import { makeClipboardBridgeClientLayer, makeHostClipboardRpcRuntime } from "./clipboard.js"
 import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
 import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
@@ -301,6 +309,8 @@ import {
   AssociationFileAssociation,
   AssociationFileAssociationsResult,
   AssociationProtocolStatus,
+  AutostartEvent,
+  AutostartStatus,
   AppBeforeQuitEvent,
   AppCommandLine,
   AppInfo,
@@ -748,6 +758,12 @@ const expectedAssociationMethods: Array<(typeof AssociationMethodNames)[number]>
   "isDefaultProtocolClient",
   "setDefaultProtocolClient",
   "getFileAssociations"
+]
+
+const expectedAutostartMethods: Array<(typeof AutostartMethodNames)[number]> = [
+  "isEnabled",
+  "enable",
+  "disable"
 ]
 
 const expectedRecentDocumentsMethods: Array<(typeof RecentDocumentsMethodNames)[number]> = [
@@ -4386,6 +4402,187 @@ test("Association service propagates unsupported platform and host failure", asy
       const association = yield* Association
       return yield* Effect.exit(association.isDefaultProtocolClient({ scheme: "example" }))
     }).pipe(Effect.provide(makeAssociationServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+})
+
+test("AutostartRpcs declares the Phase 8 Autostart method and event surface", () => {
+  expect([...AutostartMethodNames]).toEqual(expectedAutostartMethods)
+  expect(Array.from(AutostartRpcs.requests.keys())).toEqual([
+    "Autostart.isEnabled",
+    "Autostart.enable",
+    "Autostart.disable"
+  ])
+  expect(rpcMethodNames("Autostart", AutostartRpcs)).toEqual(expectedAutostartMethods)
+  expect(Object.keys(AutostartRpcEvents)).toEqual(["Event"])
+})
+
+test("Autostart service delegates through a substitutable AutostartClient port", async () => {
+  const calls: string[] = []
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const autostart = yield* Autostart
+      const initial = yield* autostart.isEnabled()
+      const enabled = yield* autostart.enable({ args: ["--hidden"] })
+      const disabled = yield* autostart.disable()
+      const events = yield* autostart.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { disabled, enabled, events, initial }
+    }).pipe(Effect.provide(makeAutostartServiceLayer(autostartClient(calls))))
+  )
+
+  expect(result.initial).toEqual(
+    new AutostartStatus({ enabled: false, mechanism: "linux-xdg-autostart" })
+  )
+  expect(result.enabled).toEqual(
+    new AutostartStatus({ enabled: true, mechanism: "linux-xdg-autostart" })
+  )
+  expect(result.disabled).toEqual(
+    new AutostartStatus({ enabled: false, mechanism: "linux-xdg-autostart" })
+  )
+  expect(Array.from(result.events)).toEqual([
+    new AutostartEvent({ phase: "enabled", mechanism: "linux-xdg-autostart" })
+  ])
+  expect(calls).toEqual(["isEnabled", "enable:--hidden", "disable", "events"])
+})
+
+test("Autostart bridge client sends typed host envelopes and decodes events and results", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = autostartExchange(requests, (request) => ({
+    kind: "success",
+    payload:
+      request.method === "Autostart.isEnabled" || request.method === "Autostart.disable"
+        ? { enabled: false, mechanism: "linux-xdg-autostart" }
+        : { enabled: true, mechanism: "linux-xdg-autostart" }
+  }))
+
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const autostart = yield* Autostart
+      const initial = yield* autostart.isEnabled()
+      const enabled = yield* autostart.enable({ args: ["--hidden"] })
+      const disabled = yield* autostart.disable()
+      const events = yield* autostart.events().pipe(Stream.take(1), Stream.runCollect)
+
+      return { disabled, enabled, events, initial }
+    }).pipe(Effect.provide(Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))))
+  )
+
+  expect(result.initial.enabled).toBe(false)
+  expect(result.enabled.enabled).toBe(true)
+  expect(result.disabled.enabled).toBe(false)
+  expect(Array.from(result.events)).toEqual([
+    new AutostartEvent({ phase: "enabled", mechanism: "linux-xdg-autostart" })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Autostart.isEnabled", null],
+    ["Autostart.enable", { args: ["--hidden"] }],
+    ["Autostart.disable", null]
+  ])
+})
+
+test("Autostart bridge client rejects invalid launch args before transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Autostart
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AutostartLive,
+          makeAutostartBridgeClientLayer(
+            autostartExchange(requests, () => ({
+              kind: "success",
+              payload: { enabled: true, mechanism: "linux-xdg-autostart" }
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  const exits = await Effect.runPromise(
+    Effect.all([
+      Effect.exit(client.enable({ args: [""] })),
+      Effect.exit(client.enable({ args: ["bad\u0000arg"] }))
+    ])
+  )
+
+  for (const exit of exits) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  expect(requests).toEqual([])
+})
+
+test("native host RPC runtime denies protected Autostart calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostAutostartRpcRuntime(
+    {
+      "Autostart.isEnabled": () =>
+        Effect.succeed(new AutostartStatus({ enabled: false, mechanism: "linux-xdg-autostart" })),
+      "Autostart.enable": (input) =>
+        Effect.sync(() => {
+          calls.push(`enable:${input.args?.join(" ") ?? ""}`)
+          return new AutostartStatus({ enabled: true, mechanism: "linux-xdg-autostart" })
+        }),
+      "Autostart.disable": () =>
+        Effect.succeed(new AutostartStatus({ enabled: false, mechanism: "linux-xdg-autostart" }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "autostart-denied",
+          method: "Autostart.enable",
+          timestamp: 1710000000000,
+          traceId: "trace-autostart-denied",
+          payload: { args: ["--hidden"] }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("Autostart service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-adapter-unimplemented",
+    message: "unsupported Autostart.enable",
+    operation: "Autostart.enable",
+    recoverable: false
+  })
+  const unsupportedClient: AutostartClientApi = {
+    ...autostartClient([]),
+    enable: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: AutostartClientApi = {
+    ...autostartClient([]),
+    enable: () => Effect.fail(makeHostProtocolHostUnavailableError("Autostart.enable"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const autostart = yield* Autostart
+      return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
+    }).pipe(Effect.provide(makeAutostartServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const autostart = yield* Autostart
+      return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
+    }).pipe(Effect.provide(makeAutostartServiceLayer(hostFailureClient)))
   )
 
   expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -8136,6 +8333,29 @@ const associationClient = (calls: string[]): AssociationClientApi => ({
     })
 })
 
+const autostartClient = (calls: string[]): AutostartClientApi => ({
+  isEnabled: () =>
+    Effect.sync(() => {
+      calls.push("isEnabled")
+      return new AutostartStatus({ enabled: false, mechanism: "linux-xdg-autostart" })
+    }),
+  enable: (input) =>
+    Effect.sync(() => {
+      calls.push(`enable:${input?.args?.join(" ") ?? ""}`)
+      return new AutostartStatus({ enabled: true, mechanism: "linux-xdg-autostart" })
+    }),
+  disable: () =>
+    Effect.sync(() => {
+      calls.push("disable")
+      return new AutostartStatus({ enabled: false, mechanism: "linux-xdg-autostart" })
+    }),
+  events: () =>
+    Stream.sync(() => {
+      calls.push("events")
+      return new AutostartEvent({ phase: "enabled", mechanism: "linux-xdg-autostart" })
+    })
+})
+
 const recentDocumentsClient = (calls: string[]): RecentDocumentsClientApi => ({
   add: (input) => recordVoid(calls, `add:${input.path.path}`),
   clear: () => recordVoid(calls, "clear"),
@@ -8660,6 +8880,28 @@ const associationExchange = (
             traceId: "event-trace",
             method,
             payload: { phase: "failed", reason: "host-adapter-unimplemented" }
+          })
+        )
+      : Stream.empty
+})
+
+const autostartExchange = (
+  requests: HostProtocolRequestEnvelope[],
+  respond: (request: HostProtocolRequestEnvelope) => BridgeClientResponse
+): BridgeClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return Effect.succeed(respond(request))
+  },
+  subscribe: (method) =>
+    method === "Autostart.Event"
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            timestamp: 1710000000100,
+            traceId: "event-trace",
+            method,
+            payload: { phase: "enabled", mechanism: "linux-xdg-autostart" }
           })
         )
       : Stream.empty

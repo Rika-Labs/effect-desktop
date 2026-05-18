@@ -7,6 +7,7 @@ import {
 import { ActivationRegistrySurface } from "./activation-registry.js"
 import { AppSurface } from "./app.js"
 import { AssociationSurface } from "./association.js"
+import { AutostartSurface } from "./autostart.js"
 import { AttachmentIntakeSurface } from "./attachment-intake.js"
 import { ClipboardSurface } from "./clipboard.js"
 import { ContextMenuSurface } from "./context-menu.js"
@@ -51,6 +52,7 @@ const BuiltInSurfaces = Object.freeze([
   ActivationRegistrySurface,
   AppSurface,
   AssociationSurface,
+  AutostartSurface,
   AttachmentIntakeSurface,
   ClipboardSurface,
   ContextMenuSurface,
@@ -101,6 +103,7 @@ export const available = (...selections: readonly NativeSurfaceSelection[]): Des
 const App = AppSurface.selection
 const Association = AssociationSurface.selection
 const ActivationRegistry = ActivationRegistrySurface.selection
+const Autostart = AutostartSurface.selection
 const AttachmentIntake = AttachmentIntakeSurface.selection
 const Clipboard = ClipboardSurface.selection
 const ContextMenu = ContextMenuSurface.selection
@@ -151,6 +154,7 @@ export const Permissions = Object.freeze({
   activationRegistry: ActivationRegistrySurface.permissions,
   app: AppSurface.permissions,
   association: AssociationSurface.permissions,
+  autostart: AutostartSurface.permissions,
   attachmentIntake: AttachmentIntakeSurface.permissions,
   clipboard: ClipboardSurface.permissions,
   contextMenu: ContextMenuSurface.permissions,
@@ -196,6 +200,7 @@ export const Native = Object.freeze({
   ActivationRegistry,
   App,
   Association,
+  Autostart,
   AttachmentIntake,
   Clipboard,
   ContextMenu,

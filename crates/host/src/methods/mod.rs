@@ -2,6 +2,7 @@ mod activation_registry;
 mod app;
 mod association;
 mod attachment_intake;
+mod autostart;
 mod clipboard;
 mod crash_reporter;
 mod diagnostics_bundle;
@@ -256,6 +257,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::RECENT_DOCUMENTS_LIST_METHOD,
         HostMethodDispatcher::Payload(recent_documents::list),
+    ),
+    route(
+        host_protocol::AUTOSTART_IS_ENABLED_METHOD,
+        HostMethodDispatcher::Payload(autostart::is_enabled),
+    ),
+    route(
+        host_protocol::AUTOSTART_ENABLE_METHOD,
+        HostMethodDispatcher::Payload(autostart::enable),
+    ),
+    route(
+        host_protocol::AUTOSTART_DISABLE_METHOD,
+        HostMethodDispatcher::Payload(autostart::disable),
     ),
     route(
         host_protocol::WINDOW_CREATE_METHOD,
@@ -2781,6 +2794,56 @@ mod tests {
         } = response
         else {
             panic!("recent document route should reject malformed paths");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    #[test]
+    fn autostart_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-autostart-enable",
+                    host_protocol::AUTOSTART_ENABLE_METHOD,
+                    serde_json::json!({ "args": ["--hidden"] }),
+                ),
+                1710000000128,
+            )
+            .expect("autostart enable should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-autostart-enable".to_string(),
+                timestamp: 1710000000128,
+                trace_id: "trace-request-autostart-enable".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::AUTOSTART_UNSUPPORTED_REASON,
+                    host_protocol::AUTOSTART_ENABLE_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn autostart_routes_reject_malformed_payloads() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-autostart-invalid",
+                    host_protocol::AUTOSTART_ENABLE_METHOD,
+                    serde_json::json!({ "args": ["bad\0arg"] }),
+                ),
+                1710000000128,
+            )
+            .expect("autostart invalid request should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("autostart route should reject malformed args");
         };
         assert_eq!(error.tag(), "InvalidArgument");
     }

@@ -1,6 +1,7 @@
 export * from "./app.js"
 export * from "./association.js"
 export * from "./activation-registry.js"
+export * from "./autostart.js"
 export * from "./attachment-intake.js"
 export * from "./clipboard.js"
 export * from "./context-menu.js"

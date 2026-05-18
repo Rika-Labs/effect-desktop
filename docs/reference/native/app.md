@@ -53,10 +53,11 @@ sources.
 
 `Protocol.registerAppProtocol` owns the currently implemented custom protocol
 serving path. `Association` owns OS-level default protocol and file association
-contracts. `App.registerProtocol` remains unsupported until App lifecycle and
-OS-level protocol registration are host-backed.
+contracts. `Autostart` owns OS-level login-item and autostart contracts.
+`App.registerProtocol` and `App.setOpenAtLogin` remain unsupported until App
+lifecycle and OS-level protocol registration are host-backed.
 
 ## Related
 
-- Reference: [`Association`](association.md), [`Window`](window.md), [`PowerMonitor`](power-monitor.md)
+- Reference: [`Association`](association.md), [`Autostart`](autostart.md), [`Window`](window.md), [`PowerMonitor`](power-monitor.md)
 - Source: [`packages/native/src/app.ts`](../../../packages/native/src/app.ts)

@@ -497,6 +497,90 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Autostart.disable",
+      "surface": "Autostart",
+      "method": "disable",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Autostart.enable",
+      "surface": "Autostart",
+      "method": "enable",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Autostart.isEnabled",
+      "surface": "Autostart",
+      "method": "isEnabled",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Clipboard.clear",
       "surface": "Clipboard",
       "method": "clear",
@@ -3926,11 +4010,11 @@
     }
   ],
   "summary": {
-    "total": 193,
-    "routed": 171,
+    "total": 196,
+    "routed": 174,
     "missing": 22,
     "supported": 81,
     "partial": 22,
-    "unsupported": 90
+    "unsupported": 93
   }
 }

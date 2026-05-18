@@ -36,6 +36,10 @@ pub const RECENT_DOCUMENTS_ADD_METHOD: &str = "RecentDocuments.add";
 pub const RECENT_DOCUMENTS_CLEAR_METHOD: &str = "RecentDocuments.clear";
 pub const RECENT_DOCUMENTS_LIST_METHOD: &str = "RecentDocuments.list";
 pub const RECENT_DOCUMENTS_EVENT: &str = "RecentDocuments.Event";
+pub const AUTOSTART_IS_ENABLED_METHOD: &str = "Autostart.isEnabled";
+pub const AUTOSTART_ENABLE_METHOD: &str = "Autostart.enable";
+pub const AUTOSTART_DISABLE_METHOD: &str = "Autostart.disable";
+pub const AUTOSTART_EVENT: &str = "Autostart.Event";
 pub const WINDOW_CREATE_METHOD: &str = "Window.create";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
@@ -271,6 +275,7 @@ pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-u
 pub const APP_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const ASSOCIATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RECENT_DOCUMENTS_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const AUTOSTART_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const CLIPBOARD_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRAY_UNSUPPORTED_REASON: &str = "host-tray-unavailable";
 
@@ -693,6 +698,78 @@ impl RecentDocumentsEventPayload {
         Self {
             phase,
             path,
+            reason,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutostartEnablePayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    args: Option<Vec<String>>,
+}
+
+impl AutostartEnablePayload {
+    pub fn new(args: Option<Vec<String>>) -> Self {
+        Self { args }
+    }
+
+    pub fn args(&self) -> Option<&[String]> {
+        self.args.as_deref()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AutostartMechanismPayload {
+    MacosLoginItem,
+    WindowsRunKey,
+    LinuxXdgAutostart,
+    Unsupported,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutostartStatusPayload {
+    enabled: bool,
+    mechanism: AutostartMechanismPayload,
+}
+
+impl AutostartStatusPayload {
+    pub fn new(enabled: bool, mechanism: AutostartMechanismPayload) -> Self {
+        Self { enabled, mechanism }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AutostartEventPhasePayload {
+    Checked,
+    Enabled,
+    Disabled,
+    Failed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutostartEventPayload {
+    phase: AutostartEventPhasePayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mechanism: Option<AutostartMechanismPayload>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl AutostartEventPayload {
+    pub fn new(
+        phase: AutostartEventPhasePayload,
+        mechanism: Option<AutostartMechanismPayload>,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            phase,
+            mechanism,
             reason,
         }
     }
@@ -10067,10 +10144,12 @@ mod tests {
         AppSingleInstancePayload, AssociationEventPayload, AssociationEventPhasePayload,
         AssociationFileAssociationPayload, AssociationFileAssociationsPayload,
         AssociationFileAssociationsResultPayload, AssociationProtocolPayload,
-        AssociationProtocolStatusPayload, CanonicalPathPayload, ClipboardCapabilityPayload,
-        ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
-        ClipboardSupportedPayload, ClipboardTextPayload, CrashReporterBreadcrumbPayload,
-        CrashReporterFlushPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
+        AssociationProtocolStatusPayload, AutostartEnablePayload, AutostartEventPayload,
+        AutostartEventPhasePayload, AutostartMechanismPayload, AutostartStatusPayload,
+        CanonicalPathPayload, ClipboardCapabilityPayload, ClipboardHtmlPayload,
+        ClipboardImagePayload, ClipboardIsSupportedPayload, ClipboardSupportedPayload,
+        ClipboardTextPayload, CrashReporterBreadcrumbPayload, CrashReporterFlushPayload,
+        CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
         DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
         DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
         DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
@@ -10449,6 +10528,48 @@ mod tests {
             r#"{"phase":"changed","reason":"unexpected"}"#,
         )
         .expect_err("unknown recent document event phase should be rejected");
+        assert!(error.to_string().contains("unknown variant `changed`"));
+    }
+
+    #[test]
+    fn autostart_payloads_encode_current_contract() {
+        assert_eq!(
+            serde_json::to_string(&AutostartEnablePayload::new(Some(vec![
+                "--hidden".to_string()
+            ])))
+            .expect("autostart enable should encode"),
+            r#"{"args":["--hidden"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AutostartStatusPayload::new(
+                true,
+                AutostartMechanismPayload::LinuxXdgAutostart,
+            ))
+            .expect("autostart status should encode"),
+            r#"{"enabled":true,"mechanism":"linux-xdg-autostart"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&AutostartEventPayload::new(
+                AutostartEventPhasePayload::Failed,
+                Some(AutostartMechanismPayload::Unsupported),
+                Some("host-adapter-unimplemented".to_string()),
+            ))
+            .expect("autostart event should encode"),
+            r#"{"phase":"failed","mechanism":"unsupported","reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn autostart_payloads_reject_excess_fields() {
+        let error =
+            serde_json::from_str::<AutostartEnablePayload>(r#"{"args":["--hidden"],"x":true}"#)
+                .expect_err("excess autostart field should be rejected");
+        assert!(error.to_string().contains("unknown field `x`"));
+
+        let error = serde_json::from_str::<AutostartEventPayload>(
+            r#"{"phase":"changed","reason":"unexpected"}"#,
+        )
+        .expect_err("unknown autostart event phase should be rejected");
         assert!(error.to_string().contains("unknown variant `changed`"));
     }
 

@@ -58,6 +58,25 @@ export {
   type AssociationServiceApi
 } from "./association.js"
 export {
+  Autostart,
+  AutostartClient,
+  AutostartHandlersLive,
+  AutostartLive,
+  AutostartMethodNames,
+  AutostartRpcEvents,
+  AutostartRpcs,
+  AutostartSurface,
+  makeAutostartBridgeClientLayer,
+  makeAutostartClientLayer,
+  makeAutostartServiceLayer,
+  makeHostAutostartRpcRuntime,
+  type AutostartClientApi,
+  type AutostartError,
+  type AutostartRpc,
+  type AutostartRpcHandlers,
+  type AutostartServiceApi
+} from "./autostart.js"
+export {
   AttachmentIntake,
   AttachmentIntakeClient,
   AttachmentIntakeHandlersLive,
