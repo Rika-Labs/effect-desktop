@@ -18,6 +18,7 @@ const HOST_PROTOCOL_PATH = "crates/host-protocol/src/lib.rs"
 const HOST_ROUTER_PATH = "crates/host/src/methods/mod.rs"
 const PARITY_JSON_PATH = "docs/reference/native/parity-matrix.json"
 const PARITY_MARKDOWN_PATH = "docs/reference/native/parity-matrix.md"
+const CLI_PARITY_JSON_PATH = "packages/cli/src/native-parity-matrix.json"
 
 export const readRoutedHostMethods = async (cwd: string): Promise<ReadonlySet<string>> => {
   const [protocolSource, routerSource] = await Promise.all([
@@ -36,8 +37,10 @@ export const buildNativeParityMatrix = async (
 
 export const writeNativeParityMatrixDocs = async (cwd: string): Promise<void> => {
   const matrix = await buildNativeParityMatrix(cwd)
+  const json = `${JSON.stringify(matrix, null, 2)}\n`
   await Promise.all([
-    writeFile(join(cwd, PARITY_JSON_PATH), `${JSON.stringify(matrix, null, 2)}\n`),
+    writeFile(join(cwd, PARITY_JSON_PATH), json),
+    writeFile(join(cwd, CLI_PARITY_JSON_PATH), json),
     writeFile(join(cwd, PARITY_MARKDOWN_PATH), formatNativeParityMatrixMarkdown(matrix))
   ])
 }

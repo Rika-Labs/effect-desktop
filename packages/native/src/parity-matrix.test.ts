@@ -185,14 +185,16 @@ test("Rust host inventory parser reads only the router dispatch table", () => {
   expect([...hostMethods]).toEqual(["EgressPolicy.record", "Window.create", "Window.focus"])
 })
 
-test("native parity docs are generated from current source", async () => {
-  const [matrix, committedJson, committedMarkdown] = await Promise.all([
+test("native parity docs and CLI artifact are generated from current source", async () => {
+  const [matrix, committedJson, committedCliJson, committedMarkdown] = await Promise.all([
     buildNativeParityMatrix(),
     readFile(join(repoRoot, "docs/reference/native/parity-matrix.json"), "utf8"),
+    readFile(join(repoRoot, "packages/cli/src/native-parity-matrix.json"), "utf8"),
     readFile(join(repoRoot, "docs/reference/native/parity-matrix.md"), "utf8")
   ])
 
   expect(JSON.parse(committedJson)).toEqual(JSON.parse(JSON.stringify(matrix)))
+  expect(JSON.parse(committedCliJson)).toEqual(JSON.parse(JSON.stringify(matrix)))
   expect(committedMarkdown).toBe(formatNativeParityMatrixMarkdown(matrix))
 })
 

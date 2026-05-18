@@ -190,8 +190,8 @@
     },
     {
       "name": "DesktopDoctorReport",
-      "kind": "interface",
-      "signature": "export interface DesktopDoctorReport { readonly passed: boolean readonly ci: boolean readonly platform: string readonly arch: string readonly probes: readonly DoctorDiagnostic[] readonly layerGraph: LayerGraphSnapshot | undefined }"
+      "kind": "class",
+      "signature": "export class DesktopDoctorReport extends Schema.Class<DesktopDoctorReport>(\"DesktopDoctorReport\")({ passed: Schema.Boolean, ci: Schema.Boolean, platform: Schema.String, arch: Schema.String, probes: Schema.Array(DoctorDiagnostic), layerGraph: Schema.UndefinedOr(LayerGraphSnapshot) }) {}"
     },
     {
       "name": "DesktopNotarizeOptions",
@@ -354,6 +354,11 @@
       "signature": "export interface DocsReleaseGateReport { readonly passed: boolean readonly pages: readonly DocsPageReport[] readonly examples: readonly DocsExampleReport[] }"
     },
     {
+      "name": "DoctorCapabilityTruthUnavailable",
+      "kind": "class",
+      "signature": "export class DoctorCapabilityTruthUnavailable extends Data.TaggedError( \"DoctorCapabilityTruthUnavailable\" )<{ readonly reason: \"unavailable\" | \"invalid\" readonly path: string readonly message: string readonly cause: unknown }> {}"
+    },
+    {
       "name": "DoctorCommandInvocation",
       "kind": "interface",
       "signature": "export interface DoctorCommandInvocation { readonly probe: DoctorProbeName readonly command: string readonly args: readonly string[] readonly cwd: string readonly platform: string }"
@@ -371,7 +376,7 @@
     {
       "name": "DoctorDiagnostic",
       "kind": "class",
-      "signature": "export class DoctorDiagnostic extends Schema.Class<DoctorDiagnostic>(\"DoctorDiagnostic\")({ name: Schema.Literals([ \"bun-version\", \"rust-toolchain\", \"platform-sdk\", \"webview-runtime\", \"signing-credentials\", \"build-tools\", \"package-manager-state\", \"native-host-cache\", \"config\" ]), status: Schema.Literals([\"ok\", \"missing\", \"warning\"]), component: Schema.NonEmptyString, message: Schema.NonEmptyString, remediation: Schema.optionalKey(Schema.NonEmptyString), installCommand: Schema.optionalKey(Schema.NonEmptyString), docsUrl: Schema.optionalKey(Schema.NonEmptyString), evidence: Schema.Array(DoctorEvidence) }) {}"
+      "signature": "export class DoctorDiagnostic extends Schema.Class<DoctorDiagnostic>(\"DoctorDiagnostic\")({ name: Schema.Literals([ \"bun-version\", \"rust-toolchain\", \"platform-sdk\", \"webview-runtime\", \"signing-credentials\", \"build-tools\", \"package-manager-state\", \"native-capabilities\", \"native-host-cache\", \"config\" ]), status: Schema.Literals([\"ok\", \"missing\", \"warning\"]), component: Schema.NonEmptyString, message: Schema.NonEmptyString, remediation: Schema.optionalKey(Schema.NonEmptyString), installCommand: Schema.optionalKey(Schema.NonEmptyString), docsUrl: Schema.optionalKey(Schema.NonEmptyString), evidence: Schema.Array(DoctorEvidence) }) {}"
     },
     {
       "name": "DoctorEnvironment",
@@ -396,7 +401,7 @@
     {
       "name": "DoctorProbeName",
       "kind": "type",
-      "signature": "export type DoctorProbeName = | \"bun-version\" | \"rust-toolchain\" | \"platform-sdk\" | \"webview-runtime\" | \"signing-credentials\" | \"build-tools\" | \"package-manager-state\" | \"native-host-cache\" | \"config\""
+      "signature": "export type DoctorProbeName = | \"bun-version\" | \"rust-toolchain\" | \"platform-sdk\" | \"webview-runtime\" | \"signing-credentials\" | \"build-tools\" | \"package-manager-state\" | \"native-capabilities\" | \"native-host-cache\" | \"config\""
     },
     {
       "name": "DoctorProbeResult",
@@ -407,6 +412,16 @@
       "name": "DoctorProbeStatus",
       "kind": "type",
       "signature": "export type DoctorProbeStatus = \"ok\" | \"missing\" | \"warning\""
+    },
+    {
+      "name": "encodeDesktopDoctorReport",
+      "kind": "value",
+      "signature": "const encodeDesktopDoctorReport: (report: DesktopDoctorReport) => unknown"
+    },
+    {
+      "name": "formatDoctorError",
+      "kind": "value",
+      "signature": "const formatDoctorError: (error: DoctorCapabilityTruthUnavailable) => { readonly tag: \"DoctorCapabilityTruthUnavailable\"; readonly reason: \"unavailable\" | \"invalid\"; readonly path: string; readonly message: string; }"
     },
     {
       "name": "formatDoctorReport",
@@ -761,7 +776,7 @@
     {
       "name": "runDesktopDoctor",
       "kind": "value",
-      "signature": "const runDesktopDoctor: (options: DesktopDoctorOptions) => Effect.Effect<DesktopDoctorReport, never, never>"
+      "signature": "const runDesktopDoctor: (options: DesktopDoctorOptions) => Effect.Effect<DesktopDoctorReport, DoctorCapabilityTruthUnavailable, never>"
     },
     {
       "name": "runDesktopNotarize",

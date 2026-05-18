@@ -1439,6 +1439,86 @@
       "signature": "const NativeHostInspectorCollectorLive: Layer.Layer<NativeHostInspectorCollector, never, never>"
     },
     {
+      "name": "NativeHostMethodInventorySnapshot",
+      "kind": "class",
+      "signature": "export class NativeHostMethodInventorySnapshot extends Schema.Class<NativeHostMethodInventorySnapshot>( \"NativeHostMethodInventorySnapshot\" )({ methods: Schema.Array(Schema.NonEmptyString) }) {}"
+    },
+    {
+      "name": "NativeHostMethodInventorySnapshotType",
+      "kind": "type",
+      "signature": "export type NativeHostMethodInventorySnapshotType = Schema.Schema.Type< typeof NativeHostMethodInventorySnapshot >"
+    },
+    {
+      "name": "NativeParityCapabilityKind",
+      "kind": "type",
+      "signature": "export type NativeParityCapabilityKind = Schema.Schema.Type<typeof NativeParityCapabilityKind>"
+    },
+    {
+      "name": "NativeParityHostStatus",
+      "kind": "type",
+      "signature": "const NativeParityHostStatus: Schema.Literals<readonly [\"routed\", \"missing\"]>"
+    },
+    {
+      "name": "NativeParityMatrixError",
+      "kind": "class",
+      "signature": "export class NativeParityMatrixError extends Schema.TaggedErrorClass<NativeParityMatrixError>()( \"NativeParityMatrixError\", { reason: NativeParityMatrixErrorReason, tag: Schema.optionalKey(Schema.NonEmptyString), message: Schema.NonEmptyString } ) {}"
+    },
+    {
+      "name": "NativeParityMatrixErrorReason",
+      "kind": "type",
+      "signature": "const NativeParityMatrixErrorReason: Schema.Literals<readonly [\"invalid-manifest\", \"invalid-host-inventory\"]>"
+    },
+    {
+      "name": "NativeParityMatrixResult",
+      "kind": "class",
+      "signature": "export class NativeParityMatrixResult extends Schema.Class<NativeParityMatrixResult>( \"NativeParityMatrixResult\" )({ rows: Schema.Array(NativeParityMatrixRow), summary: NativeParityMatrixSummary }) {}"
+    },
+    {
+      "name": "NativeParityMatrixResultType",
+      "kind": "type",
+      "signature": "export type NativeParityMatrixResultType = Schema.Schema.Type<typeof NativeParityMatrixResult>"
+    },
+    {
+      "name": "NativeParityMatrixRow",
+      "kind": "class",
+      "signature": "export class NativeParityMatrixRow extends Schema.Class<NativeParityMatrixRow>( \"NativeParityMatrixRow\" )({ tag: Schema.NonEmptyString, surface: Schema.NonEmptyString, method: Schema.NonEmptyString, capability: NativeParityCapabilityKind, support: NativeParitySupport, hostStatus: NativeParityHostStatus, hostMethod: Schema.optionalKey(Schema.NonEmptyString) }) {}"
+    },
+    {
+      "name": "NativeParityMatrixRowType",
+      "kind": "type",
+      "signature": "export type NativeParityMatrixRowType = Schema.Schema.Type<typeof NativeParityMatrixRow>"
+    },
+    {
+      "name": "NativeParityMatrixSummary",
+      "kind": "class",
+      "signature": "export class NativeParityMatrixSummary extends Schema.Class<NativeParityMatrixSummary>( \"NativeParityMatrixSummary\" )({ total: NativeParityCount, routed: NativeParityCount, missing: NativeParityCount, supported: NativeParityCount, partial: NativeParityCount, unsupported: NativeParityCount }) {}"
+    },
+    {
+      "name": "NativeParityMatrixSummaryType",
+      "kind": "type",
+      "signature": "export type NativeParityMatrixSummaryType = Schema.Schema.Type<typeof NativeParityMatrixSummary>"
+    },
+    {
+      "name": "NativeParityPlatform",
+      "kind": "type",
+      "signature": "const NativeParityPlatform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>"
+    },
+    {
+      "name": "NativeParityPlatformSupport",
+      "kind": "type",
+      "signature": "const NativeParityPlatformSupport: Schema.Union<readonly [Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"supported\">; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; }>]>"
+    },
+    {
+      "name": "NativeParitySupport",
+      "kind": "type",
+      "signature": "const NativeParitySupport: Schema.Union<readonly [Schema.Struct<{ readonly status: Schema.Literal<\"supported\">; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Union<readonly [Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"supported\">; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; }>]>>>; }>, Schema.Struct<{ readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Union<readonly [Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"supported\">; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; }>]>>>; }>, Schema.Struct<{ readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; readonly platforms: Schema.optionalKey<Schema.$Array<Schema.Union<readonly [Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"supported\">; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; }>]>>>; }>]>"
+    },
+    {
+      "name": "NativeParitySupportStatus",
+      "kind": "type",
+      "signature": "const NativeParitySupportStatus: Schema.Literals<readonly [\"supported\", \"partial\", \"unsupported\"]>"
+    },
+    {
       "name": "NormalizedCapability",
       "kind": "type",
       "signature": "const NormalizedCapability: Schema.Union<readonly [Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"filesystem.read\", \"filesystem.write\", \"filesystem.delete\"]>; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; readonly allowCreate: Schema.optionalKey<Schema.Boolean>; readonly allowOverwrite: Schema.optionalKey<Schema.Boolean>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"sqlite.open\">; readonly roots: Schema.$Array<Schema.NonEmptyString>; readonly deny: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"process.spawn\", \"pty.spawn\"]>; readonly commands: Schema.$Array<Schema.NonEmptyString>; readonly cwd: Schema.optionalKey<Schema.$Array<Schema.NonEmptyString>>; readonly environment: Schema.Literals<readonly [\"none\", \"allowlist\"]>; readonly shell: Schema.Union<readonly [Schema.Literal<false>, Schema.Literal<\"requires-explicit-approval\">]>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"network.connect\">; readonly hosts: Schema.$Array<Schema.NonEmptyString>; readonly askUnknownHosts: Schema.Boolean; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literals<readonly [\"secrets.read\", \"secrets.write\", \"safeStorage.read\", \"safeStorage.write\"]>; readonly namespaces: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\"]>; }>, Schema.Struct<{ readonly kind: Schema.Literal<\"native.invoke\">; readonly primitive: Schema.NonEmptyString; readonly methods: Schema.$Array<Schema.NonEmptyString>; readonly audit: Schema.Literals<readonly [\"always\", \"on-deny\", \"never\"]>; }>]>"

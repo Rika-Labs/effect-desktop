@@ -122,6 +122,8 @@ Platform-limited operations must be guarded through support metadata or `isSuppo
 
 `NativeCapabilities` exposes a manifest of native method facts. Each fact includes the method tag, its capability metadata, and Schema-typed maturity metadata. Status is `supported`, `partial`, or `unsupported`; `partial` and `unsupported` include a reason, and platform-specific entries record macOS, Windows, and Linux differences. Unknown tags fail with `NativeCapabilityLookupError`; unsupported methods fail `require(tag)` with `UnsupportedCapability`; platform-specific unsupported entries fail `requirePlatform(tag, platform)` with the same typed error and platform detail.
 
+The generated [native parity matrix](reference/native/parity-matrix.md) is the docs/doctor reporting artifact. It is generated from `Native.all` schema docs and the Rust host router, and the generator writes the same JSON snapshot to the docs tree and the CLI package. `desktop doctor` decodes the bundled CLI snapshot for its `native-capabilities` probe, so installed CLIs do not depend on a repository-local docs path.
+
 ## Where to go next
 
 - [How-to: integrate native services](how-to/integrate-native-services.md)
