@@ -1334,6 +1334,45 @@ test("App bridge client rejects empty or NUL-bearing onOpenFile paths as Invalid
   }
 })
 
+test("App bridge client rejects dangerous onOpenUrl schemes as InvalidOutput", async () => {
+  const cases: ReadonlyArray<unknown> = [
+    { url: "javascript:alert(1)" },
+    { url: "data:text/html,unsafe" },
+    { url: "file:///etc/passwd" },
+    { url: "blob:https://example.com/id" },
+    { url: "about:blank" },
+    { url: "vbscript:msgbox(1)" },
+    { url: "view-source:https://example.com" }
+  ]
+
+  for (const payload of cases) {
+    const exchange: BridgeClientExchange = {
+      request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+      subscribe: (method) =>
+        method === "App.onOpenUrl"
+          ? Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                timestamp: 1710000000400,
+                traceId: "event-trace",
+                method,
+                payload
+              })
+            )
+          : Stream.empty
+    }
+
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const app = yield* App
+        return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+    )
+
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  }
+})
+
 test("App bridge client rejects empty or NUL-bearing lifecycle args as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = await Effect.runPromise(

@@ -37,6 +37,11 @@ The current TypeScript event streams are `onSecondInstance`, `onOpenFile`,
 `"open-file"`, `"open-url"`, or `"unknown"`. Native event delivery is currently
 unsupported until the host adapter exists.
 
+`onOpenUrl` requires a syntactically valid URL with no ASCII control characters
+and rejects dangerous schemes before application code receives the event:
+`about:`, `blob:`, `data:`, `file:`, `javascript:`, `vbscript:`, and
+`view-source:`.
+
 ## Errors
 
 `AppError` is the host protocol error union. Until the host adapter is

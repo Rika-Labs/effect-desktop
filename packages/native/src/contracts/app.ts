@@ -12,6 +12,15 @@ const AppVersion = Schema.NonEmptyString.check(
 )
 // eslint-disable-next-line no-control-regex -- App launch args must reject NUL.
 const ArgString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]*$/))
+const DangerousOpenIntentSchemes = new Set([
+  "about:",
+  "blob:",
+  "data:",
+  "file:",
+  "javascript:",
+  "vbscript:",
+  "view-source:"
+])
 const isAppUrl = (value: string): boolean => {
   if (value.length === 0) {
     return false
@@ -22,9 +31,8 @@ const isAppUrl = (value: string): boolean => {
   }
 
   try {
-    // eslint-disable-next-line no-new -- URL validates URL-like strings and protocol prefixes.
-    new URL(value)
-    return true
+    const url = new URL(value)
+    return !DangerousOpenIntentSchemes.has(url.protocol.toLowerCase())
   } catch {
     return false
   }
