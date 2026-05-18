@@ -10,7 +10,8 @@ use host_protocol::{
     ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
     WindowAttentionType, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
     WindowListResponse, WindowLookupResponse, WindowProgressState, WindowRegistryEventPayload,
-    WindowRegistryEventPhase, WindowSetProgressPayload, WindowStatePayload,
+    WindowRegistryEventPhase, WindowSetProgressPayload, WindowStateEventPayload,
+    WindowStatePayload,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -470,6 +471,7 @@ struct NativeTrayResources {
 
 struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
+    window_states: HashMap<String, WindowStatePayload>,
     window_id_by_native_id: HashMap<WindowId, String>,
     window_order: Vec<String>,
     focused_window_id: Option<String>,
@@ -1534,6 +1536,7 @@ impl WindowRegistry {
     fn new() -> Self {
         Self {
             windows: HashMap::new(),
+            window_states: HashMap::new(),
             window_id_by_native_id: HashMap::new(),
             window_order: Vec::new(),
             focused_window_id: None,
@@ -1585,6 +1588,7 @@ impl WindowRegistry {
             "host window opened"
         );
 
+        let initial_state = tao_window_state(&window);
         let webview = webview::attach_app_webview(&window).map_err(|error| *error)?;
         let native_window_id = window.id();
         self.windows.insert(
@@ -1594,6 +1598,7 @@ impl WindowRegistry {
                 _webview: webview,
             },
         );
+        self.window_states.insert(window_id.clone(), initial_state);
         self.track_window_opened(&window_id, native_window_id);
         if let Some(parent_window_id) = parent_window_id {
             self.child_window_ids_by_parent_id
@@ -1700,6 +1705,7 @@ impl WindowRegistry {
         if let Some(resources) = self.windows.remove(window_id) {
             self.window_id_by_native_id.remove(&resources._window.id());
         }
+        self.window_states.remove(window_id);
         self.forget_window_id(window_id);
         if let Some(parent_window_id) = self.parent_window_id_by_child_id.remove(window_id) {
             if let Some(siblings) = self
@@ -2035,7 +2041,7 @@ impl WindowRegistry {
         Ok(())
     }
 
-    fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn minimize(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2044,10 +2050,13 @@ impl WindowRegistry {
         };
 
         resources._window.set_minimized(true);
+        self.update_window_state(window_id, |state| {
+            WindowStatePayload::new(true, state.maximized(), state.fullscreen())
+        });
         Ok(())
     }
 
-    fn maximize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn maximize(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2056,10 +2065,13 @@ impl WindowRegistry {
         };
 
         resources._window.set_maximized(true);
+        self.update_window_state(window_id, |state| {
+            WindowStatePayload::new(state.minimized(), true, state.fullscreen())
+        });
         Ok(())
     }
 
-    fn restore(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn restore(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2070,11 +2082,15 @@ impl WindowRegistry {
         resources._window.set_minimized(false);
         resources._window.set_maximized(false);
         resources._window.set_fullscreen(None);
+        self.window_states.insert(
+            window_id.to_string(),
+            WindowStatePayload::new(false, false, false),
+        );
         Ok(())
     }
 
     fn set_fullscreen(
-        &self,
+        &mut self,
         window_id: &str,
         fullscreen: bool,
     ) -> std::result::Result<(), HostProtocolError> {
@@ -2090,6 +2106,9 @@ impl WindowRegistry {
         } else {
             None
         });
+        self.update_window_state(window_id, |state| {
+            WindowStatePayload::new(state.minimized(), state.maximized(), fullscreen)
+        });
         Ok(())
     }
 
@@ -2097,18 +2116,68 @@ impl WindowRegistry {
         &self,
         window_id: &str,
     ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
+        self.window_state(window_id, host_protocol::WINDOW_GET_STATE_METHOD)
+    }
+
+    fn window_state(
+        &self,
+        window_id: &str,
+        operation: &'static str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
+        if let Some(state) = self.window_states.get(window_id) {
+            return Ok(state.clone());
+        }
+
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
-                host_protocol::WINDOW_GET_STATE_METHOD,
+                operation,
             ));
         };
 
-        Ok(WindowStatePayload::new(
-            resources._window.is_minimized(),
-            resources._window.is_maximized(),
-            resources._window.fullscreen().is_some(),
-        ))
+        Ok(tao_window_state(&resources._window))
+    }
+
+    fn update_window_state(
+        &mut self,
+        window_id: &str,
+        update: impl FnOnce(&WindowStatePayload) -> WindowStatePayload,
+    ) {
+        let current = self
+            .window_states
+            .get(window_id)
+            .cloned()
+            .or_else(|| {
+                self.windows
+                    .get(window_id)
+                    .map(|resources| tao_window_state(&resources._window))
+            })
+            .unwrap_or_else(|| WindowStatePayload::new(false, false, false));
+        self.window_states
+            .insert(window_id.to_string(), update(&current));
+    }
+
+    fn emit_window_state_snapshot(&self, window_id: &str, operation: &'static str) {
+        match self.window_state(window_id, operation) {
+            Ok(state) => {
+                if let Err(error) = emit_window_state_event(window_id, state) {
+                    warn!(
+                        event = "host.window.event_emit_failed",
+                        error = ?error,
+                        window_id,
+                        "failed to emit window state event"
+                    );
+                }
+            }
+            Err(error) => {
+                warn!(
+                    event = "host.window.state_event_failed",
+                    error = ?error,
+                    window_id,
+                    "failed to read window state for event"
+                );
+            }
+        }
     }
 
     fn set_visible(
@@ -2701,6 +2770,12 @@ impl WindowRegistry {
                 let result = self
                     .minimize(&window_id)
                     .map(|()| WindowCommandResponse::WindowUpdated);
+                if result.is_ok() {
+                    self.emit_window_state_snapshot(
+                        &window_id,
+                        host_protocol::WINDOW_MINIMIZE_METHOD,
+                    );
+                }
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -2708,6 +2783,12 @@ impl WindowRegistry {
                 let result = self
                     .maximize(&window_id)
                     .map(|()| WindowCommandResponse::WindowUpdated);
+                if result.is_ok() {
+                    self.emit_window_state_snapshot(
+                        &window_id,
+                        host_protocol::WINDOW_MAXIMIZE_METHOD,
+                    );
+                }
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -2715,6 +2796,12 @@ impl WindowRegistry {
                 let result = self
                     .restore(&window_id)
                     .map(|()| WindowCommandResponse::WindowUpdated);
+                if result.is_ok() {
+                    self.emit_window_state_snapshot(
+                        &window_id,
+                        host_protocol::WINDOW_RESTORE_METHOD,
+                    );
+                }
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -2726,6 +2813,12 @@ impl WindowRegistry {
                 let result = self
                     .set_fullscreen(&window_id, fullscreen)
                     .map(|()| WindowCommandResponse::WindowUpdated);
+                if result.is_ok() {
+                    self.emit_window_state_snapshot(
+                        &window_id,
+                        host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+                    );
+                }
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -2946,6 +3039,14 @@ fn window_bounds(
         f64::from(size.width) / scale,
         f64::from(size.height) / scale,
     ))
+}
+
+fn tao_window_state(window: &Window) -> WindowStatePayload {
+    WindowStatePayload::new(
+        window.is_minimized(),
+        window.is_maximized(),
+        window.fullscreen().is_some(),
+    )
 }
 
 fn to_tao_progress_state(state: WindowProgressState) -> ProgressState {
@@ -3262,6 +3363,28 @@ fn emit_window_registry_event(
             method: host_protocol::WINDOW_EVENT.to_string(),
             timestamp: timestamp_millis(),
             trace_id: format!("window-event-{}", Uuid::now_v7()),
+            window_id: Some(window_id.to_string()),
+            payload: Some(payload),
+        })
+        .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
+}
+
+fn emit_window_state_event(
+    window_id: &str,
+    state: WindowStatePayload,
+) -> std::result::Result<(), HostProtocolError> {
+    let Some(sender) = window_event_sender()? else {
+        return Ok(());
+    };
+    let payload =
+        serde_json::to_value(WindowStateEventPayload::new(window_id, state)).map_err(|error| {
+            HostProtocolError::invalid_output(host_protocol::WINDOW_EVENT, error.to_string())
+        })?;
+    sender
+        .send(HostProtocolEnvelope::Event {
+            method: host_protocol::WINDOW_EVENT.to_string(),
+            timestamp: timestamp_millis(),
+            trace_id: format!("window-state-event-{}", Uuid::now_v7()),
             window_id: Some(window_id.to_string()),
             payload: Some(payload),
         })
@@ -4094,6 +4217,68 @@ mod tests {
                 "terminal": true
             })
         );
+    }
+
+    #[test]
+    fn window_state_events_encode_to_runtime_sender() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (receiver, _event_sender_guard) = install_test_window_event_sender();
+
+        super::emit_window_state_event(
+            "window-1",
+            host_protocol::WindowStatePayload::new(true, false, false),
+        )
+        .expect("window state event should emit");
+
+        let event = receiver
+            .recv()
+            .expect("window event receiver should receive state event");
+
+        let HostProtocolEnvelope::Event {
+            method,
+            window_id,
+            payload,
+            ..
+        } = event
+        else {
+            panic!("expected window state event envelope");
+        };
+        assert_eq!(method, host_protocol::WINDOW_EVENT);
+        assert_eq!(window_id.as_deref(), Some("window-1"));
+        assert_eq!(
+            payload.expect("window state event should include payload"),
+            serde_json::json!({
+                "type": "window-state-event",
+                "windowId": "window-1",
+                "state": {
+                    "minimized": true,
+                    "maximized": false,
+                    "fullscreen": false
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn window_state_reads_from_host_tracked_command_state() {
+        let mut registry = WindowRegistry::new();
+        registry.window_states.insert(
+            "window-1".to_string(),
+            host_protocol::WindowStatePayload::new(false, false, false),
+        );
+
+        registry.update_window_state("window-1", |state| {
+            host_protocol::WindowStatePayload::new(true, state.maximized(), state.fullscreen())
+        });
+
+        let state = registry
+            .window_state("window-1", host_protocol::WINDOW_GET_STATE_METHOD)
+            .expect("tracked window state should read");
+        assert!(state.minimized());
+        assert!(!state.maximized());
+        assert!(!state.fullscreen());
     }
 
     #[test]

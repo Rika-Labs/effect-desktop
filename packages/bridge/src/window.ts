@@ -121,6 +121,28 @@ export class WindowRegistryEventPayload extends Schema.Class<WindowRegistryEvent
   terminal: Schema.Boolean
 }) {}
 
+export class WindowStatePayload extends Schema.Class<WindowStatePayload>("WindowStatePayload")({
+  minimized: Schema.Boolean,
+  maximized: Schema.Boolean,
+  fullscreen: Schema.Boolean
+}) {}
+
+export class WindowStateEventPayload extends Schema.Class<WindowStateEventPayload>(
+  "WindowStateEventPayload"
+)({
+  type: Schema.Literal("window-state-event"),
+  windowId: Schema.NonEmptyString,
+  window: Schema.optionalKey(WindowResourcePayload),
+  state: WindowStatePayload
+}) {}
+
+export const WindowEventPayload = Schema.Union([
+  WindowRegistryEventPayload,
+  WindowStateEventPayload
+])
+
+export type WindowEventPayload = Schema.Schema.Type<typeof WindowEventPayload>
+
 export class WindowBoundsPayload extends Schema.Class<WindowBoundsPayload>("WindowBoundsPayload")({
   x: Schema.Number.check(Schema.isFinite()),
   y: Schema.Number.check(Schema.isFinite()),
@@ -192,12 +214,6 @@ export class WindowSetFullscreenPayload extends Schema.Class<WindowSetFullscreen
   "WindowSetFullscreenPayload"
 )({
   windowId: Schema.NonEmptyString,
-  fullscreen: Schema.Boolean
-}) {}
-
-export class WindowStatePayload extends Schema.Class<WindowStatePayload>("WindowStatePayload")({
-  minimized: Schema.Boolean,
-  maximized: Schema.Boolean,
   fullscreen: Schema.Boolean
 }) {}
 
@@ -294,7 +310,7 @@ export interface HostWindowClient {
   readonly getState: (
     windowId: string
   ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
-  readonly events: () => Stream.Stream<WindowRegistryEventPayload, HostProtocolError, never>
+  readonly events: () => Stream.Stream<WindowEventPayload, HostProtocolError, never>
   readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
 }
 
@@ -520,7 +536,7 @@ const decodeUnknownWindowCreateResponse = Schema.decodeUnknownSync(WindowCreateR
 const decodeUnknownWindowDestroyPayload = Schema.decodeUnknownSync(WindowDestroyPayload)
 const decodeUnknownWindowLookupResponse = Schema.decodeUnknownSync(WindowLookupResponse)
 const decodeUnknownWindowListResponse = Schema.decodeUnknownSync(WindowListResponse)
-const decodeUnknownWindowRegistryEventPayload = Schema.decodeUnknownSync(WindowRegistryEventPayload)
+const decodeUnknownWindowEventPayload = Schema.decodeUnknownSync(WindowEventPayload)
 const decodeUnknownWindowBoundsPayload = Schema.decodeUnknownSync(WindowBoundsPayload)
 const decodeUnknownWindowSetBoundsPayload = Schema.decodeUnknownSync(WindowSetBoundsPayload)
 const decodeUnknownWindowCenterOnDisplayPayload = Schema.decodeUnknownSync(
@@ -690,7 +706,7 @@ const decodeListResponse = (
 
 const subscribeWindowEvents = (
   exchange: HostWindowExchange
-): Stream.Stream<WindowRegistryEventPayload, HostProtocolError, never> => {
+): Stream.Stream<WindowEventPayload, HostProtocolError, never> => {
   if (exchange.subscribe === undefined) {
     return Stream.fail(
       makeHostProtocolInvalidOutputError(
@@ -712,7 +728,7 @@ const subscribeWindowEvents = (
       }
 
       return Effect.try({
-        try: () => decodeUnknownWindowRegistryEventPayload(event.payload, StrictParseOptions),
+        try: () => decodeUnknownWindowEventPayload(event.payload, StrictParseOptions),
         catch: (error) =>
           makeHostProtocolInvalidOutputError(WINDOW_EVENT_METHOD, formatUnknownError(error))
       })

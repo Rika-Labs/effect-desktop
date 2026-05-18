@@ -3141,6 +3141,65 @@ impl WindowRegistryEventPayload {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowStateEventPayload {
+    #[serde(rename = "type")]
+    type_name: String,
+    window_id: String,
+    state: WindowStatePayload,
+}
+
+impl WindowStateEventPayload {
+    pub fn new(window_id: impl Into<String>, state: WindowStatePayload) -> Self {
+        Self {
+            type_name: "window-state-event".to_string(),
+            window_id: window_id.into(),
+            state,
+        }
+    }
+
+    pub fn type_name(&self) -> &str {
+        &self.type_name
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn state(&self) -> &WindowStatePayload {
+        &self.state
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawWindowStateEventPayload {
+    #[serde(rename = "type")]
+    type_name: String,
+    window_id: String,
+    state: WindowStatePayload,
+}
+
+impl<'de> Deserialize<'de> for WindowStateEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawWindowStateEventPayload::deserialize(deserializer)?;
+        if raw.type_name != "window-state-event" {
+            return Err(de::Error::custom(
+                "window state event type must be window-state-event",
+            ));
+        }
+        Ok(Self {
+            type_name: raw.type_name,
+            window_id: raw.window_id,
+            state: raw.state,
+        })
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RawWindowRegistryEventPayload {
@@ -11178,10 +11237,10 @@ mod tests {
         WindowRegistryEventPayload, WindowRegistryEventPhase, WindowRequestAttentionPayload,
         WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
         WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
-        WindowSetTitlePayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
-        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
-        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
-        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WindowSetTitlePayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
+        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
+        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
+        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
         WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
@@ -12528,6 +12587,26 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&state).expect("window state payload should encode"),
             r#"{"minimized":false,"maximized":true,"fullscreen":true}"#
+        );
+
+        let state_event = WindowStateEventPayload::new("window-1", state);
+        assert_eq!(state_event.type_name(), "window-state-event");
+        assert_eq!(state_event.window_id(), "window-1");
+        assert!(state_event.state().maximized());
+        assert_eq!(
+            serde_json::to_string(&state_event).expect("window state event should encode"),
+            r#"{"type":"window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true}}"#
+        );
+
+        let error = serde_json::from_str::<WindowStateEventPayload>(
+            r#"{"type":"not-window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true}}"#,
+        )
+        .expect_err("invalid window state event type must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("window state event type must be window-state-event"),
+            "unexpected error: {error}"
         );
     }
 

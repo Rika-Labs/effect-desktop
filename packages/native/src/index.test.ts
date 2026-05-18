@@ -8350,7 +8350,12 @@ test("Window service delegates through a substitutable WindowClient port", async
   expect(result.state).toEqual(
     new WindowState({ minimized: false, maximized: true, fullscreen: true })
   )
-  expect(Option.getOrUndefined(result.event)?.phase).toBe("opened")
+  const serviceEvent = Option.getOrThrow(result.event)
+  expect(serviceEvent.type).toBe("window-registry-event")
+  if (serviceEvent.type !== "window-registry-event") {
+    throw new Error("expected window registry event")
+  }
+  expect(serviceEvent.phase).toBe("opened")
   expect(calls).toEqual([
     "create:Main",
     "show",
@@ -8926,7 +8931,14 @@ test("Window.events streams renderer-visible lifecycle events from the app route
     })
   )
 
-  expect(Array.from(result).map((event) => [event.phase, event.windowId, event.terminal])).toEqual([
+  expect(
+    Array.from(result).map((event) => {
+      if (event.type !== "window-registry-event") {
+        throw new Error("expected window registry event")
+      }
+      return [event.phase, event.windowId, event.terminal]
+    })
+  ).toEqual([
     ["opened", "host-window-1", false],
     ["focused", "host-window-1", false],
     ["closed", "host-window-1", true]
@@ -9106,7 +9118,17 @@ test("Window.events closes ResourceRegistry handles for host-originated terminal
   const registry = await Effect.runPromise(makeResourceRegistry())
   const baseExchange = makeWindowRpcExchange(windowExchange([]), registry)
   const exchange: BridgeClientExchange = {
-    request: baseExchange.request,
+    request: (request) =>
+      request.method === WINDOW_GET_STATE_METHOD
+        ? Effect.succeed({
+            kind: "success",
+            payload: {
+              minimized: true,
+              maximized: false,
+              fullscreen: false
+            }
+          })
+        : baseExchange.request(request),
     subscribe: (method) =>
       method === WINDOW_EVENT_METHOD
         ? Stream.make(
@@ -9142,6 +9164,74 @@ test("Window.events closes ResourceRegistry handles for host-originated terminal
   expect(event.windowId).toBe(String(result.created.id))
   expect(event.window).toEqual(result.created)
   expect(result.snapshot.entries).toEqual([])
+})
+
+test("Window.events attaches host-originated state events to fresh handles", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const baseExchange = makeWindowRpcExchange(windowExchange([]), registry)
+  const exchange: BridgeClientExchange = {
+    request: (request) =>
+      request.method === WINDOW_GET_STATE_METHOD
+        ? Effect.succeed({
+            kind: "success",
+            payload: {
+              minimized: true,
+              maximized: false,
+              fullscreen: false
+            }
+          })
+        : baseExchange.request(request),
+    subscribe: (method) =>
+      method === WINDOW_EVENT_METHOD
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_002_725,
+              traceId: "host-window-state-event",
+              payload: {
+                type: "window-state-event",
+                windowId: "host-window-1",
+                state: {
+                  minimized: true,
+                  maximized: false,
+                  fullscreen: false
+                }
+              }
+            })
+          )
+        : Stream.empty
+  }
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const created = yield* window.create({ title: "Host state" })
+      const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
+      const state = yield* window.getState(created)
+      return { created, event, state }
+    }).pipe(
+      Effect.provide(Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry)))
+    )
+  )
+
+  const event = Option.getOrThrow(result.event)
+  expect(event.type).toBe("window-state-event")
+  if (event.type !== "window-state-event") {
+    throw new Error("expected window state event")
+  }
+  expect(event.windowId).toBe(String(result.created.id))
+  expect(event.window).toEqual(result.created)
+  expect(event.state).toEqual({
+    minimized: true,
+    maximized: false,
+    fullscreen: false
+  })
+  expect(result.state).toEqual({
+    minimized: true,
+    maximized: false,
+    fullscreen: false
+  })
 })
 
 test("Window.events checks and audits subscribe permission before opening the event stream", async () => {

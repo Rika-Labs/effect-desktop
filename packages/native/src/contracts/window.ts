@@ -85,6 +85,22 @@ export class WindowRegistryEvent extends Schema.Class<WindowRegistryEvent>("Wind
   terminal: Schema.Boolean
 }) {}
 
+export class WindowState extends Schema.Class<WindowState>("WindowState")({
+  minimized: Schema.Boolean,
+  maximized: Schema.Boolean,
+  fullscreen: Schema.Boolean
+}) {}
+
+export class WindowStateEvent extends Schema.Class<WindowStateEvent>("WindowStateEvent")({
+  type: Schema.Literal("window-state-event"),
+  windowId: Schema.NonEmptyString,
+  window: Schema.optionalKey(WindowResource),
+  state: WindowState
+}) {}
+
+export const WindowEvent = Schema.Union([WindowRegistryEvent, WindowStateEvent])
+export type WindowEvent = Schema.Schema.Type<typeof WindowEvent>
+
 export class WindowBounds extends Schema.Class<WindowBounds>("WindowBounds")({
   x: Schema.Number.check(Schema.isFinite()),
   y: Schema.Number.check(Schema.isFinite()),
@@ -108,12 +124,6 @@ export class WindowFullscreenInput extends Schema.Class<WindowFullscreenInput>(
   "WindowFullscreenInput"
 )({
   window: WindowResource,
-  fullscreen: Schema.Boolean
-}) {}
-
-export class WindowState extends Schema.Class<WindowState>("WindowState")({
-  minimized: Schema.Boolean,
-  maximized: Schema.Boolean,
   fullscreen: Schema.Boolean
 }) {}
 

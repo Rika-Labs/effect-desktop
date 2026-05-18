@@ -77,11 +77,13 @@ is mutable through the host. Effect Desktop does not yet expose a
 transparency controls, mutable traffic-light placement, or a platform support
 matrix for those chrome features.
 
-The state surface has command and read support, but not a dedicated state-change
-event stream. `minimize`, `maximize`, `restore`, `setFullscreen`, and `getState`
-are host-routed; Effect Desktop does not yet expose events that prove state
-transitions agree with reads, and macOS simple fullscreen is not modeled
-separately from borderless fullscreen.
+The state surface has command, read, and state-event support for host-tracked
+minimized, maximized, and fullscreen booleans. `minimize`, `maximize`,
+`restore`, `setFullscreen`, and `getState` are host-routed. After a successful
+state command, the Rust host updates its state source and publishes a
+`Window.Event` state snapshot with the same shape as `getState`, so renderer
+subscribers can compare the event payload with a follow-up read. macOS simple
+fullscreen is not modeled separately from borderless fullscreen.
 
 The z-order and attention surface is not complete Electron-style window chrome.
 Effect Desktop does not yet expose window-scoped skip-taskbar, badge, flash, or
@@ -91,7 +93,7 @@ scope limits.
 
 Window lookup is backed by host-routed native methods. `getCurrent` returns the focused tracked window, `getById` returns a tracked open window by id, and `list` returns tracked open windows in host creation order. The runtime validates host lookup results against its live `ResourceRegistry` handles, so a destroyed window is removed from lookup before `Window.destroy` or compatibility `Window.close` completes.
 
-`Window.events()` exposes the typed runtime-router window registry stream to renderer clients through `Window.Event`. Events are ordered by router publication order and use the router's sliding drop-oldest buffer with no replay. `opened` and `focused` events are non-terminal; `closed` is terminal for that window id. Event subscription is gated by the internal `Window.subscribeEvents` native permission before the bridge opens the stream, so denial is observable and audit-backed through `PermissionRegistry`. Host-originated `opened` events register a live `ResourceRegistry` window handle when one is not already known, and host-originated terminal `closed` events close the live window scope when one exists. The Rust host also publishes `Window.Event` for native open, OS-confirmed focus, and destroy transitions, and queues closed events when handling native close requests before applying the existing exit policy.
+`Window.events()` exposes the typed runtime-router window event stream to renderer clients through `Window.Event`. Events are ordered by router publication order and use the router's sliding drop-oldest buffer with no replay. Registry events use `type: "window-registry-event"`: `opened` and `focused` are non-terminal, and `closed` is terminal for that window id. State events use `type: "window-state-event"` and carry `{ minimized, maximized, fullscreen }`. Event subscription is gated by the internal `Window.subscribeEvents` native permission before the bridge opens the stream, so denial is observable and audit-backed through `PermissionRegistry`. Host-originated `opened` events register a live `ResourceRegistry` window handle when one is not already known, host-originated terminal `closed` events close the live window scope when one exists, and host-originated state events attach the fresh handle when the window is still registered. The Rust host publishes `Window.Event` for native open, OS-confirmed focus, destroy transitions, and state snapshots after successful state commands; it also queues closed events when handling native close requests before applying the existing exit policy.
 
 The lifecycle surface is not complete. `show`, `hide`, `focus`, `destroy`, and
 compatibility `close` are host-routed, and `Window.Event` reports opened,

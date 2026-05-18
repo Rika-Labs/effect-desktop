@@ -211,7 +211,7 @@ test("host window client requests Window.getCurrent, Window.getById, and Window.
 test("host window client decodes Window.Event subscriptions", async () => {
   const client = makeHostWindowClient(windowExchange([]))
 
-  const events = await Effect.runPromise(client.events().pipe(Stream.take(1), Stream.runCollect))
+  const events = await Effect.runPromise(client.events().pipe(Stream.take(2), Stream.runCollect))
 
   expect(Array.from(events)).toEqual([
     {
@@ -226,6 +226,22 @@ test("host window client decodes Window.Event subscriptions", async () => {
         state: "open"
       },
       terminal: true
+    },
+    {
+      type: "window-state-event",
+      windowId: "window-1",
+      window: {
+        kind: "window",
+        id: "window-1",
+        generation: 0,
+        ownerScope: "window:window-1",
+        state: "open"
+      },
+      state: {
+        minimized: true,
+        maximized: false,
+        fullscreen: false
+      }
     }
   ])
 })
@@ -634,6 +650,28 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                 state: "open"
               },
               terminal: true
+            }
+          }),
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            method,
+            timestamp: 1_710_000_000_101,
+            traceId: "trace-window-state-event",
+            payload: {
+              type: "window-state-event",
+              windowId: "window-1",
+              window: {
+                kind: "window",
+                id: "window-1",
+                generation: 0,
+                ownerScope: "window:window-1",
+                state: "open"
+              },
+              state: {
+                minimized: true,
+                maximized: false,
+                fullscreen: false
+              }
             }
           })
         )

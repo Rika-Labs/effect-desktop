@@ -45,6 +45,7 @@ import {
   type WindowCreateOptions,
   WindowDecorationsInput,
   WindowDisplayInput,
+  WindowEvent,
   WindowFullscreenInput,
   type WindowHandle,
   WindowHandleInput,
@@ -57,6 +58,7 @@ import {
   WindowRequestAttentionInput,
   WindowResource,
   WindowState,
+  WindowStateEvent,
   WindowSubscribeEventsResult,
   WindowTitleInput
 } from "./contracts/window.js"
@@ -257,7 +259,7 @@ type WindowRpcUnion = RpcGroup.Rpcs<typeof WindowRpcGroup>
 export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
 
 export const WindowRpcEvents = Object.freeze({
-  Event: { payload: WindowRegistryEvent }
+  Event: { payload: WindowEvent }
 })
 
 export type WindowRpcEvents = typeof WindowRpcEvents
@@ -356,7 +358,7 @@ export interface WindowClientApi {
     fullscreen: boolean
   ) => Effect.Effect<void, WindowError, never>
   readonly getState: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
-  readonly events: () => Stream.Stream<WindowRegistryEvent, WindowError, never>
+  readonly events: () => Stream.Stream<WindowEvent, WindowError, never>
 }
 
 export class WindowClient extends Context.Service<WindowClient, WindowClientApi>()(
@@ -748,7 +750,7 @@ function windowClientFromRpcClient(
     events: () =>
       Stream.unwrap(
         runWindowRpc(client["Window.subscribeEvents"](undefined), "Window.subscribeEvents").pipe(
-          Effect.map(() => subscribeNativeEvent(exchange, WINDOW_EVENT_METHOD, WindowRegistryEvent))
+          Effect.map(() => subscribeNativeEvent(exchange, WINDOW_EVENT_METHOD, WindowEvent))
         )
       )
   } satisfies WindowClientApi)
@@ -935,17 +937,24 @@ const decodeWindowHandle = (
   )
 
 const reconcileWindowEventStream = (
-  events: Stream.Stream<WindowRegistryEvent, WindowError, never>,
+  events: Stream.Stream<WindowEvent, WindowError, never>,
   registry: ResourceRegistryApi
-): Stream.Stream<WindowRegistryEvent, WindowError, never> =>
+): Stream.Stream<WindowEvent, WindowError, never> =>
   events.pipe(Stream.mapEffect((event) => reconcileWindowEvent(event, registry)))
 
 const reconcileWindowEvent = (
-  event: WindowRegistryEvent,
+  event: WindowEvent,
   registry: ResourceRegistryApi
-): Effect.Effect<WindowRegistryEvent, WindowError, never> =>
+): Effect.Effect<WindowEvent, WindowError, never> =>
   Effect.gen(function* () {
     yield* validateWindowEventHandle(event)
+    if (event.type === "window-state-event") {
+      const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
+      return Option.isNone(window)
+        ? stateEventWithoutWindow(event)
+        : stateEventWithWindow(event, window.value)
+    }
+
     const terminal = event.phase === "closed"
     if (event.terminal !== terminal) {
       return yield* Effect.fail(
@@ -1009,9 +1018,7 @@ const ensureWindowHandleForEvent = (
     return toWindowHandle(handle)
   })
 
-const validateWindowEventHandle = (
-  event: WindowRegistryEvent
-): Effect.Effect<void, WindowError, never> => {
+const validateWindowEventHandle = (event: WindowEvent): Effect.Effect<void, WindowError, never> => {
   if (event.window === undefined) {
     return Effect.void
   }
@@ -1056,6 +1063,21 @@ const eventWithoutWindow = (event: WindowRegistryEvent): WindowRegistryEvent =>
     phase: event.phase,
     windowId: event.windowId,
     terminal: event.terminal
+  })
+
+const stateEventWithWindow = (event: WindowStateEvent, window: WindowHandle): WindowStateEvent =>
+  new WindowStateEvent({
+    type: event.type,
+    windowId: event.windowId,
+    window,
+    state: event.state
+  })
+
+const stateEventWithoutWindow = (event: WindowStateEvent): WindowStateEvent =>
+  new WindowStateEvent({
+    type: event.type,
+    windowId: event.windowId,
+    state: event.state
   })
 
 const runWindowRpc = <A, E>(
