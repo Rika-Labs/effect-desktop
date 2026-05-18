@@ -25,6 +25,12 @@ interception. There is no `WebRequest` service yet for ordered interceptors,
 subresource inspection, response-header mutation, blocking, redirects, or
 request audit.
 
+Navigation controls are not host-backed today. The TypeScript bridge declares
+`create`, `loadRoute`, `loadUrl`, `reload`, `goBack`, and `goForward`, but the
+Rust host has no routed `WebView.*` navigation methods, scoped WebView resource
+registry, `stop` command, history-state contract, or typed navigation lifecycle
+event stream.
+
 Navigation and popup policy is not host-backed today. `setNavigationPolicy` is
 declared in the TypeScript bridge contract, but the Rust host does not route
 `WebView.setNavigationPolicy`, install a native navigation handler, install a
