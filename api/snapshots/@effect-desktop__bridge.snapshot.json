@@ -646,7 +646,7 @@
     {
       "name": "HostWindowClient",
       "kind": "interface",
-      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setTitle: ( windowId: string, title: string ) => Effect.Effect<void, HostProtocolError, never> readonly setResizable: ( windowId: string, resizable: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setDecorations: ( windowId: string, decorations: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setFullscreen: ( windowId: string, fullscreen: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly getState: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setTitle: ( windowId: string, title: string ) => Effect.Effect<void, HostProtocolError, never> readonly setResizable: ( windowId: string, resizable: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setDecorations: ( windowId: string, decorations: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setAlwaysOnTop: ( windowId: string, alwaysOnTop: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setProgress: ( windowId: string, input: WindowProgressInput ) => Effect.Effect<void, HostProtocolError, never> readonly requestAttention: ( windowId: string, requestType: WindowAttentionTypeInput ) => Effect.Effect<void, HostProtocolError, never> readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setFullscreen: ( windowId: string, fullscreen: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly getState: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "HostWindowClientOptions",
@@ -1059,6 +1059,11 @@
       "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never>"
     },
     {
+      "name": "WINDOW_CANCEL_ATTENTION_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_CANCEL_ATTENTION_METHOD: \"Window.cancelAttention\""
+    },
+    {
       "name": "WINDOW_CENTER_METHOD",
       "kind": "value",
       "signature": "const WINDOW_CENTER_METHOD: \"Window.center\""
@@ -1104,9 +1109,19 @@
       "signature": "const WINDOW_MINIMIZE_METHOD: \"Window.minimize\""
     },
     {
+      "name": "WINDOW_REQUEST_ATTENTION_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_REQUEST_ATTENTION_METHOD: \"Window.requestAttention\""
+    },
+    {
       "name": "WINDOW_RESTORE_METHOD",
       "kind": "value",
       "signature": "const WINDOW_RESTORE_METHOD: \"Window.restore\""
+    },
+    {
+      "name": "WINDOW_SET_ALWAYS_ON_TOP_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_ALWAYS_ON_TOP_METHOD: \"Window.setAlwaysOnTop\""
     },
     {
       "name": "WINDOW_SET_BOUNDS_METHOD",
@@ -1124,6 +1139,11 @@
       "signature": "const WINDOW_SET_FULLSCREEN_METHOD: \"Window.setFullscreen\""
     },
     {
+      "name": "WINDOW_SET_PROGRESS_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_PROGRESS_METHOD: \"Window.setProgress\""
+    },
+    {
       "name": "WINDOW_SET_RESIZABLE_METHOD",
       "kind": "value",
       "signature": "const WINDOW_SET_RESIZABLE_METHOD: \"Window.setResizable\""
@@ -1137,6 +1157,11 @@
       "name": "WINDOW_SHOW_METHOD",
       "kind": "value",
       "signature": "const WINDOW_SHOW_METHOD: \"Window.show\""
+    },
+    {
+      "name": "WindowAttentionTypeInput",
+      "kind": "type",
+      "signature": "export type WindowAttentionTypeInput = Schema.Schema.Type<typeof WindowAttentionType>"
     },
     {
       "name": "WindowBoundsInput",
@@ -1169,6 +1194,21 @@
       "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.NonEmptyString }) {}"
     },
     {
+      "name": "WindowProgressInput",
+      "kind": "interface",
+      "signature": "export interface WindowProgressInput { readonly state?: Schema.Schema.Type<typeof WindowProgressState> readonly progress?: number readonly desktopFilename?: string }"
+    },
+    {
+      "name": "WindowRequestAttentionPayload",
+      "kind": "class",
+      "signature": "export class WindowRequestAttentionPayload extends Schema.Class<WindowRequestAttentionPayload>( \"WindowRequestAttentionPayload\" )({ windowId: Schema.NonEmptyString, requestType: WindowAttentionType }) {}"
+    },
+    {
+      "name": "WindowSetAlwaysOnTopPayload",
+      "kind": "class",
+      "signature": "export class WindowSetAlwaysOnTopPayload extends Schema.Class<WindowSetAlwaysOnTopPayload>( \"WindowSetAlwaysOnTopPayload\" )({ windowId: Schema.NonEmptyString, alwaysOnTop: Schema.Boolean }) {}"
+    },
+    {
       "name": "WindowSetBoundsPayload",
       "kind": "class",
       "signature": "export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>( \"WindowSetBoundsPayload\" )({ windowId: Schema.NonEmptyString, bounds: WindowBoundsPayload }) {}"
@@ -1182,6 +1222,11 @@
       "name": "WindowSetFullscreenPayload",
       "kind": "class",
       "signature": "export class WindowSetFullscreenPayload extends Schema.Class<WindowSetFullscreenPayload>( \"WindowSetFullscreenPayload\" )({ windowId: Schema.NonEmptyString, fullscreen: Schema.Boolean }) {}"
+    },
+    {
+      "name": "WindowSetProgressPayload",
+      "kind": "class",
+      "signature": "export class WindowSetProgressPayload extends Schema.Class<WindowSetProgressPayload>( \"WindowSetProgressPayload\" )({ windowId: Schema.NonEmptyString, state: Schema.optionalKey(WindowProgressState), progress: Schema.optionalKey( Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(100)) ), desktopFilename: Schema.optionalKey(Schema.NonEmptyString) }) {}"
     },
     {
       "name": "WindowSetResizablePayload",

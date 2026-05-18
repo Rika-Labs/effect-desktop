@@ -29,6 +29,14 @@ const WindowVibrancyMaterial = Schema.Literals([
   "windowBackground",
   "window-background"
 ])
+const WindowProgressStateLiteral = Schema.Literals([
+  "none",
+  "normal",
+  "indeterminate",
+  "paused",
+  "error"
+])
+const WindowAttentionTypeLiteral = Schema.Literals(["critical", "informational"])
 
 export const WindowResource = ResourceHandleSchema("window", "open")
 export type WindowHandle = ResourceHandle<"window", "open">
@@ -98,6 +106,33 @@ export class WindowDecorationsInput extends Schema.Class<WindowDecorationsInput>
   window: WindowResource,
   decorations: Schema.Boolean
 }) {}
+
+export class WindowAlwaysOnTopInput extends Schema.Class<WindowAlwaysOnTopInput>(
+  "WindowAlwaysOnTopInput"
+)({
+  window: WindowResource,
+  alwaysOnTop: Schema.Boolean
+}) {}
+
+export class WindowProgressInput extends Schema.Class<WindowProgressInput>("WindowProgressInput")({
+  window: WindowResource,
+  state: Schema.optionalKey(WindowProgressStateLiteral),
+  progress: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(100))
+  ),
+  desktopFilename: Schema.optionalKey(Schema.NonEmptyString)
+}) {}
+
+export type WindowProgressOptions = Omit<Schema.Schema.Type<typeof WindowProgressInput>, "window">
+
+export class WindowRequestAttentionInput extends Schema.Class<WindowRequestAttentionInput>(
+  "WindowRequestAttentionInput"
+)({
+  window: WindowResource,
+  requestType: WindowAttentionTypeLiteral
+}) {}
+
+export type WindowAttentionType = Schema.Schema.Type<typeof WindowAttentionTypeLiteral>
 
 export class WindowSizeInput extends Schema.Class<WindowSizeInput>("WindowSizeInput")({
   window: WindowResource,

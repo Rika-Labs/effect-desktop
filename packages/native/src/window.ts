@@ -6,6 +6,7 @@ import {
   type HostWindowClientOptions,
   type HostWindowExchange,
   type WindowBoundsInput as HostWindowBoundsInput,
+  type WindowProgressInput as HostWindowProgressInput,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -34,13 +35,18 @@ import {
   WindowCreateInput,
   WindowBounds,
   WindowBoundsInput,
+  WindowAlwaysOnTopInput,
+  type WindowAttentionType,
   type WindowBoundsType,
   type WindowCreateOptions,
   WindowDecorationsInput,
   WindowFullscreenInput,
   type WindowHandle,
   WindowHandleInput,
+  WindowProgressInput,
+  type WindowProgressOptions,
   WindowResizableInput,
+  WindowRequestAttentionInput,
   WindowResource,
   WindowState,
   WindowTitleInput
@@ -114,6 +120,30 @@ export const WindowSetDecorations = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["setDecorations"] })
 )
+export const WindowSetAlwaysOnTop = windowRpc(
+  "setAlwaysOnTop",
+  WindowAlwaysOnTopInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setAlwaysOnTop"] })
+)
+export const WindowSetProgress = windowRpc(
+  "setProgress",
+  WindowProgressInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setProgress"] })
+)
+export const WindowRequestAttention = windowRpc(
+  "requestAttention",
+  WindowRequestAttentionInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["requestAttention"] })
+)
+export const WindowCancelAttention = windowRpc(
+  "cancelAttention",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["cancelAttention"] })
+)
 export const WindowMinimize = windowRpc(
   "minimize",
   WindowHandleInput,
@@ -158,6 +188,10 @@ const makeWindowRpcGroup = () =>
     WindowSetTitle,
     WindowSetResizable,
     WindowSetDecorations,
+    WindowSetAlwaysOnTop,
+    WindowSetProgress,
+    WindowRequestAttention,
+    WindowCancelAttention,
     WindowMinimize,
     WindowMaximize,
     WindowRestore,
@@ -191,6 +225,10 @@ export const WindowMethodNames = Object.freeze([
   "setTitle",
   "setResizable",
   "setDecorations",
+  "setAlwaysOnTop",
+  "setProgress",
+  "requestAttention",
+  "cancelAttention",
   "minimize",
   "maximize",
   "restore",
@@ -222,6 +260,19 @@ export interface WindowClientApi {
     window: WindowHandle,
     decorations: boolean
   ) => Effect.Effect<void, WindowError, never>
+  readonly setAlwaysOnTop: (
+    window: WindowHandle,
+    alwaysOnTop: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setProgress: (
+    window: WindowHandle,
+    input: WindowProgressOptions
+  ) => Effect.Effect<void, WindowError, never>
+  readonly requestAttention: (
+    window: WindowHandle,
+    requestType: WindowAttentionType
+  ) => Effect.Effect<void, WindowError, never>
+  readonly cancelAttention: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly minimize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly maximize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly restore: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
@@ -322,6 +373,26 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       yield* window.setDecorations(input.window, input.decorations)
     }),
+  "Window.setAlwaysOnTop": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setAlwaysOnTop(input.window, input.alwaysOnTop)
+    }),
+  "Window.setProgress": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setProgress(input.window, input)
+    }),
+  "Window.requestAttention": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.requestAttention(input.window, input.requestType)
+    }),
+  "Window.cancelAttention": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.cancelAttention(input.window)
+    }),
   "Window.minimize": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -395,6 +466,10 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     setTitle: (window, title) => client.setTitle(window, title),
     setResizable: (window, resizable) => client.setResizable(window, resizable),
     setDecorations: (window, decorations) => client.setDecorations(window, decorations),
+    setAlwaysOnTop: (window, alwaysOnTop) => client.setAlwaysOnTop(window, alwaysOnTop),
+    setProgress: (window, input) => client.setProgress(window, input),
+    requestAttention: (window, requestType) => client.requestAttention(window, requestType),
+    cancelAttention: (window) => client.cancelAttention(window),
     minimize: (window) => client.minimize(window),
     maximize: (window) => client.maximize(window),
     restore: (window) => client.restore(window),
@@ -474,6 +549,30 @@ function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
         )
         yield* runWindowRpc(client["Window.setDecorations"](decoded), "Window.setDecorations")
       }),
+    setAlwaysOnTop: (window, alwaysOnTop) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowAlwaysOnTopInput(
+          window,
+          alwaysOnTop,
+          "Window.setAlwaysOnTop"
+        )
+        yield* runWindowRpc(client["Window.setAlwaysOnTop"](decoded), "Window.setAlwaysOnTop")
+      }),
+    setProgress: (window, input) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowProgressInput(window, input, "Window.setProgress")
+        yield* runWindowRpc(client["Window.setProgress"](decoded), "Window.setProgress")
+      }),
+    requestAttention: (window, requestType) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowRequestAttentionInput(
+          window,
+          requestType,
+          "Window.requestAttention"
+        )
+        yield* runWindowRpc(client["Window.requestAttention"](decoded), "Window.requestAttention")
+      }),
+    cancelAttention: (window) => runWindowHandleRpc(client, "Window.cancelAttention", window),
     minimize: (window) => runWindowHandleRpc(client, "Window.minimize", window),
     maximize: (window) => runWindowHandleRpc(client, "Window.maximize", window),
     restore: (window) => runWindowHandleRpc(client, "Window.restore", window),
@@ -502,6 +601,7 @@ const runWindowHandleRpc = (
     | "Window.hide"
     | "Window.focus"
     | "Window.center"
+    | "Window.cancelAttention"
     | "Window.minimize"
     | "Window.maximize"
     | "Window.restore",
@@ -562,6 +662,53 @@ const decodeWindowDecorationsInput = (
 ): Effect.Effect<WindowDecorationsInput, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowDecorationsInput)(
     { window, decorations },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowAlwaysOnTopInput = (
+  window: WindowHandle,
+  alwaysOnTop: boolean,
+  operation: string
+): Effect.Effect<WindowAlwaysOnTopInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowAlwaysOnTopInput)(
+    { window, alwaysOnTop },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowProgressInput = (
+  window: WindowHandle,
+  input: WindowProgressOptions,
+  operation: string
+): Effect.Effect<WindowProgressInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowProgressInput)(
+    {
+      window,
+      ...(input.state === undefined ? {} : { state: input.state }),
+      ...(input.progress === undefined ? {} : { progress: input.progress }),
+      ...(input.desktopFilename === undefined ? {} : { desktopFilename: input.desktopFilename })
+    },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowRequestAttentionInput = (
+  window: WindowHandle,
+  requestType: WindowAttentionType,
+  operation: string
+): Effect.Effect<WindowRequestAttentionInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowRequestAttentionInput)(
+    { window, requestType },
     StrictParseOptions
   ).pipe(
     Effect.mapError((error) =>
@@ -769,6 +916,42 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
         )
         yield* host.setDecorations(window.id, input.decorations)
       }),
+    "Window.setAlwaysOnTop": (input: WindowAlwaysOnTopInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setAlwaysOnTop"
+        )
+        yield* host.setAlwaysOnTop(window.id, input.alwaysOnTop)
+      }),
+    "Window.setProgress": (input: WindowProgressInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setProgress"
+        )
+        yield* host.setProgress(window.id, toHostWindowProgressInput(input))
+      }),
+    "Window.requestAttention": (input: WindowRequestAttentionInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.requestAttention"
+        )
+        yield* host.requestAttention(window.id, input.requestType)
+      }),
+    "Window.cancelAttention": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          input,
+          knownWindowIds,
+          "Window.cancelAttention"
+        )
+        yield* host.cancelAttention(window.id)
+      }),
     "Window.minimize": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.minimize")
@@ -852,6 +1035,13 @@ const toHostWindowBoundsInput = (bounds: WindowBoundsType): HostWindowBoundsInpu
     y: bounds.y,
     width: bounds.width,
     height: bounds.height
+  })
+
+const toHostWindowProgressInput = (input: WindowProgressInput): HostWindowProgressInput =>
+  Object.freeze({
+    ...(input.state === undefined ? {} : { state: input.state }),
+    ...(input.progress === undefined ? {} : { progress: input.progress }),
+    ...(input.desktopFilename === undefined ? {} : { desktopFilename: input.desktopFilename })
   })
 
 const toWindowHandle = (handle: WindowHandle): WindowHandle =>

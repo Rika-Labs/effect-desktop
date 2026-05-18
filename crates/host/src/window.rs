@@ -8,7 +8,8 @@ use host_protocol::{
     HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
     ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
-    WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse, WindowStatePayload,
+    WindowAttentionType, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
+    WindowProgressState, WindowSetProgressPayload, WindowStatePayload,
 };
 use std::{
     collections::{HashMap, VecDeque},
@@ -23,7 +24,9 @@ use tao::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopWindowTarget},
     monitor::MonitorHandle,
-    window::{Fullscreen, Window, WindowBuilder},
+    window::{
+        Fullscreen, ProgressBarState, ProgressState, UserAttentionType, Window, WindowBuilder,
+    },
 };
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -96,6 +99,26 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         window_id: &str,
         decorations: bool,
     ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_always_on_top(
+        &self,
+        window_id: &str,
+        always_on_top: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_progress(
+        &self,
+        window_id: &str,
+        progress: &WindowSetProgressPayload,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn request_attention(
+        &self,
+        window_id: &str,
+        request_type: WindowAttentionType,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn cancel_attention(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
     fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
@@ -258,6 +281,25 @@ enum WindowCommand {
     SetDecorations {
         window_id: String,
         decorations: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetAlwaysOnTop {
+        window_id: String,
+        always_on_top: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetProgress {
+        window_id: String,
+        progress: WindowSetProgressPayload,
+        reply: Sender<WindowCommandReply>,
+    },
+    RequestAttention {
+        window_id: String,
+        request_type: WindowAttentionType,
+        reply: Sender<WindowCommandReply>,
+    },
+    CancelAttention {
+        window_id: String,
         reply: Sender<WindowCommandReply>,
     },
     Minimize {
@@ -738,6 +780,61 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_DECORATIONS_METHOD)
+    }
+
+    fn set_always_on_top(
+        &self,
+        window_id: &str,
+        always_on_top: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetAlwaysOnTop {
+            window_id: window_id.to_string(),
+            always_on_top,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD)
+    }
+
+    fn set_progress(
+        &self,
+        window_id: &str,
+        progress: &WindowSetProgressPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetProgress {
+            window_id: window_id.to_string(),
+            progress: progress.clone(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_PROGRESS_METHOD)
+    }
+
+    fn request_attention(
+        &self,
+        window_id: &str,
+        request_type: WindowAttentionType,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::RequestAttention {
+            window_id: window_id.to_string(),
+            request_type,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_REQUEST_ATTENTION_METHOD)
+    }
+
+    fn cancel_attention(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::CancelAttention {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CANCEL_ATTENTION_METHOD)
     }
 
     fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
@@ -1469,6 +1566,72 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn set_always_on_top(
+        &self,
+        window_id: &str,
+        always_on_top: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
+            ));
+        };
+
+        resources._window.set_always_on_top(always_on_top);
+        Ok(())
+    }
+
+    fn set_progress(
+        &self,
+        window_id: &str,
+        progress: &WindowSetProgressPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_PROGRESS_METHOD,
+            ));
+        };
+
+        resources._window.set_progress_bar(ProgressBarState {
+            state: progress.state().map(to_tao_progress_state),
+            progress: progress.progress(),
+            desktop_filename: progress.desktop_filename().map(str::to_string),
+        });
+        Ok(())
+    }
+
+    fn request_attention(
+        &self,
+        window_id: &str,
+        request_type: WindowAttentionType,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_REQUEST_ATTENTION_METHOD,
+            ));
+        };
+
+        resources
+            ._window
+            .request_user_attention(Some(to_tao_attention_type(request_type)));
+        Ok(())
+    }
+
+    fn cancel_attention(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_CANCEL_ATTENTION_METHOD,
+            ));
+        };
+
+        resources._window.request_user_attention(None);
+        Ok(())
+    }
+
     fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
@@ -2063,6 +2226,46 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::SetAlwaysOnTop {
+                window_id,
+                always_on_top,
+                reply,
+            } => {
+                let result = self
+                    .set_always_on_top(&window_id, always_on_top)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetProgress {
+                window_id,
+                progress,
+                reply,
+            } => {
+                let result = self
+                    .set_progress(&window_id, &progress)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::RequestAttention {
+                window_id,
+                request_type,
+                reply,
+            } => {
+                let result = self
+                    .request_attention(&window_id, request_type)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::CancelAttention { window_id, reply } => {
+                let result = self
+                    .cancel_attention(&window_id)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::Minimize { window_id, reply } => {
                 let result = self
                     .minimize(&window_id)
@@ -2308,6 +2511,23 @@ fn window_bounds(
         f64::from(size.width) / scale,
         f64::from(size.height) / scale,
     ))
+}
+
+fn to_tao_progress_state(state: WindowProgressState) -> ProgressState {
+    match state {
+        WindowProgressState::None => ProgressState::None,
+        WindowProgressState::Normal => ProgressState::Normal,
+        WindowProgressState::Indeterminate => ProgressState::Indeterminate,
+        WindowProgressState::Paused => ProgressState::Paused,
+        WindowProgressState::Error => ProgressState::Error,
+    }
+}
+
+fn to_tao_attention_type(request_type: WindowAttentionType) -> UserAttentionType {
+    match request_type {
+        WindowAttentionType::Critical => UserAttentionType::Critical,
+        WindowAttentionType::Informational => UserAttentionType::Informational,
+    }
 }
 
 fn centered_window_bounds(

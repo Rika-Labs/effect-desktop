@@ -4032,6 +4032,16 @@
       "hostStatus": "missing"
     },
     {
+      "tag": "Window.cancelAttention",
+      "surface": "Window",
+      "method": "cancelAttention",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.center",
       "surface": "Window",
       "method": "center",
@@ -4123,9 +4133,29 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.requestAttention",
+      "surface": "Window",
+      "method": "requestAttention",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.restore",
       "surface": "Window",
       "method": "restore",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setAlwaysOnTop",
+      "surface": "Window",
+      "method": "setAlwaysOnTop",
       "capability": "native",
       "support": {
         "status": "supported"
@@ -4156,6 +4186,16 @@
       "tag": "Window.setFullscreen",
       "surface": "Window",
       "method": "setFullscreen",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setProgress",
+      "surface": "Window",
+      "method": "setProgress",
       "capability": "native",
       "support": {
         "status": "supported"
@@ -4234,10 +4274,10 @@
     }
   ],
   "summary": {
-    "total": 213,
-    "routed": 191,
+    "total": 217,
+    "routed": 195,
     "missing": 22,
-    "supported": 95,
+    "supported": 99,
     "partial": 22,
     "unsupported": 96
   }

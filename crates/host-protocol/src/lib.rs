@@ -54,6 +54,10 @@ pub const WINDOW_CENTER_METHOD: &str = "Window.center";
 pub const WINDOW_SET_TITLE_METHOD: &str = "Window.setTitle";
 pub const WINDOW_SET_RESIZABLE_METHOD: &str = "Window.setResizable";
 pub const WINDOW_SET_DECORATIONS_METHOD: &str = "Window.setDecorations";
+pub const WINDOW_SET_ALWAYS_ON_TOP_METHOD: &str = "Window.setAlwaysOnTop";
+pub const WINDOW_SET_PROGRESS_METHOD: &str = "Window.setProgress";
+pub const WINDOW_REQUEST_ATTENTION_METHOD: &str = "Window.requestAttention";
+pub const WINDOW_CANCEL_ATTENTION_METHOD: &str = "Window.cancelAttention";
 pub const WINDOW_MINIMIZE_METHOD: &str = "Window.minimize";
 pub const WINDOW_MAXIMIZE_METHOD: &str = "Window.maximize";
 pub const WINDOW_RESTORE_METHOD: &str = "Window.restore";
@@ -2837,6 +2841,115 @@ impl WindowSetDecorationsPayload {
 
     pub fn decorations(&self) -> bool {
         self.decorations
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetAlwaysOnTopPayload {
+    window_id: String,
+    always_on_top: bool,
+}
+
+impl WindowSetAlwaysOnTopPayload {
+    pub fn new(window_id: impl Into<String>, always_on_top: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            always_on_top,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn always_on_top(&self) -> bool {
+        self.always_on_top
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WindowProgressState {
+    None,
+    Normal,
+    Indeterminate,
+    Paused,
+    Error,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetProgressPayload {
+    window_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    state: Option<WindowProgressState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    progress: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    desktop_filename: Option<String>,
+}
+
+impl WindowSetProgressPayload {
+    pub fn new(
+        window_id: impl Into<String>,
+        state: Option<WindowProgressState>,
+        progress: Option<u64>,
+        desktop_filename: Option<String>,
+    ) -> Self {
+        Self {
+            window_id: window_id.into(),
+            state,
+            progress,
+            desktop_filename,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn state(&self) -> Option<WindowProgressState> {
+        self.state
+    }
+
+    pub fn progress(&self) -> Option<u64> {
+        self.progress
+    }
+
+    pub fn desktop_filename(&self) -> Option<&str> {
+        self.desktop_filename.as_deref()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WindowAttentionType {
+    Critical,
+    Informational,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowRequestAttentionPayload {
+    window_id: String,
+    request_type: WindowAttentionType,
+}
+
+impl WindowRequestAttentionPayload {
+    pub fn new(window_id: impl Into<String>, request_type: WindowAttentionType) -> Self {
+        Self {
+            window_id: window_id.into(),
+            request_type,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn request_type(&self) -> WindowAttentionType {
+        self.request_type
     }
 }
 
@@ -10563,13 +10676,14 @@ mod tests {
         TransientWindowZOrderPolicy, TrayActivatedEventPayload, TrayCreatePayload,
         TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
-        UpdaterStatusPayload, UpdaterStatusState, WindowBoundsPayload, WindowCreatePayload,
-        WindowCreateResponse, WindowDestroyPayload, WindowSetBoundsPayload,
-        WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetResizablePayload,
-        WindowSetTitlePayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
-        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
-        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
-        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        UpdaterStatusPayload, UpdaterStatusState, WindowAttentionType, WindowBoundsPayload,
+        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowProgressState,
+        WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
+        WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
+        WindowSetResizablePayload, WindowSetTitlePayload, WindowStatePayload, WindowTitleBarStyle,
+        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
+        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
+        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
         WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
@@ -11615,6 +11729,44 @@ mod tests {
             serde_json::to_string(&set_decorations)
                 .expect("window set decorations payload should encode"),
             r#"{"windowId":"window-1","decorations":true}"#
+        );
+
+        let set_always_on_top = WindowSetAlwaysOnTopPayload::new("window-1", true);
+        assert_eq!(set_always_on_top.window_id(), "window-1");
+        assert!(set_always_on_top.always_on_top());
+        assert_eq!(
+            serde_json::to_string(&set_always_on_top)
+                .expect("window set always on top payload should encode"),
+            r#"{"windowId":"window-1","alwaysOnTop":true}"#
+        );
+
+        let set_progress = WindowSetProgressPayload::new(
+            "window-1",
+            Some(WindowProgressState::Normal),
+            Some(42),
+            Some("app.desktop".to_string()),
+        );
+        assert_eq!(set_progress.window_id(), "window-1");
+        assert_eq!(set_progress.state(), Some(WindowProgressState::Normal));
+        assert_eq!(set_progress.progress(), Some(42));
+        assert_eq!(set_progress.desktop_filename(), Some("app.desktop"));
+        assert_eq!(
+            serde_json::to_string(&set_progress)
+                .expect("window set progress payload should encode"),
+            r#"{"windowId":"window-1","state":"normal","progress":42,"desktopFilename":"app.desktop"}"#
+        );
+
+        let request_attention =
+            WindowRequestAttentionPayload::new("window-1", WindowAttentionType::Critical);
+        assert_eq!(request_attention.window_id(), "window-1");
+        assert_eq!(
+            request_attention.request_type(),
+            WindowAttentionType::Critical
+        );
+        assert_eq!(
+            serde_json::to_string(&request_attention)
+                .expect("window request attention payload should encode"),
+            r#"{"windowId":"window-1","requestType":"critical"}"#
         );
 
         let set_fullscreen = WindowSetFullscreenPayload::new("window-1", true);

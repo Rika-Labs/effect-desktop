@@ -6,6 +6,7 @@ import {
   HostProtocolInvalidOutputError,
   HostProtocolNotFoundError,
   HostProtocolResponseEnvelope,
+  WINDOW_CANCEL_ATTENTION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_CENTER_METHOD,
   WINDOW_DESTROY_METHOD,
@@ -16,9 +17,12 @@ import {
   WINDOW_MAXIMIZE_METHOD,
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
+  WINDOW_REQUEST_ATTENTION_METHOD,
+  WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SHOW_METHOD,
@@ -200,6 +204,67 @@ test("host window client requests mutable chrome commands", async () => {
   ])
 })
 
+test("host window client requests attention and z-order commands", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests), {
+    nextRequestId: nextId([
+      "request-window-set-always-on-top",
+      "request-window-set-progress",
+      "request-window-request-attention",
+      "request-window-cancel-attention"
+    ]),
+    nextTraceId: nextId([
+      "trace-window-set-always-on-top",
+      "trace-window-set-progress",
+      "trace-window-request-attention",
+      "trace-window-cancel-attention"
+    ]),
+    now: nextNumber([1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024])
+  })
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* client.setAlwaysOnTop("window-1", true)
+      yield* client.setProgress("window-1", {
+        state: "normal",
+        progress: 42,
+        desktopFilename: "app.desktop"
+      })
+      yield* client.requestAttention("window-1", "critical")
+      yield* client.cancelAttention("window-1")
+    })
+  )
+
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_SET_ALWAYS_ON_TOP_METHOD, { windowId: "window-1", alwaysOnTop: true }],
+    [
+      WINDOW_SET_PROGRESS_METHOD,
+      { windowId: "window-1", state: "normal", progress: 42, desktopFilename: "app.desktop" }
+    ],
+    [WINDOW_REQUEST_ATTENTION_METHOD, { windowId: "window-1", requestType: "critical" }],
+    [WINDOW_CANCEL_ATTENTION_METHOD, { windowId: "window-1" }]
+  ])
+})
+
+test("host window client keeps explicit window id authoritative for progress", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests))
+
+  await Effect.runPromise(
+    client.setProgress("window-1", {
+      progress: 42,
+      windowId: "window-2"
+    } as Parameters<typeof client.setProgress>[1])
+  )
+
+  expect(requests.map((request) => request.payload)).toEqual([
+    {
+      windowId: "window-1",
+      progress: 42
+    }
+  ])
+})
+
 test("host window client requests Window.minimize, Window.maximize, Window.restore, fullscreen, and state", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = makeHostWindowClient(windowExchange(requests), {
@@ -300,6 +365,21 @@ test("host window client rejects invalid setBounds payload before crossing the h
 
   await expectEffectFailure(
     client.setBounds("window-1", { x: 0, y: 0, width: 0, height: 100 }),
+    (error) => error instanceof HostProtocolInvalidArgumentError
+  )
+  expect(requests).toEqual([])
+})
+
+test("host window client rejects invalid attention payloads before crossing the host boundary", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests))
+
+  await expectEffectFailure(
+    client.setProgress("window-1", { progress: 101 }),
+    (error) => error instanceof HostProtocolInvalidArgumentError
+  )
+  await expectEffectFailure(
+    client.requestAttention("window-1", "urgent" as Parameters<typeof client.requestAttention>[1]),
     (error) => error instanceof HostProtocolInvalidArgumentError
   )
   expect(requests).toEqual([])

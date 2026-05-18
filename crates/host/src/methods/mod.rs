@@ -324,6 +324,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::set_decorations),
     ),
     route(
+        host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
+        HostMethodDispatcher::Window(window::set_always_on_top),
+    ),
+    route(
+        host_protocol::WINDOW_SET_PROGRESS_METHOD,
+        HostMethodDispatcher::Window(window::set_progress),
+    ),
+    route(
+        host_protocol::WINDOW_REQUEST_ATTENTION_METHOD,
+        HostMethodDispatcher::Window(window::request_attention),
+    ),
+    route(
+        host_protocol::WINDOW_CANCEL_ATTENTION_METHOD,
+        HostMethodDispatcher::Window(window::cancel_attention),
+    ),
+    route(
         host_protocol::WINDOW_MINIMIZE_METHOD,
         HostMethodDispatcher::Window(window::minimize),
     ),
@@ -3292,6 +3308,106 @@ mod tests {
     }
 
     #[test]
+    fn window_attention_methods_route_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+
+        for (id, method, payload) in [
+            (
+                "request-window-set-always-on-top",
+                host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
+                serde_json::json!({ "windowId": "window-1", "alwaysOnTop": true }),
+            ),
+            (
+                "request-window-set-progress",
+                host_protocol::WINDOW_SET_PROGRESS_METHOD,
+                serde_json::json!({
+                    "windowId": "window-1",
+                    "state": "normal",
+                    "progress": 42,
+                    "desktopFilename": "app.desktop"
+                }),
+            ),
+            (
+                "request-window-request-attention",
+                host_protocol::WINDOW_REQUEST_ATTENTION_METHOD,
+                serde_json::json!({ "windowId": "window-1", "requestType": "critical" }),
+            ),
+            (
+                "request-window-cancel-attention",
+                host_protocol::WINDOW_CANCEL_ATTENTION_METHOD,
+                serde_json::json!({ "windowId": "window-1" }),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000112)
+                .expect("window attention request should return response");
+
+            assert_eq!(
+                response,
+                HostProtocolEnvelope::Response {
+                    id: id.to_string(),
+                    timestamp: 1710000000112,
+                    trace_id: format!("trace-{id}"),
+                    payload: None,
+                    error: None,
+                }
+            );
+        }
+
+        assert_eq!(fake.always_on_top(), vec![("window-1".to_string(), true)]);
+        assert_eq!(
+            fake.progress(),
+            vec![host_protocol::WindowSetProgressPayload::new(
+                "window-1",
+                Some(host_protocol::WindowProgressState::Normal),
+                Some(42),
+                Some("app.desktop".to_string())
+            )]
+        );
+        assert_eq!(
+            fake.attention(),
+            vec![(
+                "window-1".to_string(),
+                host_protocol::WindowAttentionType::Critical
+            )]
+        );
+        assert_eq!(fake.attention_cancellations(), vec!["window-1".to_string()]);
+
+        let invalid_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-set-progress-empty-desktop-filename",
+                    host_protocol::WINDOW_SET_PROGRESS_METHOD,
+                    serde_json::json!({
+                        "windowId": "window-1",
+                        "desktopFilename": ""
+                    }),
+                ),
+                1710000000113,
+            )
+            .expect("invalid window progress request should return response");
+
+        assert_eq!(
+            invalid_response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-set-progress-empty-desktop-filename".to_string(),
+                timestamp: 1710000000113,
+                trace_id: "trace-request-window-set-progress-empty-desktop-filename".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "payload",
+                    "desktopFilename must be non-empty",
+                    host_protocol::WINDOW_SET_PROGRESS_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
     fn window_state_methods_route_to_window_handler() {
         let fake = Arc::new(FakeWindowHandler::new(
             Ok(WindowCreateResponse::new("window-unused")),
@@ -5940,6 +6056,10 @@ mod tests {
         titles: Mutex<Vec<(String, String)>>,
         resizable: Mutex<Vec<(String, bool)>>,
         decorations: Mutex<Vec<(String, bool)>>,
+        always_on_top: Mutex<Vec<(String, bool)>>,
+        progress: Mutex<Vec<host_protocol::WindowSetProgressPayload>>,
+        attention: Mutex<Vec<(String, host_protocol::WindowAttentionType)>>,
+        attention_cancellations: Mutex<Vec<String>>,
         minimized: Mutex<Vec<String>>,
         maximized: Mutex<Vec<String>>,
         restored: Mutex<Vec<String>>,
@@ -5962,6 +6082,10 @@ mod tests {
                 titles: Mutex::new(Vec::new()),
                 resizable: Mutex::new(Vec::new()),
                 decorations: Mutex::new(Vec::new()),
+                always_on_top: Mutex::new(Vec::new()),
+                progress: Mutex::new(Vec::new()),
+                attention: Mutex::new(Vec::new()),
+                attention_cancellations: Mutex::new(Vec::new()),
                 minimized: Mutex::new(Vec::new()),
                 maximized: Mutex::new(Vec::new()),
                 restored: Mutex::new(Vec::new()),
@@ -6023,6 +6147,34 @@ mod tests {
             self.decorations
                 .lock()
                 .expect("fake decorations requests should lock")
+                .clone()
+        }
+
+        fn always_on_top(&self) -> Vec<(String, bool)> {
+            self.always_on_top
+                .lock()
+                .expect("fake always on top requests should lock")
+                .clone()
+        }
+
+        fn progress(&self) -> Vec<host_protocol::WindowSetProgressPayload> {
+            self.progress
+                .lock()
+                .expect("fake progress requests should lock")
+                .clone()
+        }
+
+        fn attention(&self) -> Vec<(String, host_protocol::WindowAttentionType)> {
+            self.attention
+                .lock()
+                .expect("fake attention requests should lock")
+                .clone()
+        }
+
+        fn attention_cancellations(&self) -> Vec<String> {
+            self.attention_cancellations
+                .lock()
+                .expect("fake attention cancellation requests should lock")
                 .clone()
         }
 
@@ -6136,6 +6288,50 @@ mod tests {
                 .lock()
                 .expect("fake decorations requests should lock")
                 .push((window_id.to_string(), decorations));
+            Ok(())
+        }
+
+        fn set_always_on_top(
+            &self,
+            window_id: &str,
+            always_on_top: bool,
+        ) -> Result<(), HostProtocolError> {
+            self.always_on_top
+                .lock()
+                .expect("fake always on top requests should lock")
+                .push((window_id.to_string(), always_on_top));
+            Ok(())
+        }
+
+        fn set_progress(
+            &self,
+            _window_id: &str,
+            progress: &host_protocol::WindowSetProgressPayload,
+        ) -> Result<(), HostProtocolError> {
+            self.progress
+                .lock()
+                .expect("fake progress requests should lock")
+                .push(progress.clone());
+            Ok(())
+        }
+
+        fn request_attention(
+            &self,
+            window_id: &str,
+            request_type: host_protocol::WindowAttentionType,
+        ) -> Result<(), HostProtocolError> {
+            self.attention
+                .lock()
+                .expect("fake attention requests should lock")
+                .push((window_id.to_string(), request_type));
+            Ok(())
+        }
+
+        fn cancel_attention(&self, window_id: &str) -> Result<(), HostProtocolError> {
+            self.attention_cancellations
+                .lock()
+                .expect("fake attention cancellation requests should lock")
+                .push(window_id.to_string());
             Ok(())
         }
 

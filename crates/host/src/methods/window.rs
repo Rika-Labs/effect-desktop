@@ -5,9 +5,9 @@
 use crate::window::{WindowCreateRequest, WindowMethodHandler};
 use host_protocol::{
     HostProtocolError, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowDestroyPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
-    WindowSetFullscreenPayload, WindowSetResizablePayload, WindowSetTitlePayload,
-    WindowStatePayload,
+    WindowDestroyPayload, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
+    WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
+    WindowSetProgressPayload, WindowSetResizablePayload, WindowSetTitlePayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -117,6 +117,47 @@ pub(crate) fn set_decorations(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_decorations_payload(payload)?;
     handler.set_decorations(payload.window_id(), payload.decorations())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_always_on_top(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_always_on_top_payload(payload)?;
+    handler.set_always_on_top(payload.window_id(), payload.always_on_top())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_progress(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_progress_payload(payload)?;
+    handler.set_progress(payload.window_id(), &payload)?;
+
+    Ok(None)
+}
+
+pub(crate) fn request_attention(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_request_attention_payload(payload)?;
+    handler.request_attention(payload.window_id(), payload.request_type())?;
+
+    Ok(None)
+}
+
+pub(crate) fn cancel_attention(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload =
+        decode_required_window_payload(payload, host_protocol::WINDOW_CANCEL_ATTENTION_METHOD)?;
+    handler.cancel_attention(payload.window_id())?;
 
     Ok(None)
 }
@@ -382,6 +423,133 @@ fn decode_set_decorations_payload(
             "payload",
             "windowId must be non-empty",
             host_protocol::WINDOW_SET_DECORATIONS_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_always_on_top_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetAlwaysOnTopPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_always_on_top_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD
+            ),
+            host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
+        )),
+    }
+}
+
+fn decode_set_always_on_top_payload(
+    payload: Value,
+) -> Result<WindowSetAlwaysOnTopPayload, HostProtocolError> {
+    let payload: WindowSetAlwaysOnTopPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_progress_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetProgressPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_progress_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_PROGRESS_METHOD
+            ),
+            host_protocol::WINDOW_SET_PROGRESS_METHOD,
+        )),
+    }
+}
+
+fn decode_set_progress_payload(
+    payload: Value,
+) -> Result<WindowSetProgressPayload, HostProtocolError> {
+    let payload: WindowSetProgressPayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_SET_PROGRESS_METHOD,
+        )
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_PROGRESS_METHOD,
+        ));
+    }
+    if payload.progress().is_some_and(|progress| progress > 100) {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "progress must be between 0 and 100",
+            host_protocol::WINDOW_SET_PROGRESS_METHOD,
+        ));
+    }
+    if payload
+        .desktop_filename()
+        .is_some_and(|desktop_filename| desktop_filename.is_empty())
+    {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "desktopFilename must be non-empty",
+            host_protocol::WINDOW_SET_PROGRESS_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_request_attention_payload(
+    payload: Option<Value>,
+) -> Result<WindowRequestAttentionPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_request_attention_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_REQUEST_ATTENTION_METHOD
+            ),
+            host_protocol::WINDOW_REQUEST_ATTENTION_METHOD,
+        )),
+    }
+}
+
+fn decode_request_attention_payload(
+    payload: Value,
+) -> Result<WindowRequestAttentionPayload, HostProtocolError> {
+    let payload: WindowRequestAttentionPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_REQUEST_ATTENTION_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_REQUEST_ATTENTION_METHOD,
         ));
     }
     Ok(payload)

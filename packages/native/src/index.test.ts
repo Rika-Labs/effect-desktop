@@ -7,6 +7,7 @@ import {
   HostProtocolResponseEnvelope,
   HostProtocolStaleHandleError,
   HostProtocolUnsupportedError,
+  WINDOW_CANCEL_ATTENTION_METHOD,
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_CENTER_METHOD,
@@ -18,9 +19,12 @@ import {
   WINDOW_MAXIMIZE_METHOD,
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
+  WINDOW_REQUEST_ATTENTION_METHOD,
+  WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SHOW_METHOD,
@@ -694,6 +698,10 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "setTitle",
   "setResizable",
   "setDecorations",
+  "setAlwaysOnTop",
+  "setProgress",
+  "requestAttention",
+  "cancelAttention",
   "minimize",
   "maximize",
   "restore",
@@ -7398,6 +7406,10 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.setTitle"]
     void client["Window.setResizable"]
     void client["Window.setDecorations"]
+    void client["Window.setAlwaysOnTop"]
+    void client["Window.setProgress"]
+    void client["Window.requestAttention"]
+    void client["Window.cancelAttention"]
     void client["Window.minimize"]
     void client["Window.maximize"]
     void client["Window.restore"]
@@ -7417,6 +7429,10 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setTitle",
     "Window.setResizable",
     "Window.setDecorations",
+    "Window.setAlwaysOnTop",
+    "Window.setProgress",
+    "Window.requestAttention",
+    "Window.cancelAttention",
     "Window.minimize",
     "Window.maximize",
     "Window.restore",
@@ -7450,6 +7466,11 @@ test("Window service delegates through a substitutable WindowClient port", async
     setTitle: (_window, title) => recordVoid(calls, `setTitle:${title}`),
     setResizable: (_window, resizable) => recordVoid(calls, `setResizable:${resizable}`),
     setDecorations: (_window, decorations) => recordVoid(calls, `setDecorations:${decorations}`),
+    setAlwaysOnTop: (_window, alwaysOnTop) => recordVoid(calls, `setAlwaysOnTop:${alwaysOnTop}`),
+    setProgress: (_window, input) => recordVoid(calls, `setProgress:${input.progress ?? ""}`),
+    requestAttention: (_window, requestType) =>
+      recordVoid(calls, `requestAttention:${requestType}`),
+    cancelAttention: () => recordVoid(calls, "cancelAttention"),
     minimize: () => recordVoid(calls, "minimize"),
     maximize: () => recordVoid(calls, "maximize"),
     restore: () => recordVoid(calls, "restore"),
@@ -7477,6 +7498,10 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.setTitle(created, "Renamed")
       yield* window.setResizable(created, false)
       yield* window.setDecorations(created, true)
+      yield* window.setAlwaysOnTop(created, true)
+      yield* window.setProgress(created, { state: "normal", progress: 42 })
+      yield* window.requestAttention(created, "critical")
+      yield* window.cancelAttention(created)
       yield* window.minimize(created)
       yield* window.maximize(created)
       yield* window.setFullscreen(created, true)
@@ -7504,6 +7529,10 @@ test("Window service delegates through a substitutable WindowClient port", async
     "setTitle:Renamed",
     "setResizable:false",
     "setDecorations:true",
+    "setAlwaysOnTop:true",
+    "setProgress:42",
+    "requestAttention:critical",
+    "cancelAttention",
     "minimize",
     "maximize",
     "setFullscreen:true",
@@ -7550,6 +7579,10 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-title-request",
       "set-resizable-request",
       "set-decorations-request",
+      "set-always-on-top-request",
+      "set-progress-request",
+      "request-attention-request",
+      "cancel-attention-request",
       "minimize-request",
       "maximize-request",
       "set-fullscreen-request",
@@ -7568,6 +7601,10 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-title-trace",
       "set-resizable-trace",
       "set-decorations-trace",
+      "set-always-on-top-trace",
+      "set-progress-trace",
+      "request-attention-trace",
+      "cancel-attention-trace",
       "minimize-trace",
       "maximize-trace",
       "set-fullscreen-trace",
@@ -7579,7 +7616,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       1_710_000_000_000, 1_710_000_000_001, 1_710_000_000_002, 1_710_000_000_003, 1_710_000_000_004,
       1_710_000_000_005, 1_710_000_000_006, 1_710_000_000_007, 1_710_000_000_008, 1_710_000_000_009,
       1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
-      1_710_000_000_015
+      1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019
     ])
   })
   const program = Effect.gen(function* () {
@@ -7605,6 +7642,14 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     yield* window.setTitle(created, "Renamed")
     yield* window.setResizable(created, false)
     yield* window.setDecorations(created, true)
+    yield* window.setAlwaysOnTop(created, true)
+    yield* window.setProgress(created, {
+      state: "normal",
+      progress: 42,
+      window: handleFor("forged-window")
+    } as Parameters<typeof window.setProgress>[1])
+    yield* window.requestAttention(created, "critical")
+    yield* window.cancelAttention(created)
     yield* window.minimize(created)
     yield* window.maximize(created)
     yield* window.setFullscreen(created, true)
@@ -7705,6 +7750,34 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       {
         windowId: "host-window-1",
         decorations: true
+      }
+    ],
+    [
+      WINDOW_SET_ALWAYS_ON_TOP_METHOD,
+      {
+        windowId: "host-window-1",
+        alwaysOnTop: true
+      }
+    ],
+    [
+      WINDOW_SET_PROGRESS_METHOD,
+      {
+        windowId: "host-window-1",
+        state: "normal",
+        progress: 42
+      }
+    ],
+    [
+      WINDOW_REQUEST_ATTENTION_METHOD,
+      {
+        windowId: "host-window-1",
+        requestType: "critical"
+      }
+    ],
+    [
+      WINDOW_CANCEL_ATTENTION_METHOD,
+      {
+        windowId: "host-window-1"
       }
     ],
     [
@@ -9433,6 +9506,10 @@ const noopWindowClient: WindowClientApi = {
   setTitle: () => Effect.void,
   setResizable: () => Effect.void,
   setDecorations: () => Effect.void,
+  setAlwaysOnTop: () => Effect.void,
+  setProgress: () => Effect.void,
+  requestAttention: () => Effect.void,
+  cancelAttention: () => Effect.void,
   minimize: () => Effect.void,
   maximize: () => Effect.void,
   restore: () => Effect.void,

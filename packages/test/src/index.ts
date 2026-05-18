@@ -31,6 +31,7 @@ import {
   HostProtocolStreamByRequestEnvelope,
   HostProtocolUnsupportedError,
   WINDOW_CENTER_METHOD,
+  WINDOW_CANCEL_ATTENTION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
@@ -40,9 +41,12 @@ import {
   WINDOW_MAXIMIZE_METHOD,
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
+  WINDOW_REQUEST_ATTENTION_METHOD,
+  WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SHOW_METHOD,
@@ -225,6 +229,10 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           request.method === WINDOW_SET_TITLE_METHOD ||
           request.method === WINDOW_SET_RESIZABLE_METHOD ||
           request.method === WINDOW_SET_DECORATIONS_METHOD ||
+          request.method === WINDOW_SET_ALWAYS_ON_TOP_METHOD ||
+          request.method === WINDOW_SET_PROGRESS_METHOD ||
+          request.method === WINDOW_REQUEST_ATTENTION_METHOD ||
+          request.method === WINDOW_CANCEL_ATTENTION_METHOD ||
           request.method === WINDOW_MINIMIZE_METHOD ||
           request.method === WINDOW_MAXIMIZE_METHOD ||
           request.method === WINDOW_RESTORE_METHOD ||
@@ -805,6 +813,11 @@ export const runHeadless = <A, E, R>(
         setTitle: (windowId, title) => rawWindow.setTitle(windowId, title),
         setResizable: (windowId, resizable) => rawWindow.setResizable(windowId, resizable),
         setDecorations: (windowId, decorations) => rawWindow.setDecorations(windowId, decorations),
+        setAlwaysOnTop: (windowId, alwaysOnTop) => rawWindow.setAlwaysOnTop(windowId, alwaysOnTop),
+        setProgress: (windowId, input) => rawWindow.setProgress(windowId, input),
+        requestAttention: (windowId, requestType) =>
+          rawWindow.requestAttention(windowId, requestType),
+        cancelAttention: (windowId) => rawWindow.cancelAttention(windowId),
         minimize: (windowId) => rawWindow.minimize(windowId),
         maximize: (windowId) => rawWindow.maximize(windowId),
         restore: (windowId) => rawWindow.restore(windowId),
@@ -899,6 +912,10 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_SET_TITLE_METHOD:
     case WINDOW_SET_RESIZABLE_METHOD:
     case WINDOW_SET_DECORATIONS_METHOD:
+    case WINDOW_SET_ALWAYS_ON_TOP_METHOD:
+    case WINDOW_SET_PROGRESS_METHOD:
+    case WINDOW_REQUEST_ATTENTION_METHOD:
+    case WINDOW_CANCEL_ATTENTION_METHOD:
     case WINDOW_MINIMIZE_METHOD:
     case WINDOW_MAXIMIZE_METHOD:
     case WINDOW_RESTORE_METHOD:

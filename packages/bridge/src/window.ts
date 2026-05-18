@@ -5,6 +5,7 @@ import {
   HostProtocolResponseEnvelope,
   WINDOW_CENTER_METHOD,
   WINDOW_CREATE_METHOD,
+  WINDOW_CANCEL_ATTENTION_METHOD,
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
@@ -13,9 +14,12 @@ import {
   WINDOW_MAXIMIZE_METHOD,
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
+  WINDOW_REQUEST_ATTENTION_METHOD,
+  WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SHOW_METHOD,
@@ -57,6 +61,8 @@ const WindowTrafficLights = Schema.Struct({
   x: NonNegativeFiniteNumber,
   y: NonNegativeFiniteNumber
 })
+const WindowProgressState = Schema.Literals(["none", "normal", "indeterminate", "paused", "error"])
+const WindowAttentionType = Schema.Literals(["critical", "informational"])
 
 export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>("WindowCreatePayload")({
   title: Schema.optionalKey(Schema.NonEmptyString),
@@ -114,6 +120,31 @@ export class WindowSetDecorationsPayload extends Schema.Class<WindowSetDecoratio
   decorations: Schema.Boolean
 }) {}
 
+export class WindowSetAlwaysOnTopPayload extends Schema.Class<WindowSetAlwaysOnTopPayload>(
+  "WindowSetAlwaysOnTopPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  alwaysOnTop: Schema.Boolean
+}) {}
+
+export class WindowSetProgressPayload extends Schema.Class<WindowSetProgressPayload>(
+  "WindowSetProgressPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  state: Schema.optionalKey(WindowProgressState),
+  progress: Schema.optionalKey(
+    Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(100))
+  ),
+  desktopFilename: Schema.optionalKey(Schema.NonEmptyString)
+}) {}
+
+export class WindowRequestAttentionPayload extends Schema.Class<WindowRequestAttentionPayload>(
+  "WindowRequestAttentionPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  requestType: WindowAttentionType
+}) {}
+
 export class WindowSetFullscreenPayload extends Schema.Class<WindowSetFullscreenPayload>(
   "WindowSetFullscreenPayload"
 )({
@@ -142,6 +173,14 @@ export interface WindowBoundsInput {
   readonly width: number
   readonly height: number
 }
+
+export interface WindowProgressInput {
+  readonly state?: Schema.Schema.Type<typeof WindowProgressState>
+  readonly progress?: number
+  readonly desktopFilename?: string
+}
+
+export type WindowAttentionTypeInput = Schema.Schema.Type<typeof WindowAttentionType>
 
 export interface HostWindowExchange {
   readonly request: (
@@ -176,6 +215,19 @@ export interface HostWindowClient {
     windowId: string,
     decorations: boolean
   ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setAlwaysOnTop: (
+    windowId: string,
+    alwaysOnTop: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setProgress: (
+    windowId: string,
+    input: WindowProgressInput
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly requestAttention: (
+    windowId: string,
+    requestType: WindowAttentionTypeInput
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
@@ -267,6 +319,32 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
+    setAlwaysOnTop: (windowId, alwaysOnTop) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetAlwaysOnTopPayload(windowId, alwaysOnTop)
+        const request = yield* makeRequest(WINDOW_SET_ALWAYS_ON_TOP_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    setProgress: (windowId, input) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetProgressPayload(windowId, input)
+        const request = yield* makeRequest(WINDOW_SET_PROGRESS_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    requestAttention: (windowId, requestType) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeRequestAttentionPayload(windowId, requestType)
+        const request = yield* makeRequest(WINDOW_REQUEST_ATTENTION_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    cancelAttention: (windowId) =>
+      sendWindowLifecycleCommand(windowId, WINDOW_CANCEL_ATTENTION_METHOD, exchange, resolved),
     minimize: (windowId) =>
       sendWindowLifecycleCommand(windowId, WINDOW_MINIMIZE_METHOD, exchange, resolved),
     maximize: (windowId) =>
@@ -356,6 +434,13 @@ const decodeUnknownWindowSetResizablePayload = Schema.decodeUnknownSync(WindowSe
 const decodeUnknownWindowSetDecorationsPayload = Schema.decodeUnknownSync(
   WindowSetDecorationsPayload
 )
+const decodeUnknownWindowSetAlwaysOnTopPayload = Schema.decodeUnknownSync(
+  WindowSetAlwaysOnTopPayload
+)
+const decodeUnknownWindowSetProgressPayload = Schema.decodeUnknownSync(WindowSetProgressPayload)
+const decodeUnknownWindowRequestAttentionPayload = Schema.decodeUnknownSync(
+  WindowRequestAttentionPayload
+)
 const decodeUnknownWindowSetFullscreenPayload = Schema.decodeUnknownSync(WindowSetFullscreenPayload)
 const decodeUnknownWindowStatePayload = Schema.decodeUnknownSync(WindowStatePayload)
 
@@ -419,6 +504,44 @@ const encodeSetDecorationsPayload = (
     try: () =>
       decodeUnknownWindowSetDecorationsPayload({ windowId, decorations }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_DECORATIONS_METHOD)
+  })
+
+const encodeSetAlwaysOnTopPayload = (
+  windowId: string,
+  alwaysOnTop: boolean
+): Effect.Effect<WindowSetAlwaysOnTopPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetAlwaysOnTopPayload({ windowId, alwaysOnTop }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_ALWAYS_ON_TOP_METHOD)
+  })
+
+const encodeSetProgressPayload = (
+  windowId: string,
+  input: WindowProgressInput
+): Effect.Effect<WindowSetProgressPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetProgressPayload(
+        {
+          windowId,
+          ...(input.state === undefined ? {} : { state: input.state }),
+          ...(input.progress === undefined ? {} : { progress: input.progress }),
+          ...(input.desktopFilename === undefined ? {} : { desktopFilename: input.desktopFilename })
+        },
+        StrictParseOptions
+      ),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_PROGRESS_METHOD)
+  })
+
+const encodeRequestAttentionPayload = (
+  windowId: string,
+  requestType: WindowAttentionTypeInput
+): Effect.Effect<WindowRequestAttentionPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowRequestAttentionPayload({ windowId, requestType }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_REQUEST_ATTENTION_METHOD)
   })
 
 const encodeSetFullscreenPayload = (
