@@ -7710,7 +7710,11 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     const afterClose = yield* registry.list()
 
     return { created, duringLifetime, afterClose, state }
-  }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+  }).pipe(
+    Effect.provide(
+      Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+    )
+  )
 
   const result = await Effect.runPromise(program)
 
@@ -7917,7 +7921,11 @@ test("host WindowClient adapter creates owned child windows and closes children 
       const afterClose = yield* registry.list()
 
       return { afterClose, child, duringLifetime, parent }
-    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      )
+    )
   )
 
   expect(String(result.parent.id)).toBe("host-parent")
@@ -8030,7 +8038,11 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
         yield* window.close(parent)
 
         return { child, closedChildExit, currentChild, currentParent, listed, parent, parentById }
-      }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
+      )
     })
   )
 
@@ -8077,7 +8089,11 @@ test("Window.events streams renderer-visible lifecycle events from the app route
         yield* window.close(created)
 
         return yield* Fiber.join(eventsFiber)
-      }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
+      )
     })
   )
 
@@ -8086,6 +8102,208 @@ test("Window.events streams renderer-visible lifecycle events from the app route
     ["focused", "host-window-1", false],
     ["closed", "host-window-1", true]
   ])
+})
+
+test("Window.events registers host-originated opened events in ResourceRegistry", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.die("unexpected request"),
+    subscribe: (method) =>
+      method === WINDOW_EVENT_METHOD
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_002_600,
+              traceId: "host-window-opened-event",
+              payload: {
+                type: "window-registry-event",
+                phase: "opened",
+                windowId: "host-opened-window",
+                terminal: false
+              }
+            })
+          )
+        : Stream.empty
+  }
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
+      const snapshot = yield* registry.list()
+      return { event, snapshot }
+    }).pipe(
+      Effect.provide(Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry)))
+    )
+  )
+
+  const event = Option.getOrThrow(result.event)
+  expect(event.windowId).toBe("host-opened-window")
+  expect(event.window).toMatchObject({
+    kind: "window",
+    id: "host-opened-window",
+    ownerScope: "window:host-opened-window",
+    state: "open"
+  })
+  expect(result.snapshot.entries.map((entry) => String(entry.handle.id))).toEqual([
+    "host-opened-window"
+  ])
+})
+
+test("Window.events rejects host-originated opened events with mismatched handles", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.die("unexpected request"),
+    subscribe: (method) =>
+      method === WINDOW_EVENT_METHOD
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_002_650,
+              traceId: "host-window-mismatched-opened-event",
+              payload: {
+                type: "window-registry-event",
+                phase: "opened",
+                windowId: "host-opened-window",
+                window: {
+                  kind: "window",
+                  id: "host-opened-window",
+                  generation: 0,
+                  ownerScope: "app",
+                  state: "open"
+                },
+                terminal: false
+              }
+            })
+          )
+        : Stream.empty
+  }
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const eventExit = yield* Effect.exit(window.events().pipe(Stream.take(1), Stream.runHead))
+      const snapshot = yield* registry.list()
+      return { eventExit, snapshot }
+    }).pipe(
+      Effect.provide(Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry)))
+    )
+  )
+
+  expectExitFailure(
+    result.eventExit,
+    (error) =>
+      error instanceof HostProtocolInvalidOutputError && error.operation === WINDOW_EVENT_METHOD
+  )
+  expect(result.snapshot.entries).toEqual([])
+})
+
+test("Window.events strips handles for host-originated events without local resources", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.die("unexpected request"),
+    subscribe: (method) =>
+      method === WINDOW_EVENT_METHOD
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_002_675,
+              traceId: "host-window-focused-unknown-event",
+              payload: {
+                type: "window-registry-event",
+                phase: "focused",
+                windowId: "host-focused-window",
+                window: {
+                  kind: "window",
+                  id: "host-focused-window",
+                  generation: 0,
+                  ownerScope: "window:host-focused-window",
+                  state: "open"
+                },
+                terminal: false
+              }
+            }),
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_002_676,
+              traceId: "host-window-closed-unknown-event",
+              payload: {
+                type: "window-registry-event",
+                phase: "closed",
+                windowId: "host-closed-window",
+                window: {
+                  kind: "window",
+                  id: "host-closed-window",
+                  generation: 0,
+                  ownerScope: "window:host-closed-window",
+                  state: "open"
+                },
+                terminal: true
+              }
+            })
+          )
+        : Stream.empty
+  }
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const events = yield* window.events().pipe(Stream.take(2), Stream.runCollect)
+      const snapshot = yield* registry.list()
+      return { events, snapshot }
+    }).pipe(
+      Effect.provide(Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry)))
+    )
+  )
+
+  expect(Array.from(result.events).map((event) => event.window)).toEqual([undefined, undefined])
+  expect(result.snapshot.entries).toEqual([])
+})
+
+test("Window.events closes ResourceRegistry handles for host-originated terminal events", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const baseExchange = makeWindowRpcExchange(windowExchange([]), registry)
+  const exchange: BridgeClientExchange = {
+    request: baseExchange.request,
+    subscribe: (method) =>
+      method === WINDOW_EVENT_METHOD
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_002_700,
+              traceId: "host-window-closed-event",
+              payload: {
+                type: "window-registry-event",
+                phase: "closed",
+                windowId: "host-window-1",
+                terminal: true
+              }
+            })
+          )
+        : Stream.empty
+  }
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const created = yield* window.create({ title: "Host closed" })
+      const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
+      const snapshot = yield* registry.list()
+      return { created, event, snapshot }
+    }).pipe(
+      Effect.provide(Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry)))
+    )
+  )
+
+  const event = Option.getOrThrow(result.event)
+  expect(event.windowId).toBe(String(result.created.id))
+  expect(event.window).toEqual(result.created)
+  expect(result.snapshot.entries).toEqual([])
 })
 
 test("native host RPC runtime denies Window.getCurrent before lookup work", async () => {
@@ -8139,7 +8357,11 @@ test("Window lookup uses host transport without runtime router", async () => {
       const created = yield* window.create({ title: "Lookup" })
       const current = yield* window.getCurrent()
       return { created, current }
-    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      )
+    )
   )
 
   expect(result.current.id).toBe(result.created.id)
@@ -8250,7 +8472,11 @@ test("host WindowClient adapter propagates owned child create host failure", asy
       const parent = yield* window.create({ title: "Parent" })
       const childExit = yield* Effect.exit(window.create({ title: "Child", parent }))
       return { childExit, parent }
-    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      )
+    )
   )
 
   expectExitFailure(result.childExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -8290,7 +8516,11 @@ test("host WindowClient adapter propagates lookup host failure", async () => {
       const window = yield* Window
       yield* window.create({ title: "Lookup" })
       return yield* Effect.exit(window.getCurrent())
-    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      )
+    )
   )
 
   expectExitFailure(result, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -8334,7 +8564,11 @@ test("host WindowClient adapter rejects mismatched lookup host output", async ()
       const parent = yield* window.create({ title: "Parent" })
       yield* window.create({ title: "Child", parent })
       return yield* Effect.exit(window.getById(String(parent.id)))
-    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      )
+    )
   )
 
   expectExitFailure(
@@ -8856,7 +9090,11 @@ test("host WindowClient adapter declares per-window scopes and closes scoped res
         const afterClose = yield* registry.list()
 
         return { child, afterClose }
-      }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
+      )
     })
   )
 
@@ -8888,7 +9126,7 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
       yield* client.close(created)
       const repeatedCloseExit = yield* Effect.exit(client.close(created))
       return { malformedInputExit, repeatedCloseExit, staleExit, unknownExit }
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(rpcExchange)))
+    }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(rpcExchange, registry)))
   )
 
   expectExitFailure(
@@ -8917,18 +9155,20 @@ test("host WindowClient adapter maps malformed generated RPC successes to typed 
   const invalidCloseExchange: BridgeClientExchange = {
     request: () => Effect.succeed({ kind: "success", payload: { unexpected: true } })
   }
+  const createRegistry = await Effect.runPromise(makeResourceRegistry())
+  const closeRegistry = await Effect.runPromise(makeResourceRegistry())
 
   const createExit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       const client = yield* WindowClient
       return yield* client.create({})
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(invalidCreateExchange)))
+    }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(invalidCreateExchange, createRegistry)))
   )
   const closeExit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       const client = yield* WindowClient
       return yield* client.close(windowHandle)
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(invalidCloseExchange)))
+    }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(invalidCloseExchange, closeRegistry)))
   )
 
   expectExitFailure(
@@ -8948,7 +9188,7 @@ test("host WindowClient adapter exposes only supported callable methods", async 
   const client = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* WindowClient
-    }).pipe(Effect.provide(makeWindowBridgeClientLayer(rpcExchange)))
+    }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(rpcExchange, registry)))
   )
 
   expect("create" in client).toBe(true)
@@ -8977,7 +9217,11 @@ test("Window bridge client rejects invalid chrome inputs before crossing the hos
     const program = Effect.gen(function* () {
       const window = yield* Window
       return yield* Effect.exit(window.create(input as WindowCreateOptions))
-    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      )
+    )
 
     const exit = await Effect.runPromise(program)
 
@@ -10661,6 +10905,12 @@ const makeWindowRpcExchange = (
 
   return { request, subscribe }
 }
+
+const makeWindowTestBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  registry: ResourceRegistry["Service"]
+): Layer.Layer<WindowClient> =>
+  Layer.provide(makeWindowBridgeClientLayer(exchange), Layer.succeed(ResourceRegistry)(registry))
 
 const rpcMethodNames = (
   namespace: string,

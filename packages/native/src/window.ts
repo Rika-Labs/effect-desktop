@@ -354,7 +354,20 @@ export const makeWindowServiceLayer = (client: WindowClientApi): Layer.Layer<Win
 export const makeWindowBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: WindowBridgeClientOptions = {}
-): Layer.Layer<WindowClient> => WindowSurface.bridgeClientLayer(exchange, options)
+): Layer.Layer<WindowClient, never, ResourceRegistry> =>
+  Layer.effect(
+    WindowClient,
+    Effect.gen(function* () {
+      const client = yield* WindowClient
+      const registry = yield* ResourceRegistry
+      return WindowClient.of(
+        Object.freeze({
+          ...client,
+          events: () => reconcileWindowEventStream(client.events(), registry)
+        } satisfies WindowClientApi)
+      )
+    })
+  ).pipe(Layer.provide(WindowSurface.bridgeClientLayer(exchange, options)))
 
 export type WindowRpcHandlers = ReturnType<typeof makeHostWindowHandlers>
 
@@ -862,6 +875,130 @@ const decodeWindowHandle = (
       makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
     )
   )
+
+const reconcileWindowEventStream = (
+  events: Stream.Stream<WindowRegistryEvent, WindowError, never>,
+  registry: ResourceRegistryApi
+): Stream.Stream<WindowRegistryEvent, WindowError, never> =>
+  events.pipe(Stream.mapEffect((event) => reconcileWindowEvent(event, registry)))
+
+const reconcileWindowEvent = (
+  event: WindowRegistryEvent,
+  registry: ResourceRegistryApi
+): Effect.Effect<WindowRegistryEvent, WindowError, never> =>
+  Effect.gen(function* () {
+    yield* validateWindowEventHandle(event)
+    const terminal = event.phase === "closed"
+    if (event.terminal !== terminal) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          WINDOW_EVENT_METHOD,
+          `window event terminal=${event.terminal} does not match phase=${event.phase}`
+        )
+      )
+    }
+
+    if (event.phase === "opened") {
+      const window = yield* ensureWindowHandleForEvent(event, registry)
+      return eventWithWindow(event, window)
+    }
+
+    if (event.phase === "focused") {
+      const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
+      return Option.isNone(window)
+        ? eventWithoutWindow(event)
+        : eventWithWindow(event, window.value)
+    }
+
+    const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
+    if (Option.isNone(window)) {
+      return eventWithoutWindow(event)
+    }
+    yield* registry.closeScope(window.value.ownerScope)
+    return eventWithWindow(event, window.value)
+  })
+
+const ensureWindowHandleForEvent = (
+  event: WindowRegistryEvent,
+  registry: ResourceRegistryApi
+): Effect.Effect<WindowHandle, WindowError, never> =>
+  Effect.gen(function* () {
+    const existing = yield* lookupWindowHandleForEvent(event.windowId, registry)
+    if (Option.isSome(existing)) {
+      return existing.value
+    }
+
+    const ownerScope = windowScope(event.windowId)
+    yield* registry
+      .declareScope(ownerScope, "app")
+      .pipe(
+        Effect.mapError((error) =>
+          makeHostProtocolInvalidOutputError(WINDOW_EVENT_METHOD, formatUnknownError(error))
+        )
+      )
+    const handle = yield* registry
+      .register({
+        kind: "window",
+        id: makeResourceId(event.windowId),
+        ownerScope,
+        state: "open"
+      })
+      .pipe(
+        Effect.mapError((error) =>
+          makeHostProtocolInvalidOutputError(WINDOW_EVENT_METHOD, formatUnknownError(error))
+        )
+      )
+    return toWindowHandle(handle)
+  })
+
+const validateWindowEventHandle = (
+  event: WindowRegistryEvent
+): Effect.Effect<void, WindowError, never> => {
+  if (event.window === undefined) {
+    return Effect.void
+  }
+  const expectedOwnerScope = windowScope(event.windowId)
+  if (event.window.id !== event.windowId || event.window.ownerScope !== expectedOwnerScope) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(
+        WINDOW_EVENT_METHOD,
+        `window event handle must match Window:${event.windowId}`
+      )
+    )
+  }
+
+  return Effect.void
+}
+
+const lookupWindowHandleForEvent = (
+  windowId: string,
+  registry: ResourceRegistryApi
+): Effect.Effect<Option.Option<WindowHandle>, WindowError, never> =>
+  Effect.gen(function* () {
+    const entry = yield* registry.get(makeResourceId(windowId))
+    if (Option.isNone(entry)) {
+      return Option.none()
+    }
+    const window = yield* decodeWindowHandle(entry.value.handle, WINDOW_EVENT_METHOD)
+    return Option.some(window)
+  })
+
+const eventWithWindow = (event: WindowRegistryEvent, window: WindowHandle): WindowRegistryEvent =>
+  new WindowRegistryEvent({
+    type: event.type,
+    phase: event.phase,
+    windowId: event.windowId,
+    window,
+    terminal: event.terminal
+  })
+
+const eventWithoutWindow = (event: WindowRegistryEvent): WindowRegistryEvent =>
+  new WindowRegistryEvent({
+    type: event.type,
+    phase: event.phase,
+    windowId: event.windowId,
+    terminal: event.terminal
+  })
 
 const runWindowRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
