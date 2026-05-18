@@ -12,8 +12,11 @@ import {
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_BY_ID_METHOD,
+  WINDOW_GET_CURRENT_METHOD,
   WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_LIST_METHOD,
   WINDOW_MAXIMIZE_METHOD,
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
@@ -164,6 +167,41 @@ test("host window client requests Window.show, Window.hide, and Window.focus", a
     [WINDOW_SHOW_METHOD, { windowId: "window-1" }],
     [WINDOW_HIDE_METHOD, { windowId: "window-1" }],
     [WINDOW_FOCUS_METHOD, { windowId: "window-1" }]
+  ])
+})
+
+test("host window client requests Window.getCurrent, Window.getById, and Window.list", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests), {
+    nextRequestId: nextId([
+      "request-window-get-current",
+      "request-window-get-by-id",
+      "request-window-list"
+    ]),
+    nextTraceId: nextId([
+      "trace-window-get-current",
+      "trace-window-get-by-id",
+      "trace-window-list"
+    ]),
+    now: nextNumber([1_710_000_000_013, 1_710_000_000_014, 1_710_000_000_015])
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const current = yield* client.getCurrent()
+      const byId = yield* client.getById("window-1")
+      const listed = yield* client.list()
+      return { byId, current, listed }
+    })
+  )
+
+  expect(result.current.windowId).toBe("window-1")
+  expect(result.byId.windowId).toBe("window-1")
+  expect(result.listed.windows.map((window) => window.windowId)).toEqual(["window-1", "window-2"])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_GET_CURRENT_METHOD, undefined],
+    [WINDOW_GET_BY_ID_METHOD, { windowId: "window-1" }],
+    [WINDOW_LIST_METHOD, undefined]
   ])
 })
 
@@ -497,26 +535,41 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                 windowId: "window-1"
               }
             }
-          : request.method === WINDOW_GET_BOUNDS_METHOD
+          : request.method === WINDOW_GET_CURRENT_METHOD ||
+              request.method === WINDOW_GET_BY_ID_METHOD
             ? {
                 ...base,
                 payload: {
-                  x: 10,
-                  y: 20,
-                  width: 640,
-                  height: 480
+                  windowId: "window-1"
                 }
               }
-            : request.method === WINDOW_GET_STATE_METHOD
+            : request.method === WINDOW_LIST_METHOD
               ? {
                   ...base,
                   payload: {
-                    minimized: false,
-                    maximized: true,
-                    fullscreen: true
+                    windows: [{ windowId: "window-1" }, { windowId: "window-2" }]
                   }
                 }
-              : base
+              : request.method === WINDOW_GET_BOUNDS_METHOD
+                ? {
+                    ...base,
+                    payload: {
+                      x: 10,
+                      y: 20,
+                      width: 640,
+                      height: 480
+                    }
+                  }
+                : request.method === WINDOW_GET_STATE_METHOD
+                  ? {
+                      ...base,
+                      payload: {
+                        minimized: false,
+                        maximized: true,
+                        fullscreen: true
+                      }
+                    }
+                  : base
       )
     )
   }

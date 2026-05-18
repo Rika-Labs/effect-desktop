@@ -81,7 +81,7 @@
     {
       "name": "HeadlessHostState",
       "kind": "interface",
-      "signature": "export interface HeadlessHostState { readonly windows: ReadonlyMap<string, WindowCreateInput> }"
+      "signature": "export interface HeadlessHostState { readonly windows: ReadonlyMap<string, WindowCreateInput> readonly focusedWindowId: () => string | undefined }"
     },
     {
       "name": "HeadlessRuntime",

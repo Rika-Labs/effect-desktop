@@ -7,7 +7,6 @@ import {
   type HostWindowExchange,
   type WindowBoundsInput as HostWindowBoundsInput,
   type WindowProgressInput as HostWindowProgressInput,
-  HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -93,40 +92,19 @@ export const WindowGetCurrent = windowRpc(
   "getCurrent",
   Schema.Void,
   WindowResource,
-  P.nativeInvoke({ primitive: "Window", methods: ["getCurrent"] }),
-  NativeSurface.support.partial("runtime-router-only", {
-    platforms: [
-      { platform: "macos", status: "partial", reason: "runtime-router-only" },
-      { platform: "windows", status: "partial", reason: "runtime-router-only" },
-      { platform: "linux", status: "partial", reason: "runtime-router-only" }
-    ]
-  })
+  P.nativeInvoke({ primitive: "Window", methods: ["getCurrent"] })
 )
 export const WindowGetById = windowRpc(
   "getById",
   WindowLookupInput,
   WindowResource,
-  P.nativeInvoke({ primitive: "Window", methods: ["getById"] }),
-  NativeSurface.support.partial("runtime-router-only", {
-    platforms: [
-      { platform: "macos", status: "partial", reason: "runtime-router-only" },
-      { platform: "windows", status: "partial", reason: "runtime-router-only" },
-      { platform: "linux", status: "partial", reason: "runtime-router-only" }
-    ]
-  })
+  P.nativeInvoke({ primitive: "Window", methods: ["getById"] })
 )
 export const WindowList = windowRpc(
   "list",
   Schema.Void,
   WindowListResult,
-  P.nativeInvoke({ primitive: "Window", methods: ["list"] }),
-  NativeSurface.support.partial("runtime-router-only", {
-    platforms: [
-      { platform: "macos", status: "partial", reason: "runtime-router-only" },
-      { platform: "windows", status: "partial", reason: "runtime-router-only" },
-      { platform: "linux", status: "partial", reason: "runtime-router-only" }
-    ]
-  })
+  P.nativeInvoke({ primitive: "Window", methods: ["list"] })
 )
 export const WindowGetBounds = windowRpc(
   "getBounds",
@@ -891,22 +869,6 @@ const isWindowError = (error: unknown): error is WindowError =>
   "operation" in error &&
   "recoverable" in error
 
-const requireAppEventRouter = (
-  options: HostWindowRpcOptions,
-  operation: string
-): Effect.Effect<AppEventRouterApi, WindowError, never> =>
-  options.appEventRouter === undefined
-    ? Effect.fail(
-        new HostProtocolUnsupportedError({
-          tag: "Unsupported",
-          reason: "window-registry-unavailable",
-          message: "window registry lookup requires AppEventRouter",
-          operation,
-          recoverable: false
-        })
-      )
-    : Effect.succeed(options.appEventRouter)
-
 const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindowRpcOptions) => {
   const host = makeHostWindowClient(exchange, options)
   const knownWindowIds = new Set<string>()
@@ -1017,45 +979,40 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
       }),
     "Window.getCurrent": () =>
       Effect.gen(function* () {
-        const router = yield* requireAppEventRouter(options, "Window.getCurrent")
-        const current = yield* router.getCurrentWindow()
-        if (Option.isNone(current)) {
-          return yield* Effect.fail(
-            makeHostProtocolNotFoundError("Window:current", "Window.getCurrent")
-          )
-        }
-        const { window } = yield* assertKnownFreshWindow(
-          { window: current.value },
+        const current = yield* host.getCurrent()
+        return yield* lookupKnownFreshWindow(
+          current.windowId,
           knownWindowIds,
+          windowHandleById,
           "Window.getCurrent"
         )
-        return window
       }),
     "Window.getById": (input: WindowLookupInput) =>
       Effect.gen(function* () {
-        const router = yield* requireAppEventRouter(options, "Window.getById")
-        const window = yield* router.getWindowById(input.windowId)
-        if (Option.isNone(window)) {
+        const found = yield* host.getById(input.windowId)
+        if (found.windowId !== input.windowId) {
           return yield* Effect.fail(
-            makeHostProtocolNotFoundError(`Window:${input.windowId}`, "Window.getById")
+            makeHostProtocolInvalidOutputError(
+              "Window.getById",
+              `host returned Window:${found.windowId} for requested Window:${input.windowId}`
+            )
           )
         }
-        const fresh = yield* assertKnownFreshWindow(
-          { window: window.value },
+        return yield* lookupKnownFreshWindow(
+          found.windowId,
           knownWindowIds,
+          windowHandleById,
           "Window.getById"
         )
-        return fresh.window
       }),
     "Window.list": () =>
       Effect.gen(function* () {
-        const router = yield* requireAppEventRouter(options, "Window.list")
-        const windows = yield* router.listWindows()
+        const listed = yield* host.list()
         const freshWindows = yield* Effect.forEach(
-          windows,
-          (window) =>
-            assertKnownFreshWindow({ window }, knownWindowIds, "Window.list").pipe(
-              Effect.map((result) => result.window)
+          listed.windows,
+          ({ windowId }) =>
+            lookupKnownFreshWindow(windowId, knownWindowIds, windowHandleById, "Window.list").pipe(
+              Effect.map((window) => window)
             ),
           { concurrency: "unbounded" }
         )
@@ -1208,6 +1165,21 @@ const assertKnownFreshWindow = (
       )
 
     return { window }
+  })
+
+const lookupKnownFreshWindow = (
+  windowId: string,
+  knownWindowIds: ReadonlySet<string>,
+  windowHandleById: ReadonlyMap<string, WindowHandle>,
+  operation: string
+): Effect.Effect<WindowHandle, WindowError, ResourceRegistry> =>
+  Effect.gen(function* () {
+    const window = windowHandleById.get(windowId)
+    if (window === undefined) {
+      return yield* Effect.fail(makeHostProtocolNotFoundError(`Window:${windowId}`, operation))
+    }
+    const fresh = yield* assertKnownFreshWindow({ window }, knownWindowIds, operation)
+    return fresh.window
   })
 
 const toHostWindowCreateInput = (

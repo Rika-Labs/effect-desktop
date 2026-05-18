@@ -646,7 +646,7 @@
     {
       "name": "HostWindowClient",
       "kind": "interface",
-      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setTitle: ( windowId: string, title: string ) => Effect.Effect<void, HostProtocolError, never> readonly setResizable: ( windowId: string, resizable: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setDecorations: ( windowId: string, decorations: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setAlwaysOnTop: ( windowId: string, alwaysOnTop: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setProgress: ( windowId: string, input: WindowProgressInput ) => Effect.Effect<void, HostProtocolError, never> readonly requestAttention: ( windowId: string, requestType: WindowAttentionTypeInput ) => Effect.Effect<void, HostProtocolError, never> readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setFullscreen: ( windowId: string, fullscreen: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly getState: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getCurrent: () => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly getById: ( windowId: string ) => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly list: () => Effect.Effect<WindowListResponse, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setTitle: ( windowId: string, title: string ) => Effect.Effect<void, HostProtocolError, never> readonly setResizable: ( windowId: string, resizable: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setDecorations: ( windowId: string, decorations: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setAlwaysOnTop: ( windowId: string, alwaysOnTop: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setProgress: ( windowId: string, input: WindowProgressInput ) => Effect.Effect<void, HostProtocolError, never> readonly requestAttention: ( windowId: string, requestType: WindowAttentionTypeInput ) => Effect.Effect<void, HostProtocolError, never> readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setFullscreen: ( windowId: string, fullscreen: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly getState: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "HostWindowClientOptions",
@@ -1089,6 +1089,16 @@
       "signature": "const WINDOW_GET_BOUNDS_METHOD: \"Window.getBounds\""
     },
     {
+      "name": "WINDOW_GET_BY_ID_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_GET_BY_ID_METHOD: \"Window.getById\""
+    },
+    {
+      "name": "WINDOW_GET_CURRENT_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_GET_CURRENT_METHOD: \"Window.getCurrent\""
+    },
+    {
       "name": "WINDOW_GET_STATE_METHOD",
       "kind": "value",
       "signature": "const WINDOW_GET_STATE_METHOD: \"Window.getState\""
@@ -1097,6 +1107,11 @@
       "name": "WINDOW_HIDE_METHOD",
       "kind": "value",
       "signature": "const WINDOW_HIDE_METHOD: \"Window.hide\""
+    },
+    {
+      "name": "WINDOW_LIST_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_LIST_METHOD: \"Window.list\""
     },
     {
       "name": "WINDOW_MAXIMIZE_METHOD",
@@ -1192,6 +1207,16 @@
       "name": "WindowDestroyPayload",
       "kind": "class",
       "signature": "export class WindowDestroyPayload extends Schema.Class<WindowDestroyPayload>( \"WindowDestroyPayload\" )({ windowId: Schema.NonEmptyString }) {}"
+    },
+    {
+      "name": "WindowListResponse",
+      "kind": "class",
+      "signature": "export class WindowListResponse extends Schema.Class<WindowListResponse>(\"WindowListResponse\")({ windows: Schema.Array(WindowLookupResponse) }) {}"
+    },
+    {
+      "name": "WindowLookupResponse",
+      "kind": "class",
+      "signature": "export class WindowLookupResponse extends Schema.Class<WindowLookupResponse>( \"WindowLookupResponse\" )({ windowId: Schema.NonEmptyString }) {}"
     },
     {
       "name": "WindowProgressInput",

@@ -36,8 +36,11 @@ import {
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_BY_ID_METHOD,
+  WINDOW_GET_CURRENT_METHOD,
   WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
+  WINDOW_LIST_METHOD,
   WINDOW_MAXIMIZE_METHOD,
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
@@ -165,6 +168,7 @@ export interface HeadlessHostCall {
 
 export interface HeadlessHostState {
   readonly windows: ReadonlyMap<string, WindowCreateInput>
+  readonly focusedWindowId: () => string | undefined
 }
 
 export interface MockHostApi {
@@ -185,10 +189,12 @@ const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<numbe
 export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
   const calls: HeadlessHostCall[] = []
   const windows = new Map<string, WindowCreateInput>()
+  let focusedWindowId: string | undefined
   let nextWindowId = 1
 
   const state: HeadlessHostState = {
-    windows
+    windows,
+    focusedWindowId: () => focusedWindowId
   }
 
   return Object.freeze({
@@ -217,13 +223,21 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
         if (request.method === WINDOW_CREATE_METHOD) {
           const windowId = yield* readWindowId(responsePayload, request.method)
           windows.set(windowId, readWindowCreateInput(request.payload))
+          focusedWindowId ??= windowId
           nextWindowId += 1
         } else if (request.method === WINDOW_DESTROY_METHOD) {
-          windows.delete(yield* readWindowId(request.payload, request.method))
+          const windowId = yield* readWindowId(request.payload, request.method)
+          windows.delete(windowId)
+          if (focusedWindowId === windowId) {
+            focusedWindowId = windows.keys().next().value
+          }
+        } else if (request.method === WINDOW_FOCUS_METHOD) {
+          focusedWindowId = yield* readWindowId(request.payload, request.method)
         } else if (
           request.method === WINDOW_SHOW_METHOD ||
           request.method === WINDOW_HIDE_METHOD ||
           request.method === WINDOW_FOCUS_METHOD ||
+          request.method === WINDOW_GET_BY_ID_METHOD ||
           request.method === WINDOW_GET_BOUNDS_METHOD ||
           request.method === WINDOW_CENTER_METHOD ||
           request.method === WINDOW_SET_TITLE_METHOD ||
@@ -807,6 +821,9 @@ export const runHeadless = <A, E, R>(
         show: (windowId) => rawWindow.show(windowId),
         hide: (windowId) => rawWindow.hide(windowId),
         focus: (windowId) => rawWindow.focus(windowId),
+        getCurrent: () => rawWindow.getCurrent(),
+        getById: (windowId) => rawWindow.getById(windowId),
+        list: () => rawWindow.list(),
         getBounds: (windowId) => rawWindow.getBounds(windowId),
         setBounds: (windowId, bounds) => rawWindow.setBounds(windowId, bounds),
         center: (windowId) => rawWindow.center(windowId),
@@ -908,6 +925,7 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_SHOW_METHOD:
     case WINDOW_HIDE_METHOD:
     case WINDOW_FOCUS_METHOD:
+    case WINDOW_GET_BY_ID_METHOD:
     case WINDOW_CENTER_METHOD:
     case WINDOW_SET_TITLE_METHOD:
     case WINDOW_SET_RESIZABLE_METHOD:
@@ -925,7 +943,26 @@ const defaultFixture = (method: string): HeadlessFixture => {
           if (!state.windows.has(windowId)) {
             return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
           }
+          if (request.method === WINDOW_GET_BY_ID_METHOD) {
+            return { windowId }
+          }
+          return undefined
         })
+    case WINDOW_GET_CURRENT_METHOD:
+      return (_request, state) =>
+        Effect.gen(function* () {
+          const windowId = state.focusedWindowId()
+          if (windowId === undefined) {
+            return yield* Effect.fail(
+              makeHostProtocolNotFoundError("Window:current", WINDOW_GET_CURRENT_METHOD)
+            )
+          }
+          return { windowId }
+        })
+    case WINDOW_LIST_METHOD:
+      return (_request, state) => ({
+        windows: Array.from(state.windows.keys(), (windowId) => ({ windowId }))
+      })
     case WINDOW_GET_BOUNDS_METHOD:
       return (request, state) =>
         Effect.gen(function* () {

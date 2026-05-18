@@ -5,9 +5,10 @@
 use crate::window::{WindowCreateRequest, WindowMethodHandler};
 use host_protocol::{
     HostProtocolError, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowDestroyPayload, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
-    WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
-    WindowSetProgressPayload, WindowSetResizablePayload, WindowSetTitlePayload, WindowStatePayload,
+    WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowRequestAttentionPayload,
+    WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
+    WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
+    WindowSetTitlePayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -59,6 +60,45 @@ pub(crate) fn focus(
     handler.focus(payload.window_id())?;
 
     Ok(None)
+}
+
+pub(crate) fn get_current(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    decode_empty_payload(payload, host_protocol::WINDOW_GET_CURRENT_METHOD)?;
+    let response = handler.get_current()?;
+
+    Ok(Some(encode_lookup_response(
+        response,
+        host_protocol::WINDOW_GET_CURRENT_METHOD,
+    )?))
+}
+
+pub(crate) fn get_by_id(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_window_payload(payload, host_protocol::WINDOW_GET_BY_ID_METHOD)?;
+    let response = handler.get_by_id(payload.window_id())?;
+
+    Ok(Some(encode_lookup_response(
+        response,
+        host_protocol::WINDOW_GET_BY_ID_METHOD,
+    )?))
+}
+
+pub(crate) fn list(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    decode_empty_payload(payload, host_protocol::WINDOW_LIST_METHOD)?;
+    let response = handler.list()?;
+
+    Ok(Some(encode_list_response(
+        response,
+        host_protocol::WINDOW_LIST_METHOD,
+    )?))
 }
 
 pub(crate) fn get_bounds(
@@ -225,6 +265,21 @@ fn decode_required_destroy_payload(
     payload: Option<Value>,
 ) -> Result<WindowDestroyPayload, HostProtocolError> {
     decode_required_window_payload(payload, host_protocol::WINDOW_DESTROY_METHOD)
+}
+
+fn decode_empty_payload(
+    payload: Option<Value>,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    if payload.is_none() {
+        return Ok(());
+    }
+
+    Err(HostProtocolError::invalid_argument(
+        "payload",
+        format!("{operation} does not accept payload"),
+        operation,
+    ))
 }
 
 fn decode_required_window_payload(
@@ -599,6 +654,30 @@ fn encode_create_response(payload: WindowCreateResponse) -> Result<Value, HostPr
                 host_protocol::WINDOW_CREATE_METHOD
             ),
             host_protocol::WINDOW_CREATE_METHOD,
+        )
+    })
+}
+
+fn encode_lookup_response(
+    payload: WindowLookupResponse,
+    operation: &'static str,
+) -> Result<Value, HostProtocolError> {
+    serde_json::to_value(payload).map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to encode {operation} response payload: {error}"),
+            operation,
+        )
+    })
+}
+
+fn encode_list_response(
+    payload: WindowListResponse,
+    operation: &'static str,
+) -> Result<Value, HostProtocolError> {
+    serde_json::to_value(payload).map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to encode {operation} response payload: {error}"),
+            operation,
         )
     })
 }

@@ -300,6 +300,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::focus),
     ),
     route(
+        host_protocol::WINDOW_GET_CURRENT_METHOD,
+        HostMethodDispatcher::Window(window::get_current),
+    ),
+    route(
+        host_protocol::WINDOW_GET_BY_ID_METHOD,
+        HostMethodDispatcher::Window(window::get_by_id),
+    ),
+    route(
+        host_protocol::WINDOW_LIST_METHOD,
+        HostMethodDispatcher::Window(window::list),
+    ),
+    route(
         host_protocol::WINDOW_GET_BOUNDS_METHOD,
         HostMethodDispatcher::Window(window::get_bounds),
     ),
@@ -1863,6 +1875,9 @@ mod tests {
         assert_eq!(unique.len(), methods.len());
         assert!(unique.contains(host_protocol::HOST_PING_METHOD));
         assert!(unique.contains(host_protocol::WINDOW_CREATE_METHOD));
+        assert!(unique.contains(host_protocol::WINDOW_GET_CURRENT_METHOD));
+        assert!(unique.contains(host_protocol::WINDOW_GET_BY_ID_METHOD));
+        assert!(unique.contains(host_protocol::WINDOW_LIST_METHOD));
         assert!(unique.contains(host_protocol::EGRESS_POLICY_RECORD_METHOD));
         assert!(unique.contains(host_protocol::EXECUTION_SANDBOX_CREATE_METHOD));
         assert!(!unique.contains("host.missing"));
@@ -3216,6 +3231,130 @@ mod tests {
                     "payload",
                     "windowId must be non-empty",
                     host_protocol::WINDOW_SHOW_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn window_lookup_methods_route_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+
+        let current_response = router
+            .dispatch_at(
+                request(
+                    "request-window-get-current",
+                    host_protocol::WINDOW_GET_CURRENT_METHOD,
+                ),
+                1710000000110,
+            )
+            .expect("window get current should return response");
+        assert_eq!(
+            current_response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-current".to_string(),
+                timestamp: 1710000000110,
+                trace_id: "trace-request-window-get-current".to_string(),
+                payload: Some(serde_json::json!({ "windowId": "window-current" })),
+                error: None,
+            }
+        );
+
+        let by_id_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-by-id",
+                    host_protocol::WINDOW_GET_BY_ID_METHOD,
+                    serde_json::json!({ "windowId": "window-1" }),
+                ),
+                1710000000111,
+            )
+            .expect("window get by id should return response");
+        assert_eq!(
+            by_id_response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-by-id".to_string(),
+                timestamp: 1710000000111,
+                trace_id: "trace-request-window-get-by-id".to_string(),
+                payload: Some(serde_json::json!({ "windowId": "window-1" })),
+                error: None,
+            }
+        );
+
+        let list_response = router
+            .dispatch_at(
+                request("request-window-list", host_protocol::WINDOW_LIST_METHOD),
+                1710000000112,
+            )
+            .expect("window list should return response");
+        assert_eq!(
+            list_response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-list".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-window-list".to_string(),
+                payload: Some(serde_json::json!({
+                    "windows": [{ "windowId": "window-1" }, { "windowId": "window-2" }]
+                })),
+                error: None,
+            }
+        );
+
+        assert_eq!(fake.lookup_ids(), vec!["window-1".to_string()]);
+    }
+
+    #[test]
+    fn window_lookup_methods_validate_payloads() {
+        let invalid_get_current = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-current-invalid",
+                    host_protocol::WINDOW_GET_CURRENT_METHOD,
+                    serde_json::json!({ "windowId": "window-1" }),
+                ),
+                1710000000113,
+            )
+            .expect("invalid window get current should return response");
+        assert_eq!(
+            invalid_get_current,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-current-invalid".to_string(),
+                timestamp: 1710000000113,
+                trace_id: "trace-request-window-get-current-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "payload",
+                    "Window.getCurrent does not accept payload",
+                    host_protocol::WINDOW_GET_CURRENT_METHOD,
+                )),
+            }
+        );
+
+        let invalid_get_by_id = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-by-id-invalid",
+                    host_protocol::WINDOW_GET_BY_ID_METHOD,
+                    serde_json::json!({ "windowId": "" }),
+                ),
+                1710000000114,
+            )
+            .expect("invalid window get by id should return response");
+        assert_eq!(
+            invalid_get_by_id,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-by-id-invalid".to_string(),
+                timestamp: 1710000000114,
+                trace_id: "trace-request-window-get-by-id-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "payload",
+                    "windowId must be non-empty",
+                    host_protocol::WINDOW_GET_BY_ID_METHOD,
                 )),
             }
         );
@@ -6091,6 +6230,7 @@ mod tests {
         shown: Mutex<Vec<String>>,
         hidden: Mutex<Vec<String>>,
         focused: Mutex<Vec<String>>,
+        lookup_ids: Mutex<Vec<String>>,
         titles: Mutex<Vec<(String, String)>>,
         resizable: Mutex<Vec<(String, bool)>>,
         decorations: Mutex<Vec<(String, bool)>>,
@@ -6117,6 +6257,7 @@ mod tests {
                 shown: Mutex::new(Vec::new()),
                 hidden: Mutex::new(Vec::new()),
                 focused: Mutex::new(Vec::new()),
+                lookup_ids: Mutex::new(Vec::new()),
                 titles: Mutex::new(Vec::new()),
                 resizable: Mutex::new(Vec::new()),
                 decorations: Mutex::new(Vec::new()),
@@ -6164,6 +6305,13 @@ mod tests {
             self.focused
                 .lock()
                 .expect("fake focused requests should lock")
+                .clone()
+        }
+
+        fn lookup_ids(&self) -> Vec<String> {
+            self.lookup_ids
+                .lock()
+                .expect("fake lookup requests should lock")
                 .clone()
         }
 
@@ -6283,6 +6431,28 @@ mod tests {
                 .expect("fake focused requests should lock")
                 .push(window_id.to_string());
             Ok(())
+        }
+
+        fn get_current(&self) -> Result<host_protocol::WindowLookupResponse, HostProtocolError> {
+            Ok(host_protocol::WindowLookupResponse::new("window-current"))
+        }
+
+        fn get_by_id(
+            &self,
+            window_id: &str,
+        ) -> Result<host_protocol::WindowLookupResponse, HostProtocolError> {
+            self.lookup_ids
+                .lock()
+                .expect("fake lookup requests should lock")
+                .push(window_id.to_string());
+            Ok(host_protocol::WindowLookupResponse::new(window_id))
+        }
+
+        fn list(&self) -> Result<host_protocol::WindowListResponse, HostProtocolError> {
+            Ok(host_protocol::WindowListResponse::new(vec![
+                host_protocol::WindowLookupResponse::new("window-1"),
+                host_protocol::WindowLookupResponse::new("window-2"),
+            ]))
         }
 
         fn get_bounds(&self, _window_id: &str) -> Result<WindowBoundsPayload, HostProtocolError> {

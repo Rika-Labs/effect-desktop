@@ -20,6 +20,8 @@ import {
   HOST_VERSION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  WINDOW_FOCUS_METHOD,
+  WINDOW_GET_CURRENT_METHOD,
   HostProtocolUnsupportedError,
   HostProtocolRequestEnvelope,
   HostProtocolInvalidOutputError,
@@ -566,6 +568,48 @@ test("runHeadless records host calls and exits without leaked windows", async ()
     WINDOW_DESTROY_METHOD
   ])
   expect(result.protocolVersion).toBe(HOST_PROTOCOL_VERSION)
+})
+
+test("runHeadless tracks the focused host window for getCurrent", async () => {
+  const result = await Effect.runPromise(
+    runHeadless(
+      (runtime) =>
+        Effect.gen(function* () {
+          const first = yield* runtime.window.create({ title: "First" })
+          const second = yield* runtime.window.create({ title: "Second" })
+          const currentBeforeFocus = yield* runtime.window.getCurrent()
+          yield* runtime.window.focus(second.windowId)
+          const currentAfterFocus = yield* runtime.window.getCurrent()
+          yield* runtime.window.destroy(second.windowId)
+          yield* runtime.window.destroy(first.windowId)
+
+          return {
+            calls: runtime.calls().map((call) => call.method),
+            currentAfterFocus: currentAfterFocus.windowId,
+            currentBeforeFocus: currentBeforeFocus.windowId,
+            first: first.windowId,
+            second: second.windowId
+          }
+        }),
+      {
+        nextRequestId: nextSequence("request"),
+        nextTraceId: nextSequence("trace"),
+        now: () => 1710000000100
+      }
+    )
+  )
+
+  expect(result.currentBeforeFocus).toBe(result.first)
+  expect(result.currentAfterFocus).toBe(result.second)
+  expect(result.calls).toEqual([
+    WINDOW_CREATE_METHOD,
+    WINDOW_CREATE_METHOD,
+    WINDOW_GET_CURRENT_METHOD,
+    WINDOW_FOCUS_METHOD,
+    WINDOW_GET_CURRENT_METHOD,
+    WINDOW_DESTROY_METHOD,
+    WINDOW_DESTROY_METHOD
+  ])
 })
 
 test("MockHost layer speaks host protocol in-process and preserves trace IDs", async () => {

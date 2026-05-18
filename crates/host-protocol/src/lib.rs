@@ -48,6 +48,9 @@ pub const WINDOW_CREATE_METHOD: &str = "Window.create";
 pub const WINDOW_SHOW_METHOD: &str = "Window.show";
 pub const WINDOW_HIDE_METHOD: &str = "Window.hide";
 pub const WINDOW_FOCUS_METHOD: &str = "Window.focus";
+pub const WINDOW_GET_CURRENT_METHOD: &str = "Window.getCurrent";
+pub const WINDOW_GET_BY_ID_METHOD: &str = "Window.getById";
+pub const WINDOW_LIST_METHOD: &str = "Window.list";
 pub const WINDOW_GET_BOUNDS_METHOD: &str = "Window.getBounds";
 pub const WINDOW_SET_BOUNDS_METHOD: &str = "Window.setBounds";
 pub const WINDOW_CENTER_METHOD: &str = "Window.center";
@@ -2717,6 +2720,40 @@ impl WindowCreateResponse {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowDestroyPayload {
     window_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowLookupResponse {
+    window_id: String,
+}
+
+impl WindowLookupResponse {
+    pub fn new(window_id: impl Into<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowListResponse {
+    windows: Vec<WindowLookupResponse>,
+}
+
+impl WindowListResponse {
+    pub fn new(windows: Vec<WindowLookupResponse>) -> Self {
+        Self { windows }
+    }
+
+    pub fn windows(&self) -> &[WindowLookupResponse] {
+        &self.windows
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -10684,13 +10721,14 @@ mod tests {
         TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
         UpdaterStatusPayload, UpdaterStatusState, WindowAttentionType, WindowBoundsPayload,
-        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowProgressState,
-        WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
-        WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
-        WindowSetResizablePayload, WindowSetTitlePayload, WindowStatePayload, WindowTitleBarStyle,
-        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
-        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
-        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowListResponse,
+        WindowLookupResponse, WindowProgressState, WindowRequestAttentionPayload,
+        WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
+        WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
+        WindowSetTitlePayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
+        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
+        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
         WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
@@ -11690,6 +11728,54 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&payload).expect("window destroy payload should encode"),
             r#"{"windowId":"window-1"}"#
+        );
+    }
+
+    #[test]
+    fn window_lookup_payloads_serialize_canonically() {
+        let lookup = WindowLookupResponse::new("window-1");
+
+        assert_eq!(lookup.window_id(), "window-1");
+        assert_eq!(
+            serde_json::to_string(&lookup).expect("window lookup response should encode"),
+            r#"{"windowId":"window-1"}"#
+        );
+
+        let list = WindowListResponse::new(vec![
+            WindowLookupResponse::new("window-1"),
+            WindowLookupResponse::new("window-2"),
+        ]);
+        assert_eq!(
+            list.windows()
+                .iter()
+                .map(WindowLookupResponse::window_id)
+                .collect::<Vec<_>>(),
+            vec!["window-1", "window-2"]
+        );
+        assert_eq!(
+            serde_json::to_string(&list).expect("window list response should encode"),
+            r#"{"windows":[{"windowId":"window-1"},{"windowId":"window-2"}]}"#
+        );
+    }
+
+    #[test]
+    fn window_lookup_payloads_reject_unknown_fields() {
+        let error = serde_json::from_str::<WindowLookupResponse>(
+            r#"{"windowId":"window-1","unknown":true}"#,
+        )
+        .expect_err("excess window lookup response fields must fail");
+        assert!(
+            error.to_string().contains("unknown field `unknown`"),
+            "unexpected error: {error}"
+        );
+
+        let error = serde_json::from_str::<WindowListResponse>(
+            r#"{"windows":[{"windowId":"window-1"}],"unknown":true}"#,
+        )
+        .expect_err("excess window list response fields must fail");
+        assert!(
+            error.to_string().contains("unknown field `unknown`"),
+            "unexpected error: {error}"
         );
     }
 

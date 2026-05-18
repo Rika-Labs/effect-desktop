@@ -14,6 +14,8 @@ import {
   WINDOW_DESTROY_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_BY_ID_METHOD,
+  WINDOW_GET_CURRENT_METHOD,
   WINDOW_GET_STATE_METHOD,
   WINDOW_HIDE_METHOD,
   WINDOW_MAXIMIZE_METHOD,
@@ -7927,6 +7929,18 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
       const hostExchange: HostWindowExchange = {
         request: (request) => {
           requests.push(request)
+          const currentWindowId =
+            request.method === "Window.getCurrent" &&
+            requests.some((sent) => sent.method === WINDOW_FOCUS_METHOD)
+              ? "host-child"
+              : "host-parent"
+          const requestedWindowId =
+            typeof request.payload === "object" &&
+            request.payload !== null &&
+            "windowId" in request.payload &&
+            typeof request.payload.windowId === "string"
+              ? request.payload.windowId
+              : "host-parent"
           return Effect.succeed(
             new HostProtocolResponseEnvelope({
               kind: "response",
@@ -7935,7 +7949,17 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
               traceId: request.traceId,
               ...(request.method === WINDOW_CREATE_METHOD
                 ? { payload: { windowId: createWindowIds() } }
-                : {})
+                : request.method === "Window.getCurrent"
+                  ? { payload: { windowId: currentWindowId } }
+                  : request.method === "Window.getById"
+                    ? { payload: { windowId: requestedWindowId } }
+                    : request.method === "Window.list"
+                      ? {
+                          payload: {
+                            windows: [{ windowId: "host-parent" }, { windowId: "host-child" }]
+                          }
+                        }
+                      : {})
             })
           )
         }
@@ -8007,9 +8031,14 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
   )
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [WINDOW_CREATE_METHOD, { title: "Parent" }],
+    ["Window.getCurrent", undefined],
     [WINDOW_CREATE_METHOD, { title: "Child", parentWindowId: "host-parent" }],
+    ["Window.list", undefined],
+    ["Window.getById", { windowId: "host-parent" }],
     [WINDOW_FOCUS_METHOD, { windowId: "host-child" }],
+    ["Window.getCurrent", undefined],
     [WINDOW_DESTROY_METHOD, { windowId: "host-child" }],
+    ["Window.getById", { windowId: "host-child" }],
     [WINDOW_DESTROY_METHOD, { windowId: "host-parent" }]
   ])
 })
@@ -8055,17 +8084,24 @@ test("native host RPC runtime denies Window.getCurrent before lookup work", asyn
   expect(requests).toEqual([])
 })
 
-test("Window lookup returns unsupported without runtime router", async () => {
+test("Window lookup uses host transport without runtime router", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
   const registry = await Effect.runPromise(makeResourceRegistry())
-  const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
+  const rpcExchange = makeWindowRpcExchange(windowExchange(requests), registry)
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const window = yield* Window
-      return yield* Effect.exit(window.getCurrent())
+      const created = yield* window.create({ title: "Lookup" })
+      const current = yield* window.getCurrent()
+      return { created, current }
     }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
   )
 
-  expectExitFailure(result, (error) => hasErrorTag(error, "Unsupported"))
+  expect(result.current.id).toBe(result.created.id)
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_CREATE_METHOD, { title: "Lookup" }],
+    ["Window.getCurrent", undefined]
+  ])
 })
 
 test("native host RPC runtime denies owned child Window.create before host transport", async () => {
@@ -8176,6 +8212,95 @@ test("host WindowClient adapter propagates owned child create host failure", asy
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [WINDOW_CREATE_METHOD, { title: "Parent" }],
     [WINDOW_CREATE_METHOD, { title: "Child", parentWindowId: "host-parent" }]
+  ])
+})
+
+test("host WindowClient adapter propagates lookup host failure", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const hostExchange: HostWindowExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed(
+        new HostProtocolResponseEnvelope({
+          kind: "response",
+          id: request.id,
+          timestamp: request.timestamp + 1,
+          traceId: request.traceId,
+          ...(request.method === WINDOW_CREATE_METHOD
+            ? { payload: { windowId: "host-window" } }
+            : { error: makeHostProtocolHostUnavailableError(WINDOW_GET_CURRENT_METHOD) })
+        })
+      )
+    }
+  }
+  const rpcExchange = makeWindowRpcExchange(hostExchange, registry, {
+    nextRequestId: nextId(["create-request", "get-current-request"]),
+    nextTraceId: nextId(["create-trace", "get-current-trace"]),
+    now: nextNumber([1_710_000_001_200, 1_710_000_001_201])
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.create({ title: "Lookup" })
+      return yield* Effect.exit(window.getCurrent())
+    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+  )
+
+  expectExitFailure(result, (error) => hasErrorTag(error, "HostUnavailable"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_CREATE_METHOD, { title: "Lookup" }],
+    [WINDOW_GET_CURRENT_METHOD, undefined]
+  ])
+})
+
+test("host WindowClient adapter rejects mismatched lookup host output", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const createWindowIds = nextId(["host-parent", "host-child"])
+  const hostExchange: HostWindowExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed(
+        new HostProtocolResponseEnvelope({
+          kind: "response",
+          id: request.id,
+          timestamp: request.timestamp + 1,
+          traceId: request.traceId,
+          ...(request.method === WINDOW_CREATE_METHOD
+            ? { payload: { windowId: createWindowIds() } }
+            : request.method === WINDOW_GET_BY_ID_METHOD
+              ? { payload: { windowId: "host-child" } }
+              : {})
+        })
+      )
+    }
+  }
+  const rpcExchange = makeWindowRpcExchange(hostExchange, registry, {
+    nextRequestId: nextId(["create-parent-request", "create-child-request", "get-by-id-request"]),
+    nextTraceId: nextId(["create-parent-trace", "create-child-trace", "get-by-id-trace"]),
+    now: nextNumber([1_710_000_001_300, 1_710_000_001_301, 1_710_000_001_302])
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const parent = yield* window.create({ title: "Parent" })
+      yield* window.create({ title: "Child", parent })
+      return yield* Effect.exit(window.getById(String(parent.id)))
+    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+  )
+
+  expectExitFailure(
+    result,
+    (error) =>
+      error instanceof HostProtocolInvalidOutputError && error.operation === WINDOW_GET_BY_ID_METHOD
+  )
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_CREATE_METHOD, { title: "Parent" }],
+    [WINDOW_CREATE_METHOD, { title: "Child", parentWindowId: "host-parent" }],
+    [WINDOW_GET_BY_ID_METHOD, { windowId: "host-parent" }]
   ])
 })
 
@@ -9962,11 +10087,15 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
         traceId: request.traceId,
         ...(request.method === WINDOW_CREATE_METHOD
           ? { payload: { windowId: "host-window-1" } }
-          : request.method === WINDOW_GET_BOUNDS_METHOD
-            ? { payload: { x: 10, y: 20, width: 640, height: 480 } }
-            : request.method === WINDOW_GET_STATE_METHOD
-              ? { payload: { minimized: false, maximized: true, fullscreen: true } }
-              : {})
+          : request.method === "Window.getCurrent" || request.method === "Window.getById"
+            ? { payload: { windowId: "host-window-1" } }
+            : request.method === "Window.list"
+              ? { payload: { windows: [{ windowId: "host-window-1" }] } }
+              : request.method === WINDOW_GET_BOUNDS_METHOD
+                ? { payload: { x: 10, y: 20, width: 640, height: 480 } }
+                : request.method === WINDOW_GET_STATE_METHOD
+                  ? { payload: { minimized: false, maximized: true, fullscreen: true } }
+                  : {})
       })
     )
   }

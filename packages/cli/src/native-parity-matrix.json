@@ -4098,27 +4098,9 @@
       "method": "getById",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "runtime-router-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "runtime-router-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "runtime-router-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "runtime-router-only"
-          }
-        ]
+        "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Window.getCurrent",
@@ -4126,27 +4108,9 @@
       "method": "getCurrent",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "runtime-router-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "runtime-router-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "runtime-router-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "runtime-router-only"
-          }
-        ]
+        "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Window.getState",
@@ -4174,27 +4138,9 @@
       "method": "list",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "runtime-router-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "runtime-router-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "runtime-router-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "runtime-router-only"
-          }
-        ]
+        "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Window.maximize",
@@ -4359,10 +4305,10 @@
   ],
   "summary": {
     "total": 220,
-    "routed": 195,
-    "missing": 25,
-    "supported": 99,
-    "partial": 25,
+    "routed": 198,
+    "missing": 22,
+    "supported": 102,
+    "partial": 22,
     "unsupported": 96
   }
 }

@@ -9,7 +9,8 @@ use host_protocol::{
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
     ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
     WindowAttentionType, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowProgressState, WindowSetProgressPayload, WindowStatePayload,
+    WindowListResponse, WindowLookupResponse, WindowProgressState, WindowSetProgressPayload,
+    WindowStatePayload,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -26,6 +27,7 @@ use tao::{
     monitor::MonitorHandle,
     window::{
         Fullscreen, ProgressBarState, ProgressState, UserAttentionType, Window, WindowBuilder,
+        WindowId,
     },
 };
 use tracing::{info, warn};
@@ -71,6 +73,15 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
     fn hide(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
     fn focus(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn get_current(&self) -> std::result::Result<WindowLookupResponse, HostProtocolError>;
+
+    fn get_by_id(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowLookupResponse, HostProtocolError>;
+
+    fn list(&self) -> std::result::Result<WindowListResponse, HostProtocolError>;
 
     fn get_bounds(
         &self,
@@ -256,6 +267,16 @@ enum WindowCommand {
         window_id: String,
         reply: Sender<WindowCommandReply>,
     },
+    GetCurrent {
+        reply: Sender<WindowCommandReply>,
+    },
+    GetById {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    List {
+        reply: Sender<WindowCommandReply>,
+    },
     GetBounds {
         window_id: String,
         reply: Sender<WindowCommandReply>,
@@ -398,6 +419,8 @@ enum WindowCommandResponse {
     Created(WindowCreateResponse),
     Destroyed,
     WindowUpdated,
+    WindowLookup(WindowLookupResponse),
+    WindowList(WindowListResponse),
     WindowBounds(WindowBoundsPayload),
     WindowState(WindowStatePayload),
     DockBadgeLabelSet,
@@ -436,6 +459,9 @@ struct NativeTrayResources {
 
 struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
+    window_id_by_native_id: HashMap<WindowId, String>,
+    window_order: Vec<String>,
+    focused_window_id: Option<String>,
     child_window_ids_by_parent_id: HashMap<String, HashSet<String>>,
     parent_window_id_by_child_id: HashMap<String, String>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -520,6 +546,8 @@ impl WindowMethodPort {
             WindowCommandResponse::WindowUpdated => Ok(()),
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
@@ -571,6 +599,14 @@ impl WindowMethodHandler for WindowMethodPort {
             )),
             WindowCommandResponse::Destroyed => Err(HostProtocolError::internal(
                 "window create received destroy response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
+            WindowCommandResponse::WindowLookup(_) => Err(HostProtocolError::internal(
+                "window create received lookup response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
+            WindowCommandResponse::WindowList(_) => Err(HostProtocolError::internal(
+                "window create received list response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
             WindowCommandResponse::WindowUpdated => Err(HostProtocolError::internal(
@@ -627,6 +663,14 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window destroy received create response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
+            WindowCommandResponse::WindowLookup(_) => Err(HostProtocolError::internal(
+                "window destroy received lookup response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
+            WindowCommandResponse::WindowList(_) => Err(HostProtocolError::internal(
+                "window destroy received list response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
             WindowCommandResponse::WindowUpdated => Err(HostProtocolError::internal(
                 "window destroy received lifecycle response",
                 host_protocol::WINDOW_DESTROY_METHOD,
@@ -648,6 +692,51 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "window destroy received tray response",
                 host_protocol::WINDOW_DESTROY_METHOD,
+            )),
+        }
+    }
+
+    fn get_current(&self) -> std::result::Result<WindowLookupResponse, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetCurrent { reply: reply_tx })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowLookup(response) => Ok(response),
+            _ => Err(HostProtocolError::internal(
+                "window get current received unrelated response",
+                host_protocol::WINDOW_GET_CURRENT_METHOD,
+            )),
+        }
+    }
+
+    fn get_by_id(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowLookupResponse, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetById {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowLookup(response) => Ok(response),
+            _ => Err(HostProtocolError::internal(
+                "window get by id received unrelated response",
+                host_protocol::WINDOW_GET_BY_ID_METHOD,
+            )),
+        }
+    }
+
+    fn list(&self) -> std::result::Result<WindowListResponse, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::List { reply: reply_tx })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowList(response) => Ok(response),
+            _ => Err(HostProtocolError::internal(
+                "window list received unrelated response",
+                host_protocol::WINDOW_LIST_METHOD,
             )),
         }
     }
@@ -697,6 +786,8 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockAttentionRequested
@@ -900,6 +991,8 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::DockBadgeLabelSet
             | WindowCommandResponse::DockAttentionRequested
@@ -935,6 +1028,8 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockAttentionRequested
@@ -965,6 +1060,8 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
@@ -998,6 +1095,8 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
@@ -1031,6 +1130,8 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
@@ -1066,6 +1167,8 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(_)
             | WindowCommandResponse::Destroyed
             | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
@@ -1403,6 +1506,9 @@ impl WindowRegistry {
     fn new() -> Self {
         Self {
             windows: HashMap::new(),
+            window_id_by_native_id: HashMap::new(),
+            window_order: Vec::new(),
+            focused_window_id: None,
             child_window_ids_by_parent_id: HashMap::new(),
             parent_window_id_by_child_id: HashMap::new(),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -1452,6 +1558,7 @@ impl WindowRegistry {
         );
 
         let webview = webview::attach_app_webview(&window).map_err(|error| *error)?;
+        let native_window_id = window.id();
         self.windows.insert(
             window_id.clone(),
             NativeWindowResources {
@@ -1459,6 +1566,7 @@ impl WindowRegistry {
                 _webview: webview,
             },
         );
+        self.track_window_opened(&window_id, native_window_id);
         if let Some(parent_window_id) = parent_window_id {
             self.child_window_ids_by_parent_id
                 .entry(parent_window_id.clone())
@@ -1486,7 +1594,44 @@ impl WindowRegistry {
                 "host window destroyed"
             );
         }
+        self.select_fallback_focus();
         Ok(())
+    }
+
+    fn track_window_opened(&mut self, window_id: &str, native_window_id: WindowId) {
+        self.window_id_by_native_id
+            .insert(native_window_id, window_id.to_string());
+        self.window_order.push(window_id.to_string());
+        if self.focused_window_id.is_none() {
+            self.focused_window_id = Some(window_id.to_string());
+        }
+    }
+
+    fn track_window_focused(&mut self, window_id: &str) {
+        self.focused_window_id = Some(window_id.to_string());
+    }
+
+    fn forget_window_id(&mut self, window_id: &str) {
+        self.window_order
+            .retain(|open_window_id| open_window_id != window_id);
+        if self.focused_window_id.as_deref() == Some(window_id) {
+            self.focused_window_id = None;
+        }
+    }
+
+    fn select_fallback_focus(&mut self) {
+        if self
+            .focused_window_id
+            .as_ref()
+            .is_some_and(|window_id| self.windows.contains_key(window_id))
+        {
+            return;
+        }
+        self.focused_window_id = self
+            .window_order
+            .iter()
+            .find(|window_id| self.windows.contains_key(window_id.as_str()))
+            .cloned();
     }
 
     fn remove_window_tree(&mut self, window_id: &str) -> Vec<String> {
@@ -1502,7 +1647,10 @@ impl WindowRegistry {
             destroyed_window_ids.extend(self.remove_window_tree(&child_window_id));
         }
 
-        self.windows.remove(window_id);
+        if let Some(resources) = self.windows.remove(window_id) {
+            self.window_id_by_native_id.remove(&resources._window.id());
+        }
+        self.forget_window_id(window_id);
         if let Some(parent_window_id) = self.parent_window_id_by_child_id.remove(window_id) {
             if let Some(siblings) = self
                 .child_window_ids_by_parent_id
@@ -1526,7 +1674,7 @@ impl WindowRegistry {
         self.set_visible(window_id, false, host_protocol::WINDOW_HIDE_METHOD)
     }
 
-    fn focus(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn focus(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -1535,7 +1683,58 @@ impl WindowRegistry {
         };
 
         resources._window.set_focus();
+        self.track_window_focused(window_id);
         Ok(())
+    }
+
+    fn track_native_window_focused(&mut self, native_window_id: WindowId) {
+        let Some(window_id) = self.window_id_by_native_id.get(&native_window_id).cloned() else {
+            return;
+        };
+        if self.windows.contains_key(&window_id) {
+            self.track_window_focused(&window_id);
+        }
+    }
+
+    fn get_current(&self) -> std::result::Result<WindowLookupResponse, HostProtocolError> {
+        let Some(window_id) = self.focused_window_id.as_deref() else {
+            return Err(HostProtocolError::not_found(
+                "Window:current",
+                host_protocol::WINDOW_GET_CURRENT_METHOD,
+            ));
+        };
+        self.get_by_id_with_operation(window_id, host_protocol::WINDOW_GET_CURRENT_METHOD)
+    }
+
+    fn get_by_id(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowLookupResponse, HostProtocolError> {
+        self.get_by_id_with_operation(window_id, host_protocol::WINDOW_GET_BY_ID_METHOD)
+    }
+
+    fn list(&self) -> std::result::Result<WindowListResponse, HostProtocolError> {
+        Ok(WindowListResponse::new(
+            self.window_order
+                .iter()
+                .filter(|window_id| self.windows.contains_key(window_id.as_str()))
+                .map(WindowLookupResponse::new)
+                .collect(),
+        ))
+    }
+
+    fn get_by_id_with_operation(
+        &self,
+        window_id: &str,
+        operation: &'static str,
+    ) -> std::result::Result<WindowLookupResponse, HostProtocolError> {
+        if !self.windows.contains_key(window_id) {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                operation,
+            ));
+        }
+        Ok(WindowLookupResponse::new(window_id))
     }
 
     fn get_bounds(
@@ -2242,6 +2441,23 @@ impl WindowRegistry {
                 );
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::GetCurrent { reply } => {
+                let result = self.get_current().map(WindowCommandResponse::WindowLookup);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GetById { window_id, reply } => {
+                let result = self
+                    .get_by_id(&window_id)
+                    .map(WindowCommandResponse::WindowLookup);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::List { reply } => {
+                let result = self.list().map(WindowCommandResponse::WindowList);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::GetBounds { window_id, reply } => {
                 let result = self
                     .get_bounds(&window_id)
@@ -2520,6 +2736,8 @@ fn unexpected_tray_response(
         WindowCommandResponse::Created(_) => "tray command received window create response",
         WindowCommandResponse::Destroyed => "tray command received window destroy response",
         WindowCommandResponse::WindowUpdated => "tray command received window lifecycle response",
+        WindowCommandResponse::WindowLookup(_) => "tray command received window lookup response",
+        WindowCommandResponse::WindowList(_) => "tray command received window list response",
         WindowCommandResponse::WindowBounds(_) => "tray command received window bounds response",
         WindowCommandResponse::WindowState(_) => "tray command received window state response",
         WindowCommandResponse::DockBadgeLabelSet => "tray command received dock badge response",
@@ -2547,6 +2765,8 @@ fn unexpected_screen_response(
         WindowCommandResponse::Created(_) => "screen command received window create response",
         WindowCommandResponse::Destroyed => "screen command received window destroy response",
         WindowCommandResponse::WindowUpdated => "screen command received window lifecycle response",
+        WindowCommandResponse::WindowLookup(_) => "screen command received window lookup response",
+        WindowCommandResponse::WindowList(_) => "screen command received window list response",
         WindowCommandResponse::WindowBounds(_) => "screen command received window bounds response",
         WindowCommandResponse::WindowState(_) => "screen command received window state response",
         WindowCommandResponse::DockBadgeLabelSet => "screen command received dock badge response",
@@ -3208,6 +3428,14 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
         let lifecycle_event = match event {
             Event::NewEvents(_) => {
                 registry.handle_pending_window_commands(target, mode, &command_source)
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::Focused(true),
+                ..
+            } => {
+                registry.track_native_window_focused(window_id);
+                WindowLifecycleEvent::Other
             }
             event if is_screen_displays_changed_event(&event) => {
                 if let Err(error) = registry.emit_screen_displays_changed(target) {
