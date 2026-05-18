@@ -1,6 +1,6 @@
 ---
 title: Menu (native)
-description: App and window menus.
+description: App and window menus with typed command-binding contracts.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Menu`
 
-App and window menus. Menu items can bind to command ids registered with `CommandRegistry`.
+App and window menus. Menu items can bind to command ids registered with `CommandRegistry` through the TypeScript service, but the Rust host currently routes only application/window menu installation. Real native menu activation events and host-backed `bindCommand` are not wired yet.
 
 ## Import
 
@@ -23,11 +23,13 @@ import { Menu, MenuError, MenuRpcs, Native } from "@effect-desktop/native"
 | -------------------- | ----------------------- | ------------------------ |
 | `setApplicationMenu` | `{ template }`          | `void`                   |
 | `setWindowMenu`      | `{ window, template }`  | `void`                   |
-| `clear`              | `{ scope?, window? }`   | `void`                   |
+| `clear`              | `{ window? }`           | `void`                   |
 | `bindCommand`        | `{ itemId, commandId }` | `void`                   |
 | `capability`         | `{ name, platform? }`   | `{ supported: boolean }` |
 
-`MenuTemplate` — array of items with `{ label, accelerator?, command?, submenu?, type? }`.
+`MenuTemplate` is `{ items }`. Items use `{ type: "item", id, label, commandId?, accelerator? }`; submenus use `{ type: "submenu", id, label, items }`; separators use `{ type: "separator" }`.
+
+`setApplicationMenu` and `setWindowMenu` are routed by the Rust host. `clear`, `bindCommand`, `capability`, and `Menu.Activated` are TypeScript/bridge contracts today; completing #1366 requires native host routes and activation events for app and window menus.
 
 ## Errors
 
