@@ -7,6 +7,7 @@ import {
   type HostWindowExchange,
   type WindowBoundsInput as HostWindowBoundsInput,
   type WindowProgressInput as HostWindowProgressInput,
+  HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -15,6 +16,7 @@ import {
   makeHostWindowClient,
   makeStaleHandleError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -44,6 +46,8 @@ import {
   WindowFullscreenInput,
   type WindowHandle,
   WindowHandleInput,
+  WindowListResult,
+  WindowLookupInput,
   WindowProgressInput,
   type WindowProgressOptions,
   WindowResizableInput,
@@ -84,6 +88,45 @@ export const WindowFocus = windowRpc(
   WindowHandleInput,
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["focus"] })
+)
+export const WindowGetCurrent = windowRpc(
+  "getCurrent",
+  Schema.Void,
+  WindowResource,
+  P.nativeInvoke({ primitive: "Window", methods: ["getCurrent"] }),
+  NativeSurface.support.partial("runtime-router-only", {
+    platforms: [
+      { platform: "macos", status: "partial", reason: "runtime-router-only" },
+      { platform: "windows", status: "partial", reason: "runtime-router-only" },
+      { platform: "linux", status: "partial", reason: "runtime-router-only" }
+    ]
+  })
+)
+export const WindowGetById = windowRpc(
+  "getById",
+  WindowLookupInput,
+  WindowResource,
+  P.nativeInvoke({ primitive: "Window", methods: ["getById"] }),
+  NativeSurface.support.partial("runtime-router-only", {
+    platforms: [
+      { platform: "macos", status: "partial", reason: "runtime-router-only" },
+      { platform: "windows", status: "partial", reason: "runtime-router-only" },
+      { platform: "linux", status: "partial", reason: "runtime-router-only" }
+    ]
+  })
+)
+export const WindowList = windowRpc(
+  "list",
+  Schema.Void,
+  WindowListResult,
+  P.nativeInvoke({ primitive: "Window", methods: ["list"] }),
+  NativeSurface.support.partial("runtime-router-only", {
+    platforms: [
+      { platform: "macos", status: "partial", reason: "runtime-router-only" },
+      { platform: "windows", status: "partial", reason: "runtime-router-only" },
+      { platform: "linux", status: "partial", reason: "runtime-router-only" }
+    ]
+  })
 )
 export const WindowGetBounds = windowRpc(
   "getBounds",
@@ -183,6 +226,9 @@ const makeWindowRpcGroup = () =>
     WindowShow,
     WindowHide,
     WindowFocus,
+    WindowGetCurrent,
+    WindowGetById,
+    WindowList,
     WindowGetBounds,
     WindowSetBounds,
     WindowCenter,
@@ -212,7 +258,7 @@ export const WindowSupportedRpcs: RpcGroup.RpcGroup<WindowSupportedRpc> = Window
 
 export type WindowBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
 
-type WindowRpcClient = DesktopRpcClient<WindowSupportedRpc>
+type WindowRpcClient = DesktopRpcClient<WindowRpcUnion>
 
 export const WindowMethodNames = Object.freeze([
   "create",
@@ -220,6 +266,9 @@ export const WindowMethodNames = Object.freeze([
   "show",
   "hide",
   "focus",
+  "getCurrent",
+  "getById",
+  "list",
   "getBounds",
   "setBounds",
   "center",
@@ -243,6 +292,9 @@ export interface WindowClientApi {
   readonly show: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly hide: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly focus: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly getCurrent: () => Effect.Effect<WindowHandle, WindowError, never>
+  readonly getById: (windowId: string) => Effect.Effect<WindowHandle, WindowError, never>
+  readonly list: () => Effect.Effect<readonly WindowHandle[], WindowError, never>
   readonly getBounds: (window: WindowHandle) => Effect.Effect<WindowBounds, WindowError, never>
   readonly setBounds: (
     window: WindowHandle,
@@ -343,6 +395,21 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
     Effect.gen(function* () {
       const window = yield* Window
       yield* window.focus(input.window)
+    }),
+  "Window.getCurrent": () =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.getCurrent()
+    }),
+  "Window.getById": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.getById(input.windowId)
+    }),
+  "Window.list": () =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return new WindowListResult({ windows: yield* window.list() })
     }),
   "Window.getBounds": (input) =>
     Effect.gen(function* () {
@@ -461,6 +528,9 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     show: (window) => client.show(window),
     hide: (window) => client.hide(window),
     focus: (window) => client.focus(window),
+    getCurrent: () => client.getCurrent(),
+    getById: (windowId) => client.getById(windowId),
+    list: () => client.list(),
     getBounds: (window) => client.getBounds(window),
     setBounds: (window, bounds) => client.setBounds(window, bounds),
     center: (window) => client.center(window),
@@ -519,6 +589,44 @@ function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
     show: (window) => runWindowHandleRpc(client, "Window.show", window),
     hide: (window) => runWindowHandleRpc(client, "Window.hide", window),
     focus: (window) => runWindowHandleRpc(client, "Window.focus", window),
+    getCurrent: () =>
+      Effect.gen(function* () {
+        const window = yield* runWindowRpc(
+          client["Window.getCurrent"](undefined),
+          "Window.getCurrent"
+        )
+        return yield* decodeWindowHandle(window, "Window.getCurrent")
+      }),
+    getById: (windowId) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(WindowLookupInput)(
+          { windowId },
+          StrictParseOptions
+        ).pipe(
+          Effect.mapError((error) =>
+            makeHostProtocolInvalidArgumentError(
+              "payload",
+              formatUnknownError(error),
+              "Window.getById"
+            )
+          )
+        )
+        const window = yield* runWindowRpc(client["Window.getById"](decoded), "Window.getById")
+        return yield* decodeWindowHandle(window, "Window.getById")
+      }),
+    list: () =>
+      Effect.gen(function* () {
+        const result = yield* runWindowRpc(client["Window.list"](undefined), "Window.list")
+        const decoded = yield* Schema.decodeUnknownEffect(WindowListResult)(
+          result,
+          StrictParseOptions
+        ).pipe(
+          Effect.mapError((error) =>
+            makeHostProtocolInvalidOutputError("Window.list", formatUnknownError(error))
+          )
+        )
+        return decoded.windows
+      }),
     getBounds: (window) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowHandleInput(window, "Window.getBounds")
@@ -783,6 +891,22 @@ const isWindowError = (error: unknown): error is WindowError =>
   "operation" in error &&
   "recoverable" in error
 
+const requireAppEventRouter = (
+  options: HostWindowRpcOptions,
+  operation: string
+): Effect.Effect<AppEventRouterApi, WindowError, never> =>
+  options.appEventRouter === undefined
+    ? Effect.fail(
+        new HostProtocolUnsupportedError({
+          tag: "Unsupported",
+          reason: "window-registry-unavailable",
+          message: "window registry lookup requires AppEventRouter",
+          operation,
+          recoverable: false
+        })
+      )
+    : Effect.succeed(options.appEventRouter)
+
 const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindowRpcOptions) => {
   const host = makeHostWindowClient(exchange, options)
   const knownWindowIds = new Set<string>()
@@ -890,6 +1014,52 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
               )
             )
         }
+      }),
+    "Window.getCurrent": () =>
+      Effect.gen(function* () {
+        const router = yield* requireAppEventRouter(options, "Window.getCurrent")
+        const current = yield* router.getCurrentWindow()
+        if (Option.isNone(current)) {
+          return yield* Effect.fail(
+            makeHostProtocolNotFoundError("Window:current", "Window.getCurrent")
+          )
+        }
+        const { window } = yield* assertKnownFreshWindow(
+          { window: current.value },
+          knownWindowIds,
+          "Window.getCurrent"
+        )
+        return window
+      }),
+    "Window.getById": (input: WindowLookupInput) =>
+      Effect.gen(function* () {
+        const router = yield* requireAppEventRouter(options, "Window.getById")
+        const window = yield* router.getWindowById(input.windowId)
+        if (Option.isNone(window)) {
+          return yield* Effect.fail(
+            makeHostProtocolNotFoundError(`Window:${input.windowId}`, "Window.getById")
+          )
+        }
+        const fresh = yield* assertKnownFreshWindow(
+          { window: window.value },
+          knownWindowIds,
+          "Window.getById"
+        )
+        return fresh.window
+      }),
+    "Window.list": () =>
+      Effect.gen(function* () {
+        const router = yield* requireAppEventRouter(options, "Window.list")
+        const windows = yield* router.listWindows()
+        const freshWindows = yield* Effect.forEach(
+          windows,
+          (window) =>
+            assertKnownFreshWindow({ window }, knownWindowIds, "Window.list").pipe(
+              Effect.map((result) => result.window)
+            ),
+          { concurrency: "unbounded" }
+        )
+        return new WindowListResult({ windows: freshWindows })
       }),
     "Window.getBounds": (input: WindowHandleInput) =>
       Effect.gen(function* () {
@@ -1133,12 +1303,18 @@ function windowRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  capability: RpcCapabilityMetadata,
+  support: RpcSupportMetadata = NativeSurface.support.supported
+) {
   return NativeSurface.rpc("Window", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support
   })
 }

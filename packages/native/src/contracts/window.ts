@@ -37,6 +37,7 @@ const WindowProgressStateLiteral = Schema.Literals([
   "error"
 ])
 const WindowAttentionTypeLiteral = Schema.Literals(["critical", "informational"])
+const WindowRegistryEventPhase = Schema.Literals(["opened", "focused", "closed"])
 
 export const WindowResource = ResourceHandleSchema("window", "open")
 export type WindowHandle = ResourceHandle<"window", "open">
@@ -60,6 +61,22 @@ export type WindowCreateOptions = Schema.Schema.Type<typeof WindowCreateInput>
 
 export class WindowHandleInput extends Schema.Class<WindowHandleInput>("WindowHandleInput")({
   window: WindowResource
+}) {}
+
+export class WindowLookupInput extends Schema.Class<WindowLookupInput>("WindowLookupInput")({
+  windowId: Schema.NonEmptyString
+}) {}
+
+export class WindowListResult extends Schema.Class<WindowListResult>("WindowListResult")({
+  windows: Schema.Array(WindowResource)
+}) {}
+
+export class WindowRegistryEvent extends Schema.Class<WindowRegistryEvent>("WindowRegistryEvent")({
+  type: Schema.Literal("window-registry-event"),
+  phase: WindowRegistryEventPhase,
+  windowId: Schema.NonEmptyString,
+  window: Schema.optionalKey(WindowResource),
+  terminal: Schema.Boolean
 }) {}
 
 export class WindowBounds extends Schema.Class<WindowBounds>("WindowBounds")({

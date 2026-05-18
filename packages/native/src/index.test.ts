@@ -692,6 +692,9 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "show",
   "hide",
   "focus",
+  "getCurrent",
+  "getById",
+  "list",
   "getBounds",
   "setBounds",
   "center",
@@ -7384,7 +7387,7 @@ test("Linux GlobalShortcut client reports missing host adapters as typed unsuppo
 
 test("WindowRpcs declares only callable Window methods", () => {
   const supportedWindowMethods = Array.from(WindowRpcs.requests)
-    .filter(([, rpc]) => rpcSupport(rpc).status === "supported")
+    .filter(([, rpc]) => rpcSupport(rpc).status !== "unsupported")
     .map(([method]) => method)
 
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
@@ -7400,6 +7403,9 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.show"]
     void client["Window.hide"]
     void client["Window.focus"]
+    void client["Window.getCurrent"]
+    void client["Window.getById"]
+    void client["Window.list"]
     void client["Window.getBounds"]
     void client["Window.setBounds"]
     void client["Window.center"]
@@ -7423,6 +7429,9 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.show",
     "Window.hide",
     "Window.focus",
+    "Window.getCurrent",
+    "Window.getById",
+    "Window.list",
     "Window.getBounds",
     "Window.setBounds",
     "Window.center",
@@ -7456,6 +7465,21 @@ test("Window service delegates through a substitutable WindowClient port", async
     show: () => recordVoid(calls, "show"),
     hide: () => recordVoid(calls, "hide"),
     focus: () => recordVoid(calls, "focus"),
+    getCurrent: () =>
+      Effect.sync(() => {
+        calls.push("getCurrent")
+        return windowHandle
+      }),
+    getById: (windowId) =>
+      Effect.sync(() => {
+        calls.push(`getById:${windowId}`)
+        return windowHandle
+      }),
+    list: () =>
+      Effect.sync(() => {
+        calls.push("list")
+        return [windowHandle]
+      }),
     getBounds: () =>
       Effect.sync(() => {
         calls.push("getBounds")
@@ -7489,6 +7513,9 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.show(created)
       yield* window.hide(created)
       yield* window.focus(created)
+      const current = yield* window.getCurrent()
+      const byId = yield* window.getById(String(created.id))
+      const windows = yield* window.list()
       const bounds = yield* window.getBounds(created)
       yield* window.setBounds(
         created,
@@ -7509,11 +7536,14 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.restore(created)
       yield* window.close(created)
 
-      return { bounds, created, state }
+      return { bounds, byId, created, current, state, windows }
     }).pipe(Effect.provide(makeWindowServiceLayer(client)))
   )
 
   expect(result.created).toEqual(windowHandle)
+  expect(result.current).toEqual(windowHandle)
+  expect(result.byId).toEqual(windowHandle)
+  expect(result.windows).toEqual([windowHandle])
   expect(result.bounds).toEqual(new WindowBounds({ x: 10, y: 20, width: 640, height: 480 }))
   expect(result.state).toEqual(
     new WindowState({ minimized: false, maximized: true, fullscreen: true })
@@ -7523,6 +7553,9 @@ test("Window service delegates through a substitutable WindowClient port", async
     "show",
     "hide",
     "focus",
+    "getCurrent",
+    "getById:window-1",
+    "list",
     "getBounds",
     "setBounds:800x600",
     "center",
@@ -7884,6 +7917,157 @@ test("host WindowClient adapter creates owned child windows and closes children 
   ])
 })
 
+test("host WindowClient adapter looks up current, id, list, and removes closed windows", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const router = yield* makeAppEventRouter()
+      const createWindowIds = nextId(["host-parent", "host-child"])
+      const hostExchange: HostWindowExchange = {
+        request: (request) => {
+          requests.push(request)
+          return Effect.succeed(
+            new HostProtocolResponseEnvelope({
+              kind: "response",
+              id: request.id,
+              timestamp: request.timestamp + 1,
+              traceId: request.traceId,
+              ...(request.method === WINDOW_CREATE_METHOD
+                ? { payload: { windowId: createWindowIds() } }
+                : {})
+            })
+          )
+        }
+      }
+      const rpcExchange = makeWindowRpcExchange(
+        hostExchange,
+        registry,
+        {
+          nextRequestId: nextId([
+            "create-parent-request",
+            "get-current-parent-request",
+            "create-child-request",
+            "list-request",
+            "get-by-id-request",
+            "focus-child-request",
+            "get-current-child-request",
+            "close-child-request",
+            "get-by-id-closed-request",
+            "close-parent-request"
+          ]),
+          nextTraceId: nextId([
+            "create-parent-trace",
+            "get-current-parent-trace",
+            "create-child-trace",
+            "list-trace",
+            "get-by-id-trace",
+            "focus-child-trace",
+            "get-current-child-trace",
+            "close-child-trace",
+            "get-by-id-closed-trace",
+            "close-parent-trace"
+          ]),
+          now: nextNumber([
+            1_710_000_002_000, 1_710_000_002_001, 1_710_000_002_002, 1_710_000_002_003,
+            1_710_000_002_004, 1_710_000_002_005, 1_710_000_002_006, 1_710_000_002_007,
+            1_710_000_002_008, 1_710_000_002_009
+          ])
+        },
+        router
+      )
+      return yield* Effect.gen(function* () {
+        const window = yield* Window
+        const parent = yield* window.create({ title: "Parent" })
+        const currentParent = yield* window.getCurrent()
+        const child = yield* window.create({ title: "Child", parent })
+        const listed = yield* window.list()
+        const parentById = yield* window.getById(String(parent.id))
+        yield* window.focus(child)
+        const currentChild = yield* window.getCurrent()
+        yield* window.close(child)
+        const closedChildExit = yield* Effect.exit(window.getById(String(child.id)))
+        yield* window.close(parent)
+
+        return { child, closedChildExit, currentChild, currentParent, listed, parent, parentById }
+      }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+    })
+  )
+
+  expect(result.currentParent.id).toBe(result.parent.id)
+  expect(result.parentById.id).toBe(result.parent.id)
+  expect(result.currentChild.id).toBe(result.child.id)
+  expect(result.listed.map((window) => String(window.id)).sort()).toEqual([
+    "host-child",
+    "host-parent"
+  ])
+  expectExitFailure(
+    result.closedChildExit,
+    (error) => error instanceof HostProtocolNotFoundError && error.operation === "Window.getById"
+  )
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_CREATE_METHOD, { title: "Parent" }],
+    [WINDOW_CREATE_METHOD, { title: "Child", parentWindowId: "host-parent" }],
+    [WINDOW_FOCUS_METHOD, { windowId: "host-child" }],
+    [WINDOW_DESTROY_METHOD, { windowId: "host-child" }],
+    [WINDOW_DESTROY_METHOD, { windowId: "host-parent" }]
+  ])
+})
+
+test("native host RPC runtime denies Window.getCurrent before lookup work", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const response = await runScopedPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const router = yield* makeAppEventRouter()
+      const runtime = makeHostWindowRpcRuntime(
+        windowExchange(requests),
+        { appEventRouter: router },
+        {
+          originAuth: RendererOriginAuth.unsafeDisabledForTests
+        }
+      )
+      return yield* runtime
+        .dispatch(
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "window-get-current-denied",
+            method: "Window.getCurrent",
+            timestamp: 1710000000000,
+            traceId: "trace-window-get-current-denied"
+          })
+        )
+        .pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.effect(PermissionRegistry, makePermissionRegistry()),
+              Layer.succeed(ResourceRegistry)(registry)
+            )
+          )
+        )
+    })
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(requests).toEqual([])
+})
+
+test("Window lookup returns unsupported without runtime router", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* Effect.exit(window.getCurrent())
+    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+  )
+
+  expectExitFailure(result, (error) => hasErrorTag(error, "Unsupported"))
+})
+
 test("native host RPC runtime denies owned child Window.create before host transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const runtime = makeHostWindowRpcRuntime(windowExchange(requests), undefined, {
@@ -8132,6 +8316,69 @@ test("AppEventRouter observes state transitions for windows, focus, and close", 
     { windows: ["window-1", "window-2"], focusedWindowId: "window-1" },
     { windows: ["window-1", "window-2"], focusedWindowId: "window-2" },
     { windows: ["window-1"], focusedWindowId: "window-1" }
+  ])
+})
+
+test("AppEventRouter emits ordered terminal window registry events", async () => {
+  const events = await runScopedPromise(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter()
+      const collected = yield* router
+        .windowEvents()
+        .pipe(Stream.take(3), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* router.windowOpened(handleFor("window-1"))
+      yield* router.windowFocused("window-1")
+      yield* router.windowClosed("window-1")
+
+      return yield* Fiber.join(collected)
+    })
+  )
+
+  expect(
+    Array.from(events).map((event) => ({
+      phase: event.phase,
+      terminal: event.terminal,
+      windowId: event.windowId,
+      window: event.window === undefined ? undefined : String(event.window.id)
+    }))
+  ).toEqual([
+    { phase: "opened", terminal: false, windowId: "window-1", window: "window-1" },
+    { phase: "focused", terminal: false, windowId: "window-1", window: "window-1" },
+    { phase: "closed", terminal: true, windowId: "window-1", window: "window-1" }
+  ])
+})
+
+test("AppEventRouter emits fallback focus after focused window closes", async () => {
+  const events = await runScopedPromise(
+    Effect.gen(function* () {
+      const router = yield* makeAppEventRouter()
+      const collected = yield* router
+        .windowEvents()
+        .pipe(Stream.take(5), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+
+      yield* router.windowOpened(handleFor("window-1"))
+      yield* router.windowOpened(handleFor("window-2"))
+      yield* router.windowFocused("window-2")
+      yield* router.windowClosed("window-2")
+
+      return yield* Fiber.join(collected)
+    })
+  )
+
+  expect(
+    Array.from(events).map((event) => ({
+      phase: event.phase,
+      terminal: event.terminal,
+      windowId: event.windowId,
+      window: event.window === undefined ? undefined : String(event.window.id)
+    }))
+  ).toEqual([
+    { phase: "opened", terminal: false, windowId: "window-1", window: "window-1" },
+    { phase: "opened", terminal: false, windowId: "window-2", window: "window-2" },
+    { phase: "focused", terminal: false, windowId: "window-2", window: "window-2" },
+    { phase: "closed", terminal: true, windowId: "window-2", window: "window-2" },
+    { phase: "focused", terminal: false, windowId: "window-1", window: "window-1" }
   ])
 })
 
@@ -9675,6 +9922,9 @@ const noopWindowClient: WindowClientApi = {
   show: () => Effect.void,
   hide: () => Effect.void,
   focus: () => Effect.void,
+  getCurrent: () => Effect.succeed(windowHandle),
+  getById: () => Effect.succeed(windowHandle),
+  list: () => Effect.succeed([windowHandle]),
   getBounds: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
   setBounds: () => Effect.void,
   center: () => Effect.void,

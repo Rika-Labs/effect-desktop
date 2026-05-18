@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Option, Ref, Schema, Stream } from "effect"
 
+import { HostProtocolNotFoundError } from "@effect-desktop/bridge"
 import {
   makePermissionRegistry,
   NormalizedCapability,
@@ -371,6 +372,28 @@ const makeWindowScenario = (
     show: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
     hide: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
     focus: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    getCurrent: (): Effect.Effect<WindowHandle, WindowError, never> =>
+      Ref.get(windows).pipe(
+        Effect.flatMap((records) => {
+          const window = records.values().next().value?.window
+          return window === undefined
+            ? Effect.fail(notFoundWindow("current", "Window.getCurrent"))
+            : Effect.succeed(window)
+        })
+      ),
+    getById: (windowId): Effect.Effect<WindowHandle, WindowError, never> =>
+      Ref.get(windows).pipe(
+        Effect.flatMap((records) => {
+          const window = records.get(windowId)?.window
+          return window === undefined
+            ? Effect.fail(notFoundWindow(windowId, "Window.getById"))
+            : Effect.succeed(window)
+        })
+      ),
+    list: (): Effect.Effect<readonly WindowHandle[], WindowError, never> =>
+      Ref.get(windows).pipe(
+        Effect.map((records) => [...records.values()].map((record) => record.window))
+      ),
     getBounds: (_window): Effect.Effect<WindowBounds, WindowError, never> =>
       Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
     setBounds: (_window, _bounds): Effect.Effect<void, WindowError, never> => Effect.void,
@@ -390,6 +413,15 @@ const makeWindowScenario = (
     getState: (_window): Effect.Effect<WindowState, WindowError, never> =>
       Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false }))
   } satisfies WindowServiceApi)
+
+const notFoundWindow = (windowId: string, operation: string): WindowError =>
+  new HostProtocolNotFoundError({
+    tag: "NotFound",
+    resource: `Window:${windowId}`,
+    message: `window not found: ${windowId}`,
+    operation,
+    recoverable: true
+  })
 
 function testNativeSurface(surface: {
   readonly tag: string
