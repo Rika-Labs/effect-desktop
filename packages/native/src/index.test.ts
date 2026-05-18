@@ -515,6 +515,7 @@ test("Native.Permissions.all declares every public native capability", () => {
   const declared = nativePermissionTags(Native.Permissions.all)
 
   expect(declared).toContain("App.quit")
+  expect(declared).toContain("App.requestSingleInstanceLock")
   expect(declared).toContain("Clipboard.readText")
   expect(declared).toContain("Window.create")
   expect(declared).not.toContain("Clipboard.isSupported")
@@ -554,6 +555,9 @@ test("native capability selections come from their surfaces", () => {
   expect("isSupported" in Native.Clipboard).toBe(false)
   expect("getInfo" in Native.App).toBe(false)
   expect("setOpenAtLogin" in Native.App).toBe(false)
+  expect(Native.Permissions.app.requestSingleInstanceLock).toEqual(
+    AppSurface.permissions.requestSingleInstanceLock
+  )
   expect(declared).toContain("Clipboard.readText")
 })
 

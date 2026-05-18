@@ -154,7 +154,7 @@
       "tag": "App.requestSingleInstanceLock",
       "surface": "App",
       "method": "requestSingleInstanceLock",
-      "capability": "none",
+      "capability": "native",
       "support": {
         "status": "unsupported",
         "reason": "host-adapter-unimplemented",

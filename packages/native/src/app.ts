@@ -62,7 +62,7 @@ export const AppRequestSingleInstanceLock = appRpc(
   "requestSingleInstanceLock",
   Schema.Void,
   AppSingleInstanceOutput,
-  { kind: "none" }
+  P.nativeInvoke({ primitive: "App", methods: ["requestSingleInstanceLock"] })
 )
 export const AppRpcEvents = Object.freeze({
   onSecondInstance: { payload: AppSecondInstanceEvent },
@@ -87,7 +87,8 @@ export const AppMethodNames = Object.freeze([
 const AppCapabilityMethods = Object.freeze([
   "quit",
   "restart",
-  "focus"
+  "focus",
+  "requestSingleInstanceLock"
 ] as const satisfies readonly (typeof AppMethodNames)[number][])
 
 export type AppError = HostProtocolError
