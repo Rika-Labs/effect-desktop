@@ -4,7 +4,7 @@
 
 ## Purpose
 
-TypeScript-facing native services backed by the Rust host: `App`, `Window`, `WebView`, `Menu`, `Tray`, `Dialog`, `Clipboard`, `Notification`, `Shell`, `Screen`, `GlobalShortcut`, `Protocol`, `SafeStorage`, `Path`, `Updater`, `CrashReporter`, `DiagnosticsBundle`, `EgressPolicy`, `ExecutionSandbox`, `ExtensionConfig`, `ExtensionPackage`, `LocalToolRuntime`, `TransactionalFileMutation`, `WorkspaceIndex`, `PowerMonitor`, `SystemAppearance`, `Dock`, `RealtimeMediaSession`.
+TypeScript-facing native services expose Layer-first Effect APIs backed by Schema-typed RPC contracts. The Rust host backs the implemented subset; prerelease surfaces and methods report support metadata and fail through typed host errors until their platform adapters exist. Current surfaces include `App`, `Window`, `WebView`, `Menu`, `Tray`, `Dialog`, `Clipboard`, `Notification`, `Shell`, `Screen`, `GlobalShortcut`, `Protocol`, `SafeStorage`, `Path`, `Updater`, `CrashReporter`, `DiagnosticsBundle`, `EgressPolicy`, `ExecutionSandbox`, `ExtensionConfig`, `ExtensionPackage`, `LocalToolRuntime`, `TransactionalFileMutation`, `WorkspaceIndex`, `PowerMonitor`, `SystemAppearance`, `Dock`, and `RealtimeMediaSession`.
 
 ## Public API
 
