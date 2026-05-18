@@ -18,7 +18,6 @@ pub const APP_QUIT_METHOD: &str = "App.quit";
 pub const APP_RESTART_METHOD: &str = "App.restart";
 pub const APP_FOCUS_METHOD: &str = "App.focus";
 pub const APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD: &str = "App.requestSingleInstanceLock";
-pub const APP_REGISTER_PROTOCOL_METHOD: &str = "App.registerProtocol";
 pub const APP_SECOND_INSTANCE_EVENT: &str = "App.onSecondInstance";
 pub const APP_OPEN_FILE_EVENT: &str = "App.onOpenFile";
 pub const APP_OPEN_URL_EVENT: &str = "App.onOpenUrl";
@@ -390,24 +389,6 @@ impl AppSingleInstancePayload {
 
     pub fn primary_pid(&self) -> Option<u64> {
         self.primary_pid
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AppProtocolPayload {
-    scheme: String,
-}
-
-impl AppProtocolPayload {
-    pub fn new(scheme: impl Into<String>) -> Self {
-        Self {
-            scheme: scheme.into(),
-        }
-    }
-
-    pub fn scheme(&self) -> &str {
-        &self.scheme
     }
 }
 
@@ -10911,9 +10892,9 @@ mod tests {
         AppActivationReasonPayload, AppBeforeQuitEventPayload, AppMetadataEnvironmentShapePayload,
         AppMetadataEventPayload, AppMetadataEventPhasePayload, AppMetadataInfoPayload,
         AppMetadataLaunchContextPayload, AppMetadataLaunchReasonPayload, AppMetadataPathsPayload,
-        AppOpenFileEventPayload, AppOpenUrlEventPayload, AppProtocolPayload, AppQuitPayload,
-        AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
-        AssociationEventPayload, AssociationEventPhasePayload, AssociationFileAssociationPayload,
+        AppOpenFileEventPayload, AppOpenUrlEventPayload, AppQuitPayload, AppRestartPayload,
+        AppSecondInstanceEventPayload, AppSingleInstancePayload, AssociationEventPayload,
+        AssociationEventPhasePayload, AssociationFileAssociationPayload,
         AssociationFileAssociationsPayload, AssociationFileAssociationsResultPayload,
         AssociationProtocolPayload, AssociationProtocolStatusPayload, AutostartEnablePayload,
         AutostartEventPayload, AutostartEventPhasePayload, AutostartMechanismPayload,
@@ -11134,11 +11115,6 @@ mod tests {
             ])))
             .expect("restart should encode"),
             r#"{"args":["--restarted"]}"#
-        );
-        assert_eq!(
-            serde_json::to_string(&AppProtocolPayload::new("effect-desktop"))
-                .expect("protocol should encode"),
-            r#"{"scheme":"effect-desktop"}"#
         );
         assert_eq!(
             serde_json::to_string(&AppSingleInstancePayload::owned_by(1234))

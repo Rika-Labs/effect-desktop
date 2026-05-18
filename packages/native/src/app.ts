@@ -19,8 +19,6 @@ export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
   AppOpenFileEvent,
-  AppProtocolInput,
-  type AppProtocolOptions,
   AppQuitInput,
   type AppQuitOptions,
   AppRestartInput,
@@ -66,13 +64,6 @@ export const AppRequestSingleInstanceLock = appRpc(
   AppSingleInstanceOutput,
   { kind: "none" }
 )
-export const AppRegisterProtocol = appRpc(
-  "registerProtocol",
-  AppProtocolInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["registerProtocol"] })
-)
-
 export const AppRpcEvents = Object.freeze({
   onSecondInstance: { payload: AppSecondInstanceEvent },
   onOpenFile: { payload: AppOpenFileEvent },
@@ -82,13 +73,7 @@ export const AppRpcEvents = Object.freeze({
 
 export type AppRpcEvents = typeof AppRpcEvents
 
-const AppRpcGroup = RpcGroup.make(
-  AppQuit,
-  AppRestart,
-  AppFocus,
-  AppRequestSingleInstanceLock,
-  AppRegisterProtocol
-)
+const AppRpcGroup = RpcGroup.make(AppQuit, AppRestart, AppFocus, AppRequestSingleInstanceLock)
 
 export const AppRpcs: RpcGroup.RpcGroup<AppRpc> = AppRpcGroup
 
@@ -96,15 +81,13 @@ export const AppMethodNames = Object.freeze([
   "quit",
   "restart",
   "focus",
-  "requestSingleInstanceLock",
-  "registerProtocol"
+  "requestSingleInstanceLock"
 ] as const)
 
 const AppCapabilityMethods = Object.freeze([
   "quit",
   "restart",
-  "focus",
-  "registerProtocol"
+  "focus"
 ] as const satisfies readonly (typeof AppMethodNames)[number][])
 
 export type AppError = HostProtocolError
@@ -114,7 +97,6 @@ export interface AppClientApi {
   readonly restart: (input: AppRestartOptions) => Effect.Effect<void, AppError, never>
   readonly focus: () => Effect.Effect<void, AppError, never>
   readonly requestSingleInstanceLock: () => Effect.Effect<AppSingleInstanceResult, AppError, never>
-  readonly registerProtocol: (input: AppProtocolOptions) => Effect.Effect<void, AppError, never>
   readonly onSecondInstance: () => Stream.Stream<AppSecondInstanceEvent, AppError, never>
   readonly onOpenFile: () => Stream.Stream<AppOpenFileEvent, AppError, never>
   readonly onOpenUrl: () => Stream.Stream<AppOpenUrlEvent, AppError, never>
@@ -176,11 +158,6 @@ export const AppHandlersLive = AppRpcGroup.toLayer({
     Effect.gen(function* () {
       const app = yield* App
       return yield* app.requestSingleInstanceLock()
-    }),
-  "App.registerProtocol": (input) =>
-    Effect.gen(function* () {
-      const app = yield* App
-      yield* app.registerProtocol(input)
     })
 })
 
@@ -203,7 +180,6 @@ const makeAppService = (client: AppClientApi): AppServiceApi => {
     restart: (input) => client.restart(input ?? {}),
     focus: () => client.focus(),
     requestSingleInstanceLock: () => client.requestSingleInstanceLock(),
-    registerProtocol: (input) => client.registerProtocol(input),
     onSecondInstance: () => client.onSecondInstance(),
     onOpenFile: () => client.onOpenFile(),
     onOpenUrl: () => client.onOpenUrl(),
@@ -232,12 +208,6 @@ const appClientFromRpcClient = (
         client["App.requestSingleInstanceLock"](undefined),
         "App.requestSingleInstanceLock"
       ),
-    registerProtocol: (input) =>
-      decodeAppProtocolInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          runAppRpc(client["App.registerProtocol"](decoded), "App.registerProtocol")
-        )
-      ),
     onSecondInstance: () =>
       subscribeAppEvent(exchange, "App.onSecondInstance", AppSecondInstanceEvent),
     onOpenFile: () => subscribeAppEvent(exchange, "App.onOpenFile", AppOpenFileEvent),
@@ -260,11 +230,6 @@ const decodeAppRestartInput = (
   input: unknown
 ): Effect.Effect<AppRestartInput, HostProtocolError, never> =>
   decodeInput(AppRestartInput, input, "App.restart")
-
-const decodeAppProtocolInput = (
-  input: unknown
-): Effect.Effect<AppProtocolInput, HostProtocolError, never> =>
-  decodeInput(AppProtocolInput, input, "App.registerProtocol")
 
 const decodeInput = <A>(
   schema: Schema.Codec<A, unknown, never, never>,

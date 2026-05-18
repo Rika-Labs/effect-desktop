@@ -151,34 +151,6 @@
       "hostStatus": "routed"
     },
     {
-      "tag": "App.registerProtocol",
-      "surface": "App",
-      "method": "registerProtocol",
-      "capability": "native",
-      "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
-      },
-      "hostStatus": "routed"
-    },
-    {
       "tag": "App.requestSingleInstanceLock",
       "surface": "App",
       "method": "requestSingleInstanceLock",
@@ -4317,11 +4289,11 @@
     }
   ],
   "summary": {
-    "total": 223,
-    "routed": 201,
+    "total": 222,
+    "routed": 200,
     "missing": 22,
     "supported": 106,
     "partial": 22,
-    "unsupported": 95
+    "unsupported": 94
   }
 }

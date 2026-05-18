@@ -1,6 +1,5 @@
 import { Schema } from "effect"
 import { BridgeSafeNonEmptyString, PrintableNonEmptyString } from "./strings.js"
-import { ProtocolScheme } from "./protocol.js"
 
 const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0))
 const PortableExitCode = Schema.Int.check(
@@ -65,12 +64,6 @@ export const AppSingleInstanceOutput = AppSingleInstanceResult.check(
       : true
   )
 )
-
-export class AppProtocolInput extends Schema.Class<AppProtocolInput>("AppProtocolInput")({
-  scheme: ProtocolScheme
-}) {}
-
-export type AppProtocolOptions = Schema.Schema.Type<typeof AppProtocolInput>
 
 export const AppActivationReason = Schema.Literals(["launch", "open-file", "open-url", "unknown"])
 

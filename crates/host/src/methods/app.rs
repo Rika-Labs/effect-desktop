@@ -3,22 +3,9 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use host_protocol::HostProtocolError;
-use host_protocol::{AppProtocolPayload, AppQuitPayload, AppRestartPayload};
+use host_protocol::{AppQuitPayload, AppRestartPayload};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-
-const RESERVED_SCHEMES: &[&str] = &[
-    "about",
-    "app",
-    "blob",
-    "data",
-    "file",
-    "http",
-    "https",
-    "javascript",
-    "chrome",
-    "view-source",
-];
 
 pub(crate) fn quit(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     reject_null_field(payload.as_ref(), "exitCode", host_protocol::APP_QUIT_METHOD)?;
@@ -48,15 +35,6 @@ pub(crate) fn request_single_instance_lock(
     Err(unsupported(
         host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
     ))
-}
-
-pub(crate) fn register_protocol(
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let input =
-        decode_payload::<AppProtocolPayload>(payload, host_protocol::APP_REGISTER_PROTOCOL_METHOD)?;
-    validate_scheme(input.scheme(), host_protocol::APP_REGISTER_PROTOCOL_METHOD)?;
-    Err(unsupported(host_protocol::APP_REGISTER_PROTOCOL_METHOD))
 }
 
 fn reject_unexpected_payload(
@@ -130,48 +108,13 @@ fn validate_args(
     Ok(())
 }
 
-fn validate_scheme(scheme: &str, operation: &'static str) -> Result<(), HostProtocolError> {
-    if scheme.is_empty() {
-        return Err(HostProtocolError::invalid_argument(
-            "scheme",
-            "must be non-empty",
-            operation,
-        ));
-    }
-    let mut chars = scheme.chars();
-    let Some(first) = chars.next() else {
-        return Err(HostProtocolError::invalid_argument(
-            "scheme",
-            "must be non-empty",
-            operation,
-        ));
-    };
-    if !first.is_ascii_lowercase()
-        || !chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || "+.-".contains(ch))
-    {
-        return Err(HostProtocolError::invalid_argument(
-            "scheme",
-            "must match ^[a-z][a-z0-9+.-]*$",
-            operation,
-        ));
-    }
-    if RESERVED_SCHEMES.contains(&scheme) {
-        return Err(HostProtocolError::invalid_argument(
-            "scheme",
-            "is reserved",
-            operation,
-        ));
-    }
-    Ok(())
-}
-
 fn unsupported(operation: &'static str) -> HostProtocolError {
     HostProtocolError::unsupported(host_protocol::APP_UNSUPPORTED_REASON, operation)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{focus, quit, register_protocol, restart};
+    use super::{focus, quit, restart};
     use host_protocol::HostProtocolError;
     use serde_json::{json, Value};
 
@@ -225,14 +168,6 @@ mod tests {
                 host_protocol::APP_RESTART_METHOD,
             )
         );
-        assert_eq!(
-            register_protocol(Some(json!({ "scheme": "effect-desktop" })))
-                .expect_err("register protocol"),
-            HostProtocolError::unsupported(
-                host_protocol::APP_UNSUPPORTED_REASON,
-                host_protocol::APP_REGISTER_PROTOCOL_METHOD,
-            )
-        );
     }
 
     #[test]
@@ -262,12 +197,6 @@ mod tests {
         assert_eq!(
             restart(Some(json!({ "args": ["bad\0arg"] })))
                 .expect_err("args")
-                .tag(),
-            "InvalidArgument"
-        );
-        assert_eq!(
-            register_protocol(Some(json!({ "scheme": "http" })))
-                .expect_err("reserved scheme")
                 .tag(),
             "InvalidArgument"
         );

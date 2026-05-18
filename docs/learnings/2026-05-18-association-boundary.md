@@ -46,10 +46,14 @@ custom protocol serving policy. `Association` is also not a thin wrapper over
 Effect primitives; it is a native/web boundary for OS-level desktop semantics
 that Effect does not model.
 
+Debt removed after this note:
+
+- The duplicate unsupported `App.registerProtocol` surface and Rust App route
+  were removed; `Association` owns OS default protocol registration and
+  `Protocol` owns WebView custom protocol serving.
+
 Known remaining debt:
 
-- `App.registerProtocol` overlaps conceptually with OS protocol registration
-  and remains unsupported.
 - Real platform adapters must eventually replace the current typed unsupported
   routes.
 - Association state and events must become observable from host-owned platform

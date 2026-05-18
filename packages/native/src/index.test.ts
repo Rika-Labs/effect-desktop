@@ -745,8 +745,7 @@ const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
   "quit",
   "restart",
   "focus",
-  "requestSingleInstanceLock",
-  "registerProtocol"
+  "requestSingleInstanceLock"
 ]
 
 const expectedAppMetadataMethods: Array<(typeof AppMetadataMethodNames)[number]> = [
@@ -1048,7 +1047,6 @@ test("App service delegates through a substitutable AppClient port", async () =>
       yield* app.focus()
       yield* app.quit()
       yield* app.restart({ args: ["--restarted"] })
-      yield* app.registerProtocol({ scheme: "effect-desktop" })
       const protocolEvents = yield* app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect)
 
       return { protocolEvents }
@@ -1058,12 +1056,7 @@ test("App service delegates through a substitutable AppClient port", async () =>
   expect(Array.from(result.protocolEvents)).toEqual([
     new AppOpenUrlEvent({ url: "effect-desktop://open" })
   ])
-  expect(calls).toEqual([
-    "focus",
-    "quit:-1",
-    "restart:--restarted",
-    "registerProtocol:effect-desktop"
-  ])
+  expect(calls).toEqual(["focus", "quit:-1", "restart:--restarted"])
 })
 
 test("App bridge client sends typed host envelopes and decodes event streams", async () => {
@@ -1073,7 +1066,6 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
   const result = await runScopedPromise(
     Effect.gen(function* () {
       const app = yield* App
-      yield* app.registerProtocol({ scheme: "effect-desktop" })
       const openFiles = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
 
       return { openFiles }
@@ -1081,12 +1073,10 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
   )
 
   expect(Array.from(result.openFiles)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
-  expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["App.registerProtocol", { scheme: "effect-desktop" }]
-  ])
+  expect(requests).toEqual([])
 })
 
-test("App bridge client keeps input decoding strict while event decoding remains tolerant", async () => {
+test("App bridge client decodes event streams without host requests", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange: BridgeClientExchange = {
     request: (request) => {
@@ -1113,13 +1103,10 @@ test("App bridge client keeps input decoding strict while event decoding remains
     }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
   )
 
-  const invalidInput = { scheme: "effect-desktop", ignoredByHost: true }
-  const inputExit = await Effect.runPromiseExit(app.registerProtocol(invalidInput))
   const eventResult = await Effect.runPromise(
     app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
   )
 
-  expectExitFailure(inputExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(Array.from(eventResult)).toEqual([new AppOpenFileEvent({ path: "README.md" })])
   expect(requests).toEqual([])
 })
@@ -1185,51 +1172,6 @@ test("App bridge client decodes second-instance activation reasons", async () =>
       cwd: "/repo",
       traceId: "trace-second"
     })
-  ])
-})
-
-test("App bridge client validates protocol registration scheme before host requests", async () => {
-  const requests: HostProtocolRequestEnvelope[] = []
-  const exits = await Effect.runPromise(
-    Effect.gen(function* () {
-      const client = yield* App
-      yield* client.registerProtocol({ scheme: "effect-desktop" })
-      const invalidSchemes = [
-        "",
-        "http",
-        "https",
-        "file",
-        "app",
-        "chrome",
-        "view-source",
-        "bad scheme",
-        "app://",
-        "MyApp",
-        "x^@y"
-      ]
-      const collected: Array<Exit.Exit<unknown, unknown>> = []
-      for (const scheme of invalidSchemes) {
-        collected.push(yield* Effect.exit(client.registerProtocol({ scheme })))
-      }
-      return collected
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          AppLive,
-          makeAppBridgeClientLayer(
-            appExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
-        )
-      )
-    )
-  )
-
-  for (const exit of exits) {
-    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
-  }
-
-  expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["App.registerProtocol", { scheme: "effect-desktop" }]
   ])
 })
 
@@ -10459,8 +10401,6 @@ const appClient = (calls: string[]): AppClientApi => ({
     recordVoid(calls, `restart:${input.args?.join(" ") ?? ""}`),
   focus: () => recordVoid(calls, "focus"),
   requestSingleInstanceLock: () => Effect.succeed({ acquired: true }),
-  registerProtocol: (input: { readonly scheme: string }) =>
-    recordVoid(calls, `registerProtocol:${input.scheme}`),
   onSecondInstance: () =>
     Stream.make(
       new AppSecondInstanceEvent({

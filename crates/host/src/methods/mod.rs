@@ -222,10 +222,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(app::request_single_instance_lock),
     ),
     route(
-        host_protocol::APP_REGISTER_PROTOCOL_METHOD,
-        HostMethodDispatcher::Payload(app::register_protocol),
-    ),
-    route(
         host_protocol::APP_METADATA_GET_INFO_METHOD,
         HostMethodDispatcher::Payload(app_metadata::get_info),
     ),
