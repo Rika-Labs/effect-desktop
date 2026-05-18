@@ -1,15 +1,17 @@
 import { expect, test } from "bun:test"
-import { Clock, Effect } from "effect"
+import { Clock, Effect, Stream } from "effect"
 
 import {
   HostProtocolInvalidArgumentError,
   HostProtocolInvalidOutputError,
   HostProtocolNotFoundError,
+  HostProtocolEventEnvelope,
   HostProtocolResponseEnvelope,
   WINDOW_CANCEL_ATTENTION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_CENTER_METHOD,
   WINDOW_DESTROY_METHOD,
+  WINDOW_EVENT_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
@@ -203,6 +205,40 @@ test("host window client requests Window.getCurrent, Window.getById, and Window.
     [WINDOW_GET_BY_ID_METHOD, { windowId: "window-1" }],
     [WINDOW_LIST_METHOD, undefined]
   ])
+})
+
+test("host window client decodes Window.Event subscriptions", async () => {
+  const client = makeHostWindowClient(windowExchange([]))
+
+  const events = await Effect.runPromise(client.events().pipe(Stream.take(1), Stream.runCollect))
+
+  expect(Array.from(events)).toEqual([
+    {
+      type: "window-registry-event",
+      phase: "closed",
+      windowId: "window-1",
+      window: {
+        kind: "window",
+        id: "window-1",
+        generation: 0,
+        ownerScope: "window:window-1",
+        state: "open"
+      },
+      terminal: true
+    }
+  ])
+})
+
+test("host window client fails Window.Event subscriptions when exchange cannot subscribe", async () => {
+  const client = makeHostWindowClient({
+    request: windowExchange([]).request
+  })
+
+  await expectEffectFailure(
+    client.events().pipe(Stream.runDrain),
+    (error) =>
+      error instanceof HostProtocolInvalidOutputError && error.operation === WINDOW_EVENT_METHOD
+  )
 })
 
 test("host window client requests Window.getBounds, Window.setBounds, and Window.center", async () => {
@@ -572,7 +608,31 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                   : base
       )
     )
-  }
+  },
+  subscribe: (method) =>
+    method === WINDOW_EVENT_METHOD
+      ? Stream.make(
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            method,
+            timestamp: 1_710_000_000_100,
+            traceId: "trace-window-event",
+            payload: {
+              type: "window-registry-event",
+              phase: "closed",
+              windowId: "window-1",
+              window: {
+                kind: "window",
+                id: "window-1",
+                generation: 0,
+                ownerScope: "window:window-1",
+                state: "open"
+              },
+              terminal: true
+            }
+          })
+        )
+      : Stream.empty
 })
 
 const notFoundExchange = (): HostWindowExchange => ({

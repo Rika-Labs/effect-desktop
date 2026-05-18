@@ -1,12 +1,14 @@
-import { Clock, Effect, Schema } from "effect"
+import { Clock, Effect, Schema, Stream } from "effect"
 
 import {
+  HostProtocolEventEnvelope,
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   WINDOW_CENTER_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_CANCEL_ATTENTION_METHOD,
   WINDOW_DESTROY_METHOD,
+  WINDOW_EVENT_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
@@ -66,6 +68,15 @@ const WindowTrafficLights = Schema.Struct({
 })
 const WindowProgressState = Schema.Literals(["none", "normal", "indeterminate", "paused", "error"])
 const WindowAttentionType = Schema.Literals(["critical", "informational"])
+const WindowRegistryEventPhase = Schema.Literals(["opened", "focused", "closed"])
+const UInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const WindowResourcePayload = Schema.Struct({
+  kind: Schema.Literal("window"),
+  id: Schema.NonEmptyString,
+  generation: UInt,
+  ownerScope: Schema.NonEmptyString,
+  state: Schema.Literal("open")
+})
 
 export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>("WindowCreatePayload")({
   title: Schema.optionalKey(Schema.NonEmptyString),
@@ -97,6 +108,16 @@ export class WindowLookupResponse extends Schema.Class<WindowLookupResponse>(
 
 export class WindowListResponse extends Schema.Class<WindowListResponse>("WindowListResponse")({
   windows: Schema.Array(WindowLookupResponse)
+}) {}
+
+export class WindowRegistryEventPayload extends Schema.Class<WindowRegistryEventPayload>(
+  "WindowRegistryEventPayload"
+)({
+  type: Schema.Literal("window-registry-event"),
+  phase: WindowRegistryEventPhase,
+  windowId: Schema.NonEmptyString,
+  window: Schema.optionalKey(WindowResourcePayload),
+  terminal: Schema.Boolean
 }) {}
 
 export class WindowBoundsPayload extends Schema.Class<WindowBoundsPayload>("WindowBoundsPayload")({
@@ -201,6 +222,9 @@ export interface HostWindowExchange {
   readonly request: (
     request: HostProtocolRequestEnvelope
   ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never>
+  readonly subscribe?: (
+    method: string
+  ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never>
 }
 
 export interface HostWindowClient {
@@ -258,6 +282,7 @@ export interface HostWindowClient {
   readonly getState: (
     windowId: string
   ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
+  readonly events: () => Stream.Stream<WindowRegistryEventPayload, HostProtocolError, never>
   readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
 }
 
@@ -413,6 +438,7 @@ export const makeHostWindowClient = (
         )
         return yield* decodeStateResponse(response.payload, WINDOW_GET_STATE_METHOD)
       }),
+    events: () => subscribeWindowEvents(exchange),
     destroy: (windowId) =>
       Effect.gen(function* () {
         const payload = yield* encodeDestroyPayload(windowId)
@@ -474,6 +500,7 @@ const decodeUnknownWindowCreateResponse = Schema.decodeUnknownSync(WindowCreateR
 const decodeUnknownWindowDestroyPayload = Schema.decodeUnknownSync(WindowDestroyPayload)
 const decodeUnknownWindowLookupResponse = Schema.decodeUnknownSync(WindowLookupResponse)
 const decodeUnknownWindowListResponse = Schema.decodeUnknownSync(WindowListResponse)
+const decodeUnknownWindowRegistryEventPayload = Schema.decodeUnknownSync(WindowRegistryEventPayload)
 const decodeUnknownWindowBoundsPayload = Schema.decodeUnknownSync(WindowBoundsPayload)
 const decodeUnknownWindowSetBoundsPayload = Schema.decodeUnknownSync(WindowSetBoundsPayload)
 const decodeUnknownWindowSetTitlePayload = Schema.decodeUnknownSync(WindowSetTitlePayload)
@@ -627,6 +654,38 @@ const decodeListResponse = (
     try: () => decodeUnknownWindowListResponse(payload, StrictParseOptions),
     catch: (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   })
+
+const subscribeWindowEvents = (
+  exchange: HostWindowExchange
+): Stream.Stream<WindowRegistryEventPayload, HostProtocolError, never> => {
+  if (exchange.subscribe === undefined) {
+    return Stream.fail(
+      makeHostProtocolInvalidOutputError(
+        WINDOW_EVENT_METHOD,
+        "event exchange does not support subscriptions"
+      )
+    )
+  }
+
+  return exchange.subscribe(WINDOW_EVENT_METHOD).pipe(
+    Stream.mapEffect((event) => {
+      if (event.method !== WINDOW_EVENT_METHOD) {
+        return Effect.fail(
+          makeHostProtocolInvalidOutputError(
+            WINDOW_EVENT_METHOD,
+            `unexpected event method: ${event.method}`
+          )
+        )
+      }
+
+      return Effect.try({
+        try: () => decodeUnknownWindowRegistryEventPayload(event.payload, StrictParseOptions),
+        catch: (error) =>
+          makeHostProtocolInvalidOutputError(WINDOW_EVENT_METHOD, formatUnknownError(error))
+      })
+    })
+  )
+}
 
 const decodeBoundsResponse = (
   payload: unknown,

@@ -17,7 +17,8 @@ import {
   type RpcCapabilityMetadata,
   type RpcSupportMetadata,
   RpcGroup,
-  type HostProtocolError
+  type HostProtocolError,
+  WINDOW_EVENT_METHOD
 } from "@effect-desktop/bridge"
 import {
   P,
@@ -27,8 +28,9 @@ import {
   type DesktopRpcClient,
   type ResourceRegistryApi
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { type AppEventRouterApi, windowScope } from "./app-events.js"
@@ -49,6 +51,7 @@ import {
   WindowLookupInput,
   WindowProgressInput,
   type WindowProgressOptions,
+  WindowRegistryEvent,
   WindowResizableInput,
   WindowRequestAttentionInput,
   WindowResource,
@@ -230,6 +233,12 @@ type WindowRpcUnion = RpcGroup.Rpcs<typeof WindowRpcGroup>
 
 export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
 
+export const WindowRpcEvents = Object.freeze({
+  Event: { payload: WindowRegistryEvent }
+})
+
+export type WindowRpcEvents = typeof WindowRpcEvents
+
 export type WindowSupportedRpc = WindowRpcUnion
 
 export const WindowSupportedRpcs: RpcGroup.RpcGroup<WindowSupportedRpc> = WindowRpcs
@@ -312,6 +321,7 @@ export interface WindowClientApi {
     fullscreen: boolean
   ) => Effect.Effect<void, WindowError, never>
   readonly getState: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
+  readonly events: () => Stream.Stream<WindowRegistryEvent, WindowError, never>
 }
 
 export class WindowClient extends Context.Service<WindowClient, WindowClientApi>()(
@@ -471,7 +481,7 @@ export const WindowSurface = NativeSurface.make("Window", WindowRpcGroup, {
   capabilities: WindowMethodNames,
   handlers: WindowHandlersLive,
   client: (client) => windowClientFromRpcClient(client),
-  bridgeClient: (client, _exchange) => windowClientFromRpcClient(client)
+  bridgeClient: (client, exchange) => windowClientFromRpcClient(client, exchange)
 })
 
 export const makeHostWindowRpcRuntime = (
@@ -523,13 +533,17 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     maximize: (window) => client.maximize(window),
     restore: (window) => client.restore(window),
     setFullscreen: (window, fullscreen) => client.setFullscreen(window, fullscreen),
-    getState: (window) => client.getState(window)
+    getState: (window) => client.getState(window),
+    events: () => client.events()
   }
 
   return Object.freeze(service)
 }
 
-function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
+function windowClientFromRpcClient(
+  client: WindowRpcClient,
+  exchange?: BridgeClientExchange
+): WindowClientApi {
   return Object.freeze({
     create: (input) =>
       Effect.gen(function* () {
@@ -677,7 +691,8 @@ function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
         const decoded = yield* decodeWindowHandleInput(window, "Window.getState")
         const state = yield* runWindowRpc(client["Window.getState"](decoded), "Window.getState")
         return yield* decodeWindowState(state, "Window.getState")
-      })
+      }),
+    events: () => subscribeNativeEvent(exchange, WINDOW_EVENT_METHOD, WindowRegistryEvent)
   } satisfies WindowClientApi)
 }
 

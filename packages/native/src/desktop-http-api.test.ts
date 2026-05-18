@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { PermissionRegistry, makePermissionRegistry } from "@effect-desktop/core"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Layer, Schema, Stream } from "effect"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { HttpApiClient } from "effect/unstable/httpapi"
 
@@ -43,7 +43,8 @@ const windowClient: WindowClientApi = {
   maximize: () => Effect.void,
   restore: () => Effect.void,
   setFullscreen: () => Effect.void,
-  getState: () => Effect.succeed({ minimized: false, maximized: false, fullscreen: false })
+  getState: () => Effect.succeed({ minimized: false, maximized: false, fullscreen: false }),
+  events: () => Stream.empty
 }
 
 const makeHandler = (permissions: Layer.Layer<PermissionRegistry>) =>

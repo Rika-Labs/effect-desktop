@@ -839,7 +839,8 @@ export const runHeadless = <A, E, R>(
         maximize: (windowId) => rawWindow.maximize(windowId),
         restore: (windowId) => rawWindow.restore(windowId),
         setFullscreen: (windowId, fullscreen) => rawWindow.setFullscreen(windowId, fullscreen),
-        getState: (windowId) => rawWindow.getState(windowId)
+        getState: (windowId) => rawWindow.getState(windowId),
+        events: () => rawWindow.events()
       }
     }
 

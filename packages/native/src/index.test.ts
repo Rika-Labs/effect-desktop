@@ -12,6 +12,7 @@ import {
   WINDOW_CREATE_METHOD,
   WINDOW_CENTER_METHOD,
   WINDOW_DESTROY_METHOD,
+  WINDOW_EVENT_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
@@ -242,6 +243,7 @@ import {
   Window,
   WindowHandlersLive,
   WindowRpcs,
+  WindowRpcEvents,
   WindowSupportedRpcs,
   WindowSurface,
   WindowClient,
@@ -398,6 +400,7 @@ import {
   WebViewNavigationBlockedEvent,
   WebViewScreenshot,
   WindowBounds,
+  WindowRegistryEvent,
   WindowState,
   type NotificationHandle,
   type TrayHandle,
@@ -7451,6 +7454,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.getState"
   ])
   expect(WindowRpcs.requests.has("Window.show")).toBe(true)
+  expect(Object.keys(WindowRpcEvents)).toEqual(["Event"])
   expect("spec" in WindowRpcs).toBe(false)
   expect("events" in WindowRpcs).toBe(false)
 })
@@ -7505,7 +7509,17 @@ test("Window service delegates through a substitutable WindowClient port", async
       Effect.sync(() => {
         calls.push("getState")
         return new WindowState({ minimized: false, maximized: true, fullscreen: true })
-      })
+      }),
+    events: () =>
+      Stream.make(
+        new WindowRegistryEvent({
+          type: "window-registry-event",
+          phase: "opened",
+          windowId: "window-1",
+          window: windowHandle,
+          terminal: false
+        })
+      )
   }
 
   const result = await Effect.runPromise(
@@ -7535,10 +7549,11 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.maximize(created)
       yield* window.setFullscreen(created, true)
       const state = yield* window.getState(created)
+      const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
       yield* window.restore(created)
       yield* window.close(created)
 
-      return { bounds, byId, created, current, state, windows }
+      return { bounds, byId, created, current, event, state, windows }
     }).pipe(Effect.provide(makeWindowServiceLayer(client)))
   )
 
@@ -7550,6 +7565,7 @@ test("Window service delegates through a substitutable WindowClient port", async
   expect(result.state).toEqual(
     new WindowState({ minimized: false, maximized: true, fullscreen: true })
   )
+  expect(Option.getOrUndefined(result.event)?.phase).toBe("opened")
   expect(calls).toEqual([
     "create:Main",
     "show",
@@ -8040,6 +8056,35 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
     [WINDOW_DESTROY_METHOD, { windowId: "host-child" }],
     ["Window.getById", { windowId: "host-child" }],
     [WINDOW_DESTROY_METHOD, { windowId: "host-parent" }]
+  ])
+})
+
+test("Window.events streams renderer-visible lifecycle events from the app router", async () => {
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const router = yield* makeAppEventRouter()
+      const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry, {}, router)
+
+      return yield* Effect.gen(function* () {
+        const window = yield* Window
+        const eventsFiber = yield* window
+          .events()
+          .pipe(Stream.take(3), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+        yield* Effect.sleep("10 millis")
+        const created = yield* window.create({ title: "Events" })
+        yield* window.focus(created)
+        yield* window.close(created)
+
+        return yield* Fiber.join(eventsFiber)
+      }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+    })
+  )
+
+  expect(Array.from(result).map((event) => [event.phase, event.windowId, event.terminal])).toEqual([
+    ["opened", "host-window-1", false],
+    ["focused", "host-window-1", false],
+    ["closed", "host-window-1", true]
   ])
 })
 
@@ -10065,7 +10110,8 @@ const noopWindowClient: WindowClientApi = {
   restore: () => Effect.void,
   setFullscreen: () => Effect.void,
   getState: () =>
-    Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false }))
+    Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false })),
+  events: () => Stream.empty
 }
 
 const handleFor = (id: string): WindowHandle => ({
@@ -10594,7 +10640,26 @@ const makeWindowRpcExchange = (
       BridgeClientExchange["request"]
     >
 
-  return { request }
+  const subscribe: BridgeClientExchange["subscribe"] = (method) => {
+    if (method !== WINDOW_EVENT_METHOD || appEventRouter === undefined) {
+      return Stream.empty
+    }
+
+    return appEventRouter.windowEvents().pipe(
+      Stream.map(
+        (event) =>
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            method,
+            timestamp: 1_710_000_002_500,
+            traceId: "window-event-trace",
+            payload: event
+          })
+      )
+    )
+  }
+
+  return { request, subscribe }
 }
 
 const rpcMethodNames = (

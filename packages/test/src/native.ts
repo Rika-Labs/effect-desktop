@@ -411,7 +411,8 @@ const makeWindowScenario = (
     restore: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
     setFullscreen: (_window, _fullscreen): Effect.Effect<void, WindowError, never> => Effect.void,
     getState: (_window): Effect.Effect<WindowState, WindowError, never> =>
-      Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false }))
+      Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false })),
+    events: () => Stream.empty
   } satisfies WindowServiceApi)
 
 const notFoundWindow = (windowId: string, operation: string): WindowError =>

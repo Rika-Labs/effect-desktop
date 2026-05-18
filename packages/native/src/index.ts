@@ -941,6 +941,7 @@ export {
   WindowHandlersLive,
   WindowLive,
   WindowMethodNames,
+  WindowRpcEvents,
   WindowRpcs,
   WindowSupportedRpcs,
   WindowSurface,
