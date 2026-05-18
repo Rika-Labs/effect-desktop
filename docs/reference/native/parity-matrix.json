@@ -4275,6 +4275,33 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setTrafficLights",
+      "surface": "Window",
+      "method": "setTrafficLights",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "traffic-light-placement-macos-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "traffic-light-placement-macos-only"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "traffic-light-placement-macos-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.show",
       "surface": "Window",
       "method": "show",
@@ -4337,11 +4364,11 @@
     }
   ],
   "summary": {
-    "total": 225,
-    "routed": 203,
+    "total": 226,
+    "routed": 204,
     "missing": 22,
     "supported": 108,
-    "partial": 22,
+    "partial": 23,
     "unsupported": 95
   }
 }

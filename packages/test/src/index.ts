@@ -831,6 +831,8 @@ export const runHeadless = <A, E, R>(
         setTitle: (windowId, title) => rawWindow.setTitle(windowId, title),
         setResizable: (windowId, resizable) => rawWindow.setResizable(windowId, resizable),
         setDecorations: (windowId, decorations) => rawWindow.setDecorations(windowId, decorations),
+        setTrafficLights: (windowId, trafficLights) =>
+          rawWindow.setTrafficLights(windowId, trafficLights),
         setAlwaysOnTop: (windowId, alwaysOnTop) => rawWindow.setAlwaysOnTop(windowId, alwaysOnTop),
         setProgress: (windowId, input) => rawWindow.setProgress(windowId, input),
         requestAttention: (windowId, requestType) =>

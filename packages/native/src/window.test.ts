@@ -17,6 +17,14 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   expect(rpcSupport(request("Window.setTitle"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setResizable"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setDecorations"))).toEqual({ status: "supported" })
+  expect(rpcSupport(request("Window.setTrafficLights"))).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
   expect(rpcSupport(request("Window.setAlwaysOnTop"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setProgress"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.requestAttention"))).toEqual({ status: "supported" })

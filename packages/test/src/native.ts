@@ -411,6 +411,8 @@ const makeWindowScenario = (
     setTitle: (_window, _title): Effect.Effect<void, WindowError, never> => Effect.void,
     setResizable: (_window, _resizable): Effect.Effect<void, WindowError, never> => Effect.void,
     setDecorations: (_window, _decorations): Effect.Effect<void, WindowError, never> => Effect.void,
+    setTrafficLights: (_window, _trafficLights): Effect.Effect<void, WindowError, never> =>
+      Effect.void,
     setAlwaysOnTop: (_window, _alwaysOnTop): Effect.Effect<void, WindowError, never> => Effect.void,
     setProgress: (_window, _input): Effect.Effect<void, WindowError, never> => Effect.void,
     requestAttention: (_window, _requestType): Effect.Effect<void, WindowError, never> =>

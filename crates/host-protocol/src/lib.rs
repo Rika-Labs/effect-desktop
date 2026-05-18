@@ -60,6 +60,7 @@ pub const WINDOW_CENTER_ON_DISPLAY_METHOD: &str = "Window.centerOnDisplay";
 pub const WINDOW_SET_TITLE_METHOD: &str = "Window.setTitle";
 pub const WINDOW_SET_RESIZABLE_METHOD: &str = "Window.setResizable";
 pub const WINDOW_SET_DECORATIONS_METHOD: &str = "Window.setDecorations";
+pub const WINDOW_SET_TRAFFIC_LIGHTS_METHOD: &str = "Window.setTrafficLights";
 pub const WINDOW_SET_ALWAYS_ON_TOP_METHOD: &str = "Window.setAlwaysOnTop";
 pub const WINDOW_SET_PROGRESS_METHOD: &str = "Window.setProgress";
 pub const WINDOW_REQUEST_ATTENTION_METHOD: &str = "Window.requestAttention";
@@ -3389,6 +3390,30 @@ impl WindowSetDecorationsPayload {
 
     pub fn decorations(&self) -> bool {
         self.decorations
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetTrafficLightsPayload {
+    window_id: String,
+    traffic_lights: WindowTrafficLights,
+}
+
+impl WindowSetTrafficLightsPayload {
+    pub fn new(window_id: impl Into<String>, traffic_lights: WindowTrafficLights) -> Self {
+        Self {
+            window_id: window_id.into(),
+            traffic_lights,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn traffic_lights(&self) -> &WindowTrafficLights {
+        &self.traffic_lights
     }
 }
 
@@ -11237,11 +11262,11 @@ mod tests {
         WindowRegistryEventPayload, WindowRegistryEventPhase, WindowRequestAttentionPayload,
         WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
         WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
-        WindowSetTitlePayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
-        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
-        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
-        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
-        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowStateEventPayload,
+        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
+        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
+        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
+        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
         CLIPBOARD_UNSUPPORTED_REASON, CRASH_REPORTER_UNSUPPORTED_REASON,
@@ -12531,6 +12556,16 @@ mod tests {
             serde_json::to_string(&set_decorations)
                 .expect("window set decorations payload should encode"),
             r#"{"windowId":"window-1","decorations":true}"#
+        );
+
+        let traffic_lights =
+            WindowSetTrafficLightsPayload::new("window-1", WindowTrafficLights::new(12.0, 13.0));
+        assert_eq!(traffic_lights.window_id(), "window-1");
+        assert_eq!(traffic_lights.traffic_lights().x(), 12.0);
+        assert_eq!(
+            serde_json::to_string(&traffic_lights)
+                .expect("window set traffic lights payload should encode"),
+            r#"{"windowId":"window-1","trafficLights":{"x":12.0,"y":13.0}}"#
         );
 
         let set_always_on_top = WindowSetAlwaysOnTopPayload::new("window-1", true);

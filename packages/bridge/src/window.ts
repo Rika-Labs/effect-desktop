@@ -28,6 +28,7 @@ import {
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_TITLE_METHOD,
+  WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -185,6 +186,13 @@ export class WindowSetDecorationsPayload extends Schema.Class<WindowSetDecoratio
   decorations: Schema.Boolean
 }) {}
 
+export class WindowSetTrafficLightsPayload extends Schema.Class<WindowSetTrafficLightsPayload>(
+  "WindowSetTrafficLightsPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  trafficLights: WindowTrafficLights
+}) {}
+
 export class WindowSetAlwaysOnTopPayload extends Schema.Class<WindowSetAlwaysOnTopPayload>(
   "WindowSetAlwaysOnTopPayload"
 )({
@@ -286,6 +294,10 @@ export interface HostWindowClient {
   readonly setDecorations: (
     windowId: string,
     decorations: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setTrafficLights: (
+    windowId: string,
+    trafficLights: Schema.Schema.Type<typeof WindowTrafficLights>
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly setAlwaysOnTop: (
     windowId: string,
@@ -425,6 +437,14 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
+    setTrafficLights: (windowId, trafficLights) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetTrafficLightsPayload(windowId, trafficLights)
+        const request = yield* makeRequest(WINDOW_SET_TRAFFIC_LIGHTS_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     setAlwaysOnTop: (windowId, alwaysOnTop) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetAlwaysOnTopPayload(windowId, alwaysOnTop)
@@ -547,6 +567,9 @@ const decodeUnknownWindowSetResizablePayload = Schema.decodeUnknownSync(WindowSe
 const decodeUnknownWindowSetDecorationsPayload = Schema.decodeUnknownSync(
   WindowSetDecorationsPayload
 )
+const decodeUnknownWindowSetTrafficLightsPayload = Schema.decodeUnknownSync(
+  WindowSetTrafficLightsPayload
+)
 const decodeUnknownWindowSetAlwaysOnTopPayload = Schema.decodeUnknownSync(
   WindowSetAlwaysOnTopPayload
 )
@@ -627,6 +650,16 @@ const encodeSetDecorationsPayload = (
     try: () =>
       decodeUnknownWindowSetDecorationsPayload({ windowId, decorations }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_DECORATIONS_METHOD)
+  })
+
+const encodeSetTrafficLightsPayload = (
+  windowId: string,
+  trafficLights: Schema.Schema.Type<typeof WindowTrafficLights>
+): Effect.Effect<WindowSetTrafficLightsPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetTrafficLightsPayload({ windowId, trafficLights }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_TRAFFIC_LIGHTS_METHOD)
   })
 
 const encodeSetAlwaysOnTopPayload = (

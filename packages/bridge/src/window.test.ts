@@ -31,6 +31,7 @@ import {
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_TITLE_METHOD,
+  WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
@@ -304,14 +305,16 @@ test("host window client requests mutable chrome commands", async () => {
     nextRequestId: nextId([
       "request-window-set-title",
       "request-window-set-resizable",
-      "request-window-set-decorations"
+      "request-window-set-decorations",
+      "request-window-set-traffic-lights"
     ]),
     nextTraceId: nextId([
       "trace-window-set-title",
       "trace-window-set-resizable",
-      "trace-window-set-decorations"
+      "trace-window-set-decorations",
+      "trace-window-set-traffic-lights"
     ]),
-    now: nextNumber([1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018])
+    now: nextNumber([1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019])
   })
 
   await Effect.runPromise(
@@ -319,13 +322,15 @@ test("host window client requests mutable chrome commands", async () => {
       yield* client.setTitle("window-1", "Renamed")
       yield* client.setResizable("window-1", false)
       yield* client.setDecorations("window-1", true)
+      yield* client.setTrafficLights("window-1", { x: 12, y: 13 })
     })
   )
 
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [WINDOW_SET_TITLE_METHOD, { windowId: "window-1", title: "Renamed" }],
     [WINDOW_SET_RESIZABLE_METHOD, { windowId: "window-1", resizable: false }],
-    [WINDOW_SET_DECORATIONS_METHOD, { windowId: "window-1", decorations: true }]
+    [WINDOW_SET_DECORATIONS_METHOD, { windowId: "window-1", decorations: true }],
+    [WINDOW_SET_TRAFFIC_LIGHTS_METHOD, { windowId: "window-1", trafficLights: { x: 12, y: 13 } }]
   ])
 })
 

@@ -47,6 +47,7 @@ import {
 | `setTitle`         | `WindowTitleInput`            | `void`             | Set the window title.                              |
 | `setResizable`     | `WindowResizableInput`        | `void`             | Enable or disable user resizing.                   |
 | `setDecorations`   | `WindowDecorationsInput`      | `void`             | Enable or disable native window decorations.       |
+| `setTrafficLights` | `WindowTrafficLightsInput`    | `void`             | Move macOS traffic-light controls.                 |
 | `setAlwaysOnTop`   | `WindowAlwaysOnTopInput`      | `void`             | Enable or disable always-on-top z-order.           |
 | `setProgress`      | `WindowProgressInput`         | `void`             | Set host task progress state for the window.       |
 | `requestAttention` | `WindowRequestAttentionInput` | `void`             | Ask the OS to draw attention to a window.          |
@@ -59,7 +60,7 @@ import {
 | `close`            | `WindowHandle`                | `void`             | Compatibility name for `destroy`.                  |
 | `destroy`          | `WindowHandle`                | `void`             | Destroy a native window and close its scope.       |
 
-`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getBounds", "setBounds", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setAlwaysOnTop", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
+`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getBounds", "setBounds", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setAlwaysOnTop", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights` is macOS-only and returns typed `Unsupported` on other hosts. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
 The placement surface is not complete. `getBounds`, `setBounds`, and `center`
 are host-routed logical-coordinate operations. `centerOnDisplay` uses the host's
@@ -71,11 +72,12 @@ does not yet expose general display-relative placement, work-area clipping for
 arbitrary bounds, or move/resize state events.
 
 The chrome surface is not complete. `Window.create` accepts macOS creation-time
-`titleBarStyle`, `vibrancy`, and `trafficLights` options, and `setDecorations`
-is mutable through the host. Effect Desktop does not yet expose a
-`WindowChrome` service, mutable titlebar-style or vibrancy commands, shadow or
-transparency controls, mutable traffic-light placement, or a platform support
-matrix for those chrome features.
+`titleBarStyle`, `vibrancy`, and `trafficLights` options, `setDecorations` is
+mutable through the host, and `setTrafficLights` mutates macOS traffic-light
+placement with typed unsupported behavior elsewhere. Effect Desktop does not yet
+expose a `WindowChrome` service, mutable titlebar-style or vibrancy commands,
+shadow or transparency controls, or a complete platform support matrix for those
+chrome features.
 
 The state surface has command, read, and state-event support for host-tracked
 minimized, maximized, and fullscreen booleans. `minimize`, `maximize`,
@@ -108,7 +110,7 @@ This is not a complete modal ownership API. Effect Desktop does not yet expose a
 lookup, parent/child relationship query, or a host event stream dedicated to
 ownership changes.
 
-Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, mutable titlebar style, vibrancy, shadows, transparency, traffic lights, skip-taskbar, badge, flash, blur, simple fullscreen, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
+Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, mutable titlebar style, vibrancy, shadows, transparency, portable traffic-light placement beyond macOS, skip-taskbar, badge, flash, blur, simple fullscreen, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
 
 ## Errors
 

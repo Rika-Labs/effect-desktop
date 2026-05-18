@@ -137,6 +137,14 @@ pub(crate) fn apply_window_polish(
     platform::apply_window_polish(window, polish)
 }
 
+pub(crate) fn set_traffic_lights(
+    window: &Window,
+    traffic_lights: &WindowTrafficLights,
+) -> std::result::Result<(), HostProtocolError> {
+    let traffic_lights = MacosTrafficLights::try_from(traffic_lights)?;
+    platform::set_traffic_lights(window, traffic_lights)
+}
+
 pub(crate) fn set_dock_badge_label(
     window: &Window,
     label: Option<String>,
@@ -158,7 +166,7 @@ fn invalid_argument(field: &str, reason: &str) -> HostProtocolError {
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{HostProtocolError, MacosWindowPolish};
+    use super::{HostProtocolError, MacosTrafficLights, MacosWindowPolish};
     use tao::{
         dpi::LogicalPosition,
         platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS},
@@ -216,6 +224,17 @@ mod platform {
                 )
             })?;
         }
+        Ok(())
+    }
+
+    pub(super) fn set_traffic_lights(
+        window: &Window,
+        traffic_lights: MacosTrafficLights,
+    ) -> std::result::Result<(), HostProtocolError> {
+        WindowExtMacOS::set_traffic_light_inset(
+            window,
+            LogicalPosition::new(traffic_lights.x, traffic_lights.y),
+        );
         Ok(())
     }
 
@@ -389,6 +408,16 @@ mod platform {
         _polish: Option<&MacosWindowPolish>,
     ) -> std::result::Result<(), HostProtocolError> {
         Ok(())
+    }
+
+    pub(super) fn set_traffic_lights(
+        _window: &Window,
+        _traffic_lights: super::MacosTrafficLights,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "traffic-light placement is only supported on macOS",
+            host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+        ))
     }
 
     pub(super) fn set_dock_badge_label(

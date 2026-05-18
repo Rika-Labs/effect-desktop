@@ -326,6 +326,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::set_decorations),
     ),
     route(
+        host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+        HostMethodDispatcher::Window(window::set_traffic_lights),
+    ),
+    route(
         host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
         HostMethodDispatcher::Window(window::set_always_on_top),
     ),
@@ -3509,6 +3513,11 @@ mod tests {
                 host_protocol::WINDOW_SET_DECORATIONS_METHOD,
                 serde_json::json!({ "windowId": "window-1", "decorations": true }),
             ),
+            (
+                "request-window-set-traffic-lights",
+                host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+                serde_json::json!({ "windowId": "window-1", "trafficLights": { "x": 12, "y": 13 } }),
+            ),
         ] {
             let response = router
                 .dispatch_at(request_with_payload(id, method, payload), 1710000000112)
@@ -6671,6 +6680,14 @@ mod tests {
                 .lock()
                 .expect("fake decorations requests should lock")
                 .push((window_id.to_string(), decorations));
+            Ok(())
+        }
+
+        fn set_traffic_lights(
+            &self,
+            _window_id: &str,
+            _traffic_lights: &host_protocol::WindowTrafficLights,
+        ) -> Result<(), HostProtocolError> {
             Ok(())
         }
 

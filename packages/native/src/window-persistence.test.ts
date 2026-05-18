@@ -553,6 +553,7 @@ const makeWindowClient = (
   setTitle: () => Effect.void,
   setResizable: () => Effect.void,
   setDecorations: () => Effect.void,
+  setTrafficLights: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
   setProgress: () => Effect.void,
   requestAttention: () => Effect.void,

@@ -146,6 +146,13 @@ export class WindowDecorationsInput extends Schema.Class<WindowDecorationsInput>
   decorations: Schema.Boolean
 }) {}
 
+export class WindowTrafficLightsInput extends Schema.Class<WindowTrafficLightsInput>(
+  "WindowTrafficLightsInput"
+)({
+  window: WindowResource,
+  trafficLights: WindowTrafficLights
+}) {}
+
 export class WindowAlwaysOnTopInput extends Schema.Class<WindowAlwaysOnTopInput>(
   "WindowAlwaysOnTopInput"
 )({

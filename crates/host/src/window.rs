@@ -11,7 +11,7 @@ use host_protocol::{
     WindowAttentionType, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
     WindowListResponse, WindowLookupResponse, WindowProgressState, WindowRegistryEventPayload,
     WindowRegistryEventPhase, WindowSetProgressPayload, WindowStateEventPayload,
-    WindowStatePayload,
+    WindowStatePayload, WindowTrafficLights,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -116,6 +116,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         window_id: &str,
         decorations: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_traffic_lights(
+        &self,
+        window_id: &str,
+        traffic_lights: &WindowTrafficLights,
     ) -> std::result::Result<(), HostProtocolError>;
 
     fn set_always_on_top(
@@ -315,6 +321,11 @@ enum WindowCommand {
     SetDecorations {
         window_id: String,
         decorations: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTrafficLights {
+        window_id: String,
+        traffic_lights: WindowTrafficLights,
         reply: Sender<WindowCommandReply>,
     },
     SetAlwaysOnTop {
@@ -904,6 +915,21 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_DECORATIONS_METHOD)
+    }
+
+    fn set_traffic_lights(
+        &self,
+        window_id: &str,
+        traffic_lights: &WindowTrafficLights,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTrafficLights {
+            window_id: window_id.to_string(),
+            traffic_lights: traffic_lights.clone(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD)
     }
 
     fn set_always_on_top(
@@ -1975,6 +2001,21 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn set_traffic_lights(
+        &self,
+        window_id: &str,
+        traffic_lights: &WindowTrafficLights,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+            ));
+        };
+
+        macos::set_traffic_lights(&resources._window, traffic_lights)
+    }
+
     fn set_always_on_top(
         &self,
         window_id: &str,
@@ -2722,6 +2763,17 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_decorations(&window_id, decorations)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTrafficLights {
+                window_id,
+                traffic_lights,
+                reply,
+            } => {
+                let result = self
+                    .set_traffic_lights(&window_id, &traffic_lights)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
