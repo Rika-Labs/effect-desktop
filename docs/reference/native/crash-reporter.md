@@ -1,6 +1,6 @@
 ---
 title: CrashReporter (native)
-description: Crash reporter setup, breadcrumbs, and report flushing.
+description: Crash reporter API status, breadcrumbs, and report flushing.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -10,26 +10,40 @@ effect_version: 4
 
 Crash reporter setup and breadcrumb collection.
 
+The TypeScript surface is present for contract and test-layer work, but the Rust
+host crash reporter adapter is not implemented. The native surface reports
+`unsupported` on macOS, Windows, and Linux until host crash capture, artifact
+storage, permission enforcement, and report inspection are implemented.
+
 ## Methods
 
-| Method   | Payload                                            | Success |
-| -------- | -------------------------------------------------- | ------- |
-| `start`  | `{ productName, version, companyName, submitUrl }` | `void`  |
-| `report` | `CrashReporterBreadcrumb`                          | `void`  |
+| Method             | Payload                   | Success                    | Runtime support |
+| ------------------ | ------------------------- | -------------------------- | --------------- |
+| `start`            | `{ enabled?: boolean }`    | `void`                     | unsupported     |
+| `recordBreadcrumb` | `CrashReporterBreadcrumb` | `void`                     | unsupported     |
+| `flush`            | `void`                    | `{ flushed: number >= 0 }` | unsupported     |
 
 ## Types
 
-`CrashReporterBreadcrumb` — event payload (timestamp, level, category, message, data).
+`CrashReporterBreadcrumb` — breadcrumb payload with `category`, `message`, optional
+`details`, and optional `timestamp`.
 
-`CrashReporterStartOptions` — `{ productName, version, companyName, submitUrl }`.
+`CrashReporterStartOptions` — `{ enabled?: boolean }`.
 
 ## Errors
 
-`CrashReporterError`.
+`CrashReporterError` is the host protocol error union. Until the host adapter is
+implemented, bridge calls reach an unsupported or missing-method host path rather
+than native crash capture.
 
 ## Redaction
 
-Breadcrumb `data` passes through `RedactionFilter` before submission. Secret-shaped fields are scrubbed.
+Breadcrumb `details` pass through `RedactionFilter` before host transport.
+Secret-shaped fields are scrubbed.
+
+The in-memory test client can validate breadcrumbs and flush recorded entries,
+but it does not capture process crashes, persist crash artifacts, upload reports,
+or prove user consent boundaries.
 
 ## Related
 

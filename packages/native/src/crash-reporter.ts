@@ -28,6 +28,16 @@ export type CrashReporterStartOptions = Schema.Schema.Type<typeof CrashReporterS
 
 export type CrashReporterBreadcrumb = Schema.Schema.Type<typeof CrashReporterBreadcrumbInput>
 
+const UnsupportedReason = "host-adapter-unimplemented"
+
+const CrashReporterSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
+
 export const CrashReporterStart = crashReporterRpc(
   "start",
   CrashReporterStartInput,
@@ -159,12 +169,14 @@ export const makeCrashReporterMemoryClient = (): Effect.Effect<
     })
     return Object.freeze({
       start: (options = {}) =>
-        Ref.update(state, () => {
-          return {
-            breadcrumbs: [],
-            started: options.enabled ?? true
-          } satisfies CrashReporterState
-        }),
+        Ref.update(
+          state,
+          () =>
+            ({
+              breadcrumbs: [],
+              started: options.enabled ?? true
+            }) satisfies CrashReporterState
+        ),
       recordBreadcrumb: (breadcrumb) =>
         Effect.gen(function* () {
           const validated = yield* validateBreadcrumb(breadcrumb)
@@ -196,8 +208,8 @@ export const makeCrashReporterMemoryClient = (): Effect.Effect<
 
 const crashReporterClientFromRpcClient = (
   client: DesktopRpcClient<CrashReporterRpc>
-): CrashReporterClientApi => {
-  return Object.freeze({
+): CrashReporterClientApi =>
+  Object.freeze({
     start: (input = {}) =>
       input.enabled === undefined
         ? runCrashReporterRpc(
@@ -223,7 +235,6 @@ const crashReporterClientFromRpcClient = (
     flush: () =>
       runCrashReporterRpc(client["CrashReporter.flush"](undefined), "CrashReporter.flush")
   } satisfies CrashReporterClientApi)
-}
 
 interface CrashReporterState {
   readonly breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>
@@ -240,7 +251,7 @@ function crashReporterRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: CrashReporterSupport
   })
 }
 

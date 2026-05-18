@@ -45,9 +45,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `ContextMenu`               | `bindCommand`               | `supported`   | `ContextMenu.bindCommand`                 | `missing`   |
 | `ContextMenu`               | `buildFromTemplate`         | `supported`   | `ContextMenu.buildFromTemplate`           | `missing`   |
 | `ContextMenu`               | `show`                      | `supported`   | `ContextMenu.show`                        | `missing`   |
-| `CrashReporter`             | `flush`                     | `supported`   | `CrashReporter.flush`                     | `missing`   |
-| `CrashReporter`             | `recordBreadcrumb`          | `supported`   | `CrashReporter.recordBreadcrumb`          | `missing`   |
-| `CrashReporter`             | `start`                     | `supported`   | `CrashReporter.start`                     | `missing`   |
+| `CrashReporter`             | `flush`                     | `unsupported` | `CrashReporter.flush`                     | `missing`   |
+| `CrashReporter`             | `recordBreadcrumb`          | `unsupported` | `CrashReporter.recordBreadcrumb`          | `missing`   |
+| `CrashReporter`             | `start`                     | `unsupported` | `CrashReporter.start`                     | `missing`   |
 | `DiagnosticsBundle`         | `collect`                   | `supported`   | `DiagnosticsBundle.collect`               | `routed`    |
 | `DiagnosticsBundle`         | `isSupported`               | `supported`   | `DiagnosticsBundle.isSupported`           | `routed`    |
 | `DiagnosticsBundle`         | `redact`                    | `supported`   | `DiagnosticsBundle.redact`                | `routed`    |
