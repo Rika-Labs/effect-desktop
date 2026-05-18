@@ -93,9 +93,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `FocusedApplicationContext` | `watch`                     | `unsupported` | `FocusedApplicationContext.watch`         | `routed`    |
 | `GlobalShortcut`            | `isRegistered`              | `supported`   | `GlobalShortcut.isRegistered`             | `routed`    |
 | `GlobalShortcut`            | `isSupported`               | `supported`   | `GlobalShortcut.isSupported`              | `routed`    |
-| `GlobalShortcut`            | `register`                  | `supported`   | `GlobalShortcut.register`                 | `routed`    |
-| `GlobalShortcut`            | `unregister`                | `supported`   | `GlobalShortcut.unregister`               | `routed`    |
-| `GlobalShortcut`            | `unregisterAll`             | `supported`   | `GlobalShortcut.unregisterAll`            | `routed`    |
+| `GlobalShortcut`            | `register`                  | `unsupported` | `GlobalShortcut.register`                 | `routed`    |
+| `GlobalShortcut`            | `unregister`                | `unsupported` | `GlobalShortcut.unregister`               | `routed`    |
+| `GlobalShortcut`            | `unregisterAll`             | `unsupported` | `GlobalShortcut.unregisterAll`            | `routed`    |
 | `Job`                       | `fail`                      | `supported`   | `Job.fail`                                | `routed`    |
 | `Job`                       | `get`                       | `supported`   | `Job.get`                                 | `routed`    |
 | `Job`                       | `interrupt`                 | `supported`   | `Job.interrupt`                           | `routed`    |

@@ -24,10 +24,12 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
       const systemAppearance = yield* capabilities.support("SystemAppearance.getAppearance")
       const appQuit = yield* capabilities.support("App.quit")
+      const globalShortcutRegister = yield* capabilities.support("GlobalShortcut.register")
       return {
         create,
         appQuit,
         dockBadge,
+        globalShortcutRegister,
         updaterInstall,
         crashReporterStart,
         powerMonitorIsSupported,
@@ -62,6 +64,15 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
         status: "unsupported",
         reason: "Windows taskbar badges require jump-list/taskbar integration"
       }
+    ]
+  })
+  expect(result.globalShortcutRegister).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
     ]
   })
   expect(result.updaterInstall).toEqual({

@@ -6291,7 +6291,7 @@ test("GlobalShortcut conflicts are typed Effect values", async () => {
   expectExitFailure(bindConflictExit, (error) => hasErrorTag(error, "AlreadyExists"))
 })
 
-test("Linux GlobalShortcut client reports Wayland unsupported as a typed value", async () => {
+test("Linux GlobalShortcut client reports missing host adapters as typed unsupported values", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const shortcuts = yield* GlobalShortcut
@@ -6310,7 +6310,12 @@ test("Linux GlobalShortcut client reports Wayland unsupported as a typed value",
       reason: "wayland-no-global-shortcut"
     })
   )
-  expect(result.x11Supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
+  expect(result.x11Supported).toEqual(
+    new GlobalShortcutSupportedResult({
+      supported: false,
+      reason: "host-adapter-unimplemented"
+    })
+  )
   expectExitFailure(
     result.registerExit,
     (error) =>
@@ -6318,7 +6323,7 @@ test("Linux GlobalShortcut client reports Wayland unsupported as a typed value",
       typeof error === "object" &&
       error !== null &&
       "reason" in error &&
-      error.reason === "wayland-no-global-shortcut"
+      error.reason === "host-adapter-unimplemented"
   )
 })
 
