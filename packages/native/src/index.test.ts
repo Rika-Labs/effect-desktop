@@ -31,6 +31,7 @@ import {
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SHOW_METHOD,
+  WINDOW_SUBSCRIBE_EVENTS_METHOD,
   makeHostProtocolHostUnavailableError,
   RpcCapability,
   rpcSupport,
@@ -507,6 +508,7 @@ test("native capability groups declare only their native surface", () => {
 
   expect(windowPermissions).toContain("Window.create")
   expect(windowPermissions).toContain("Window.close")
+  expect(windowPermissions).toContain(WINDOW_SUBSCRIBE_EVENTS_METHOD)
   expect(windowPermissions).not.toContain("Clipboard.readText")
   expect(dialogPermissions).toContain("Dialog.openFile")
   expect(dialogPermissions).not.toContain("Window.create")
@@ -716,6 +718,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "setFullscreen",
   "getState"
 ]
+const expectedWindowCapabilityMethods = [...expectedWindowMethods, "subscribeEvents"] as const
 
 const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
   "getInfo",
@@ -7396,9 +7399,32 @@ test("WindowRpcs declares only callable Window methods", () => {
     .map(([method]) => method)
 
   expect([...WindowMethodNames]).toEqual(expectedWindowMethods)
-  expect(Array.from(WindowRpcs.requests.keys())).toEqual(
-    expectedWindowMethods.map((method) => `Window.${method}`)
-  )
+  expect(Array.from(WindowRpcs.requests.keys())).toEqual([
+    "Window.create",
+    "Window.close",
+    "Window.show",
+    "Window.hide",
+    "Window.focus",
+    "Window.getCurrent",
+    "Window.getById",
+    "Window.list",
+    WINDOW_SUBSCRIBE_EVENTS_METHOD,
+    "Window.getBounds",
+    "Window.setBounds",
+    "Window.center",
+    "Window.setTitle",
+    "Window.setResizable",
+    "Window.setDecorations",
+    "Window.setAlwaysOnTop",
+    "Window.setProgress",
+    "Window.requestAttention",
+    "Window.cancelAttention",
+    "Window.minimize",
+    "Window.maximize",
+    "Window.restore",
+    "Window.setFullscreen",
+    "Window.getState"
+  ])
   expect(Array.from(WindowSupportedRpcs.requests.keys())).toEqual(supportedWindowMethods)
   const assertSupportedWindowClient = (
     client: DesktopRpcClient<RpcGroup.Rpcs<typeof WindowSupportedRpcs>>
@@ -7411,6 +7437,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.getCurrent"]
     void client["Window.getById"]
     void client["Window.list"]
+    void client[WINDOW_SUBSCRIBE_EVENTS_METHOD]
     void client["Window.getBounds"]
     void client["Window.setBounds"]
     void client["Window.center"]
@@ -7437,6 +7464,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.getCurrent",
     "Window.getById",
     "Window.list",
+    WINDOW_SUBSCRIBE_EVENTS_METHOD,
     "Window.getBounds",
     "Window.setBounds",
     "Window.center",
@@ -8107,7 +8135,10 @@ test("Window.events streams renderer-visible lifecycle events from the app route
 test("Window.events registers host-originated opened events in ResourceRegistry", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const exchange: BridgeClientExchange = {
-    request: () => Effect.die("unexpected request"),
+    request: (request) =>
+      request.method === WINDOW_SUBSCRIBE_EVENTS_METHOD
+        ? Effect.succeed({ kind: "success", payload: { subscribed: true } })
+        : Effect.die(`unexpected request: ${request.method}`),
     subscribe: (method) =>
       method === WINDOW_EVENT_METHOD
         ? Stream.make(
@@ -8154,7 +8185,10 @@ test("Window.events registers host-originated opened events in ResourceRegistry"
 test("Window.events rejects host-originated opened events with mismatched handles", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const exchange: BridgeClientExchange = {
-    request: () => Effect.die("unexpected request"),
+    request: (request) =>
+      request.method === WINDOW_SUBSCRIBE_EVENTS_METHOD
+        ? Effect.succeed({ kind: "success", payload: { subscribed: true } })
+        : Effect.die(`unexpected request: ${request.method}`),
     subscribe: (method) =>
       method === WINDOW_EVENT_METHOD
         ? Stream.make(
@@ -8203,7 +8237,10 @@ test("Window.events rejects host-originated opened events with mismatched handle
 test("Window.events strips handles for host-originated events without local resources", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
   const exchange: BridgeClientExchange = {
-    request: () => Effect.die("unexpected request"),
+    request: (request) =>
+      request.method === WINDOW_SUBSCRIBE_EVENTS_METHOD
+        ? Effect.succeed({ kind: "success", payload: { subscribed: true } })
+        : Effect.die(`unexpected request: ${request.method}`),
     subscribe: (method) =>
       method === WINDOW_EVENT_METHOD
         ? Stream.make(
@@ -8304,6 +8341,128 @@ test("Window.events closes ResourceRegistry handles for host-originated terminal
   expect(event.windowId).toBe(String(result.created.id))
   expect(event.window).toEqual(result.created)
   expect(result.snapshot.entries).toEqual([])
+})
+
+test("Window.events checks and audits subscribe permission before opening the event stream", async () => {
+  const deniedRows: AuditEvent[] = []
+  const deniedRegistry = await Effect.runPromise(makeResourceRegistry())
+  const deniedPermissions = await Effect.runPromise(
+    makePermissionRegistry({ audit: memoryAudit(deniedRows), traceId: () => "trace-denied" })
+  )
+  let deniedSubscribeCount = 0
+  const deniedRuntime = makeHostWindowRpcRuntime(windowExchange([]), undefined, {
+    originAuth: RendererOriginAuth.unsafeDisabledForTests
+  })
+  const deniedExchange: BridgeClientExchange = {
+    request: (request) =>
+      deniedRuntime
+        .dispatch(request)
+        .pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(ResourceRegistry)(deniedRegistry),
+              Layer.succeed(PermissionRegistry)(deniedPermissions)
+            )
+          )
+        ) as ReturnType<BridgeClientExchange["request"]>,
+    subscribe: () => {
+      deniedSubscribeCount += 1
+      return Stream.empty
+    }
+  }
+
+  const deniedExit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.events().pipe(Stream.take(1), Stream.runHead)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(deniedExchange, deniedRegistry))
+      )
+    )
+  )
+
+  expectExitFailure(deniedExit, (error) => hasErrorTag(error, "PermissionDenied"))
+  expect(deniedSubscribeCount).toBe(0)
+  expect(deniedRows.map((row) => row.kind)).toEqual(["permission-denied"])
+  expect(deniedRows.map((row) => row.normalizedCapability)).toEqual([
+    P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
+  ])
+
+  const allowedRows: AuditEvent[] = []
+  const allowedRegistry = await Effect.runPromise(makeResourceRegistry())
+  const allowedPermissions = await Effect.runPromise(
+    makePermissionRegistry({ audit: memoryAudit(allowedRows), traceId: () => "trace-allowed" })
+  )
+  await Effect.runPromise(
+    allowedPermissions.declare(
+      P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] }),
+      {
+        source: "window-events-test",
+        effect: "allow"
+      }
+    )
+  )
+  let allowedSubscribeCount = 0
+  const allowedRuntime = makeHostWindowRpcRuntime(windowExchange([]), undefined, {
+    originAuth: RendererOriginAuth.unsafeDisabledForTests
+  })
+  const allowedExchange: BridgeClientExchange = {
+    request: (request) =>
+      allowedRuntime
+        .dispatch(request)
+        .pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(ResourceRegistry)(allowedRegistry),
+              Layer.succeed(PermissionRegistry)(allowedPermissions)
+            )
+          )
+        ) as ReturnType<BridgeClientExchange["request"]>,
+    subscribe: (method) => {
+      allowedSubscribeCount += 1
+      return method === WINDOW_EVENT_METHOD
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_002_800,
+              traceId: "host-window-events-allowed",
+              payload: {
+                type: "window-registry-event",
+                phase: "opened",
+                windowId: "host-allowed-window",
+                terminal: false
+              }
+            })
+          )
+        : Stream.empty
+    }
+  }
+
+  const event = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.events().pipe(Stream.take(1), Stream.runHead)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(allowedExchange, allowedRegistry))
+      )
+    )
+  )
+
+  expect(Option.getOrThrow(event).windowId).toBe("host-allowed-window")
+  expect(allowedSubscribeCount).toBe(1)
+  expect(allowedRows.map((row) => row.kind)).toEqual([
+    "permission-granted",
+    "permission-granted",
+    "permission-used"
+  ])
+  expect(allowedRows.map((row) => row.normalizedCapability)).toEqual([
+    P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] }),
+    P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] }),
+    P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
+  ])
 })
 
 test("native host RPC runtime denies Window.getCurrent before lookup work", async () => {
@@ -10871,7 +11030,7 @@ const makeWindowRpcExchange = (
     Effect.gen(function* () {
       const permissions = yield* makePermissionRegistry()
       yield* permissions.declare(
-        P.nativeInvoke({ primitive: "Window", methods: expectedWindowMethods }),
+        P.nativeInvoke({ primitive: "Window", methods: expectedWindowCapabilityMethods }),
         { source: "window-rpc-test", effect: "allow" }
       )
       return permissions

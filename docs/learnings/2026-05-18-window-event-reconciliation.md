@@ -4,4 +4,4 @@
 
 The durable rule is that event observation must update the same resource table that command responses use. A lifecycle stream that only reports text ids lets renderer state drift from native state; the event adapter now either returns a live handle or explicitly leaves the event handle-free when no local handle exists for non-terminal focus.
 
-Architecture-debt sweep: no wrapper over Effect was added. The bridge client layer now composes the existing `WindowClient` with `ResourceRegistry` reconciliation instead of adding a parallel registry. Remaining #1348 debt is end-to-end close-request delivery evidence under the existing exit policy plus explicit permission/audit proof for event subscription.
+Architecture-debt sweep: no wrapper over Effect was added. The bridge client layer now composes the existing `WindowClient` with `ResourceRegistry` reconciliation instead of adding a parallel registry. Event subscription uses the internal `Window.subscribeEvents` RPC as the permission and audit gate instead of a parallel event-specific policy. Remaining #1348 debt is end-to-end close-request delivery evidence under the existing exit policy.

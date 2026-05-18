@@ -1179,6 +1179,11 @@
       "signature": "const WINDOW_SHOW_METHOD: \"Window.show\""
     },
     {
+      "name": "WINDOW_SUBSCRIBE_EVENTS_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SUBSCRIBE_EVENTS_METHOD: \"Window.subscribeEvents\""
+    },
+    {
       "name": "WindowAttentionTypeInput",
       "kind": "type",
       "signature": "export type WindowAttentionTypeInput = Schema.Schema.Type<typeof WindowAttentionType>"

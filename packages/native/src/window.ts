@@ -56,6 +56,7 @@ import {
   WindowRequestAttentionInput,
   WindowResource,
   WindowState,
+  WindowSubscribeEventsResult,
   WindowTitleInput
 } from "./contracts/window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
@@ -108,6 +109,12 @@ export const WindowList = windowRpc(
   Schema.Void,
   WindowListResult,
   P.nativeInvoke({ primitive: "Window", methods: ["list"] })
+)
+export const WindowSubscribeEvents = windowRpc(
+  "subscribeEvents",
+  Schema.Void,
+  WindowSubscribeEventsResult,
+  P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
 )
 export const WindowGetBounds = windowRpc(
   "getBounds",
@@ -210,6 +217,7 @@ const makeWindowRpcGroup = () =>
     WindowGetCurrent,
     WindowGetById,
     WindowList,
+    WindowSubscribeEvents,
     WindowGetBounds,
     WindowSetBounds,
     WindowCenter,
@@ -271,6 +279,11 @@ export const WindowMethodNames = Object.freeze([
   "restore",
   "setFullscreen",
   "getState"
+] as const)
+
+const WindowCapabilityMethodNames = Object.freeze([
+  ...WindowMethodNames,
+  "subscribeEvents"
 ] as const)
 
 export interface WindowClientApi {
@@ -412,6 +425,8 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       return new WindowListResult({ windows: yield* window.list() })
     }),
+  "Window.subscribeEvents": () =>
+    Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),
   "Window.getBounds": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -491,7 +506,7 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
 
 export const WindowSurface = NativeSurface.make("Window", WindowRpcGroup, {
   service: WindowClient,
-  capabilities: WindowMethodNames,
+  capabilities: WindowCapabilityMethodNames,
   handlers: WindowHandlersLive,
   client: (client) => windowClientFromRpcClient(client),
   bridgeClient: (client, exchange) => windowClientFromRpcClient(client, exchange)
@@ -705,7 +720,12 @@ function windowClientFromRpcClient(
         const state = yield* runWindowRpc(client["Window.getState"](decoded), "Window.getState")
         return yield* decodeWindowState(state, "Window.getState")
       }),
-    events: () => subscribeNativeEvent(exchange, WINDOW_EVENT_METHOD, WindowRegistryEvent)
+    events: () =>
+      Stream.unwrap(
+        runWindowRpc(client["Window.subscribeEvents"](undefined), "Window.subscribeEvents").pipe(
+          Effect.map(() => subscribeNativeEvent(exchange, WINDOW_EVENT_METHOD, WindowRegistryEvent))
+        )
+      )
   } satisfies WindowClientApi)
 }
 
@@ -1170,6 +1190,8 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
         )
         return new WindowListResult({ windows: freshWindows })
       }),
+    "Window.subscribeEvents": () =>
+      Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),
     "Window.getBounds": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.getBounds")

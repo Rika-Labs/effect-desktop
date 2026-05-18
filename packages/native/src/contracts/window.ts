@@ -71,6 +71,12 @@ export class WindowListResult extends Schema.Class<WindowListResult>("WindowList
   windows: Schema.Array(WindowResource)
 }) {}
 
+export class WindowSubscribeEventsResult extends Schema.Class<WindowSubscribeEventsResult>(
+  "WindowSubscribeEventsResult"
+)({
+  subscribed: Schema.Literal(true)
+}) {}
+
 export class WindowRegistryEvent extends Schema.Class<WindowRegistryEvent>("WindowRegistryEvent")({
   type: Schema.Literal("window-registry-event"),
   phase: WindowRegistryEventPhase,
