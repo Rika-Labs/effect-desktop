@@ -148,9 +148,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `RealtimeMediaSession`      | `isSupported`               | `supported`   | `RealtimeMediaSession.isSupported`        | `routed`    |
 | `RealtimeMediaSession`      | `open`                      | `partial`     | `RealtimeMediaSession.open`               | `routed`    |
 | `RealtimeMediaSession`      | `selectDevice`              | `partial`     | `RealtimeMediaSession.selectDevice`       | `routed`    |
-| `RecentDocuments`           | `add`                       | `unsupported` | `RecentDocuments.add`                     | `routed`    |
-| `RecentDocuments`           | `clear`                     | `unsupported` | `RecentDocuments.clear`                   | `routed`    |
-| `RecentDocuments`           | `list`                      | `unsupported` | `RecentDocuments.list`                    | `routed`    |
+| `RecentDocuments`           | `add`                       | `partial`     | `RecentDocuments.add`                     | `routed`    |
+| `RecentDocuments`           | `clear`                     | `partial`     | `RecentDocuments.clear`                   | `routed`    |
+| `RecentDocuments`           | `list`                      | `partial`     | `RecentDocuments.list`                    | `routed`    |
 | `ResidentLifecycle`         | `disable`                   | `unsupported` | `ResidentLifecycle.disable`               | `routed`    |
 | `ResidentLifecycle`         | `enable`                    | `unsupported` | `ResidentLifecycle.enable`                | `routed`    |
 | `ResidentLifecycle`         | `getState`                  | `unsupported` | `ResidentLifecycle.getState`              | `routed`    |

@@ -10,24 +10,24 @@ effect_version: 4
 
 Declare OS-level recent-document operations through the native host boundary.
 
-The TypeScript surface is present for contract and bridge-client validation
-work, but the Rust host RecentDocuments adapter is not implemented. The native
-surface reports `unsupported` on macOS, Windows, and Linux until the host owns
-platform-specific recent-document APIs.
+The Rust host adapter is implemented on macOS through `NSDocumentController`.
+Windows and Linux return typed `Unsupported` with
+`host-adapter-unimplemented` until platform-specific recent-document adapters
+exist.
 
 ## Status
 
 | Method  | Success                     | Runtime support |
 | ------- | --------------------------- | --------------- |
-| `add`   | `void`                      | unsupported     |
-| `clear` | `void`                      | unsupported     |
-| `list`  | `RecentDocumentsListResult` | unsupported     |
+| `add`   | `void`                      | macOS supported |
+| `clear` | `void`                      | macOS supported |
+| `list`  | `RecentDocumentsListResult` | macOS supported |
 
 ## Events
 
 The current event stream is `events()`. Event phases are `document-added`,
-`cleared`, and `failed`. Native event delivery is currently unsupported until
-the host adapter exists.
+`cleared`, and `failed`. The host emits `document-added` after a successful
+macOS `add` and `cleared` after a successful macOS `clear`.
 
 ## Validation
 
@@ -38,8 +38,8 @@ Windows paths, and incomplete UNC roots are rejected before native transport.
 ## Errors
 
 `RecentDocumentsError` is the host protocol error union. Malformed paths return
-`InvalidArgument`. Host transport failure returns `HostUnavailable`. Until a
-platform adapter exists, decoded RecentDocuments methods fail closed as typed
+`InvalidArgument`. Host transport failure returns `HostUnavailable`. On
+Windows and Linux, decoded RecentDocuments methods fail closed as typed
 `Unsupported` with reason `host-adapter-unimplemented`.
 
 ## Related

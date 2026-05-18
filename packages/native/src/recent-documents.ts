@@ -25,9 +25,9 @@ export * from "./contracts/recent-documents.js"
 
 const Surface = "RecentDocuments"
 const UnsupportedReason = "host-adapter-unimplemented"
-const RecentDocumentsSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const RecentDocumentsSupport = NativeSurface.support.partial("macos-recent-documents-only", {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "macos", status: "supported" },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]

@@ -247,11 +247,11 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
-        HostMethodDispatcher::Payload(recent_documents::add),
+        HostMethodDispatcher::EventfulPayload(recent_documents::add_with_event_sender),
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD,
-        HostMethodDispatcher::Payload(recent_documents::clear),
+        HostMethodDispatcher::EventfulPayload(recent_documents::clear_with_event_sender),
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_LIST_METHOD,

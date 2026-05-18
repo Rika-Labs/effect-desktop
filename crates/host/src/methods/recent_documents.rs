@@ -2,11 +2,25 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
-use host_protocol::{HostProtocolError, RecentDocumentsAddPayload};
-use serde::de::DeserializeOwned;
-use serde_json::Value;
+use host_protocol::{
+    CanonicalPathPayload, HostProtocolEnvelope, HostProtocolError, RecentDocumentPayload,
+    RecentDocumentsAddPayload, RecentDocumentsEventPayload, RecentDocumentsEventPhasePayload,
+    RecentDocumentsListResultPayload,
+};
+use serde::{de::DeserializeOwned, Serialize};
+use serde_json::{to_value, Value};
+use std::sync::mpsc::Sender;
+use uuid::Uuid;
 
+#[cfg(test)]
 pub(crate) fn add(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    add_with_event_sender(payload, None)
+}
+
+pub(crate) fn add_with_event_sender(
+    payload: Option<Value>,
+    event_sender: Option<Sender<HostProtocolEnvelope>>,
+) -> Result<Option<Value>, HostProtocolError> {
     let input = decode_payload::<RecentDocumentsAddPayload>(
         payload,
         host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
@@ -15,17 +29,52 @@ pub(crate) fn add(payload: Option<Value>) -> Result<Option<Value>, HostProtocolE
         input.path().path(),
         host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
     )?;
-    Err(unsupported(host_protocol::RECENT_DOCUMENTS_ADD_METHOD))
+    platform_add(
+        input.path().path(),
+        host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
+    )?;
+    send_event(
+        event_sender,
+        RecentDocumentsEventPayload::new(
+            RecentDocumentsEventPhasePayload::DocumentAdded,
+            Some(CanonicalPathPayload::new(input.path().path())),
+            None,
+        ),
+    );
+    Ok(None)
 }
 
+#[cfg(test)]
 pub(crate) fn clear(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    clear_with_event_sender(payload, None)
+}
+
+pub(crate) fn clear_with_event_sender(
+    payload: Option<Value>,
+    event_sender: Option<Sender<HostProtocolEnvelope>>,
+) -> Result<Option<Value>, HostProtocolError> {
     reject_payload(payload, host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD)?;
-    Err(unsupported(host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD))
+    platform_clear(host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD)?;
+    send_event(
+        event_sender,
+        RecentDocumentsEventPayload::new(RecentDocumentsEventPhasePayload::Cleared, None, None),
+    );
+    Ok(None)
 }
 
 pub(crate) fn list(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     reject_payload(payload, host_protocol::RECENT_DOCUMENTS_LIST_METHOD)?;
-    Err(unsupported(host_protocol::RECENT_DOCUMENTS_LIST_METHOD))
+    let documents = platform_list(host_protocol::RECENT_DOCUMENTS_LIST_METHOD)?
+        .into_iter()
+        .map(|path| {
+            validate_platform_path(&path, host_protocol::RECENT_DOCUMENTS_LIST_METHOD)?;
+            Ok(RecentDocumentPayload::new(CanonicalPathPayload::new(path)))
+        })
+        .collect::<Result<Vec<_>, HostProtocolError>>()?;
+    encode_payload(
+        RecentDocumentsListResultPayload::new(documents),
+        host_protocol::RECENT_DOCUMENTS_LIST_METHOD,
+    )
 }
 
 fn decode_payload<T: DeserializeOwned>(
@@ -36,6 +85,18 @@ fn decode_payload<T: DeserializeOwned>(
         .ok_or_else(|| HostProtocolError::invalid_argument("payload", "is required", operation))?;
     serde_json::from_value(payload).map_err(|error| {
         HostProtocolError::invalid_argument("payload", error.to_string(), operation)
+    })
+}
+
+fn encode_payload<T: Serialize>(
+    payload: T,
+    operation: &'static str,
+) -> Result<Option<Value>, HostProtocolError> {
+    to_value(payload).map(Some).map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to encode recent document payload: {error}"),
+            operation,
+        )
     })
 }
 
@@ -73,6 +134,16 @@ fn validate_path(path: &str, operation: &'static str) -> Result<(), HostProtocol
         return Err(HostProtocolError::invalid_argument(
             "path",
             "must be an absolute path without dot segments",
+            operation,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_platform_path(path: &str, operation: &'static str) -> Result<(), HostProtocolError> {
+    if path.is_empty() || path.chars().any(char::is_control) || !is_safe_absolute_path(path) {
+        return Err(HostProtocolError::internal(
+            "platform returned an unsafe recent document path",
             operation,
         ));
     }
@@ -125,11 +196,159 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
     )
 }
 
+fn send_event(sender: Option<Sender<HostProtocolEnvelope>>, payload: RecentDocumentsEventPayload) {
+    let Some(sender) = sender else {
+        return;
+    };
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::RECENT_DOCUMENTS_EVENT.to_string(),
+        timestamp: 0,
+        trace_id: format!("recent-documents-event-{}", Uuid::now_v7()),
+        window_id: None,
+        payload: to_value(payload).ok(),
+    });
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+fn platform_add(path: &str, operation: &'static str) -> Result<(), HostProtocolError> {
+    macos_recent_documents::add(path, operation)
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn platform_add(path: &str, operation: &'static str) -> Result<(), HostProtocolError> {
+    test_recent_documents_add(path).unwrap_or_else(|| Err(unsupported(operation)))
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+fn platform_clear(operation: &'static str) -> Result<(), HostProtocolError> {
+    macos_recent_documents::clear(operation)
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn platform_clear(operation: &'static str) -> Result<(), HostProtocolError> {
+    test_recent_documents_clear().unwrap_or_else(|| Err(unsupported(operation)))
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+fn platform_list(operation: &'static str) -> Result<Vec<String>, HostProtocolError> {
+    macos_recent_documents::list(operation)
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn platform_list(operation: &'static str) -> Result<Vec<String>, HostProtocolError> {
+    test_recent_documents_list().unwrap_or_else(|| Err(unsupported(operation)))
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn test_recent_documents_add(path: &str) -> Option<Result<(), HostProtocolError>> {
+    #[cfg(test)]
+    {
+        TEST_RECENT_DOCUMENTS.with(|state| {
+            let mut state = state.borrow_mut();
+            let documents = state.as_mut()?;
+            documents.retain(|document| document != path);
+            documents.insert(0, path.to_string());
+            Some(Ok(()))
+        })
+    }
+    #[cfg(not(test))]
+    {
+        let _ = path;
+        None
+    }
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn test_recent_documents_clear() -> Option<Result<(), HostProtocolError>> {
+    #[cfg(test)]
+    {
+        TEST_RECENT_DOCUMENTS.with(|state| {
+            let mut state = state.borrow_mut();
+            let documents = state.as_mut()?;
+            documents.clear();
+            Some(Ok(()))
+        })
+    }
+    #[cfg(not(test))]
+    {
+        None
+    }
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn test_recent_documents_list() -> Option<Result<Vec<String>, HostProtocolError>> {
+    #[cfg(test)]
+    {
+        TEST_RECENT_DOCUMENTS.with(|state| {
+            let state = state.borrow();
+            let documents = state.as_ref()?;
+            Some(Ok(documents.clone()))
+        })
+    }
+    #[cfg(not(test))]
+    {
+        None
+    }
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+mod macos_recent_documents {
+    use super::{unsupported, HostProtocolError};
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSDocumentController;
+    use objc2_foundation::{NSString, NSURL};
+
+    pub(super) fn add(path: &str, operation: &'static str) -> Result<(), HostProtocolError> {
+        let controller = document_controller(operation)?;
+        let path = NSString::from_str(path);
+        let url = NSURL::fileURLWithPath(&path);
+        controller.noteNewRecentDocumentURL(&url);
+        Ok(())
+    }
+
+    pub(super) fn clear(operation: &'static str) -> Result<(), HostProtocolError> {
+        let controller = document_controller(operation)?;
+        // SAFETY: Passing `None` matches AppKit's accepted nil sender convention.
+        unsafe {
+            controller.clearRecentDocuments(None);
+        }
+        Ok(())
+    }
+
+    pub(super) fn list(operation: &'static str) -> Result<Vec<String>, HostProtocolError> {
+        let controller = document_controller(operation)?;
+        Ok(controller
+            .recentDocumentURLs()
+            .iter()
+            .filter_map(|url| url.path().map(|path| path.to_string()))
+            .collect())
+    }
+
+    fn document_controller(
+        operation: &'static str,
+    ) -> Result<objc2::rc::Retained<NSDocumentController>, HostProtocolError> {
+        let Some(marker) = MainThreadMarker::new() else {
+            return Err(HostProtocolError::internal(
+                "macOS recent documents must run on the main thread",
+                operation,
+            ));
+        };
+        let controller = NSDocumentController::sharedDocumentController(marker);
+        if controller.maximumRecentDocumentCount() == 0 {
+            return Err(unsupported(operation));
+        }
+        Ok(controller)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{add, clear, list};
-    use host_protocol::HostProtocolError;
+    use super::{
+        add, add_with_event_sender, clear, clear_with_event_sender, list, TEST_RECENT_DOCUMENTS,
+    };
+    use host_protocol::{HostProtocolEnvelope, HostProtocolError};
     use serde_json::json;
+    use std::sync::mpsc::channel;
 
     #[test]
     fn recent_document_requests_decode_before_unsupported() {
@@ -154,6 +373,38 @@ mod tests {
                 host_protocol::RECENT_DOCUMENTS_LIST_METHOD,
             )
         );
+    }
+
+    #[test]
+    fn recent_document_adapter_adds_lists_clears_and_emits_events() {
+        with_recent_documents(vec![], || {
+            let (sender, receiver) = channel();
+
+            add_with_event_sender(
+                Some(json!({ "path": { "path": "/tmp/report.txt" } })),
+                Some(sender.clone()),
+            )
+            .expect("add should succeed");
+            let listed = list(None).expect("list should succeed");
+            clear_with_event_sender(None, Some(sender)).expect("clear should succeed");
+            let cleared = list(None).expect("list after clear should succeed");
+
+            assert_eq!(
+                listed,
+                Some(json!({ "documents": [{ "path": { "path": "/tmp/report.txt" } }] }))
+            );
+            assert_eq!(cleared, Some(json!({ "documents": [] })));
+            assert_recent_document_event(
+                receiver.recv().expect("add event should emit"),
+                "document-added",
+                Some("/tmp/report.txt"),
+            );
+            assert_recent_document_event(
+                receiver.recv().expect("clear event should emit"),
+                "cleared",
+                None,
+            );
+        });
     }
 
     #[test]
@@ -229,4 +480,36 @@ mod tests {
             )
         );
     }
+
+    fn with_recent_documents<R>(documents: Vec<String>, f: impl FnOnce() -> R) -> R {
+        TEST_RECENT_DOCUMENTS.with(|state| {
+            *state.borrow_mut() = Some(documents);
+        });
+        let result = f();
+        TEST_RECENT_DOCUMENTS.with(|state| {
+            *state.borrow_mut() = None;
+        });
+        result
+    }
+
+    fn assert_recent_document_event(event: HostProtocolEnvelope, phase: &str, path: Option<&str>) {
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = event
+        else {
+            panic!("expected recent document event");
+        };
+        assert_eq!(method, host_protocol::RECENT_DOCUMENTS_EVENT);
+        let mut expected = json!({ "phase": phase });
+        if let Some(path) = path {
+            expected["path"] = json!({ "path": path });
+        }
+        assert_eq!(payload.expect("event should include payload"), expected);
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_RECENT_DOCUMENTS: std::cell::RefCell<Option<Vec<String>>> =
+        const { std::cell::RefCell::new(None) };
 }
