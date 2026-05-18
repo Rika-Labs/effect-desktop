@@ -59,6 +59,12 @@ import {
 
 `WindowMethodNames = ["create", "close", "show", "hide", "focus", "getCurrent", "getById", "list", "getBounds", "setBounds", "center", "setTitle", "setResizable", "setDecorations", "setAlwaysOnTop", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
+The z-order and attention surface is not complete Electron-style window chrome.
+Effect Desktop does not yet expose window-scoped skip-taskbar, badge, flash, or
+attention lifecycle events, and the existing progress and attention controls
+must be treated as host-routed best-effort operations with platform-specific
+scope limits.
+
 Window lookup is backed by host-routed native methods. `getCurrent` returns the focused tracked window, `getById` returns a tracked open window by id, and `list` returns tracked open windows in host creation order. The runtime validates host lookup results against its live `ResourceRegistry` handles, so a destroyed window is removed from lookup before `Window.close` completes.
 
 `Window.events()` exposes the typed runtime-router window registry stream to renderer clients through `Window.Event`. Events are ordered by router publication order and use the router's sliding drop-oldest buffer with no replay. `opened` and `focused` events are non-terminal; `closed` is terminal for that window id. Event subscription is gated by the internal `Window.subscribeEvents` native permission before the bridge opens the stream, so denial is observable and audit-backed through `PermissionRegistry`. Host-originated `opened` events register a live `ResourceRegistry` window handle when one is not already known, and host-originated terminal `closed` events close the live window scope when one exists. The Rust host also publishes `Window.Event` for native open, OS-confirmed focus, and destroy transitions, and queues closed events when handling native close requests before applying the existing exit policy.
