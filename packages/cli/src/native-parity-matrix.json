@@ -3273,7 +3273,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Updater.download",
@@ -3301,7 +3301,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Updater.getStatus",
@@ -3329,7 +3329,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Updater.install",
@@ -3357,7 +3357,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Updater.installAndRestart",
@@ -3385,7 +3385,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Updater.readyForRestart",
@@ -3413,7 +3413,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.capability",
@@ -3759,8 +3759,8 @@
   ],
   "summary": {
     "total": 187,
-    "routed": 142,
-    "missing": 45,
+    "routed": 148,
+    "missing": 39,
     "supported": 81,
     "partial": 22,
     "unsupported": 84

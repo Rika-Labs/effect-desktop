@@ -78,6 +78,14 @@ pub const CLIPBOARD_READ_IMAGE_METHOD: &str = "Clipboard.readImage";
 pub const CLIPBOARD_WRITE_IMAGE_METHOD: &str = "Clipboard.writeImage";
 pub const CLIPBOARD_CLEAR_METHOD: &str = "Clipboard.clear";
 pub const CLIPBOARD_IS_SUPPORTED_METHOD: &str = "Clipboard.isSupported";
+pub const UPDATER_CHECK_METHOD: &str = "Updater.check";
+pub const UPDATER_DOWNLOAD_METHOD: &str = "Updater.download";
+pub const UPDATER_INSTALL_METHOD: &str = "Updater.install";
+pub const UPDATER_INSTALL_AND_RESTART_METHOD: &str = "Updater.installAndRestart";
+pub const UPDATER_GET_STATUS_METHOD: &str = "Updater.getStatus";
+pub const UPDATER_READY_FOR_RESTART_METHOD: &str = "Updater.readyForRestart";
+pub const UPDATER_PREPARING_RESTART_EVENT: &str = "Updater.PreparingRestart";
+pub const UPDATER_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const REALTIME_MEDIA_SESSION_OPEN_METHOD: &str = "RealtimeMediaSession.open";
 pub const REALTIME_MEDIA_SESSION_CLOSE_METHOD: &str = "RealtimeMediaSession.close";
 pub const REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD: &str = "RealtimeMediaSession.selectDevice";
@@ -1515,6 +1523,141 @@ impl ClipboardSupportedPayload {
 
     pub fn reason(&self) -> Option<&str> {
         self.reason.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdaterCheckPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    current_version: Option<String>,
+}
+
+impl UpdaterCheckPayload {
+    pub fn new(current_version: Option<String>) -> Self {
+        Self { current_version }
+    }
+
+    pub fn current_version(&self) -> Option<&str> {
+        self.current_version.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdaterDownloadPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+}
+
+impl UpdaterDownloadPayload {
+    pub fn new(version: Option<String>) -> Self {
+        Self { version }
+    }
+
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdaterInstallPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+}
+
+impl UpdaterInstallPayload {
+    pub fn new(version: Option<String>) -> Self {
+        Self { version }
+    }
+
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdaterStatusState {
+    Idle,
+    Checking,
+    UpdateAvailable,
+    Downloading,
+    Downloaded,
+    Installing,
+    Error,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdaterStatusPayload {
+    state: UpdaterStatusState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    progress: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl UpdaterStatusPayload {
+    pub fn new(
+        state: UpdaterStatusState,
+        version: Option<String>,
+        progress: Option<f64>,
+        message: Option<String>,
+    ) -> Self {
+        Self {
+            state,
+            version,
+            progress,
+            message,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdaterCheckResultPayload {
+    available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notes: Option<String>,
+}
+
+impl UpdaterCheckResultPayload {
+    pub fn unavailable(version: Option<String>, notes: Option<String>) -> Self {
+        Self {
+            available: false,
+            version,
+            notes,
+        }
+    }
+
+    pub fn available(version: impl Into<String>, notes: Option<String>) -> Self {
+        Self {
+            available: true,
+            version: Some(version.into()),
+            notes,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdaterPreparingRestartPayload {
+    deadline_ms: u64,
+}
+
+impl UpdaterPreparingRestartPayload {
+    pub fn new(deadline_ms: u64) -> Self {
+        Self { deadline_ms }
+    }
+
+    pub fn deadline_ms(&self) -> u64 {
+        self.deadline_ms
     }
 }
 
@@ -9274,7 +9417,9 @@ mod tests {
         TransientWindowRolePlacementPayload, TransientWindowRolePointPayload,
         TransientWindowRolePolicyPayload, TransientWindowRoleSupportedPayload,
         TransientWindowZOrderPolicy, TrayActivatedEventPayload, TrayCreatePayload,
-        TrayResourcePayload, TraySupportedPayload, WindowCreatePayload, WindowCreateResponse,
+        TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
+        UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
+        UpdaterStatusPayload, UpdaterStatusState, WindowCreatePayload, WindowCreateResponse,
         WindowDestroyPayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
         WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
         WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
@@ -9289,7 +9434,7 @@ mod tests {
         LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
         TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
-        TRAY_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
+        TRAY_UNSUPPORTED_REASON, UPDATER_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -9681,6 +9826,72 @@ mod tests {
             serde_json::from_str::<ClipboardIsSupportedPayload>(r#"{"capability":"primary"}"#)
                 .expect_err("unknown clipboard capability should be rejected");
         assert!(error.to_string().contains("unknown variant `primary`"));
+    }
+
+    #[test]
+    fn updater_payloads_encode_current_contract() {
+        let check = UpdaterCheckPayload::new(Some("1.0.0".to_string()));
+        assert_eq!(check.current_version(), Some("1.0.0"));
+        assert_eq!(
+            serde_json::to_string(&check).expect("updater check should encode"),
+            r#"{"currentVersion":"1.0.0"}"#
+        );
+
+        let download = UpdaterDownloadPayload::new(Some("1.1.0".to_string()));
+        assert_eq!(download.version(), Some("1.1.0"));
+        assert_eq!(
+            serde_json::to_string(&download).expect("updater download should encode"),
+            r#"{"version":"1.1.0"}"#
+        );
+
+        let install = UpdaterInstallPayload::new(Some("1.1.0".to_string()));
+        assert_eq!(install.version(), Some("1.1.0"));
+        assert_eq!(
+            serde_json::to_string(&install).expect("updater install should encode"),
+            r#"{"version":"1.1.0"}"#
+        );
+
+        let available =
+            UpdaterCheckResultPayload::available("1.1.0", Some("security fix".to_string()));
+        assert_eq!(
+            serde_json::to_string(&available).expect("updater check result should encode"),
+            r#"{"available":true,"version":"1.1.0","notes":"security fix"}"#
+        );
+
+        let unavailable = UpdaterCheckResultPayload::unavailable(None, None);
+        assert_eq!(
+            serde_json::to_string(&unavailable).expect("updater unavailable result should encode"),
+            r#"{"available":false}"#
+        );
+
+        let status = UpdaterStatusPayload::new(
+            UpdaterStatusState::Downloading,
+            Some("1.1.0".to_string()),
+            Some(0.5),
+            Some("downloading".to_string()),
+        );
+        assert_eq!(
+            serde_json::to_string(&status).expect("updater status should encode"),
+            r#"{"state":"downloading","version":"1.1.0","progress":0.5,"message":"downloading"}"#
+        );
+
+        let restart = UpdaterPreparingRestartPayload::new(5000);
+        assert_eq!(restart.deadline_ms(), 5000);
+        assert_eq!(
+            serde_json::to_string(&restart).expect("updater restart event should encode"),
+            r#"{"deadlineMs":5000}"#
+        );
+
+        assert_eq!(UPDATER_UNSUPPORTED_REASON, "host-adapter-unimplemented");
+    }
+
+    #[test]
+    fn updater_payloads_reject_excess_fields() {
+        let error = serde_json::from_str::<UpdaterCheckPayload>(
+            r#"{"currentVersion":"1.0.0","signature":"ignored"}"#,
+        )
+        .expect_err("excess updater check field should be rejected");
+        assert!(error.to_string().contains("unknown field `signature`"));
     }
 
     #[test]

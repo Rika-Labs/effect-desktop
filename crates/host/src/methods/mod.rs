@@ -27,6 +27,7 @@ mod shell;
 mod transactional_file_mutation;
 mod transient_window_role;
 mod tray;
+mod updater;
 mod window;
 mod workspace_index;
 
@@ -417,6 +418,30 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::CLIPBOARD_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(clipboard::is_supported),
+    ),
+    route(
+        host_protocol::UPDATER_CHECK_METHOD,
+        HostMethodDispatcher::Payload(updater::check),
+    ),
+    route(
+        host_protocol::UPDATER_DOWNLOAD_METHOD,
+        HostMethodDispatcher::Payload(updater::download),
+    ),
+    route(
+        host_protocol::UPDATER_INSTALL_METHOD,
+        HostMethodDispatcher::Payload(updater::install),
+    ),
+    route(
+        host_protocol::UPDATER_INSTALL_AND_RESTART_METHOD,
+        HostMethodDispatcher::Payload(updater::install_and_restart),
+    ),
+    route(
+        host_protocol::UPDATER_GET_STATUS_METHOD,
+        HostMethodDispatcher::Payload(updater::get_status),
+    ),
+    route(
+        host_protocol::UPDATER_READY_FOR_RESTART_METHOD,
+        HostMethodDispatcher::Payload(updater::ready_for_restart),
     ),
     route(
         host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
@@ -3157,6 +3182,63 @@ mod tests {
                     "html",
                     "must not contain NUL bytes",
                     host_protocol::CLIPBOARD_WRITE_HTML_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn updater_check_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-updater-check",
+                    host_protocol::UPDATER_CHECK_METHOD,
+                    serde_json::json!({ "currentVersion": "1.0.0" }),
+                ),
+                1710000000112,
+            )
+            .expect("updater check should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-updater-check".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-updater-check".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::UPDATER_UNSUPPORTED_REASON,
+                    host_protocol::UPDATER_CHECK_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn updater_invalid_payload_rejects_before_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-updater-invalid",
+                    host_protocol::UPDATER_INSTALL_METHOD,
+                    serde_json::json!({ "version": "bad\nversion" }),
+                ),
+                1710000000112,
+            )
+            .expect("updater install should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-updater-invalid".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-updater-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "version",
+                    "must not include control characters",
+                    host_protocol::UPDATER_INSTALL_METHOD,
                 )),
             }
         );

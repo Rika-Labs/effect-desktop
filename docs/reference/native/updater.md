@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Updater`
 
-Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable, but the native updater host adapter is not implemented yet. Calls through the real native bridge currently have no Rust `Updater.*` route and are reported as `host-adapter-unimplemented` in the parity matrix.
+Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable, but the native updater host adapter is not implemented yet. Calls through the real native bridge decode through Rust `Updater.*` routes and then fail closed as `host-adapter-unimplemented`.
 
 ## Methods
 
@@ -27,7 +27,7 @@ Auto-update service contract. The TypeScript surface is Schema-typed and test-su
 
 ## Errors
 
-`UpdaterError` is the host protocol error union. Until the Rust adapter exists, native bridge calls fail as missing/unsupported host operations rather than claiming update security.
+`UpdaterError` is the host protocol error union. Until the Rust adapter exists, native bridge calls fail as typed `Unsupported` host operations rather than claiming update security.
 
 ## Production checks
 
