@@ -33,6 +33,11 @@ IndexedDB, and history cannot be cleared by profile, session, or data type
 because the current host WebView attachment has no partitioned browser data
 store contract.
 
+Cookies are not exposed as a native Effect Desktop service today. The installed
+WebView provider has low-level cookie read, write, and delete primitives, but
+Effect Desktop has no host protocol, permission gate, profile/session target, or
+cookie-change event stream for them yet.
+
 ## Import
 
 ```ts

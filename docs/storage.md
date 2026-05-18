@@ -28,6 +28,8 @@ Effect Desktop has separate storage surfaces for renderer persistence, runtime s
 These renderer-side layers are not native browsing-data controls. Effect
 Desktop does not yet expose a host-backed API to clear WebView cache, cookies,
 local storage, IndexedDB, or history by profile, session, or data type.
+Cookie read, write, remove, and watch operations are likewise not wired through
+the native host boundary.
 
 ## Verify Storage Test Surface
 

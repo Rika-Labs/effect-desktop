@@ -13,6 +13,7 @@ effect_version: 4
 This package does not clear native WebView browsing data. Cache, cookies, local
 storage, IndexedDB, and history remain under the host WebView data store, and
 Effect Desktop does not yet expose a profile/session-partitioned clearing API.
+It also does not provide native cookie read, write, remove, or watch behavior.
 
 ## Import
 
