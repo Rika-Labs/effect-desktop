@@ -249,7 +249,7 @@ import {
   type WindowClientApi
 } from "./index.js"
 import { makeAppBridgeClientLayer } from "./app.js"
-import { makeClipboardBridgeClientLayer } from "./clipboard.js"
+import { makeClipboardBridgeClientLayer, makeHostClipboardRpcRuntime } from "./clipboard.js"
 import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
 import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
 import { makeDialogBridgeClientLayer } from "./dialog.js"
@@ -276,6 +276,7 @@ import {
   AppOpenFileEvent,
   AppOpenUrlEvent,
   AppSecondInstanceEvent,
+  ClipboardHtml,
   ClipboardImage,
   ClipboardSupportedResult,
   ClipboardText,
@@ -676,6 +677,8 @@ const expectedGlobalShortcutMethods: Array<(typeof GlobalShortcutMethodNames)[nu
 const expectedClipboardMethods: Array<(typeof ClipboardMethodNames)[number]> = [
   "readText",
   "writeText",
+  "readHtml",
+  "writeHtml",
   "readImage",
   "writeImage",
   "clear",
@@ -2847,19 +2850,24 @@ test("Clipboard service delegates through a substitutable ClipboardClient port",
       const clipboard = yield* Clipboard
       yield* clipboard.writeText("hello")
       const text = yield* clipboard.readText()
+      yield* clipboard.writeHtml("<p>hello</p>")
+      const html = yield* clipboard.readHtml()
       yield* clipboard.writeImage({ mime: "image/png", bytes: pngBytes })
       const image = yield* clipboard.readImage()
       yield* clipboard.clear()
 
-      return { image, text }
+      return { html, image, text }
     }).pipe(Effect.provide(makeClipboardServiceLayer(clipboardClient(calls))))
   )
 
   expect(result.text).toBe("hello")
+  expect(result.html).toBe("<p>hello</p>")
   expect(result.image).toEqual(new ClipboardImage({ mime: "image/png", bytes: pngBytes }))
   expect(calls).toEqual([
     "writeText:hello",
     "readText",
+    "writeHtml:<p>hello</p>",
+    "readHtml",
     "writeImage:image/png:9",
     "readImage",
     "clear"
@@ -2873,9 +2881,11 @@ test("Clipboard bridge client sends typed host envelopes and decodes outputs", a
     payload:
       request.method === "Clipboard.readText"
         ? { text: "from host" }
-        : request.method === "Clipboard.readImage"
-          ? { mime: "image/jpeg", bytes: jpegBytesJson }
-          : undefined
+        : request.method === "Clipboard.readHtml"
+          ? { html: "<strong>from host</strong>" }
+          : request.method === "Clipboard.readImage"
+            ? { mime: "image/jpeg", bytes: jpegBytesJson }
+            : undefined
   }))
 
   const result = await Effect.runPromise(
@@ -2883,22 +2893,56 @@ test("Clipboard bridge client sends typed host envelopes and decodes outputs", a
       const clipboard = yield* Clipboard
       yield* clipboard.writeText("to host")
       const text = yield* clipboard.readText()
+      yield* clipboard.writeHtml("<strong>to host</strong>")
+      const html = yield* clipboard.readHtml()
       yield* clipboard.writeImage({ mime: "image/jpeg", bytes: jpegBytes })
       const image = yield* clipboard.readImage()
       yield* clipboard.clear()
 
-      return { image, text }
+      return { html, image, text }
     }).pipe(Effect.provide(Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(exchange))))
   )
 
   expect(result.text).toBe("from host")
+  expect(result.html).toBe("<strong>from host</strong>")
   expect(result.image).toEqual(new ClipboardImage({ mime: "image/jpeg", bytes: jpegBytes }))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["Clipboard.writeText", { text: "to host" }],
     ["Clipboard.readText", null],
+    ["Clipboard.writeHtml", { html: "<strong>to host</strong>" }],
+    ["Clipboard.readHtml", null],
     ["Clipboard.writeImage", { mime: "image/jpeg", bytes: jpegBytesJson }],
     ["Clipboard.readImage", null],
     ["Clipboard.clear", null]
+  ])
+})
+
+test("Clipboard bridge client preserves unsupported support reasons from host", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* ClipboardClient
+      return yield* client.isSupported("selection")
+    }).pipe(
+      Effect.provide(
+        makeClipboardBridgeClientLayer(
+          clipboardExchange(requests, () => ({
+            kind: "success",
+            payload: { supported: false, reason: "host-adapter-unimplemented" }
+          }))
+        )
+      )
+    )
+  )
+
+  expect(result).toEqual(
+    new ClipboardSupportedResult({
+      supported: false,
+      reason: "host-adapter-unimplemented"
+    })
+  )
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["Clipboard.isSupported", { capability: "selection" }]
   ])
 })
 
@@ -3020,6 +3064,64 @@ test("Clipboard bridge client runs generated methods inside the layer scope", as
 
   expect(text).toBe("after scope")
   expect(requests).toEqual([expect.objectContaining({ method: "Clipboard.readText" })])
+})
+
+test("native host RPC runtime denies protected Clipboard calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostClipboardRpcRuntime(
+    {
+      "Clipboard.readText": () =>
+        Effect.sync(() => {
+          calls.push("readText")
+          return new ClipboardText({ text: "secret" })
+        }),
+      "Clipboard.writeText": () =>
+        Effect.sync(() => {
+          calls.push("writeText")
+        }),
+      "Clipboard.readHtml": () => Effect.succeed(new ClipboardHtml({ html: "" })),
+      "Clipboard.writeHtml": () => Effect.void,
+      "Clipboard.readImage": () =>
+        Effect.succeed(new ClipboardImage({ mime: "image/png", bytes: pngBytes })),
+      "Clipboard.writeImage": () => Effect.void,
+      "Clipboard.clear": () => Effect.void,
+      "Clipboard.isSupported": () =>
+        Effect.succeed(new ClipboardSupportedResult({ supported: false }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const responses = await Effect.runPromise(
+    Effect.all([
+      runtime.dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "clipboard-read-denied",
+          method: "Clipboard.readText",
+          timestamp: 1710000000000,
+          traceId: "trace-clipboard-read-denied"
+        })
+      ),
+      runtime.dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "clipboard-write-denied",
+          method: "Clipboard.writeText",
+          payload: { text: "secret" },
+          timestamp: 1710000000001,
+          traceId: "trace-clipboard-write-denied"
+        })
+      )
+    ]).pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  for (const response of responses) {
+    expect(response.kind).toBe("failure")
+    if (response.kind === "failure") {
+      expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+    }
+  }
+  expect(calls).toEqual([])
 })
 
 test("NotificationRpcs declares the Phase 7 Notification method and event surface", () => {
@@ -4366,15 +4468,25 @@ test("ClipboardSurface test client layer runs Clipboard RPCs through the generat
       const client = yield* ClipboardClient
       yield* client.writeText("hello")
       const text = yield* client.readText()
+      yield* client.writeHtml("<p>hello</p>")
+      const html = yield* client.readHtml()
       yield* client.clear()
-      const supported = yield* client.isSupported("text")
-      return { supported, text }
+      const supported = yield* client.isSupported("html")
+      return { html, supported, text }
     }).pipe(Effect.provide(testLayer))
   )
 
   expect(result.text).toEqual(new ClipboardText({ text: "hello" }))
+  expect(result.html).toEqual(new ClipboardHtml({ html: "<p>hello</p>" }))
   expect(result.supported).toEqual(new ClipboardSupportedResult({ supported: true }))
-  expect(calls).toEqual(["writeText:hello", "readText", "clear", "isSupported:text"])
+  expect(calls).toEqual([
+    "writeText:hello",
+    "readText",
+    "writeHtml:<p>hello</p>",
+    "readHtml",
+    "clear",
+    "isSupported:html"
+  ])
 })
 
 test("DialogSurface test client layer runs Dialog RPCs through the generated service requirement", async () => {
@@ -7067,6 +7179,12 @@ const clipboardClient = (calls: string[]): ClipboardClientApi => ({
       return new ClipboardText({ text: "hello" })
     }),
   writeText: (text) => recordVoid(calls, `writeText:${text}`),
+  readHtml: () =>
+    Effect.sync(() => {
+      calls.push("readHtml")
+      return new ClipboardHtml({ html: "<p>hello</p>" })
+    }),
+  writeHtml: (html) => recordVoid(calls, `writeHtml:${html}`),
   readImage: () =>
     Effect.sync(() => {
       calls.push("readImage")

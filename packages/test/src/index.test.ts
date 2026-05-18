@@ -65,6 +65,7 @@ import {
   ScreenLive,
   Window,
   type DialogClientApi,
+  makeClipboardClientLayer,
   makeClipboardServiceLayer,
   makeDialogServiceLayer,
   makeScreenClientLayer,
@@ -74,6 +75,7 @@ import {
   type ScreenError
 } from "@effect-desktop/native"
 import {
+  ClipboardImage,
   ClipboardSupportedResult,
   DialogConfirmResult,
   DialogOpenResult,
@@ -155,6 +157,9 @@ const waitForRegistryEntries = (
 
 registerLeakMatchers()
 
+const TEST_CLIPBOARD_IMAGE_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0])
+const TEST_CLIPBOARD_IMAGE_BYTES_JSON = "iVBORw0KGgoA"
+
 const ClipboardContractLaws = CapabilityLaws.make("Clipboard", Clipboard, {
   "write/read round trips text": (clipboard) =>
     Effect.gen(function* () {
@@ -162,19 +167,42 @@ const ClipboardContractLaws = CapabilityLaws.make("Clipboard", Clipboard, {
       const text = yield* clipboard.readText()
       expect(text).toBe("shared text")
     }),
-  "clear removes text": (clipboard) =>
+  "write/read round trips html": (clipboard) =>
+    Effect.gen(function* () {
+      yield* clipboard.writeHtml("<strong>shared html</strong>")
+      const html = yield* clipboard.readHtml()
+      expect(html).toBe("<strong>shared html</strong>")
+    }),
+  "write/read round trips image": (clipboard) =>
+    Effect.gen(function* () {
+      yield* clipboard.writeImage({ mime: "image/png", bytes: TEST_CLIPBOARD_IMAGE_BYTES })
+      const image = yield* clipboard.readImage()
+      expect(image).toEqual(
+        new ClipboardImage({ mime: "image/png", bytes: TEST_CLIPBOARD_IMAGE_BYTES })
+      )
+    }),
+  "clear removes text and html": (clipboard) =>
     Effect.gen(function* () {
       yield* clipboard.writeText("temporary")
+      yield* clipboard.writeHtml("<p>temporary</p>")
       yield* clipboard.clear()
       const text = yield* clipboard.readText()
+      const html = yield* clipboard.readHtml()
       expect(text).toBe("")
+      expect(html).toBe("")
     }),
   "support queries return booleans": (clipboard) =>
     Effect.gen(function* () {
       const textSupported = yield* clipboard.isSupported("text")
+      const htmlSupported = yield* clipboard.isSupported("html")
       const imageSupported = yield* clipboard.isSupported("image")
+      const clearSupported = yield* clipboard.isSupported("clear")
+      const selectionSupported = yield* clipboard.isSupported("selection")
       expect(typeof textSupported).toBe("boolean")
+      expect(typeof htmlSupported).toBe("boolean")
       expect(typeof imageSupported).toBe("boolean")
+      expect(typeof clearSupported).toBe("boolean")
+      expect(typeof selectionSupported).toBe("boolean")
     })
 })
 
@@ -189,6 +217,19 @@ CapabilityLaws.run(ClipboardContractLaws, [
   }
 ])
 
+test("ClipboardTest clear removes image state", async () => {
+  const image = await Effect.runPromise(
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      yield* clipboard.writeImage({ mime: "image/png", bytes: TEST_CLIPBOARD_IMAGE_BYTES })
+      yield* clipboard.clear()
+      return yield* clipboard.readImage()
+    }).pipe(Effect.provide(ClipboardTest()))
+  )
+
+  expect(image).toEqual(new ClipboardImage({ mime: "image/png", bytes: new Uint8Array(0) }))
+})
+
 const makeClipboardBridgeLawLayer = (lawName: string): Layer.Layer<Clipboard> => {
   const bridge = makeMockBridge()
   switch (lawName) {
@@ -200,18 +241,42 @@ const makeClipboardBridgeLawLayer = (lawName: string): Layer.Layer<Clipboard> =>
         ])
       )
       break
-    case "clear removes text":
+    case "write/read round trips html":
+      Effect.runSync(
+        Effect.all([
+          bridge.succeed("Clipboard.writeHtml", undefined),
+          bridge.succeed("Clipboard.readHtml", { html: "<strong>shared html</strong>" })
+        ])
+      )
+      break
+    case "write/read round trips image":
+      Effect.runSync(
+        Effect.all([
+          bridge.succeed("Clipboard.writeImage", undefined),
+          bridge.succeed("Clipboard.readImage", {
+            mime: "image/png",
+            bytes: TEST_CLIPBOARD_IMAGE_BYTES_JSON
+          })
+        ])
+      )
+      break
+    case "clear removes text and html":
       Effect.runSync(
         Effect.all([
           bridge.succeed("Clipboard.writeText", undefined),
+          bridge.succeed("Clipboard.writeHtml", undefined),
           bridge.succeed("Clipboard.clear", undefined),
-          bridge.succeed("Clipboard.readText", { text: "" })
+          bridge.succeed("Clipboard.readText", { text: "" }),
+          bridge.succeed("Clipboard.readHtml", { html: "" })
         ])
       )
       break
     case "support queries return booleans":
       Effect.runSync(
         Effect.all([
+          bridge.succeed("Clipboard.isSupported", { supported: true }),
+          bridge.succeed("Clipboard.isSupported", { supported: true }),
+          bridge.succeed("Clipboard.isSupported", { supported: true }),
           bridge.succeed("Clipboard.isSupported", { supported: true }),
           bridge.succeed("Clipboard.isSupported", { supported: true })
         ])
@@ -1742,6 +1807,48 @@ test("FailureAssertions matches tagged failures through Exit", async () => {
   FailureAssertions.expectFailureTag(exit, "Unsupported")
 })
 
+test("Clipboard unavailable platform layer reports unsupported selection capability", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* ClipboardClient
+      return yield* client.isSupported("selection")
+    }).pipe(Effect.provide(makeClipboardClientLayer(makeUnavailableClipboardClient())))
+  )
+
+  expect(result).toEqual(
+    new ClipboardSupportedResult({
+      supported: false,
+      reason: "test clipboard client is unavailable"
+    })
+  )
+})
+
+test("Clipboard bridge layer propagates host failures through the service", async () => {
+  const bridge = makeMockBridge()
+  await Effect.runPromise(
+    bridge.fail("Clipboard.readText", {
+      tag: "Unsupported",
+      reason: "host failure",
+      message: "clipboard host failed",
+      operation: "Clipboard.readText",
+      recoverable: false
+    })
+  )
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      return yield* clipboard.readText()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(ClipboardLive, ClipboardSurface.bridgeClientLayer(bridge.exchange))
+      )
+    )
+  )
+
+  FailureAssertions.expectFailureTag(exit, "Unsupported")
+})
+
 const makeUnavailableClipboardClient = (): ClipboardClientApi => {
   const unsupported = (method: string) =>
     new HostProtocolUnsupportedError({
@@ -1758,10 +1865,18 @@ const makeUnavailableClipboardClient = (): ClipboardClientApi => {
   return {
     readText: () => fail("Clipboard.readText"),
     writeText: () => fail("Clipboard.writeText"),
+    readHtml: () => fail("Clipboard.readHtml"),
+    writeHtml: () => fail("Clipboard.writeHtml"),
     readImage: () => fail("Clipboard.readImage"),
     writeImage: () => fail("Clipboard.writeImage"),
     clear: () => fail("Clipboard.clear"),
-    isSupported: () => Effect.succeed(new ClipboardSupportedResult({ supported: false }))
+    isSupported: () =>
+      Effect.succeed(
+        new ClipboardSupportedResult({
+          supported: false,
+          reason: "test clipboard client is unavailable"
+        })
+      )
   }
 }
 

@@ -274,9 +274,27 @@
       "method": "clear",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Clipboard.isSupported",
@@ -286,7 +304,35 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.readHtml",
+      "surface": "Clipboard",
+      "method": "readHtml",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
     },
     {
       "tag": "Clipboard.readImage",
@@ -294,9 +340,27 @@
       "method": "readImage",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Clipboard.readText",
@@ -304,9 +368,55 @@
       "method": "readText",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.writeHtml",
+      "surface": "Clipboard",
+      "method": "writeHtml",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
     },
     {
       "tag": "Clipboard.writeImage",
@@ -314,9 +424,27 @@
       "method": "writeImage",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Clipboard.writeText",
@@ -324,9 +452,27 @@
       "method": "writeText",
       "capability": "native",
       "support": {
-        "status": "supported"
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "ContextMenu.bindCommand",
@@ -2561,11 +2707,11 @@
     }
   ],
   "summary": {
-    "total": 184,
-    "routed": 99,
-    "missing": 85,
-    "supported": 144,
+    "total": 186,
+    "routed": 107,
+    "missing": 79,
+    "supported": 139,
     "partial": 9,
-    "unsupported": 31
+    "unsupported": 38
   }
 }

@@ -16,6 +16,7 @@ import { NativeSurface } from "./native-surface.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import {
   type ClipboardCapability,
+  ClipboardHtml,
   ClipboardImage,
   type ClipboardImageOptions,
   ClipboardIsSupportedInput,
@@ -25,6 +26,15 @@ import {
 import { isSupportedImageHeader } from "./contracts/image.js"
 
 export type ClipboardError = HostProtocolError
+
+const ClipboardUnsupportedReason = "host-adapter-unimplemented"
+const ClipboardUnsupportedSupport = NativeSurface.support.unsupported(ClipboardUnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: ClipboardUnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: ClipboardUnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: ClipboardUnsupportedReason }
+  ]
+})
 
 export const ClipboardReadText = clipboardRpc(
   "readText",
@@ -37,6 +47,18 @@ export const ClipboardWriteText = clipboardRpc(
   ClipboardText,
   Schema.Void,
   P.nativeInvoke({ primitive: "Clipboard", methods: ["writeText"] })
+)
+export const ClipboardReadHtml = clipboardRpc(
+  "readHtml",
+  Schema.Void,
+  ClipboardHtml,
+  P.nativeInvoke({ primitive: "Clipboard", methods: ["readHtml"] })
+)
+export const ClipboardWriteHtml = clipboardRpc(
+  "writeHtml",
+  ClipboardHtml,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Clipboard", methods: ["writeHtml"] })
 )
 export const ClipboardReadImage = clipboardRpc(
   "readImage",
@@ -70,6 +92,8 @@ export type ClipboardRpcEvents = typeof ClipboardRpcEvents
 const ClipboardRpcGroup = RpcGroup.make(
   ClipboardReadText,
   ClipboardWriteText,
+  ClipboardReadHtml,
+  ClipboardWriteHtml,
   ClipboardReadImage,
   ClipboardWriteImage,
   ClipboardClear,
@@ -83,6 +107,8 @@ export type ClipboardRpc = RpcGroup.Rpcs<typeof ClipboardRpcGroup>
 export const ClipboardMethodNames = Object.freeze([
   "readText",
   "writeText",
+  "readHtml",
+  "writeHtml",
   "readImage",
   "writeImage",
   "clear",
@@ -92,6 +118,8 @@ export const ClipboardMethodNames = Object.freeze([
 const ClipboardCapabilityMethods = Object.freeze([
   "readText",
   "writeText",
+  "readHtml",
+  "writeHtml",
   "readImage",
   "writeImage",
   "clear"
@@ -100,6 +128,8 @@ const ClipboardCapabilityMethods = Object.freeze([
 export interface ClipboardClientApi {
   readonly readText: () => Effect.Effect<ClipboardText, ClipboardError, never>
   readonly writeText: (input: string) => Effect.Effect<void, ClipboardError, never>
+  readonly readHtml: () => Effect.Effect<ClipboardHtml, ClipboardError, never>
+  readonly writeHtml: (input: string) => Effect.Effect<void, ClipboardError, never>
   readonly readImage: () => Effect.Effect<ClipboardImage, ClipboardError, never>
   readonly writeImage: (input: ClipboardImageOptions) => Effect.Effect<void, ClipboardError, never>
   readonly clear: () => Effect.Effect<void, ClipboardError, never>
@@ -115,6 +145,8 @@ export class ClipboardClient extends Context.Service<ClipboardClient, ClipboardC
 export interface ClipboardServiceApi {
   readonly readText: () => Effect.Effect<string, ClipboardError, never>
   readonly writeText: (text: string) => Effect.Effect<void, ClipboardError, never>
+  readonly readHtml: () => Effect.Effect<string, ClipboardError, never>
+  readonly writeHtml: (html: string) => Effect.Effect<void, ClipboardError, never>
   readonly readImage: () => Effect.Effect<ClipboardImage, ClipboardError, never>
   readonly writeImage: (input: ClipboardImageOptions) => Effect.Effect<void, ClipboardError, never>
   readonly clear: () => Effect.Effect<void, ClipboardError, never>
@@ -162,6 +194,17 @@ export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
       const clipboard = yield* Clipboard
       yield* clipboard.writeText(input.text)
     }),
+  "Clipboard.readHtml": () =>
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      const html = yield* clipboard.readHtml()
+      return new ClipboardHtml({ html })
+    }),
+  "Clipboard.writeHtml": (input) =>
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      yield* clipboard.writeHtml(input.html)
+    }),
   "Clipboard.readImage": () =>
     Effect.gen(function* () {
       const clipboard = yield* Clipboard
@@ -202,6 +245,8 @@ const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi =
   const service: ClipboardServiceApi = {
     readText: () => client.readText().pipe(Effect.map((result) => result.text)),
     writeText: (text) => client.writeText(text),
+    readHtml: () => client.readHtml().pipe(Effect.map((result) => result.html)),
+    writeHtml: (html) => client.writeHtml(html),
     readImage: () => client.readImage(),
     writeImage: (input) => client.writeImage(input),
     clear: () => client.clear(),
@@ -221,6 +266,13 @@ const clipboardClientFromRpcClient = (
       decodeClipboardText({ text }).pipe(
         Effect.flatMap((decoded) =>
           runClipboardRpc(client["Clipboard.writeText"](decoded), "Clipboard.writeText")
+        )
+      ),
+    readHtml: () => runClipboardRpc(client["Clipboard.readHtml"](undefined), "Clipboard.readHtml"),
+    writeHtml: (html) =>
+      decodeClipboardHtml({ html }).pipe(
+        Effect.flatMap((decoded) =>
+          runClipboardRpc(client["Clipboard.writeHtml"](decoded), "Clipboard.writeHtml")
         )
       ),
     readImage: () =>
@@ -274,6 +326,9 @@ const validateClipboardImageOutput = (
 const decodeClipboardText = (input: unknown): Effect.Effect<ClipboardText, ClipboardError, never> =>
   decodeNativeInput(ClipboardText, input, "Clipboard.writeText")
 
+const decodeClipboardHtml = (input: unknown): Effect.Effect<ClipboardHtml, ClipboardError, never> =>
+  decodeNativeInput(ClipboardHtml, input, "Clipboard.writeHtml")
+
 const decodeClipboardImage = (
   input: unknown
 ): Effect.Effect<ClipboardImage, ClipboardError, never> =>
@@ -293,7 +348,8 @@ function clipboardRpc<
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support: NativeSurface.support.supported
+    endpoint: method === "isSupported" || method.startsWith("read") ? "query" : "mutation",
+    support:
+      method === "isSupported" ? NativeSurface.support.supported : ClipboardUnsupportedSupport
   })
 }

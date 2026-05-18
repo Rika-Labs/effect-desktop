@@ -27,6 +27,14 @@ pub const GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD: &str = "GlobalShortcut.unregist
 pub const GLOBAL_SHORTCUT_IS_REGISTERED_METHOD: &str = "GlobalShortcut.isRegistered";
 pub const GLOBAL_SHORTCUT_IS_SUPPORTED_METHOD: &str = "GlobalShortcut.isSupported";
 pub const SAFE_STORAGE_IS_AVAILABLE_METHOD: &str = "SafeStorage.isAvailable";
+pub const CLIPBOARD_READ_TEXT_METHOD: &str = "Clipboard.readText";
+pub const CLIPBOARD_WRITE_TEXT_METHOD: &str = "Clipboard.writeText";
+pub const CLIPBOARD_READ_HTML_METHOD: &str = "Clipboard.readHtml";
+pub const CLIPBOARD_WRITE_HTML_METHOD: &str = "Clipboard.writeHtml";
+pub const CLIPBOARD_READ_IMAGE_METHOD: &str = "Clipboard.readImage";
+pub const CLIPBOARD_WRITE_IMAGE_METHOD: &str = "Clipboard.writeImage";
+pub const CLIPBOARD_CLEAR_METHOD: &str = "Clipboard.clear";
+pub const CLIPBOARD_IS_SUPPORTED_METHOD: &str = "Clipboard.isSupported";
 pub const REALTIME_MEDIA_SESSION_OPEN_METHOD: &str = "RealtimeMediaSession.open";
 pub const REALTIME_MEDIA_SESSION_CLOSE_METHOD: &str = "RealtimeMediaSession.close";
 pub const REALTIME_MEDIA_SESSION_SELECT_DEVICE_METHOD: &str = "RealtimeMediaSession.selectDevice";
@@ -170,6 +178,7 @@ pub const LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON: &str = "host-adapter-unimplemen
 pub const WORKSPACE_INDEX_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const SCOPED_ACCESS_GRANT_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const CLIPBOARD_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -186,6 +195,120 @@ impl HostVersionPayload {
 
     pub fn protocol_version(&self) -> &str {
         &self.protocol_version
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClipboardCapabilityPayload {
+    Text,
+    Html,
+    Image,
+    Clear,
+    Selection,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClipboardTextPayload {
+    text: String,
+}
+
+impl ClipboardTextPayload {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClipboardHtmlPayload {
+    html: String,
+}
+
+impl ClipboardHtmlPayload {
+    pub fn new(html: impl Into<String>) -> Self {
+        Self { html: html.into() }
+    }
+
+    pub fn html(&self) -> &str {
+        &self.html
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClipboardImagePayload {
+    mime: String,
+    bytes: Vec<u8>,
+}
+
+impl ClipboardImagePayload {
+    pub fn new(mime: impl Into<String>, bytes: Vec<u8>) -> Self {
+        Self {
+            mime: mime.into(),
+            bytes,
+        }
+    }
+
+    pub fn mime(&self) -> &str {
+        &self.mime
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClipboardIsSupportedPayload {
+    capability: ClipboardCapabilityPayload,
+}
+
+impl ClipboardIsSupportedPayload {
+    pub fn new(capability: ClipboardCapabilityPayload) -> Self {
+        Self { capability }
+    }
+
+    pub fn capability(&self) -> ClipboardCapabilityPayload {
+        self.capability
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClipboardSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl ClipboardSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
     }
 }
 
@@ -7855,6 +7978,8 @@ mod tests {
         ActivationRegistryEventPayload, ActivationRegistryEventPhase,
         ActivationRegistryPermissionContextPayload, ActivationRegistrySource,
         ActivationRegistrySupportedPayload, ActivationRegistrySurfacePayload,
+        ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
+        ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
         DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
         DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
         DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
@@ -7939,7 +8064,7 @@ mod tests {
         WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
-        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
+        CLIPBOARD_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
         DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, DISPLAY_CAPTURE_UNSUPPORTED_REASON,
         DISTRIBUTION_PARITY_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
         EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
@@ -8187,6 +8312,60 @@ mod tests {
             serde_json::to_string(&payload).expect("version payload should encode"),
             format!(r#"{{"protocolVersion":"{PROTOCOL_VERSION}"}}"#)
         );
+    }
+
+    #[test]
+    fn clipboard_payloads_serialize_canonically() {
+        let text = ClipboardTextPayload::new("hello");
+        assert_eq!(text.text(), "hello");
+        assert_eq!(
+            serde_json::to_string(&text).expect("clipboard text should encode"),
+            r#"{"text":"hello"}"#
+        );
+
+        let html = ClipboardHtmlPayload::new("<p>hello</p>");
+        assert_eq!(html.html(), "<p>hello</p>");
+        assert_eq!(
+            serde_json::to_string(&html).expect("clipboard html should encode"),
+            r#"{"html":"<p>hello</p>"}"#
+        );
+
+        let image = ClipboardImagePayload::new("image/png", vec![137, 80, 78, 71]);
+        assert_eq!(image.mime(), "image/png");
+        assert_eq!(image.bytes(), [137, 80, 78, 71]);
+        assert_eq!(
+            serde_json::to_string(&image).expect("clipboard image should encode"),
+            r#"{"mime":"image/png","bytes":[137,80,78,71]}"#
+        );
+
+        let support = ClipboardIsSupportedPayload::new(ClipboardCapabilityPayload::Selection);
+        assert_eq!(support.capability(), ClipboardCapabilityPayload::Selection);
+        assert_eq!(
+            serde_json::to_string(&support).expect("clipboard support input should encode"),
+            r#"{"capability":"selection"}"#
+        );
+
+        let unsupported = ClipboardSupportedPayload::unsupported(CLIPBOARD_UNSUPPORTED_REASON);
+        assert!(!unsupported.is_supported());
+        assert_eq!(unsupported.reason(), Some(CLIPBOARD_UNSUPPORTED_REASON));
+        assert_eq!(
+            serde_json::to_string(&unsupported).expect("clipboard support should encode"),
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn clipboard_payloads_reject_excess_fields() {
+        let error = serde_json::from_str::<ClipboardTextPayload>(
+            r#"{"text":"hello","selection":"primary"}"#,
+        )
+        .expect_err("excess clipboard text field should be rejected");
+        assert!(error.to_string().contains("unknown field `selection`"));
+
+        let error =
+            serde_json::from_str::<ClipboardIsSupportedPayload>(r#"{"capability":"primary"}"#)
+                .expect_err("unknown clipboard capability should be rejected");
+        assert!(error.to_string().contains("unknown variant `primary`"));
     }
 
     #[test]

@@ -1,5 +1,6 @@
 mod activation_registry;
 mod attachment_intake;
+mod clipboard;
 mod diagnostics_bundle;
 mod display_capture;
 mod distribution_parity;
@@ -220,6 +221,38 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD,
         HostMethodDispatcher::Empty(linux::safe_storage_is_available),
+    ),
+    route(
+        host_protocol::CLIPBOARD_READ_TEXT_METHOD,
+        HostMethodDispatcher::Payload(clipboard::read_text),
+    ),
+    route(
+        host_protocol::CLIPBOARD_WRITE_TEXT_METHOD,
+        HostMethodDispatcher::Payload(clipboard::write_text),
+    ),
+    route(
+        host_protocol::CLIPBOARD_READ_HTML_METHOD,
+        HostMethodDispatcher::Payload(clipboard::read_html),
+    ),
+    route(
+        host_protocol::CLIPBOARD_WRITE_HTML_METHOD,
+        HostMethodDispatcher::Payload(clipboard::write_html),
+    ),
+    route(
+        host_protocol::CLIPBOARD_READ_IMAGE_METHOD,
+        HostMethodDispatcher::Payload(clipboard::read_image),
+    ),
+    route(
+        host_protocol::CLIPBOARD_WRITE_IMAGE_METHOD,
+        HostMethodDispatcher::Payload(clipboard::write_image),
+    ),
+    route(
+        host_protocol::CLIPBOARD_CLEAR_METHOD,
+        HostMethodDispatcher::Payload(clipboard::clear),
+    ),
+    route(
+        host_protocol::CLIPBOARD_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(clipboard::is_supported),
     ),
     route(
         host_protocol::REALTIME_MEDIA_SESSION_OPEN_METHOD,
@@ -1355,7 +1388,8 @@ mod tests {
     use super::HostMethodRouter;
     use crate::window::{WindowCreateRequest, WindowMethodHandler};
     use host_protocol::{
-        HostProtocolEnvelope, HostProtocolError, WindowCreateResponse, PROTOCOL_VERSION,
+        ClipboardSupportedPayload, HostProtocolEnvelope, HostProtocolError, WindowCreateResponse,
+        PROTOCOL_VERSION,
     };
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
@@ -2533,6 +2567,94 @@ mod tests {
             }
             other => panic!("unexpected safe storage response: {other:?}"),
         }
+    }
+
+    #[test]
+    fn clipboard_write_text_routes_to_typed_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-clipboard-write-text",
+                    host_protocol::CLIPBOARD_WRITE_TEXT_METHOD,
+                    serde_json::json!({ "text": "hello" }),
+                ),
+                1710000000112,
+            )
+            .expect("clipboard write should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-clipboard-write-text".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-clipboard-write-text".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    host_protocol::CLIPBOARD_UNSUPPORTED_REASON,
+                    host_protocol::CLIPBOARD_WRITE_TEXT_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn clipboard_invalid_payload_rejects_before_unsupported() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-clipboard-invalid",
+                    host_protocol::CLIPBOARD_WRITE_HTML_METHOD,
+                    serde_json::json!({ "html": "<p>bad\u{0000}</p>" }),
+                ),
+                1710000000112,
+            )
+            .expect("clipboard write should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-clipboard-invalid".to_string(),
+                timestamp: 1710000000112,
+                trace_id: "trace-request-clipboard-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "html",
+                    "must not contain NUL bytes",
+                    host_protocol::CLIPBOARD_WRITE_HTML_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn clipboard_support_reports_unimplemented_selection() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-clipboard-supported",
+                    host_protocol::CLIPBOARD_IS_SUPPORTED_METHOD,
+                    serde_json::json!({ "capability": "selection" }),
+                ),
+                1710000000112,
+            )
+            .expect("clipboard support should return response");
+
+        let HostProtocolEnvelope::Response {
+            payload: Some(payload),
+            error: None,
+            ..
+        } = &response
+        else {
+            panic!("clipboard support should return successful payload: {response:?}");
+        };
+        let supported = serde_json::from_value::<ClipboardSupportedPayload>(payload.clone())
+            .expect("support payload should decode");
+
+        assert!(!supported.is_supported());
+        assert_eq!(
+            supported.reason(),
+            Some(host_protocol::CLIPBOARD_UNSUPPORTED_REASON)
+        );
     }
 
     #[test]

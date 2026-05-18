@@ -346,7 +346,7 @@
     {
       "name": "TestClipboardOptions",
       "kind": "interface",
-      "signature": "export interface TestClipboardOptions { readonly text?: string readonly supported?: Partial<Record<ClipboardCapability, boolean>> }"
+      "signature": "export interface TestClipboardOptions { readonly text?: string readonly html?: string readonly supported?: Partial<Record<ClipboardCapability, boolean>> }"
     },
     {
       "name": "TestDesktop",

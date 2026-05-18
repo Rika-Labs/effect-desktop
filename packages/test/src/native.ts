@@ -52,6 +52,7 @@ import { assertNoOpenResources } from "./index.js"
 
 export interface TestClipboardOptions {
   readonly text?: string
+  readonly html?: string
   readonly supported?: Partial<Record<ClipboardCapability, boolean>>
 }
 
@@ -193,15 +194,18 @@ export const makeClipboardScenarioLayer = (
 ): Layer.Layer<Clipboard, never, never> =>
   Layer.succeed(Clipboard)(
     makeClipboardScenario({
+      initialHtml: options.html ?? "",
       initialText: options.text ?? "",
       supported: options.supported ?? {}
     })
   )
 
 const makeClipboardScenario = (options: {
+  readonly initialHtml: string
   readonly initialText: string
   readonly supported: Partial<Record<ClipboardCapability, boolean>>
 }): ClipboardServiceApi => {
+  let htmlContent = options.initialHtml
   let textContent = options.initialText
   let imageContent: ClipboardImage | undefined
 
@@ -210,6 +214,11 @@ const makeClipboardScenario = (options: {
     writeText: (text: string): Effect.Effect<void, ClipboardError, never> =>
       Effect.sync(() => {
         textContent = text
+      }),
+    readHtml: (): Effect.Effect<string, ClipboardError, never> => Effect.sync(() => htmlContent),
+    writeHtml: (html: string): Effect.Effect<void, ClipboardError, never> =>
+      Effect.sync(() => {
+        htmlContent = html
       }),
     readImage: (): Effect.Effect<ClipboardImage, ClipboardError, never> =>
       Effect.sync(
@@ -221,6 +230,7 @@ const makeClipboardScenario = (options: {
       }),
     clear: (): Effect.Effect<void, ClipboardError, never> =>
       Effect.sync(() => {
+        htmlContent = ""
         textContent = ""
         imageContent = undefined
       }),
