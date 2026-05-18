@@ -8,7 +8,9 @@ effect_version: 4
 
 # `Protocol`
 
-Register custom renderer protocol policy with the native host. Protocol policy is scoped by scheme and path; it does not expose arbitrary filesystem paths unless `serveAsset` registers an explicit existing directory root for that scheme. Registered policies are applied when the host builds WebViews; existing WebViews keep the custom protocol registrations they were built with.
+Register custom renderer protocol policy with the native host. Protocol policy is scoped by scheme and path; it does not expose arbitrary filesystem paths unless `serveAsset` registers an explicit existing directory root for that scheme.
+
+Protocol policy is startup configuration. The host freezes the registry when it builds a WebView, because Wry attaches custom protocol handlers to the WebView builder. Calls made after WebView creation return `Unsupported` instead of pretending to update existing WebViews.
 
 The fixed internal `app://localhost/` WebView asset protocol is owned by the host runtime and remains separate from this public custom protocol policy surface.
 
@@ -36,9 +38,13 @@ Schemes must match `^[a-z][a-z0-9+.-]*$` and cannot be reserved browser or host 
 
 `serveAsset.root` must be a non-empty absolute local path to an existing scoped directory, not a filesystem root. It rejects control characters and traversal segments. URL paths for `serveRoute.route` and `deny.path` must start with `/` and reject malformed percent escapes, encoded traversal, backslashes, control characters, and `.` or `..` segments before native transport.
 
+Custom protocol requests must use the registered scheme with canonical `localhost` authority and no port, for example `assets://localhost/file.txt`. Other hosts or authorities return `404`.
+
+Registered schemes without an asset root fail closed with `403`. Denied paths return `403`; missing files return `404`; methods other than `GET` and `HEAD` return `405`. Successful custom protocol responses include the active Content Security Policy. HTML responses are rewritten with a fresh CSP nonce before the host returns them.
+
 ## Errors
 
-`ProtocolError` is the host protocol error union. Malformed schemes, roots, and URL paths return `InvalidArgument`. Host transport failure returns `HostUnavailable`; platform or host policy refusal returns `Unsupported`.
+`ProtocolError` is the host protocol error union. Malformed schemes, roots, and URL paths return `InvalidArgument`. Host transport failure returns `HostUnavailable`; platform or host policy refusal returns `Unsupported`. Runtime policy mutation after WebView creation is `Unsupported`.
 
 ## Related
 

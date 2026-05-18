@@ -35,14 +35,12 @@ pub(crate) enum ProtocolResponse {
     NotFound,
 }
 
-pub(crate) fn registered_schemes() -> Vec<String> {
-    registry()
+pub(crate) fn freeze_and_registered_schemes() -> Vec<String> {
+    let mut registry = registry()
         .lock()
-        .expect("protocol registry mutex should not be poisoned")
-        .schemes
-        .iter()
-        .cloned()
-        .collect()
+        .expect("protocol registry mutex should not be poisoned");
+    registry.freeze();
+    registry.schemes.iter().cloned().collect()
 }
 
 pub(crate) fn resolve_custom_protocol_request(scheme: &str, raw_path: &str) -> ProtocolResponse {
@@ -71,7 +69,7 @@ pub(crate) fn resolve_custom_protocol_request(scheme: &str, raw_path: &str) -> P
             .unwrap_or(ProtocolResponse::NotFound);
     }
     let Some(root) = registry.asset_roots.get(scheme) else {
-        return ProtocolResponse::NotFound;
+        return ProtocolResponse::Denied;
     };
     let relative = decoded_path.trim_start_matches('/');
     let relative = if relative.is_empty() {
@@ -109,10 +107,11 @@ pub(crate) fn register_app_protocol(
         input.scheme(),
         host_protocol::PROTOCOL_REGISTER_APP_PROTOCOL_METHOD,
     )?;
-    registry()
+    let mut registry = registry()
         .lock()
-        .expect("protocol registry mutex should not be poisoned")
-        .register_scheme(input.scheme());
+        .expect("protocol registry mutex should not be poisoned");
+    registry.ensure_mutable(host_protocol::PROTOCOL_REGISTER_APP_PROTOCOL_METHOD)?;
+    registry.register_scheme(input.scheme());
     Ok(None)
 }
 
@@ -121,10 +120,11 @@ pub(crate) fn serve_asset(payload: Option<Value>) -> Result<Option<Value>, HostP
         decode_payload(payload, host_protocol::PROTOCOL_SERVE_ASSET_METHOD)?;
     validate_scheme(input.scheme(), host_protocol::PROTOCOL_SERVE_ASSET_METHOD)?;
     let root = validate_local_root(input.root(), host_protocol::PROTOCOL_SERVE_ASSET_METHOD)?;
-    registry()
+    let mut registry = registry()
         .lock()
-        .expect("protocol registry mutex should not be poisoned")
-        .serve_asset(input.scheme(), root);
+        .expect("protocol registry mutex should not be poisoned");
+    registry.ensure_mutable(host_protocol::PROTOCOL_SERVE_ASSET_METHOD)?;
+    registry.serve_asset(input.scheme(), root);
     Ok(None)
 }
 
@@ -132,26 +132,28 @@ pub(crate) fn serve_route(payload: Option<Value>) -> Result<Option<Value>, HostP
     let input: ProtocolServeRoutePayload =
         decode_payload(payload, host_protocol::PROTOCOL_SERVE_ROUTE_METHOD)?;
     validate_scheme(input.scheme(), host_protocol::PROTOCOL_SERVE_ROUTE_METHOD)?;
-    validate_url_path(
+    let route = canonical_policy_path(
         input.route(),
         "route",
         host_protocol::PROTOCOL_SERVE_ROUTE_METHOD,
     )?;
-    registry()
+    let mut registry = registry()
         .lock()
-        .expect("protocol registry mutex should not be poisoned")
-        .serve_route(input.scheme(), input.route());
+        .expect("protocol registry mutex should not be poisoned");
+    registry.ensure_mutable(host_protocol::PROTOCOL_SERVE_ROUTE_METHOD)?;
+    registry.serve_route(input.scheme(), &route);
     Ok(None)
 }
 
 pub(crate) fn deny(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     let input: ProtocolDenyPayload = decode_payload(payload, host_protocol::PROTOCOL_DENY_METHOD)?;
     validate_scheme(input.scheme(), host_protocol::PROTOCOL_DENY_METHOD)?;
-    validate_url_path(input.path(), "path", host_protocol::PROTOCOL_DENY_METHOD)?;
-    registry()
+    let path = canonical_policy_path(input.path(), "path", host_protocol::PROTOCOL_DENY_METHOD)?;
+    let mut registry = registry()
         .lock()
-        .expect("protocol registry mutex should not be poisoned")
-        .deny(input.scheme(), input.path());
+        .expect("protocol registry mutex should not be poisoned");
+    registry.ensure_mutable(host_protocol::PROTOCOL_DENY_METHOD)?;
+    registry.deny(input.scheme(), &path);
     Ok(None)
 }
 
@@ -279,6 +281,14 @@ fn validate_url_path(
     field: &'static str,
     operation: &'static str,
 ) -> Result<(), HostProtocolError> {
+    canonical_policy_path(path, field, operation).map(|_| ())
+}
+
+fn canonical_policy_path(
+    path: &str,
+    field: &'static str,
+    operation: &'static str,
+) -> Result<String, HostProtocolError> {
     if !path.starts_with('/') {
         return Err(HostProtocolError::invalid_argument(
             field,
@@ -312,7 +322,7 @@ fn validate_url_path(
             operation,
         ));
     }
-    Ok(())
+    Ok(decoded)
 }
 
 fn decode_request_path(path: &str) -> Result<String, &'static str> {
@@ -364,9 +374,24 @@ struct ProtocolRegistry {
     asset_roots: BTreeMap<String, PathBuf>,
     routes: BTreeMap<String, BTreeSet<String>>,
     denied_paths: BTreeMap<String, BTreeSet<String>>,
+    frozen: bool,
 }
 
 impl ProtocolRegistry {
+    fn ensure_mutable(&self, operation: &'static str) -> Result<(), HostProtocolError> {
+        if self.frozen {
+            return Err(HostProtocolError::unsupported(
+                "custom protocol policy must be registered before WebView creation",
+                operation,
+            ));
+        }
+        Ok(())
+    }
+
+    fn freeze(&mut self) {
+        self.frozen = true;
+    }
+
     fn register_scheme(&mut self, scheme: &str) {
         self.schemes.insert(scheme.to_string());
     }
@@ -434,7 +459,11 @@ fn normalized_policy_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{deny, register_app_protocol, serve_asset, serve_route};
+    use super::{
+        canonical_policy_path, deny, register_app_protocol, resolve_custom_protocol_request,
+        serve_asset, serve_route, ProtocolRegistry, ProtocolResponse,
+    };
+    use host_protocol::HostProtocolError;
 
     #[test]
     fn protocol_methods_accept_scoped_policy_payloads() {
@@ -523,5 +552,48 @@ mod tests {
             "extra": true
         })))
         .is_err());
+    }
+
+    #[test]
+    fn encoded_policy_paths_match_decoded_request_paths() {
+        deny(Some(serde_json::json!({
+            "scheme": "encodeddenytest",
+            "path": "/private%2fsecret"
+        })))
+        .expect("encoded deny path should register");
+
+        assert!(matches!(
+            resolve_custom_protocol_request("encodeddenytest", "/private%2fsecret/file.txt"),
+            ProtocolResponse::Denied
+        ));
+        assert!(matches!(
+            resolve_custom_protocol_request("encodeddenytest", "/private/secret/file.txt"),
+            ProtocolResponse::Denied
+        ));
+
+        let mut registry = ProtocolRegistry::default();
+        let route = canonical_policy_path(
+            "/settings%2fprofile",
+            "route",
+            host_protocol::PROTOCOL_SERVE_ROUTE_METHOD,
+        )
+        .expect("encoded route path should canonicalize");
+        registry.serve_route("encodedroutetest", &route);
+
+        assert!(registry.is_route("encodedroutetest", "/settings/profile"));
+        assert!(!registry.is_route("encodedroutetest", "/settings%2fprofile"));
+    }
+
+    #[test]
+    fn registry_rejects_mutation_after_freeze() {
+        let mut registry = ProtocolRegistry::default();
+        registry.register_scheme("startuponly");
+        registry.freeze();
+
+        assert!(matches!(
+            registry.ensure_mutable(host_protocol::PROTOCOL_REGISTER_APP_PROTOCOL_METHOD),
+            Err(HostProtocolError::Unsupported { .. })
+        ));
+        assert!(registry.schemes.contains("startuponly"));
     }
 }

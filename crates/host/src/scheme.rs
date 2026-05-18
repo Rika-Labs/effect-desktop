@@ -29,7 +29,7 @@ pub(crate) fn register_app_scheme<'a>(builder: WebViewBuilder<'a>) -> WebViewBui
     let mut builder = builder.with_custom_protocol(APP_SCHEME.into(), |_webview_id, request| {
         app_scheme_response_with(&request, html_csp::rewrite_with_nonce)
     });
-    for scheme in protocol::registered_schemes() {
+    for scheme in protocol::freeze_and_registered_schemes() {
         builder = builder.with_custom_protocol(scheme, |_webview_id, request| {
             custom_scheme_response_with(&request)
         });
@@ -63,25 +63,38 @@ fn custom_scheme_response_with(request: &Request<Vec<u8>>) -> Response<Cow<'stat
             &trace_id,
         );
     };
+    if request.uri().host() != Some(APP_HOST) {
+        return plain_response(
+            StatusCode::NOT_FOUND,
+            Cow::Borrowed(b"custom protocol asset not found"),
+            &trace_id,
+        );
+    }
+    if request
+        .uri()
+        .authority()
+        .is_none_or(|authority| authority.as_str() != APP_HOST)
+    {
+        return plain_response(
+            StatusCode::NOT_FOUND,
+            Cow::Borrowed(b"custom protocol asset not found"),
+            &trace_id,
+        );
+    }
     match protocol::resolve_custom_protocol_request(scheme, request.uri().path()) {
         protocol::ProtocolResponse::Asset {
             bytes,
             content_type,
         } => {
+            if content_type.starts_with("text/html") {
+                return custom_html_response(bytes, content_type, request.method(), &trace_id);
+            }
             let body = if request.method() == Method::HEAD {
                 Cow::Borrowed::<[u8]>(b"")
             } else {
                 Cow::Owned(bytes)
             };
-            let mut response = Response::new(body);
-            *response.status_mut() = StatusCode::OK;
-            response
-                .headers_mut()
-                .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
-            response
-                .headers_mut()
-                .insert(TRACE_ID_HEADER, trace_id.clone());
-            response
+            custom_asset_response(content_type, body, &trace_id)
         }
         protocol::ProtocolResponse::Denied => plain_response(
             StatusCode::FORBIDDEN,
@@ -93,6 +106,66 @@ fn custom_scheme_response_with(request: &Request<Vec<u8>>) -> Response<Cow<'stat
             Cow::Borrowed(b"custom protocol asset not found"),
             &trace_id,
         ),
+    }
+}
+
+fn custom_asset_response(
+    content_type: &'static str,
+    body: Cow<'static, [u8]>,
+    trace_id: &HeaderValue,
+) -> Response<Cow<'static, [u8]>> {
+    let nonce = csp::CspNonce::mint();
+    let policy = match csp::CspPolicy::current() {
+        Ok(policy) => policy,
+        Err(error) => {
+            return app_policy_error_response(trace_id, &error);
+        }
+    };
+    app_response(
+        StatusCode::OK,
+        content_type,
+        body,
+        &policy,
+        &nonce,
+        trace_id,
+    )
+}
+
+fn custom_html_response(
+    bytes: Vec<u8>,
+    content_type: &'static str,
+    method: &Method,
+    trace_id: &HeaderValue,
+) -> Response<Cow<'static, [u8]>> {
+    let nonce = csp::CspNonce::mint();
+    let policy = match csp::CspPolicy::current() {
+        Ok(policy) => policy,
+        Err(error) => {
+            return app_policy_error_response(trace_id, &error);
+        }
+    };
+    match html_csp::rewrite_with_nonce(&bytes, &nonce) {
+        Ok(outcome) => app_response(
+            StatusCode::OK,
+            content_type,
+            if method == Method::HEAD {
+                Cow::Borrowed(b"")
+            } else {
+                Cow::Owned(outcome.bytes)
+            },
+            &policy,
+            &nonce,
+            trace_id,
+        ),
+        Err(rewrite_error) => {
+            error!(
+                target: "host.csp",
+                trace_id = ?trace_id,
+                error = %rewrite_error,
+                "custom protocol html rewrite failed"
+            );
+            app_rewrite_error_response(&policy, trace_id, &nonce)
+        }
     }
 }
 
@@ -356,7 +429,7 @@ mod tests {
     };
     use crate::csp::{CspNonce, CspPolicy, CspPolicyError};
     use crate::html_csp::{rewrite_with_nonce, RewriteError, RewriteOutcome};
-    use crate::methods::protocol::{deny, serve_asset};
+    use crate::methods::protocol::{deny, register_app_protocol, serve_asset};
     use lol_html::errors::RewritingError;
     use std::collections::BTreeSet;
     use wry::http::{
@@ -593,6 +666,113 @@ mod tests {
         let response = custom_scheme_response(&denied);
 
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        register_app_protocol(Some(serde_json::json!({
+            "scheme": "unrootedtest"
+        })))
+        .expect("unrooted protocol should register");
+        let unrooted = Request::builder()
+            .uri("unrootedtest://localhost/file.txt")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = custom_scheme_response(&unrooted);
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn custom_scheme_response_rejects_non_canonical_authority() {
+        let root = std::env::temp_dir().join(format!(
+            "effect-desktop-protocol-authority-{}",
+            uuid::Uuid::now_v7()
+        ));
+        std::fs::create_dir_all(&root).expect("asset root should be created");
+        std::fs::write(root.join("file.txt"), b"hello").expect("asset file should be written");
+        serve_asset(Some(serde_json::json!({
+            "scheme": "authoritytest",
+            "root": root
+        })))
+        .expect("asset policy should register");
+
+        let request = Request::builder()
+            .uri("authoritytest://other-host/file.txt")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = custom_scheme_response(&request);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let request = Request::builder()
+            .uri("authoritytest://localhost:1234/file.txt")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = custom_scheme_response(&request);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn custom_scheme_response_rewrites_html_assets_with_csp() {
+        let root = std::env::temp_dir().join(format!(
+            "effect-desktop-protocol-html-{}",
+            uuid::Uuid::now_v7()
+        ));
+        std::fs::create_dir_all(&root).expect("asset root should be created");
+        std::fs::write(
+            root.join("index.html"),
+            b"<!doctype html><html><head><style>body{}</style></head><body><script src=\"/app.js\"></script></body></html>",
+        )
+        .expect("html asset should be written");
+
+        serve_asset(Some(serde_json::json!({
+            "scheme": "htmlassettest",
+            "root": root
+        })))
+        .expect("asset policy should register");
+
+        let request = Request::builder()
+            .uri("htmlassettest://localhost/index.html")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = custom_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let header_nonce = csp_nonce_from_header(&response);
+        let body = std::str::from_utf8(response.body()).expect("body should be utf-8");
+        assert_eq!(
+            collect_nonce_attribute_values(body),
+            BTreeSet::from([header_nonce])
+        );
+    }
+
+    #[test]
+    fn custom_scheme_response_applies_csp_to_non_html_assets() {
+        let root = std::env::temp_dir().join(format!(
+            "effect-desktop-protocol-csp-{}",
+            uuid::Uuid::now_v7()
+        ));
+        std::fs::create_dir_all(&root).expect("asset root should be created");
+        std::fs::write(
+            root.join("icon.svg"),
+            b"<svg xmlns=\"http://www.w3.org/2000/svg\" />",
+        )
+        .expect("svg asset should be written");
+
+        serve_asset(Some(serde_json::json!({
+            "scheme": "svgassettest",
+            "root": root
+        })))
+        .expect("asset policy should register");
+
+        let request = Request::builder()
+            .uri("svgassettest://localhost/icon.svg")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = custom_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            response.headers().get(CONTENT_SECURITY_POLICY).is_some(),
+            "custom non-html assets should still carry the active CSP"
+        );
     }
 
     #[test]
