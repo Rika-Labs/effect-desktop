@@ -47,6 +47,12 @@ metadata only; Effect Desktop has no `WebViewInspection` service,
 `openDevTools`, `closeDevTools`, debugger attach/detach contract, or audited
 host permission path for inspector access.
 
+Preload isolation is not exposed today. Effect Desktop has no
+`WebViewIsolation` service, preload registration contract, isolated-world
+policy, or Schema-declared API exposure surface. The installed WebView provider
+has raw initialization-script and IPC hooks, but they are not a permission-gated
+native boundary for renderer/native API exposure.
+
 Proxy configuration, HTTP authentication challenges, and certificate decisions
 are also not part of `WebView`. Those hooks are absent; adding them would
 require a new network-auth service and host adapter.
