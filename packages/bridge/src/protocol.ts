@@ -5,7 +5,34 @@ export const HOST_PING_METHOD = "host.ping"
 export const HOST_VERSION_METHOD = "host.version"
 export const HOST_PROTOCOL_VERSION = "2.0.0"
 export const WINDOW_CREATE_METHOD = "Window.create"
+export const WINDOW_SHOW_METHOD = "Window.show"
+export const WINDOW_HIDE_METHOD = "Window.hide"
+export const WINDOW_FOCUS_METHOD = "Window.focus"
+export const WINDOW_GET_CURRENT_METHOD = "Window.getCurrent"
+export const WINDOW_GET_BY_ID_METHOD = "Window.getById"
+export const WINDOW_LIST_METHOD = "Window.list"
+export const WINDOW_GET_PARENT_METHOD = "Window.getParent"
+export const WINDOW_GET_BOUNDS_METHOD = "Window.getBounds"
+export const WINDOW_SET_BOUNDS_METHOD = "Window.setBounds"
+export const WINDOW_CENTER_METHOD = "Window.center"
+export const WINDOW_CENTER_ON_DISPLAY_METHOD = "Window.centerOnDisplay"
+export const WINDOW_SET_TITLE_METHOD = "Window.setTitle"
+export const WINDOW_SET_RESIZABLE_METHOD = "Window.setResizable"
+export const WINDOW_SET_DECORATIONS_METHOD = "Window.setDecorations"
+export const WINDOW_SET_TRAFFIC_LIGHTS_METHOD = "Window.setTrafficLights"
+export const WINDOW_SET_ALWAYS_ON_TOP_METHOD = "Window.setAlwaysOnTop"
+export const WINDOW_SET_SKIP_TASKBAR_METHOD = "Window.setSkipTaskbar"
+export const WINDOW_SET_PROGRESS_METHOD = "Window.setProgress"
+export const WINDOW_REQUEST_ATTENTION_METHOD = "Window.requestAttention"
+export const WINDOW_CANCEL_ATTENTION_METHOD = "Window.cancelAttention"
+export const WINDOW_MINIMIZE_METHOD = "Window.minimize"
+export const WINDOW_MAXIMIZE_METHOD = "Window.maximize"
+export const WINDOW_RESTORE_METHOD = "Window.restore"
+export const WINDOW_SET_FULLSCREEN_METHOD = "Window.setFullscreen"
+export const WINDOW_GET_STATE_METHOD = "Window.getState"
+export const WINDOW_SUBSCRIBE_EVENTS_METHOD = "Window.subscribeEvents"
 export const WINDOW_DESTROY_METHOD = "Window.destroy"
+export const WINDOW_EVENT_METHOD = "Window.Event"
 export const DOCK_SET_BADGE_COUNT_METHOD = "Dock.setBadgeCount"
 export const DOCK_SET_BADGE_TEXT_METHOD = "Dock.setBadgeText"
 export const DOCK_SET_MENU_METHOD = "Dock.setMenu"
@@ -69,6 +96,7 @@ export const HOST_PROTOCOL_ERROR_SPECS = [
   { tag: "UpdateDowngradeRefused", recoverable: false },
   { tag: "UpdateDownloadTruncated", recoverable: true },
   { tag: "UpdateStaleNotarization", recoverable: false },
+  { tag: "UpdateSignatureInvalid", recoverable: false },
   { tag: "SettingsMigrationFailed", recoverable: false },
   { tag: "SettingsRecoveredFromBackup", recoverable: true },
   { tag: "EventLogSegmentCorrupt", recoverable: false },
@@ -547,6 +575,19 @@ export class HostProtocolUpdateStaleNotarizationError extends Schema.Class<HostP
   }
 }
 
+export class HostProtocolUpdateSignatureInvalidError extends Schema.Class<HostProtocolUpdateSignatureInvalidError>(
+  "HostProtocolUpdateSignatureInvalidError"
+)({
+  tag: Schema.Literal("UpdateSignatureInvalid"),
+  artifact: Schema.String,
+  keyVersion: UInt32,
+  ...HostProtocolErrorCommonFields
+}) {
+  get _tag(): "UpdateSignatureInvalid" {
+    return this.tag
+  }
+}
+
 export class HostProtocolSettingsMigrationFailedError extends Schema.Class<HostProtocolSettingsMigrationFailedError>(
   "HostProtocolSettingsMigrationFailedError"
 )({
@@ -642,6 +683,7 @@ export const HostProtocolError = Schema.Union([
   HostProtocolUpdateDowngradeRefusedError,
   HostProtocolUpdateDownloadTruncatedError,
   HostProtocolUpdateStaleNotarizationError,
+  HostProtocolUpdateSignatureInvalidError,
   HostProtocolSettingsMigrationFailedError,
   HostProtocolSettingsRecoveredFromBackupError,
   HostProtocolEventLogSegmentCorruptError,

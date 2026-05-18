@@ -22,6 +22,7 @@ export class WindowStateRecord extends Schema.Class<WindowStateRecord>("WindowSt
   y: Schema.Number.check(Schema.isFinite()),
   width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
   height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
+  displayId: Schema.optionalKey(Schema.String),
   isFullScreen: Schema.Boolean,
   scaleFactor: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
   zoom: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
@@ -36,10 +37,12 @@ export class WindowStateStore extends Schema.Class<WindowStateStore>("WindowStat
 }) {}
 
 export class WindowDisplayBounds extends Schema.Class<WindowDisplayBounds>("WindowDisplayBounds")({
+  id: Schema.optionalKey(Schema.String),
   x: Schema.Number.check(Schema.isFinite()),
   y: Schema.Number.check(Schema.isFinite()),
   width: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
   height: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0)),
+  scaleFactor: Schema.optionalKey(Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))),
   primary: Schema.optionalKey(Schema.Boolean)
 }) {}
 
@@ -55,6 +58,10 @@ export class WindowStateEvent extends Schema.Class<WindowStateEvent>("WindowStat
 }) {}
 
 const WindowStateStoreText = Schema.fromJsonString(Schema.toCodecJson(WindowStateStore))
+const WindowStateMutationGates = new WeakMap<
+  KeyValueStore.KeyValueStore,
+  Map<string, Semaphore.Semaphore>
+>()
 
 export class WindowStateReadFailed extends Data.TaggedError("WindowStateReadFailed")<{
   readonly path: string
@@ -180,7 +187,7 @@ const makeWindowStateRepository = (
     const validateBounds = (state: WindowStateRecord) =>
       snapToVisibleDisplay(options.validateBounds?.(state) ?? state, options.displays)
     const events = yield* PubSub.sliding<WindowStateEvent>({ capacity: 128, replay: 0 })
-    const mutationGate = yield* Semaphore.make(1)
+    const mutationGate = mutationGateFor(kv, storeKey)
     const read = readStore(kv, storeKey, path, now)
     const publishReadEvent = (result: WindowStateReadResult): Effect.Effect<void, never, never> =>
       result.event === undefined
@@ -303,6 +310,26 @@ const readStore = (
     )
   })
 
+const mutationGateFor = (
+  kv: KeyValueStore.KeyValueStore,
+  storeKey: string
+): Semaphore.Semaphore => {
+  let storeGates = WindowStateMutationGates.get(kv)
+  if (storeGates === undefined) {
+    storeGates = new Map()
+    WindowStateMutationGates.set(kv, storeGates)
+  }
+
+  const existing = storeGates.get(storeKey)
+  if (existing !== undefined) {
+    return existing
+  }
+
+  const gate = Semaphore.makeUnsafe(1)
+  storeGates.set(storeKey, gate)
+  return gate
+}
+
 interface WindowStateReadResult {
   readonly store: WindowStateStore
   readonly event?: WindowStateEvent
@@ -400,11 +427,22 @@ const snapToVisibleDisplay = (
   state: WindowStateRecord,
   displays: readonly WindowDisplayBounds[] | undefined
 ): WindowStateRecord => {
-  if (displays === undefined || displays.length === 0 || intersectsAnyDisplay(state, displays)) {
+  if (displays === undefined || displays.length === 0) {
     return state
   }
 
-  const target = displays.find((display) => display.primary === true) ?? displays[0]
+  const savedDisplay =
+    state.displayId === undefined
+      ? undefined
+      : displays.find((display) => display.id === state.displayId)
+  if (state.displayId === undefined && intersectsAnyDisplay(state, displays)) {
+    return state
+  }
+  if (savedDisplay !== undefined && intersectsDisplay(state, savedDisplay)) {
+    return state
+  }
+
+  const target = savedDisplay ?? displays.find((display) => display.primary === true) ?? displays[0]
   if (target === undefined) {
     return state
   }
@@ -414,8 +452,9 @@ const snapToVisibleDisplay = (
     y: target.y,
     width: Math.min(state.width, target.width),
     height: Math.min(state.height, target.height),
+    ...(state.displayId === undefined ? {} : { displayId: target.id ?? state.displayId }),
     isFullScreen: state.isFullScreen,
-    scaleFactor: state.scaleFactor,
+    scaleFactor: target.scaleFactor ?? state.scaleFactor,
     zoom: state.zoom,
     ...(state.devtoolsPanel === undefined ? {} : { devtoolsPanel: state.devtoolsPanel }),
     ...(state.scrollPositions === undefined ? {} : { scrollPositions: state.scrollPositions })
@@ -425,14 +464,13 @@ const snapToVisibleDisplay = (
 const intersectsAnyDisplay = (
   state: WindowStateRecord,
   displays: readonly WindowDisplayBounds[]
-): boolean =>
-  displays.some(
-    (display) =>
-      state.x < display.x + display.width &&
-      state.x + state.width > display.x &&
-      state.y < display.y + display.height &&
-      state.y + state.height > display.y
-  )
+): boolean => displays.some((display) => intersectsDisplay(state, display))
+
+const intersectsDisplay = (state: WindowStateRecord, display: WindowDisplayBounds): boolean =>
+  state.x < display.x + display.width &&
+  state.x + state.width > display.x &&
+  state.y < display.y + display.height &&
+  state.y + state.height > display.y
 
 export const defaultWindowStatePath = (bundleId: string): string =>
   buildDefaultWindowStatePath(assertBundleId(bundleId))

@@ -74,6 +74,8 @@ import {
   PackageUnsupportedTargetError
 } from "./package-pipeline.js"
 import {
+  formatDoctorError,
+  encodeDesktopDoctorReport,
   formatDoctorReport,
   runDesktopDoctor,
   runDoctorCommand,
@@ -172,10 +174,13 @@ export {
   DoctorDiagnostic,
   DoctorEnvironment,
   DoctorEvidence,
+  DoctorCapabilityTruthUnavailable,
   DoctorMissing,
+  DesktopDoctorReport,
+  encodeDesktopDoctorReport,
+  formatDoctorError,
   formatDoctorReport,
   runDesktopDoctor,
-  type DesktopDoctorReport,
   type DoctorCommandInvocation,
   type DoctorCommandOutput,
   type DoctorEnvironmentApi,
@@ -1094,12 +1099,33 @@ export const runCli = (options: CliRunOptions): Effect.Effect<number, never, nev
             bunVersion: options.bunVersion ?? Bun.version,
             commandRunner: options.doctorCommandRunner ?? runDoctorCommand,
             env: options.env ?? process.env
-          })
+          }).pipe(
+            Effect.result,
+            Effect.map(
+              Result.match({
+                onSuccess: (report) => report,
+                onFailure: (error) => {
+                  const formatted = formatDoctorError(error)
+                  if (flags.json) {
+                    options.writeStderr(`${JSON.stringify(formatted, null, 2)}\n`)
+                  } else {
+                    options.writeStderr(`${formatted.message}\n`)
+                  }
+                  return undefined
+                }
+              })
+            )
+          )
+          if (report === undefined) {
+            yield* fail(1)
+            return
+          }
           if (flags.json) {
+            const encodedReport = encodeDesktopDoctorReport(report)
             if (report.passed) {
-              options.writeStdout(`${JSON.stringify(report, null, 2)}\n`)
+              options.writeStdout(`${JSON.stringify(encodedReport, null, 2)}\n`)
             } else {
-              options.writeStderr(`${JSON.stringify(report, null, 2)}\n`)
+              options.writeStderr(`${JSON.stringify(encodedReport, null, 2)}\n`)
             }
           } else if (report.passed) {
             options.writeStdout(formatDoctorReport(report))

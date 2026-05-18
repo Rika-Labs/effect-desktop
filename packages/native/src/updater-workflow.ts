@@ -77,9 +77,9 @@ const downloadBundle = (url: string) =>
     })
   })
 
-const verifySignature = (bytes: Uint8Array, manifest: UpdateManifest) =>
+const requireHostUpdateAvailable = (bytes: Uint8Array, manifest: UpdateManifest) =>
   Activity.make({
-    name: "verify-signature",
+    name: "require-host-update-available",
     success: Schema.Void,
     error: UpdateError,
     execute: Effect.gen(function* () {
@@ -89,12 +89,10 @@ const verifySignature = (bytes: Uint8Array, manifest: UpdateManifest) =>
         .check({ currentVersion: manifest.version })
         .pipe(Effect.mapError((e) => new UpdateError({ stage: "verify", message: formatCause(e) })))
       if (!result.available) {
-        return yield* Effect.fail(
-          new UpdateError({
-            stage: "verify",
-            message: `signature verification failed for ${manifest.version}`
-          })
-        )
+        return yield* new UpdateError({
+          stage: "verify",
+          message: `host updater did not confirm update availability for ${manifest.version}`
+        })
       }
     })
   })
@@ -106,12 +104,10 @@ const stageBundle = (bytes: Uint8Array, version: string) =>
     error: UpdateError,
     execute: Effect.gen(function* () {
       if (!STAGED_VERSION_PATTERN.test(version) || version === "." || version === "..") {
-        return yield* Effect.fail(
-          new UpdateError({
-            stage: "stage",
-            message: "update version must be a safe filename segment"
-          })
-        )
+        return yield* new UpdateError({
+          stage: "stage",
+          message: "update version must be a safe filename segment"
+        })
       }
 
       return yield* Effect.tryPromise({
@@ -170,7 +166,7 @@ export const UpdateWorkflowLayer = UpdateWorkflow.toLayer((payload: UpdatePayloa
 
     const stagedPath = yield* Workflow.withCompensation(
       Effect.gen(function* () {
-        yield* verifySignature(bytes, manifest)
+        yield* requireHostUpdateAvailable(bytes, manifest)
         return yield* stageBundle(bytes, manifest.version)
       }),
       (path, cause) => (Cause.hasFails(cause) ? deleteStaged(path) : Effect.void)

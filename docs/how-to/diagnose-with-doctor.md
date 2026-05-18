@@ -12,24 +12,29 @@ effect_version: 4
 bun run desktop doctor
 ```
 
-The doctor command checks every prerequisite for every release step on the current platform. It returns a typed `DoctorReport` — `{ checks: Array<{ name, status, message? }> }` — and prints a green/red table.
+The doctor command checks every prerequisite for every release step on the current platform. It returns a Schema-typed `DesktopDoctorReport` — `{ probes: Array<{ name, status, message, evidence }> }` — and prints a status table.
 
 ## What it checks
 
 Always:
 
 - Bun version matches `package.json#packageManager`.
-- Rust toolchain matches `rust-toolchain.toml`.
-- Workspace dependencies installed (`bun install` was run with `--frozen-lockfile`).
-- TypeScript can resolve the public packages.
+- Rust toolchain is available.
+- Platform SDK and WebView runtime are available for the current host.
+- Signing credentials are configured when needed.
+- Build tools are available.
+- Package manager state is Bun-pinned with a lockfile.
+- Native capability truth is available from the generated parity matrix.
+- Native host build cache is present when packaging.
+- Desktop config has required app metadata.
 
 Per-platform:
 
-| Platform | Additional checks                                                                               |
-| -------- | ----------------------------------------------------------------------------------------------- |
-| macOS    | Xcode CLI tools, codesign available, notarytool available, signing identity present in keychain |
-| Windows  | Visual Studio build tools, signtool available, certificate thumbprint resolvable                |
-| Linux    | gcc, libgtk-3, libwebkit2gtk, AppImage tools                                                    |
+| Platform | Additional checks                                   |
+| -------- | --------------------------------------------------- |
+| macOS    | Xcode CLI tools, system WebView runtime, `hdiutil`  |
+| Windows  | Visual Studio build tools, WebView2 runtime, WiX    |
+| Linux    | `webkit2gtk-4.1`, `dpkg-deb`, package manager state |
 
 If you've set release-related environment variables (`APPLE_ID`, `WINDOWS_CERT_THUMBPRINT`, `UPDATER_KEY_PATH`), the doctor verifies they point at something usable.
 
@@ -37,19 +42,16 @@ If you've set release-related environment variables (`APPLE_ID`, `WINDOWS_CERT_T
 
 ```
 Effect Desktop doctor
-
-bun                            ok       1.3.13
-rust toolchain                 ok       (per rust-toolchain.toml)
-workspace install              ok
-codesign                       ok       /usr/bin/codesign
-signing identity               failed   identity "Developer ID Application: ..." not found in keychain
-notarytool                     ok       /Applications/Xcode.app/Contents/Developer/usr/bin/notarytool
-APPLE_ID                       ok
-APPLE_APP_PASSWORD             ok
-APPLE_TEAM_ID                  warning  set but contains spaces
+platform          darwin-arm64
+ci                no
+result            ok
+[OK] bun-version: Bun 1.3.13 satisfies 1.3.13
+[OK] rust-toolchain: cargo and rustc are available
+[WARN] signing-credentials: signing credentials are not configured; unsigned local packages remain allowed
+[WARN] native-capabilities: native capability matrix reports 184 methods, 99 host-routed, 85 missing host routes
 ```
 
-Each row maps to one check. Failures fail the gate (non-zero exit). Warnings are advisory.
+Each row maps to one probe. `missing` probes fail the gate with a non-zero exit. Warnings are advisory, but a `native-capabilities` warning means some declared native methods still lack host routes.
 
 ## When to run it
 
@@ -61,10 +63,21 @@ Each row maps to one check. Failures fail the gate (non-zero exit). Warnings are
 ## Programmatic use
 
 ```ts
-import { runDesktopDoctor } from "@effect-desktop/cli"
+import { Effect } from "effect"
+import { runDesktopDoctor, runDoctorCommand } from "@effect-desktop/cli"
 
-const report = await Effect.runPromise(runDesktopDoctor({ cwd: process.cwd() }))
-const failed = report.checks.filter((c) => c.status === "failed")
+const report = await Effect.runPromise(
+  runDesktopDoctor({
+    cwd: process.cwd(),
+    configPath: "desktop.config.ts",
+    ci: false,
+    platform: process.platform,
+    arch: process.arch,
+    bunVersion: Bun.version,
+    commandRunner: runDoctorCommand
+  })
+)
+const missing = report.probes.filter((probe) => probe.status === "missing")
 ```
 
 Useful in CI to bail out early with a structured report.

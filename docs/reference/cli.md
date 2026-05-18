@@ -88,9 +88,9 @@ Returns the signed manifest plus distribution metadata.
 
 Returns either the diff report (failure) or success.
 
-## `runDesktopDoctor(options) → DoctorReport`
+## `runDesktopDoctor(options) → DesktopDoctorReport`
 
-Returns `{ checks: [{ name, status, message? }, ...] }`. Check `report.checks.every(c => c.status !== "failed")` to gate.
+Returns a Schema-typed `DesktopDoctorReport`: `{ probes: [{ name, status, message, evidence }], ... }`. The `native-capabilities` probe decodes the generated native parity matrix bundled with the CLI, so doctor and the native reference page report the same support and host-router counts. Gate on `status === "missing"` for required prerequisites, and treat a `native-capabilities` warning as a native host-route support gap to inspect before using those APIs.
 
 ## `runReleaseWorkflow(config, services)`
 

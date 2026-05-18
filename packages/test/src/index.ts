@@ -30,8 +30,30 @@ import {
   HostProtocolResponseEnvelope,
   HostProtocolStreamByRequestEnvelope,
   HostProtocolUnsupportedError,
+  WINDOW_CENTER_METHOD,
+  WINDOW_CANCEL_ATTENTION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
+  WINDOW_FOCUS_METHOD,
+  WINDOW_GET_BOUNDS_METHOD,
+  WINDOW_GET_BY_ID_METHOD,
+  WINDOW_GET_CURRENT_METHOD,
+  WINDOW_GET_PARENT_METHOD,
+  WINDOW_GET_STATE_METHOD,
+  WINDOW_HIDE_METHOD,
+  WINDOW_LIST_METHOD,
+  WINDOW_MAXIMIZE_METHOD,
+  WINDOW_MINIMIZE_METHOD,
+  WINDOW_RESTORE_METHOD,
+  WINDOW_REQUEST_ATTENTION_METHOD,
+  WINDOW_SET_ALWAYS_ON_TOP_METHOD,
+  WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_DECORATIONS_METHOD,
+  WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_PROGRESS_METHOD,
+  WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_TITLE_METHOD,
+  WINDOW_SHOW_METHOD,
   hostProtocolErrorRecoverableDefault,
   makeHostProtocolInvalidStateError,
   makeHostHandshakeClient,
@@ -147,6 +169,7 @@ export interface HeadlessHostCall {
 
 export interface HeadlessHostState {
   readonly windows: ReadonlyMap<string, WindowCreateInput>
+  readonly focusedWindowId: () => string | undefined
 }
 
 export interface MockHostApi {
@@ -167,10 +190,12 @@ const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<numbe
 export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
   const calls: HeadlessHostCall[] = []
   const windows = new Map<string, WindowCreateInput>()
+  let focusedWindowId: string | undefined
   let nextWindowId = 1
 
   const state: HeadlessHostState = {
-    windows
+    windows,
+    focusedWindowId: () => focusedWindowId
   }
 
   return Object.freeze({
@@ -199,9 +224,42 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
         if (request.method === WINDOW_CREATE_METHOD) {
           const windowId = yield* readWindowId(responsePayload, request.method)
           windows.set(windowId, readWindowCreateInput(request.payload))
+          focusedWindowId ??= windowId
           nextWindowId += 1
         } else if (request.method === WINDOW_DESTROY_METHOD) {
-          windows.delete(yield* readWindowId(request.payload, request.method))
+          const windowId = yield* readWindowId(request.payload, request.method)
+          windows.delete(windowId)
+          if (focusedWindowId === windowId) {
+            focusedWindowId = windows.keys().next().value
+          }
+        } else if (request.method === WINDOW_FOCUS_METHOD) {
+          focusedWindowId = yield* readWindowId(request.payload, request.method)
+        } else if (
+          request.method === WINDOW_SHOW_METHOD ||
+          request.method === WINDOW_HIDE_METHOD ||
+          request.method === WINDOW_FOCUS_METHOD ||
+          request.method === WINDOW_GET_BY_ID_METHOD ||
+          request.method === WINDOW_GET_PARENT_METHOD ||
+          request.method === WINDOW_GET_BOUNDS_METHOD ||
+          request.method === WINDOW_CENTER_METHOD ||
+          request.method === WINDOW_SET_TITLE_METHOD ||
+          request.method === WINDOW_SET_RESIZABLE_METHOD ||
+          request.method === WINDOW_SET_DECORATIONS_METHOD ||
+          request.method === WINDOW_SET_ALWAYS_ON_TOP_METHOD ||
+          request.method === WINDOW_SET_PROGRESS_METHOD ||
+          request.method === WINDOW_REQUEST_ATTENTION_METHOD ||
+          request.method === WINDOW_CANCEL_ATTENTION_METHOD ||
+          request.method === WINDOW_MINIMIZE_METHOD ||
+          request.method === WINDOW_MAXIMIZE_METHOD ||
+          request.method === WINDOW_RESTORE_METHOD ||
+          request.method === WINDOW_GET_STATE_METHOD
+        ) {
+          yield* readWindowId(request.payload, request.method)
+        } else if (
+          request.method === WINDOW_SET_BOUNDS_METHOD ||
+          request.method === WINDOW_SET_FULLSCREEN_METHOD
+        ) {
+          yield* readWindowId(request.payload, request.method)
         }
 
         const timestamp = yield* currentTimeMillis(options.now)
@@ -761,7 +819,35 @@ export const runHeadless = <A, E, R>(
             windowResources.delete(windowId)
             yield* rawWindow.destroy(windowId)
             yield* handle.dispose()
-          })
+          }),
+        show: (windowId) => rawWindow.show(windowId),
+        hide: (windowId) => rawWindow.hide(windowId),
+        focus: (windowId) => rawWindow.focus(windowId),
+        getCurrent: () => rawWindow.getCurrent(),
+        getById: (windowId) => rawWindow.getById(windowId),
+        list: () => rawWindow.list(),
+        getParent: (windowId) => rawWindow.getParent(windowId),
+        getBounds: (windowId) => rawWindow.getBounds(windowId),
+        setBounds: (windowId, bounds) => rawWindow.setBounds(windowId, bounds),
+        center: (windowId) => rawWindow.center(windowId),
+        centerOnDisplay: (windowId, displayId) => rawWindow.centerOnDisplay(windowId, displayId),
+        setTitle: (windowId, title) => rawWindow.setTitle(windowId, title),
+        setResizable: (windowId, resizable) => rawWindow.setResizable(windowId, resizable),
+        setDecorations: (windowId, decorations) => rawWindow.setDecorations(windowId, decorations),
+        setTrafficLights: (windowId, trafficLights) =>
+          rawWindow.setTrafficLights(windowId, trafficLights),
+        setAlwaysOnTop: (windowId, alwaysOnTop) => rawWindow.setAlwaysOnTop(windowId, alwaysOnTop),
+        setSkipTaskbar: (windowId, skipTaskbar) => rawWindow.setSkipTaskbar(windowId, skipTaskbar),
+        setProgress: (windowId, input) => rawWindow.setProgress(windowId, input),
+        requestAttention: (windowId, requestType) =>
+          rawWindow.requestAttention(windowId, requestType),
+        cancelAttention: (windowId) => rawWindow.cancelAttention(windowId),
+        minimize: (windowId) => rawWindow.minimize(windowId),
+        maximize: (windowId) => rawWindow.maximize(windowId),
+        restore: (windowId) => rawWindow.restore(windowId),
+        setFullscreen: (windowId, fullscreen) => rawWindow.setFullscreen(windowId, fullscreen),
+        getState: (windowId) => rawWindow.getState(windowId),
+        events: () => rawWindow.events()
       }
     }
 
@@ -844,6 +930,79 @@ const defaultFixture = (method: string): HeadlessFixture => {
       return () => ({ protocolVersion: HOST_PROTOCOL_VERSION })
     case WINDOW_CREATE_METHOD:
       return () => DEFAULT_WINDOW_CREATE_PAYLOAD
+    case WINDOW_SHOW_METHOD:
+    case WINDOW_HIDE_METHOD:
+    case WINDOW_FOCUS_METHOD:
+    case WINDOW_GET_BY_ID_METHOD:
+    case WINDOW_GET_PARENT_METHOD:
+    case WINDOW_CENTER_METHOD:
+    case WINDOW_SET_TITLE_METHOD:
+    case WINDOW_SET_RESIZABLE_METHOD:
+    case WINDOW_SET_DECORATIONS_METHOD:
+    case WINDOW_SET_ALWAYS_ON_TOP_METHOD:
+    case WINDOW_SET_PROGRESS_METHOD:
+    case WINDOW_REQUEST_ATTENTION_METHOD:
+    case WINDOW_CANCEL_ATTENTION_METHOD:
+    case WINDOW_MINIMIZE_METHOD:
+    case WINDOW_MAXIMIZE_METHOD:
+    case WINDOW_RESTORE_METHOD:
+      return (request, state) =>
+        Effect.gen(function* () {
+          const windowId = yield* readWindowId(request.payload, request.method)
+          if (!state.windows.has(windowId)) {
+            return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
+          }
+          if (request.method === WINDOW_GET_BY_ID_METHOD) {
+            return { windowId }
+          }
+          if (request.method === WINDOW_GET_PARENT_METHOD) {
+            const parentWindowId = state.windows.get(windowId)?.parentWindowId
+            return parentWindowId === undefined ? {} : { parentWindowId }
+          }
+          return undefined
+        })
+    case WINDOW_GET_CURRENT_METHOD:
+      return (_request, state) =>
+        Effect.gen(function* () {
+          const windowId = state.focusedWindowId()
+          if (windowId === undefined) {
+            return yield* Effect.fail(
+              makeHostProtocolNotFoundError("Window:current", WINDOW_GET_CURRENT_METHOD)
+            )
+          }
+          return { windowId }
+        })
+    case WINDOW_LIST_METHOD:
+      return (_request, state) => ({
+        windows: Array.from(state.windows.keys(), (windowId) => ({ windowId }))
+      })
+    case WINDOW_GET_BOUNDS_METHOD:
+      return (request, state) =>
+        Effect.gen(function* () {
+          const windowId = yield* readWindowId(request.payload, request.method)
+          if (!state.windows.has(windowId)) {
+            return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
+          }
+          return { x: 0, y: 0, width: 640, height: 480 }
+        })
+    case WINDOW_GET_STATE_METHOD:
+      return (request, state) =>
+        Effect.gen(function* () {
+          const windowId = yield* readWindowId(request.payload, request.method)
+          if (!state.windows.has(windowId)) {
+            return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
+          }
+          return { minimized: false, maximized: false, fullscreen: false }
+        })
+    case WINDOW_SET_BOUNDS_METHOD:
+    case WINDOW_SET_FULLSCREEN_METHOD:
+      return (request, state) =>
+        Effect.gen(function* () {
+          const windowId = yield* readWindowId(request.payload, request.method)
+          if (!state.windows.has(windowId)) {
+            return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
+          }
+        })
     case WINDOW_DESTROY_METHOD:
       return (request, state) =>
         Effect.gen(function* () {

@@ -16,6 +16,7 @@ export type WindowCreateMutation = MutationResult<
   WindowError
 >
 export type WindowCloseMutation = MutationResult<WindowCloseInput, void, WindowError>
+export type WindowDestroyMutation = MutationResult<WindowCloseInput, void, WindowError>
 
 export const useCreateWindowMutation = (): WindowCreateMutation => {
   const context = useDesktopContext()
@@ -31,12 +32,24 @@ export const useCloseWindowMutation = (): WindowCloseMutation => {
   )
 }
 
+export const useDestroyWindowMutation = (): WindowDestroyMutation => {
+  const context = useDesktopContext()
+  return useMutation((input) =>
+    desktopContextEffect(context, "window.destroy", (ctx) =>
+      ctx.client.window.destroy(input.window)
+    )
+  )
+}
+
 export const windows = Object.freeze({
   create: Object.freeze({
     useMutation: useCreateWindowMutation
   }),
   close: Object.freeze({
     useMutation: useCloseWindowMutation
+  }),
+  destroy: Object.freeze({
+    useMutation: useDestroyWindowMutation
   })
 })
 

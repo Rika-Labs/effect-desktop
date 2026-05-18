@@ -8,6 +8,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -31,16 +32,32 @@ const ExecutableExtensions = Object.freeze([
   ".exe",
   ".bat",
   ".cmd",
+  ".com",
+  ".scr",
+  ".msi",
   ".sh",
   ".ps1",
+  ".vbs",
+  ".wsf",
   ".js",
+  ".desktop",
+  ".lnk",
+  ".url",
   ".command",
   ".app"
 ])
+const ShellTrashSupport = NativeSurface.support.partial("windows-trash-unavailable", {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: "windows-trash-unavailable" },
+    { platform: "linux", status: "supported" }
+  ]
+}) satisfies RpcSupportMetadata
 const ShellMetacharacters = /[;|&><`\n]|\$\(/u
-const NUL_BYTE = String.fromCharCode(0)
 // eslint-disable-next-line no-control-regex -- Shell URLs must not carry raw control bytes.
 const ShellUrlControlCharacters = /[\u0000-\u001f\u007f]/u
+// eslint-disable-next-line no-control-regex -- Shell paths must not carry raw control bytes.
+const ShellPathControlCharacters = /[\u0000-\u001f\u007f]/u
 
 export type ShellError = HostProtocolError
 
@@ -62,7 +79,8 @@ export const ShellOpenPath = shellRpc(
 export const ShellTrashItem = shellRpc(
   "trashItem",
   ShellTrashItemInput,
-  P.nativeInvoke({ primitive: "Shell", methods: ["trashItem"] })
+  P.nativeInvoke({ primitive: "Shell", methods: ["trashItem"] }),
+  ShellTrashSupport
 )
 
 export const ShellRpcEvents = Object.freeze({})
@@ -284,15 +302,31 @@ const validatePathInput = <A extends { readonly path: string }>(
     return Effect.fail(makeHostProtocolInvalidArgumentError("path", "must not be empty", operation))
   }
 
-  if (input.path.includes(NUL_BYTE)) {
+  if (ShellPathControlCharacters.test(input.path)) {
     return Effect.fail(
-      makeHostProtocolInvalidArgumentError("path", "must not contain NUL bytes", operation)
+      makeHostProtocolInvalidArgumentError("path", "must not contain control characters", operation)
     )
   }
 
   if (ShellMetacharacters.test(input.path)) {
     return Effect.fail(
       makeHostProtocolInvalidArgumentError("path", "contains shell metacharacters", operation)
+    )
+  }
+
+  if (input.path.startsWith("-")) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError(
+        "path",
+        "must not begin with an option prefix",
+        operation
+      )
+    )
+  }
+
+  if (hasParentTraversal(input.path)) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError("path", "must not contain parent traversal", operation)
     )
   }
 
@@ -337,6 +371,9 @@ const isExecutablePath = (path: string): boolean => {
 
 const normalizeScheme = (scheme: string): string => scheme.replace(/:$/u, "").toLowerCase()
 
+const hasParentTraversal = (path: string): boolean =>
+  path.split(/[\\/]+/u).some((segment) => segment === "..")
+
 const decodeShellOpenExternalInput = (
   input: unknown
 ): Effect.Effect<ShellOpenExternalInput, ShellError, never> =>
@@ -371,13 +408,18 @@ const decodeInput = <A>(
 function shellRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, capability: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  capability: RpcCapabilityMetadata,
+  support: RpcSupportMetadata = NativeSurface.support.supported
+) {
   return NativeSurface.rpc("Shell", method, {
     payload,
     success: Schema.Void,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support
   })
 }
 

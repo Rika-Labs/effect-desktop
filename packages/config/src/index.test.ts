@@ -658,6 +658,118 @@ test("ProductionChecker accepts guarded source native capability usage", async (
   expect(report.passed).toBe(true)
 })
 
+test("ProductionChecker flags unguarded partial Dock badge count usage", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/dock.ts",
+          content: "Dock.setBadgeCount(7)"
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures).toMatchObject([
+    {
+      rule: "unsupported-capability-without-guard",
+      location: {
+        path: "src/renderer/dock.ts",
+        line: 1,
+        column: 1
+      }
+    }
+  ])
+})
+
+test("ProductionChecker flags unguarded unsupported Dock progress usage", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/dock.ts",
+          content: "Dock.setProgress(0.5)"
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures).toMatchObject([
+    {
+      rule: "unsupported-capability-without-guard",
+      location: {
+        path: "src/renderer/dock.ts",
+        line: 1,
+        column: 1
+      }
+    }
+  ])
+})
+
+test("ProductionChecker flags unguarded partial realtime media session usage", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/media.ts",
+          content: 'RealtimeMediaSession.open({ profileId: "p1", sessionId: "s1" })'
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(false)
+  expect(report.failures).toMatchObject([
+    {
+      rule: "unsupported-capability-without-guard",
+      location: {
+        path: "src/renderer/media.ts",
+        line: 1,
+        column: 1
+      }
+    }
+  ])
+})
+
+test("ProductionChecker accepts diagnostics bundle usage as a supported native capability", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/diagnostics.ts",
+          content: 'DiagnosticsBundle.collect({ bundleId: "bundle-1" })'
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(true)
+  expect(report.failures).toEqual([])
+})
+
+test("ProductionChecker accepts supported Dock requestAttention without a guard", async () => {
+  const report = await Effect.runPromise(
+    runProductionCheck({
+      config: {},
+      rendererFiles: [
+        {
+          path: "src/renderer/dock.ts",
+          content: "Dock.requestAttention()"
+        }
+      ]
+    })
+  )
+
+  expect(report.passed).toBe(true)
+  expect(report.failures).toEqual([])
+})
+
 test("ProductionChecker ignores source native capability usage inside comments", async () => {
   const report = await Effect.runPromise(
     runProductionCheck({

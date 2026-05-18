@@ -1390,11 +1390,15 @@ interface SourceCapability {
 }
 
 const APPENDIX_K_SOURCE_CAPABILITIES: readonly SourceCapability[] = [
-  { primitive: "Dock", method: "setBadgeText", support: "unsupported" },
-  { primitive: "Dock", method: "setProgress", support: "partial" },
+  { primitive: "Dock", method: "setBadgeCount", support: "partial" },
+  { primitive: "Dock", method: "setBadgeText", support: "partial" },
+  { primitive: "Dock", method: "setProgress", support: "unsupported" },
   { primitive: "Dock", method: "setMenu", support: "unsupported" },
   { primitive: "Dock", method: "setJumpList", support: "unsupported" },
-  { primitive: "Dock", method: "requestAttention", support: "partial" }
+  { primitive: "RealtimeMediaSession", method: "open", support: "partial" },
+  { primitive: "RealtimeMediaSession", method: "close", support: "partial" },
+  { primitive: "RealtimeMediaSession", method: "selectDevice", support: "partial" },
+  { primitive: "RealtimeMediaSession", method: "interrupt", support: "partial" }
 ]
 
 const formatLocation = (location: ProductionCheckLocation): string => {

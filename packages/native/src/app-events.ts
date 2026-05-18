@@ -12,7 +12,7 @@ import {
   SubscriptionRef
 } from "effect"
 
-import type { WindowHandle } from "./window.js"
+import type { WindowHandle, WindowRegistryEvent } from "./contracts/window.js"
 
 const DEFAULT_APP_EVENT_CHANNEL_CAPACITY = 16
 const DEFAULT_APP_EVENT_AUDIT_REPLAY_CAPACITY = 16
@@ -84,6 +84,12 @@ export interface AppEventRouterApi {
   readonly windowOpened: (window: WindowHandle) => Effect.Effect<void, never, never>
   readonly windowFocused: (windowId: string) => Effect.Effect<void, AppEventRoutingError, never>
   readonly windowClosed: (windowId: string) => Effect.Effect<void, never, never>
+  readonly getCurrentWindow: () => Effect.Effect<Option.Option<WindowHandle>, never, never>
+  readonly getWindowById: (
+    windowId: string
+  ) => Effect.Effect<Option.Option<WindowHandle>, never, never>
+  readonly listWindows: () => Effect.Effect<readonly WindowHandle[], never, never>
+  readonly windowEvents: () => Stream.Stream<WindowRegistryEvent, never, never>
   readonly subscribe: (
     windowId: string,
     event: AppEventName
@@ -162,7 +168,12 @@ export function makeAppEventRouter(
     )
 
     const state = yield* SubscriptionRef.make(initialRouterState())
+    const windowHandlesById = new Map<string, WindowHandle>()
     const eventChannels = new Map<string, EventChannels>()
+    const windowRegistryEvents = yield* PubSub.sliding<WindowRegistryEvent>({
+      capacity: eventChannelCapacity,
+      replay: 0
+    })
     const auditEvents = yield* PubSub.sliding<AppEventAudit>({
       capacity: auditReplayCapacity,
       replay: auditReplayCapacity
@@ -172,6 +183,8 @@ export function makeAppEventRouter(
         yield* PubSub.shutdown(auditEvents)
         const channels = Array.from(eventChannels.values())
         eventChannels.clear()
+        windowHandlesById.clear()
+        yield* PubSub.shutdown(windowRegistryEvents)
         yield* Effect.forEach(
           channels,
           (eventChannel) =>
@@ -199,6 +212,7 @@ export function makeAppEventRouter(
     const windowOpened = (window: WindowHandle): Effect.Effect<void, never, never> =>
       Effect.gen(function* () {
         validateWindowId(window.id)
+        windowHandlesById.set(window.id, window)
 
         if (!eventChannels.has(window.id)) {
           eventChannels.set(window.id, yield* makeEventChannels(eventChannelCapacity))
@@ -229,6 +243,13 @@ export function makeAppEventRouter(
             pendingWindowEvents
           })
         })
+        yield* publishWindowRegistryEvent(windowRegistryEvents, {
+          type: "window-registry-event",
+          phase: "opened",
+          windowId: window.id,
+          window,
+          terminal: false
+        })
       })
 
     const windowFocused = (windowId: string): Effect.Effect<void, AppEventRoutingError, never> =>
@@ -248,6 +269,16 @@ export function makeAppEventRouter(
               pendingWindowEvents: latest.pendingWindowEvents
             })
         )
+        const window = windowHandlesById.get(windowId)
+        if (window !== undefined) {
+          yield* publishWindowRegistryEvent(windowRegistryEvents, {
+            type: "window-registry-event",
+            phase: "focused",
+            windowId,
+            window,
+            terminal: false
+          })
+        }
       })
 
     const takePendingEvents = (
@@ -279,24 +310,50 @@ export function makeAppEventRouter(
       Effect.gen(function* () {
         const channels = eventChannels.get(windowId)
         eventChannels.delete(windowId)
+        const window = windowHandlesById.get(windowId)
+        windowHandlesById.delete(windowId)
 
-        yield* SubscriptionRef.update(state, (current) => {
+        const fallbackFocusedWindowId = yield* SubscriptionRef.modify(state, (current) => {
           const windows = current.windows.filter((entry) => entry.windowId !== windowId)
           const focusedWindowId =
             Option.isSome(current.focusedWindowId) && current.focusedWindowId.value === windowId
               ? Option.fromUndefinedOr(windows[0]?.windowId)
               : current.focusedWindowId
 
-          return new AppEventRouterState({
-            windows,
-            focusedWindowId,
-            bufferedFirstResponder: current.bufferedFirstResponder,
-            pendingWindowEvents: setPendingWindowEvents(current.pendingWindowEvents, windowId, [])
-          })
+          return [
+            Option.isSome(current.focusedWindowId) && current.focusedWindowId.value === windowId
+              ? focusedWindowId
+              : Option.none<string>(),
+            new AppEventRouterState({
+              windows,
+              focusedWindowId,
+              bufferedFirstResponder: current.bufferedFirstResponder,
+              pendingWindowEvents: setPendingWindowEvents(current.pendingWindowEvents, windowId, [])
+            })
+          ] as const
         })
 
         if (channels !== undefined) {
           yield* Effect.forEach(channels.values(), PubSub.shutdown, { discard: true })
+        }
+        yield* publishWindowRegistryEvent(windowRegistryEvents, {
+          type: "window-registry-event",
+          phase: "closed",
+          windowId,
+          ...(window === undefined ? {} : { window }),
+          terminal: true
+        })
+        if (Option.isSome(fallbackFocusedWindowId)) {
+          const focusedWindow = windowHandlesById.get(fallbackFocusedWindowId.value)
+          if (focusedWindow !== undefined) {
+            yield* publishWindowRegistryEvent(windowRegistryEvents, {
+              type: "window-registry-event",
+              phase: "focused",
+              windowId: fallbackFocusedWindowId.value,
+              window: focusedWindow,
+              terminal: false
+            })
+          }
         }
       })
 
@@ -399,6 +456,29 @@ export function makeAppEventRouter(
       windowOpened,
       windowFocused,
       windowClosed,
+      getCurrentWindow: () =>
+        SubscriptionRef.get(state).pipe(
+          Effect.map((current) =>
+            Option.flatMap(current.focusedWindowId, (windowId) =>
+              Option.fromUndefinedOr(windowHandlesById.get(windowId))
+            )
+          )
+        ),
+      getWindowById: (windowId: string) =>
+        Effect.sync(() => {
+          validateWindowId(windowId)
+          return Option.fromUndefinedOr(windowHandlesById.get(windowId))
+        }),
+      listWindows: () =>
+        SubscriptionRef.get(state).pipe(
+          Effect.map((current) =>
+            current.windows.flatMap((entry) => {
+              const window = windowHandlesById.get(entry.windowId)
+              return window === undefined ? [] : [window]
+            })
+          )
+        ),
+      windowEvents: () => Stream.fromPubSub(windowRegistryEvents),
       subscribe,
       publish: <Payload>(input: {
         readonly event: AppEventName
@@ -479,6 +559,11 @@ const makeEventChannels = (capacity: number): Effect.Effect<EventChannels, never
     }
     return new Map(entries)
   })
+
+const publishWindowRegistryEvent = (
+  events: PubSub.PubSub<WindowRegistryEvent>,
+  event: WindowRegistryEvent
+): Effect.Effect<void, never, never> => PubSub.publish(events, event).pipe(Effect.asVoid)
 
 const pendingEventsFor = (state: RouterState, windowId: string): readonly AppEventEnvelope[] =>
   state.pendingWindowEvents.find((entry) => entry.windowId === windowId)?.events ?? []

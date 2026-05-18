@@ -17,12 +17,9 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -51,6 +48,17 @@ import {
 import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+const HostAdapterUnimplementedReason = "host-adapter-unimplemented"
+const MenuHostUnsupportedSupport = NativeSurface.support.unsupported(
+  HostAdapterUnimplementedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: HostAdapterUnimplementedReason },
+      { platform: "windows", status: "unsupported", reason: HostAdapterUnimplementedReason },
+      { platform: "linux", status: "unsupported", reason: HostAdapterUnimplementedReason }
+    ]
+  }
+)
 export type MenuError = HostProtocolError
 export type MenuCommandBindingError = MenuError | CommandRegistryError
 
@@ -170,13 +178,7 @@ export const makeMenuServiceLayer = (client: MenuClientApi): Layer.Layer<Menu> =
 export const makeMenuBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<MenuClient> =>
-  Layer.effect(
-    MenuClient,
-    RpcClient.make(MenuRpcGroup).pipe(
-      Effect.map((client) => menuClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeMenuBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<MenuClient> => MenuSurface.bridgeClientLayer(exchange, options)
 
 export type MenuRpc = RpcGroup.Rpcs<typeof MenuRpcGroup>
 
@@ -212,7 +214,8 @@ export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
   service: MenuClient,
   capabilities: MenuCapabilityMethods,
   handlers: MenuHandlersLive,
-  client: (client) => menuClientFromRpcClient(client, undefined)
+  client: (client) => menuClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => menuClientFromRpcClient(client, exchange)
 })
 
 export const makeHostMenuRpcRuntime = (
@@ -343,16 +346,6 @@ const menuClientFromRpcClient = (
   return Object.freeze(menuClient)
 }
 
-const makeMenuBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
-
 const subscribeMenuEvent = (
   exchange: BridgeClientExchange | undefined,
   method: "Menu.Activated"
@@ -435,12 +428,16 @@ function menuRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+  const support =
+    method === "setApplicationMenu" || method === "setWindowMenu"
+      ? NativeSurface.support.supported
+      : MenuHostUnsupportedSupport
   return NativeSurface.rpc("Menu", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support
   })
 }
 

@@ -18,15 +18,147 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
       const create = yield* capabilities.support("Window.create")
+      const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
+      const updaterInstall = yield* capabilities.support("Updater.install")
+      const crashReporterStart = yield* capabilities.support("CrashReporter.start")
+      const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
+      const systemAppearance = yield* capabilities.support("SystemAppearance.getAppearance")
+      const appQuit = yield* capabilities.support("App.quit")
+      const globalShortcutRegister = yield* capabilities.support("GlobalShortcut.register")
+      const webViewCreate = yield* capabilities.support("WebView.create")
+      const menuClear = yield* capabilities.support("Menu.clear")
+      const contextMenuShow = yield* capabilities.support("ContextMenu.show")
+      const safeStorageSet = yield* capabilities.support("SafeStorage.set")
+      const safeStorageIsAvailable = yield* capabilities.support("SafeStorage.isAvailable")
       return {
         create,
+        appQuit,
+        dockBadge,
+        globalShortcutRegister,
+        webViewCreate,
+        menuClear,
+        contextMenuShow,
+        safeStorageSet,
+        safeStorageIsAvailable,
+        updaterInstall,
+        crashReporterStart,
+        powerMonitorIsSupported,
+        systemAppearance,
         hasWindowShow: capabilities.manifest.some((fact) => fact.tag === "Window.show")
       }
     }).pipe(Effect.provide(NativeCapabilitiesLive))
   )
 
   expect(result.create).toEqual({ status: "supported" })
-  expect(result.hasWindowShow).toBe(false)
+  expect(result.appQuit).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.dockBadge).toEqual({
+    status: "partial",
+    reason: "dock behavior is platform-specific",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      {
+        platform: "linux",
+        status: "unsupported",
+        reason: "Linux launcher badge labels are not wired in the host adapter"
+      },
+      {
+        platform: "windows",
+        status: "unsupported",
+        reason: "Windows taskbar badges require jump-list/taskbar integration"
+      }
+    ]
+  })
+  expect(result.globalShortcutRegister).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.webViewCreate).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.menuClear).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.contextMenuShow).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.safeStorageSet).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.safeStorageIsAvailable).toEqual({ status: "supported" })
+  expect(result.updaterInstall).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.crashReporterStart).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.powerMonitorIsSupported).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.systemAppearance).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+  expect(result.hasWindowShow).toBe(true)
 })
 
 test("NativeCapabilities derives support metadata from selected native layers only", async () => {
@@ -43,7 +175,15 @@ test("NativeCapabilities derives support metadata from selected native layers on
     }).pipe(Effect.provide(makeNativeCapabilitiesLayer(Native.available(Native.Clipboard))))
   )
 
-  expect(result.readText).toEqual({ status: "supported" })
+  expect(result.readText).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
   expect(result.tags).toContain("Clipboard.readText")
   expect(result.tags).not.toContain("Window.create")
   expect(Exit.isFailure(result.missingWindow)).toBe(true)
@@ -74,6 +214,71 @@ test("NativeCapabilities require fails unsupported methods from explicit metadat
       _tag: "UnsupportedCapability",
       tag: "Example.unsupported",
       reason: "example unavailable"
+    })
+  }
+})
+
+test("NativeCapabilities exposes partial support with platform-specific reasons", async () => {
+  const partial = testSurface("Example.partial", {
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+      { platform: "windows", status: "partial", reason: "requires shell integration" }
+    ]
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const capabilities = yield* NativeCapabilities
+      const support = yield* capabilities.support("Example.partial")
+      yield* capabilities.require("Example.partial")
+      yield* capabilities.requirePlatform("Example.partial", "macos")
+      return support
+    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(testNativeLayer(partial))))
+  )
+
+  expect(result).toEqual({
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+      { platform: "windows", status: "partial", reason: "requires shell integration" }
+    ]
+  })
+  expect(Object.isFrozen(result)).toBe(true)
+  expect(Object.isFrozen(result.platforms)).toBe(true)
+})
+
+test("NativeCapabilities fails platform-specific unsupported entries as typed errors", async () => {
+  const partial = testSurface("Example.partial", {
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+      { platform: "windows", status: "partial", reason: "requires shell integration" }
+    ]
+  })
+
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const capabilities = yield* NativeCapabilities
+      return yield* capabilities.requirePlatform("Example.partial", "linux")
+    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(testNativeLayer(partial))))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(UnsupportedCapability)
+    expect(failure?.error).toMatchObject({
+      _tag: "UnsupportedCapability",
+      tag: "Example.partial",
+      platform: "linux",
+      reason: "host adapter missing"
     })
   }
 })
@@ -144,6 +349,79 @@ test("NativeCapabilities rejects missing capability metadata", async () => {
     expect(failure?.error).toMatchObject({
       tag: "Example.missing",
       message: "missing native capability metadata: Example.missing"
+    })
+  }
+})
+
+test("NativeCapabilities rejects malformed support metadata", async () => {
+  const malformed = testSurface("Example.malformed", {
+    status: "partial",
+    reason: " ",
+    platforms: [{ platform: "linux", status: "unsupported", reason: " " }]
+  })
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(malformed))))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
+    expect(failure?.error).toMatchObject({
+      tag: "Example.malformed",
+      message: "partial and unsupported native capabilities must include a reason"
+    })
+  }
+})
+
+test("NativeCapabilities rejects partial support without complete platform coverage", async () => {
+  const incomplete = testSurface("Example.incomplete", {
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+    ]
+  })
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(incomplete))))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
+    expect(failure?.error).toMatchObject({
+      tag: "Example.incomplete",
+      message: "native capability platform support must include macos, windows, and linux"
+    })
+  }
+})
+
+test("NativeCapabilities rejects contradictory top-level and platform support", async () => {
+  const contradictory = testSurface("Example.contradictory", {
+    status: "supported",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+      { platform: "windows", status: "supported" }
+    ]
+  })
+
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(contradictory))))
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
+    expect(failure?.error).toMatchObject({
+      tag: "Example.contradictory",
+      message:
+        "supported native capabilities cannot include partial or unsupported platform entries"
     })
   }
 })

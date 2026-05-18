@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { ImageMime } from "./image.js"
+import { BridgeSafeString } from "./strings.js"
 
 export const ClipboardImageMime = ImageMime
 
@@ -10,6 +11,11 @@ export class ClipboardText extends Schema.Class<ClipboardText>("ClipboardText")(
   text: Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
 }) {}
 
+export class ClipboardHtml extends Schema.Class<ClipboardHtml>("ClipboardHtml")({
+  // eslint-disable-next-line no-control-regex -- Clipboard HTML must reject NUL.
+  html: Schema.String.check(Schema.isPattern(/^[^\u0000]*$/))
+}) {}
+
 export class ClipboardImage extends Schema.Class<ClipboardImage>("ClipboardImage")({
   mime: ClipboardImageMime,
   bytes: Schema.Uint8Array
@@ -17,7 +23,7 @@ export class ClipboardImage extends Schema.Class<ClipboardImage>("ClipboardImage
 
 export type ClipboardImageOptions = Schema.Schema.Type<typeof ClipboardImage>
 
-export const ClipboardCapability = Schema.Literals(["text", "image"])
+export const ClipboardCapability = Schema.Literals(["text", "html", "image", "clear", "selection"])
 
 export type ClipboardCapability = Schema.Schema.Type<typeof ClipboardCapability>
 
@@ -30,5 +36,6 @@ export class ClipboardIsSupportedInput extends Schema.Class<ClipboardIsSupported
 export class ClipboardSupportedResult extends Schema.Class<ClipboardSupportedResult>(
   "ClipboardSupportedResult"
 )({
-  supported: Schema.Boolean
+  supported: Schema.Boolean,
+  reason: Schema.optionalKey(BridgeSafeString)
 }) {}

@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 #[cfg(any(test, windows))]
 use tao::window::Theme;
-use tao::window::Window;
+use tao::window::{Window, WindowBuilder};
 
 const WINDOWS_POLISH_OPERATION: &str = "WindowsPolish";
 #[cfg(any(test, windows))]
@@ -130,12 +130,23 @@ pub(crate) fn apply_window_polish(window: &Window) -> std::result::Result<(), Ho
     platform::apply_window_polish(window)
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn apply_window_parent(
+    builder: WindowBuilder,
+    parent: &Window,
+) -> std::result::Result<WindowBuilder, HostProtocolError> {
+    platform::apply_window_parent(builder, parent)
+}
+
 #[cfg(windows)]
 mod platform {
     use super::{HostProtocolError, WindowsProcessPolish, WINDOWS_POLISH_OPERATION};
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use tao::{platform::windows::WindowExtWindows, window::Window};
+    use tao::{
+        platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
+        window::{Window, WindowBuilder},
+    };
     use tracing::warn;
     use windows_sys::Win32::{
         Foundation::HWND,
@@ -199,6 +210,14 @@ mod platform {
         Ok(())
     }
 
+    #[allow(dead_code)]
+    pub(super) fn apply_window_parent(
+        builder: WindowBuilder,
+        parent: &Window,
+    ) -> std::result::Result<WindowBuilder, HostProtocolError> {
+        Ok(builder.with_owner_window(parent.hwnd()))
+    }
+
     fn wide_null(value: &str) -> Vec<u16> {
         OsStr::new(value).encode_wide().chain([0]).collect()
     }
@@ -218,7 +237,8 @@ mod platform {
 #[cfg(not(windows))]
 mod platform {
     use super::{HostProtocolError, WindowsProcessPolish};
-    use tao::window::Window;
+    use host_protocol;
+    use tao::window::{Window, WindowBuilder};
 
     pub(super) fn apply_process_polish(
         _polish: Option<&WindowsProcessPolish>,
@@ -230,6 +250,16 @@ mod platform {
         _window: &Window,
     ) -> std::result::Result<(), HostProtocolError> {
         Ok(())
+    }
+
+    pub(super) fn apply_window_parent(
+        _builder: WindowBuilder,
+        _parent: &Window,
+    ) -> std::result::Result<WindowBuilder, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window parent ownership is not implemented for this host platform",
+            host_protocol::WINDOW_CREATE_METHOD,
+        ))
     }
 }
 

@@ -8,21 +8,70 @@ effect_version: 4
 
 # `Tray`
 
-System tray icon and menu support.
+System tray icon and menu support. The host adapter currently supports macOS and Windows. Linux returns
+`{ supported: false, reason: "host-tray-unavailable" }` until the project carries the required GTK and
+appindicator dependencies.
 
 ## Methods
 
-| Method       | Payload                     | Success  |
-| ------------ | --------------------------- | -------- |
-| `create`     | `{ icon, tooltip?, menu? }` | `{ id }` |
-| `destroy`    | `{ id }`                    | `void`   |
-| `setBadge`   | `{ id, text }`              | `void`   |
-| `setTooltip` | `{ id, tooltip }`           | `void`   |
-| `setMenu`    | `{ id, template }`          | `void`   |
+| Method        | Payload                             | Success                  |
+| ------------- | ----------------------------------- | ------------------------ |
+| `create`      | `{ icon, tooltip?, title?, menu? }` | `TrayHandle`             |
+| `destroy`     | `{ tray }`                          | `void`                   |
+| `setIcon`     | `{ tray, icon }`                    | `void`                   |
+| `setTooltip`  | `{ tray, tooltip }`                 | `void`                   |
+| `setTitle`    | `{ tray, title }`                   | `void`                   |
+| `setMenu`     | `{ tray, menu }`                    | `void`                   |
+| `isSupported` | `void`                              | `{ supported, reason? }` |
+
+`TrayHandle` is a generation-stamped resource handle:
+
+```ts
+{
+  kind: "tray",
+  id: ResourceId,
+  generation: number,
+  ownerScope: string,
+  state: "open"
+}
+```
+
+The host rejects stale generation, wrong owner scope, and non-open handles before mutating native
+state. Destroying a tray drops the native icon exactly once and unregisters it from activation event
+routing.
+
+## Icons
+
+The first host adapter accepts explicit solid-color icons in `solid:#RRGGBBAA` format. File and app
+asset resolution are intentionally not part of this adapter yet; callers should use the explicit
+format until an Effect-native asset resolver is added.
+
+## Events
+
+`Tray.onActivated()` streams `Tray.Activated` events for click and double-click activation:
+
+```ts
+{
+  tray: TrayHandle,
+  ownerWindowId?: string
+}
+```
+
+Events are emitted only for currently registered tray handles. Closing the runtime or destroying the
+tray stops routing events for that handle.
+
+## Platform Notes
+
+| Platform | Status      | Notes                                      |
+| -------- | ----------- | ------------------------------------------ |
+| macOS    | supported   | Supports icon, tooltip, title, menu, event |
+| Windows  | partial     | Title is unsupported                       |
+| Linux    | unsupported | GTK/appindicator dependency is not shipped |
 
 ## Errors
 
-`TrayError`.
+`TrayError`, including `InvalidArgument`, `NotFound`, `Unsupported`, `HostUnavailable`, and
+`Internal`.
 
 ## Related
 

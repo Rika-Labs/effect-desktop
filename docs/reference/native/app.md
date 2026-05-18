@@ -8,13 +8,58 @@ effect_version: 4
 
 # `App`
 
-App-level lifecycle service. The `AppRpcs` group is declared with no methods in the current phase; lifecycle hooks land as the host protocol grows.
+App-level lifecycle and host-operation service. `AppMetadata` owns app identity,
+paths, launch context, and environment-shape reads.
+
+The TypeScript surface is present for contract and bridge-client validation
+work, but the Rust host App lifecycle adapter is not implemented. The native
+surface reports `unsupported` on macOS, Windows, and Linux until the host owns
+app lifecycle control, single instance coordination, and lifecycle events.
+`Association` owns OS-level protocol and file association contracts.
+`Autostart` owns open-at-login and login-item operations.
 
 ## Status
 
-Methods land in a later phase. The contract and types are present so handlers can hook in.
+| Method                      | Success                   | Runtime support |
+| --------------------------- | ------------------------- | --------------- |
+| `quit`                      | `void`                    | unsupported     |
+| `restart`                   | `void`                    | unsupported     |
+| `focus`                     | `void`                    | unsupported     |
+| `requestSingleInstanceLock` | `AppSingleInstanceResult` | unsupported     |
+
+## Events
+
+The current TypeScript event streams are `onSecondInstance`, `onOpenFile`,
+`onOpenUrl`, and `onBeforeQuit`. `onSecondInstance` events carry `argv`, `cwd`,
+`activationReason`, and `traceId`; `activationReason` is `"launch"`,
+`"open-file"`, `"open-url"`, or `"unknown"`. Native event delivery is currently
+unsupported until the host adapter exists.
+
+`onOpenUrl` requires a syntactically valid URL with no ASCII control characters
+and rejects dangerous schemes before application code receives the event:
+`about:`, `blob:`, `data:`, `file:`, `javascript:`, `vbscript:`, and
+`view-source:`.
+
+`onOpenFile` requires an absolute platform path with no ASCII control
+characters and no `.` or `..` path segments before application code receives
+the event.
+
+## Errors
+
+`AppError` is the host protocol error union. Until the host adapter is
+implemented, App methods decode through Rust `App.*` routes and fail closed as
+typed `Unsupported`. Subscriptions still do not have native lifecycle event
+sources.
+
+## Notes
+
+`Protocol.registerAppProtocol` owns the currently implemented custom protocol
+serving path. `Association` owns OS-level default protocol and file association
+contracts. `Autostart` owns OS-level login-item and autostart contracts.
+`AppMetadata` owns app identity, paths, launch context, and environment-shape
+contracts. App no longer exposes a duplicate protocol registration method.
 
 ## Related
 
-- Reference: [`Window`](window.md), [`PowerMonitor`](power-monitor.md)
+- Reference: [`AppMetadata`](app-metadata.md), [`Association`](association.md), [`Autostart`](autostart.md), [`Window`](window.md), [`PowerMonitor`](power-monitor.md)
 - Source: [`packages/native/src/app.ts`](../../../packages/native/src/app.ts)

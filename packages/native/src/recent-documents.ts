@@ -1,0 +1,204 @@
+import {
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
+  type HostProtocolError,
+  type RpcCapabilityMetadata,
+  type RpcEndpointKind,
+  RpcGroup
+} from "@effect-desktop/bridge"
+import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
+
+import {
+  RecentDocumentsAddInput,
+  type RecentDocumentsAddOptions,
+  RecentDocumentsEvent,
+  RecentDocumentsListResult
+} from "./contracts/recent-documents.js"
+import { subscribeNativeEvent } from "./event-stream.js"
+import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { NativeSurface } from "./native-surface.js"
+
+export * from "./contracts/recent-documents.js"
+
+const Surface = "RecentDocuments"
+const UnsupportedReason = "host-adapter-unimplemented"
+const RecentDocumentsSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
+
+export type RecentDocumentsError = HostProtocolError
+
+export const RecentDocumentsAdd = recentDocumentsRpc(
+  "add",
+  RecentDocumentsAddInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: Surface, methods: ["add"] }),
+  "mutation"
+)
+export const RecentDocumentsClear = recentDocumentsRpc(
+  "clear",
+  Schema.Void,
+  Schema.Void,
+  P.nativeInvoke({ primitive: Surface, methods: ["clear"] }),
+  "mutation"
+)
+export const RecentDocumentsList = recentDocumentsRpc(
+  "list",
+  Schema.Void,
+  RecentDocumentsListResult,
+  P.nativeInvoke({ primitive: Surface, methods: ["list"] }),
+  "query"
+)
+
+export const RecentDocumentsRpcEvents = Object.freeze({
+  Event: { payload: RecentDocumentsEvent }
+})
+
+const RecentDocumentsRpcGroup = RpcGroup.make(
+  RecentDocumentsAdd,
+  RecentDocumentsClear,
+  RecentDocumentsList
+)
+
+export const RecentDocumentsRpcs: RpcGroup.RpcGroup<RecentDocumentsRpc> = RecentDocumentsRpcGroup
+
+export const RecentDocumentsMethodNames = Object.freeze(["add", "clear", "list"] as const)
+
+export interface RecentDocumentsClientApi {
+  readonly add: (input: RecentDocumentsAddOptions) => Effect.Effect<void, RecentDocumentsError>
+  readonly clear: () => Effect.Effect<void, RecentDocumentsError>
+  readonly list: () => Effect.Effect<RecentDocumentsListResult, RecentDocumentsError>
+  readonly events: () => Stream.Stream<RecentDocumentsEvent, RecentDocumentsError>
+}
+
+export class RecentDocumentsClient extends Context.Service<
+  RecentDocumentsClient,
+  RecentDocumentsClientApi
+>()("@effect-desktop/native/RecentDocumentsClient") {}
+
+export type RecentDocumentsServiceApi = RecentDocumentsClientApi
+
+export class RecentDocuments extends Context.Service<RecentDocuments, RecentDocumentsServiceApi>()(
+  "@effect-desktop/native/RecentDocuments"
+) {
+  static readonly layer = Layer.effect(RecentDocuments)(
+    Effect.gen(function* () {
+      const client = yield* RecentDocumentsClient
+      return RecentDocuments.of({
+        add: (input) => client.add(input),
+        clear: () => client.clear(),
+        list: () => client.list(),
+        events: () => client.events()
+      } satisfies RecentDocumentsServiceApi)
+    })
+  )
+}
+
+export const RecentDocumentsLive = RecentDocuments.layer
+
+export const makeRecentDocumentsClientLayer = (
+  client: RecentDocumentsClientApi
+): Layer.Layer<RecentDocumentsClient> => Layer.succeed(RecentDocumentsClient)(client)
+
+export const makeRecentDocumentsServiceLayer = (
+  client: RecentDocumentsClientApi
+): Layer.Layer<RecentDocuments> =>
+  Layer.provide(RecentDocumentsLive, makeRecentDocumentsClientLayer(client))
+
+export const makeRecentDocumentsBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<RecentDocumentsClient> => RecentDocumentsSurface.bridgeClientLayer(exchange, options)
+
+export type RecentDocumentsRpc = RpcGroup.Rpcs<typeof RecentDocumentsRpcGroup>
+export type RecentDocumentsRpcHandlers = RpcGroup.HandlersFrom<RecentDocumentsRpc>
+
+export const RecentDocumentsHandlersLive = RecentDocumentsRpcGroup.toLayer({
+  "RecentDocuments.add": (input) =>
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      yield* recentDocuments.add(input)
+    }),
+  "RecentDocuments.clear": () =>
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      yield* recentDocuments.clear()
+    }),
+  "RecentDocuments.list": () =>
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      return yield* recentDocuments.list()
+    })
+})
+
+export const RecentDocumentsSurface = NativeSurface.make(
+  "RecentDocuments",
+  RecentDocumentsRpcGroup,
+  {
+    service: RecentDocumentsClient,
+    capabilities: RecentDocumentsMethodNames,
+    handlers: RecentDocumentsHandlersLive,
+    client: (client) => recentDocumentsClientFromRpcClient(client),
+    bridgeClient: (client, exchange) => recentDocumentsClientFromRpcClient(client, exchange)
+  }
+)
+
+export const makeHostRecentDocumentsRpcRuntime = (
+  handlers: RecentDocumentsRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  RecentDocumentsSurface.hostRuntime(handlers, runtimeOptions)
+
+const recentDocumentsClientFromRpcClient = (
+  client: DesktopRpcClient<RecentDocumentsRpc>,
+  exchange?: BridgeClientExchange
+): RecentDocumentsClientApi =>
+  Object.freeze({
+    add: (input) =>
+      decodeRecentDocumentsAddInput(input, "RecentDocuments.add").pipe(
+        Effect.flatMap((decoded) =>
+          runRecentDocumentsRpc(client["RecentDocuments.add"](decoded), "RecentDocuments.add")
+        )
+      ),
+    clear: () => runRecentDocumentsRpc(client["RecentDocuments.clear"](), "RecentDocuments.clear"),
+    list: () => runRecentDocumentsRpc(client["RecentDocuments.list"](), "RecentDocuments.list"),
+    events: () => subscribeNativeEvent(exchange, "RecentDocuments.Event", RecentDocumentsEvent)
+  } satisfies RecentDocumentsClientApi)
+
+const decodeRecentDocumentsAddInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<RecentDocumentsAddInput, RecentDocumentsError> =>
+  decodeNativeInput(RecentDocumentsAddInput, input, operation)
+
+function recentDocumentsRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  authority: RpcCapabilityMetadata,
+  endpoint: RpcEndpointKind
+) {
+  return NativeSurface.rpc(Surface, method, {
+    payload,
+    success,
+    authority: NativeSurface.authority.custom(authority),
+    endpoint,
+    support: RecentDocumentsSupport
+  })
+}
+
+const runRecentDocumentsRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, RecentDocumentsError> => runNativeRpc(effect, operation, Surface)

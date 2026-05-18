@@ -7,6 +7,7 @@ import { useMutation, type MutationResult } from "./mutation.js"
 import { useDesktopContext, type DesktopRuntimeContext } from "./provider.js"
 
 export type CurrentWindowCloseMutation = MutationResult<void, void, WindowError>
+export type CurrentWindowDestroyMutation = MutationResult<void, void, WindowError>
 
 export const useCurrentWindow = (): Option.Option<WindowHandle> =>
   Option.flatMap(useDesktopContext(), (ctx) => Option.fromUndefinedOr(ctx.currentWindow))
@@ -21,6 +22,15 @@ export const useCloseCurrentWindowMutation = (): CurrentWindowCloseMutation => {
   )
 }
 
+export const useDestroyCurrentWindowMutation = (): CurrentWindowDestroyMutation => {
+  const context = useDesktopContext()
+  return useMutation(() =>
+    currentWindowEffect(context, "window.destroy", (ctx, window) =>
+      ctx.client.window.destroy(window)
+    )
+  )
+}
+
 export const currentWindow = Object.freeze({
   handle: Object.freeze({
     useQuery: useCurrentWindow
@@ -30,6 +40,9 @@ export const currentWindow = Object.freeze({
   }),
   close: Object.freeze({
     useMutation: useCloseCurrentWindowMutation
+  }),
+  destroy: Object.freeze({
+    useMutation: useDestroyCurrentWindowMutation
   })
 })
 

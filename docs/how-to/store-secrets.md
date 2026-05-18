@@ -1,6 +1,6 @@
 ---
 title: How to store secrets safely
-description: Use Secrets to read and write credentials through OS-backed safe storage with redaction.
+description: Use Secrets to handle redacted credentials without plaintext fallback.
 kind: how-to
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,9 @@ effect_version: 4
 
 # How to store secrets safely
 
-`Secrets` is the app-level facade over the platform credential store (Keychain, Credential Manager, libsecret). Secret bytes never enter logs because they ride as `Redacted<Uint8Array>`, every operation is permission-checked, and every successful access writes an audit event without the value.
+`Secrets` is the app-level facade over native `SafeStorage`. Secret bytes never enter logs because they ride as `Redacted<Uint8Array>`, every operation is permission-checked, and successful accesses write audit events without the value.
+
+Current host status: native `SafeStorage` only routes availability probing. Secret read/write/list/delete calls fail until platform credential-store adapters exist, and there is no silent plaintext fallback. The examples below show the application API shape and are safe to use with an explicit test or platform storage layer.
 
 ## 1. Declare the namespace permission
 
@@ -78,7 +80,7 @@ yield * secrets.delete("tokens", "github")
 
 ## 5. Audit what just happened
 
-Every operation writes a `secret/accessed` audit event with namespace, key, and outcome — but never the value. Inspect via the devtools event-log panel or query `EventLog` directly.
+Successful operations write a `secret/accessed` audit event with namespace, key, and outcome — but never the value. Denied and failed operations attempt to write the same audit shape before returning the typed failure. Inspect via the devtools event-log panel or query `EventLog` directly.
 
 ## What gets validated
 
@@ -88,10 +90,12 @@ Every operation writes a `secret/accessed` audit event with namespace, key, and 
 
 ## When to use `SafeStorage` directly
 
-`SafeStorage` is the lower-level primitive — `encrypt(plaintext)` / `decrypt(ciphertext)`. Use it when:
+`SafeStorage` is the lower-level key/value credential-store primitive. Use it when:
 
-- You're storing the encrypted bytes somewhere other than the platform credential store (e.g. a sync server).
-- You need raw control over encryption boundaries.
+- You are implementing a framework service that already owns namespace permissions and audit events.
+- You need direct access to credential-store keys instead of the app-facing `Secrets` facade.
+
+Do not use it as an encryption helper. The current native host routes availability probing only; secret read/write/list/delete calls fail until real platform adapters exist, and there is no silent plaintext fallback.
 
 Most apps want `Secrets` instead.
 

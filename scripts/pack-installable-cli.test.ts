@@ -40,10 +40,15 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
       join(appRoot, "package.json"),
       JSON.stringify({
         type: "module",
+        packageManager: "bun@1.3.13",
         dependencies: {
           "@effect-desktop/cli": `file:${join(artifactRoot, "packages", "cli")}`
         }
       })
+    )
+    await writeFile(
+      join(appRoot, "desktop.config.ts"),
+      "export default { app: { id: 'dev.effect-desktop.pack-test', name: 'Pack Test', version: '0.0.0' } } as const\n"
     )
 
     const install = Bun.spawn(["bun", "install"], {
@@ -73,6 +78,29 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
     expect(helpText).toContain("USAGE\n  desktop <subcommand> [flags]")
     expect(helpText).toContain(
       "build       Build renderer, runtime, native host, bridge manifest, and app manifest"
+    )
+
+    const installedMatrix = await readFile(
+      join(appRoot, "node_modules", "@effect-desktop", "cli", "src", "native-parity-matrix.json"),
+      "utf8"
+    )
+    expect(installedMatrix).toContain('"total": 184')
+
+    const doctor = Bun.spawn(["bunx", "desktop", "doctor", "--json"], {
+      cwd: appRoot,
+      stdout: "pipe",
+      stderr: "pipe"
+    })
+    const [doctorStdout, doctorStderr, doctorExitCode] = await Promise.all([
+      new Response(doctor.stdout).text(),
+      new Response(doctor.stderr).text(),
+      doctor.exited
+    ])
+    const doctorText = doctorStdout + doctorStderr
+    expect(doctorExitCode, doctorText).toBe(0)
+    expect(doctorText).toContain('"name": "native-capabilities"')
+    expect(doctorText).toContain(
+      "native capability matrix reports 184 methods, 99 host-routed, 85 missing host routes"
     )
   } finally {
     await rm(directory, { recursive: true, force: true })

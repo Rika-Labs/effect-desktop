@@ -8,7 +8,8 @@ effect_version: 4
 
 # Native hooks
 
-Convenience React hooks over high-frequency native reads. Each is a thin wrapper over the matching RPC client.
+Convenience React hooks over high-frequency native reads. Each hook takes the
+matching native service function or stream function as an argument.
 
 ## Imports
 
@@ -26,35 +27,54 @@ import {
 } from "@effect-desktop/react"
 ```
 
-## `useTheme()` → `ThemeState`
+## `useTheme(onAppearanceChanged)` → `ThemeState`
 
 ```ts
 {
-  isDark: boolean
+  data?: {
+    appearance: "light" | "dark" | "highContrast"
+    accentColor: null | { r: number; g: number; b: number; a: number }
+    reducedMotion: boolean
+    reducedTransparency: boolean
+  }
 }
 ```
 
-Subscribes to `SystemAppearance` theme events.
+Consumes the TypeScript `SystemAppearance` appearance event stream. Native OS
+appearance delivery is currently unsupported until the SystemAppearance host
+adapter is implemented.
 
-## `useThemeMode()` → `"light" | "dark"`
+## `useThemeMode(getAppearance)` → `AsyncResult<SystemAppearanceMode, SystemAppearanceError>`
 
-Same as `useTheme().isDark` rendered as a string mode.
+Reads `SystemAppearance.getAppearance()` and returns the current mode. Native OS
+appearance reads are currently unsupported until the host adapter is implemented.
 
-## `useDisplays()` → `DisplaysResult`
+`SystemAppearanceMode` is `"light" | "dark" | "highContrast"`.
+
+## `useDisplays(getDisplays)` → `DisplaysResult`
 
 ```ts
-{ displays: ScreenDisplay[] }
+ReadonlyArray<ScreenDisplay>
 ```
 
 Calls `Screen.getDisplays`.
 
-## `usePower()` → `PowerState`
+## `usePower(streams)` → `PowerState`
 
 ```ts
-{ event?: "suspend" | "resume" | "shutdown" | "lock-screen" | "unlock-screen" }
+{
+  data?:
+    | PowerMonitorSuspendEvent
+    | PowerMonitorResumeEvent
+    | PowerMonitorShutdownEvent
+    | PowerMonitorLockScreenEvent
+    | PowerMonitorUnlockScreenEvent
+    | PowerMonitorSourceChangedEvent
+}
 ```
 
-Subscribes to `PowerMonitor` events.
+Consumes the TypeScript `PowerMonitor` event streams. Native OS event delivery is
+currently unsupported until the PowerMonitor host adapter is implemented.
 
 ## Related
 

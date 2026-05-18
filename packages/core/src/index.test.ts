@@ -837,14 +837,18 @@ test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients
   const List = Rpc.make("Notes.List", {
     success: Schema.Array(Schema.String)
   }).pipe(RpcSupport.supported)
+  const Share = Rpc.make("Notes.Share", {
+    payload: Schema.Struct({ id: Schema.String }),
+    success: Schema.Void
+  }).pipe(RpcSupport.partial("platform implementations differ"))
   const Delete = Rpc.make("Notes.Delete", {
     payload: Schema.Struct({ id: Schema.String }),
     success: Schema.Void
   }).pipe(RpcSupport.unsupported("host adapter does not implement delete yet"))
-  const NotesRpcs = RpcGroup.make(List, Delete)
+  const NotesRpcs = RpcGroup.make(List, Share, Delete)
   const SupportedNotesRpcs = core.Desktop.Rpc.supportedGroup(NotesRpcs)
   type SupportedNotesRpcContract = Assert<
-    IsEqual<RpcGroup.Rpcs<typeof SupportedNotesRpcs>, typeof List>
+    IsEqual<RpcGroup.Rpcs<typeof SupportedNotesRpcs>, typeof List | typeof Share>
   >
   const supportedNotesRpcContract: SupportedNotesRpcContract = true
   class NotesClient extends Context.Service<
@@ -855,23 +859,26 @@ test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients
     client: SupportedDesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
   ): void => {
     void client["Notes.List"]
+    void client["Notes.Share"]
     // @ts-expect-error unsupported RPCs are absent from supported generated clients
     void client["Notes.Delete"]
   }
   void assertSupportedClient
   void supportedNotesRpcContract
 
-  expect(Array.from(SupportedNotesRpcs.requests.keys())).toEqual(["Notes.List"])
+  expect(Array.from(SupportedNotesRpcs.requests.keys())).toEqual(["Notes.List", "Notes.Share"])
   expect(
     core.Desktop.Rpc.surface("Notes", NotesRpcs, {
       service: NotesClient,
       handlers: NotesRpcs.toLayer({
         "Notes.List": () => Effect.succeed(["one"]),
+        "Notes.Share": () => Effect.void,
         "Notes.Delete": () => Effect.void
       })
     }).schemaDocs.map((doc) => [doc.tag, doc.support])
   ).toEqual([
     ["Notes.List", { status: "supported" }],
+    ["Notes.Share", { status: "partial", reason: "platform implementations differ" }],
     [
       "Notes.Delete",
       { status: "unsupported", reason: "host adapter does not implement delete yet" }

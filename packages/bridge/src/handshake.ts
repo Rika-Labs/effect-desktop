@@ -1,9 +1,10 @@
-import { Clock, Effect, Schema } from "effect"
+import { Clock, Effect, Schema, Stream } from "effect"
 
 import {
   HOST_PING_METHOD,
   HOST_PROTOCOL_VERSION,
   HOST_VERSION_METHOD,
+  HostProtocolEventEnvelope,
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   makeHostProtocolInvalidOutputError,
@@ -26,6 +27,10 @@ export interface HostHandshakeExchange {
   readonly request: (
     request: HostProtocolRequestEnvelope
   ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never>
+  readonly subscribe?: (
+    method: string
+  ) => Stream.Stream<HostProtocolEventEnvelope, HostProtocolError, never>
+  readonly close?: () => Effect.Effect<void, never, never>
 }
 
 export interface HostHandshakeClient {

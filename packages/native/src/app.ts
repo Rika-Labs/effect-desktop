@@ -3,12 +3,9 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -21,13 +18,7 @@ import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
-  AppCommandLine,
-  AppInfo,
-  AppOpenAtLoginInput,
-  type AppOpenAtLoginOptions,
   AppOpenFileEvent,
-  AppProtocolInput,
-  type AppProtocolOptions,
   AppQuitInput,
   type AppQuitOptions,
   AppRestartInput,
@@ -40,9 +31,14 @@ import {
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
-export const AppGetInfo = appRpc("getInfo", Schema.Void, AppInfo, { kind: "none" })
-export const AppGetCommandLine = appRpc("getCommandLine", Schema.Void, AppCommandLine, {
-  kind: "none"
+const UnsupportedReason = "host-adapter-unimplemented"
+
+const AppSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
 })
 export const AppQuit = appRpc(
   "quit",
@@ -66,21 +62,8 @@ export const AppRequestSingleInstanceLock = appRpc(
   "requestSingleInstanceLock",
   Schema.Void,
   AppSingleInstanceOutput,
-  { kind: "none" }
+  P.nativeInvoke({ primitive: "App", methods: ["requestSingleInstanceLock"] })
 )
-export const AppSetOpenAtLogin = appRpc(
-  "setOpenAtLogin",
-  AppOpenAtLoginInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["setOpenAtLogin"] })
-)
-export const AppRegisterProtocol = appRpc(
-  "registerProtocol",
-  AppProtocolInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["registerProtocol"] })
-)
-
 export const AppRpcEvents = Object.freeze({
   onSecondInstance: { payload: AppSecondInstanceEvent },
   onOpenFile: { payload: AppOpenFileEvent },
@@ -90,49 +73,31 @@ export const AppRpcEvents = Object.freeze({
 
 export type AppRpcEvents = typeof AppRpcEvents
 
-const AppRpcGroup = RpcGroup.make(
-  AppGetInfo,
-  AppGetCommandLine,
-  AppQuit,
-  AppRestart,
-  AppFocus,
-  AppRequestSingleInstanceLock,
-  AppSetOpenAtLogin,
-  AppRegisterProtocol
-)
+const AppRpcGroup = RpcGroup.make(AppQuit, AppRestart, AppFocus, AppRequestSingleInstanceLock)
 
 export const AppRpcs: RpcGroup.RpcGroup<AppRpc> = AppRpcGroup
 
 export const AppMethodNames = Object.freeze([
-  "getInfo",
-  "getCommandLine",
   "quit",
   "restart",
   "focus",
-  "requestSingleInstanceLock",
-  "setOpenAtLogin",
-  "registerProtocol"
+  "requestSingleInstanceLock"
 ] as const)
 
 const AppCapabilityMethods = Object.freeze([
   "quit",
   "restart",
   "focus",
-  "setOpenAtLogin",
-  "registerProtocol"
+  "requestSingleInstanceLock"
 ] as const satisfies readonly (typeof AppMethodNames)[number][])
 
 export type AppError = HostProtocolError
 
 export interface AppClientApi {
-  readonly getInfo: () => Effect.Effect<AppInfo, AppError, never>
-  readonly getCommandLine: () => Effect.Effect<AppCommandLine, AppError, never>
   readonly quit: (input: AppQuitOptions) => Effect.Effect<void, AppError, never>
   readonly restart: (input: AppRestartOptions) => Effect.Effect<void, AppError, never>
   readonly focus: () => Effect.Effect<void, AppError, never>
   readonly requestSingleInstanceLock: () => Effect.Effect<AppSingleInstanceResult, AppError, never>
-  readonly setOpenAtLogin: (input: AppOpenAtLoginOptions) => Effect.Effect<void, AppError, never>
-  readonly registerProtocol: (input: AppProtocolOptions) => Effect.Effect<void, AppError, never>
   readonly onSecondInstance: () => Stream.Stream<AppSecondInstanceEvent, AppError, never>
   readonly onOpenFile: () => Stream.Stream<AppOpenFileEvent, AppError, never>
   readonly onOpenUrl: () => Stream.Stream<AppOpenUrlEvent, AppError, never>
@@ -168,29 +133,13 @@ export const makeAppServiceLayer = (client: AppClientApi): Layer.Layer<App> =>
 export const makeAppBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<AppClient> =>
-  Layer.effect(
-    AppClient,
-    RpcClient.make(AppRpcGroup).pipe(
-      Effect.map((client) => appClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makeAppBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<AppClient> => AppSurface.bridgeClientLayer(exchange, options)
 
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 
 export type AppRpcHandlers = RpcGroup.HandlersFrom<AppRpc>
 
 export const AppHandlersLive = AppRpcGroup.toLayer({
-  "App.getInfo": () =>
-    Effect.gen(function* () {
-      const app = yield* App
-      return yield* app.getInfo()
-    }),
-  "App.getCommandLine": () =>
-    Effect.gen(function* () {
-      const app = yield* App
-      return yield* app.getCommandLine()
-    }),
   "App.quit": (input) =>
     Effect.gen(function* () {
       const app = yield* App
@@ -210,16 +159,6 @@ export const AppHandlersLive = AppRpcGroup.toLayer({
     Effect.gen(function* () {
       const app = yield* App
       return yield* app.requestSingleInstanceLock()
-    }),
-  "App.setOpenAtLogin": (input) =>
-    Effect.gen(function* () {
-      const app = yield* App
-      yield* app.setOpenAtLogin(input)
-    }),
-  "App.registerProtocol": (input) =>
-    Effect.gen(function* () {
-      const app = yield* App
-      yield* app.registerProtocol(input)
     })
 })
 
@@ -227,7 +166,8 @@ export const AppSurface = NativeSurface.make("App", AppRpcGroup, {
   service: AppClient,
   capabilities: AppCapabilityMethods,
   handlers: AppHandlersLive,
-  client: (client) => appClientFromRpcClient(client, undefined)
+  client: (client) => appClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => appClientFromRpcClient(client, exchange)
 })
 
 export const makeHostAppRpcRuntime = (
@@ -237,14 +177,10 @@ export const makeHostAppRpcRuntime = (
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {
-    getInfo: () => client.getInfo(),
-    getCommandLine: () => client.getCommandLine(),
     quit: (input) => client.quit(input ?? {}),
     restart: (input) => client.restart(input ?? {}),
     focus: () => client.focus(),
     requestSingleInstanceLock: () => client.requestSingleInstanceLock(),
-    setOpenAtLogin: (input) => client.setOpenAtLogin(input),
-    registerProtocol: (input) => client.registerProtocol(input),
     onSecondInstance: () => client.onSecondInstance(),
     onOpenFile: () => client.onOpenFile(),
     onOpenUrl: () => client.onOpenUrl(),
@@ -257,10 +193,8 @@ const makeAppService = (client: AppClientApi): AppServiceApi => {
 const appClientFromRpcClient = (
   client: DesktopRpcClient<AppRpc>,
   exchange: BridgeClientExchange | undefined
-): AppClientApi => {
-  const appClient: AppClientApi = {
-    getInfo: () => runAppRpc(client["App.getInfo"](undefined), "App.getInfo"),
-    getCommandLine: () => runAppRpc(client["App.getCommandLine"](undefined), "App.getCommandLine"),
+): AppClientApi =>
+  Object.freeze({
     quit: (input) =>
       decodeAppQuitInput(input).pipe(
         Effect.flatMap((decoded) => runAppRpc(client["App.quit"](decoded), "App.quit"))
@@ -275,43 +209,19 @@ const appClientFromRpcClient = (
         client["App.requestSingleInstanceLock"](undefined),
         "App.requestSingleInstanceLock"
       ),
-    setOpenAtLogin: (input) =>
-      decodeAppOpenAtLoginInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          runAppRpc(client["App.setOpenAtLogin"](decoded), "App.setOpenAtLogin")
-        )
-      ),
-    registerProtocol: (input) =>
-      decodeAppProtocolInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          runAppRpc(client["App.registerProtocol"](decoded), "App.registerProtocol")
-        )
-      ),
     onSecondInstance: () =>
       subscribeAppEvent(exchange, "App.onSecondInstance", AppSecondInstanceEvent),
     onOpenFile: () => subscribeAppEvent(exchange, "App.onOpenFile", AppOpenFileEvent),
     onOpenUrl: () => subscribeAppEvent(exchange, "App.onOpenUrl", AppOpenUrlEvent),
     onBeforeQuit: () => subscribeAppEvent(exchange, "App.onBeforeQuit", AppBeforeQuitEvent)
-  }
-
-  return Object.freeze(appClient)
-}
-
-const makeAppBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
+  } satisfies AppClientApi)
 
 const subscribeAppEvent = <A>(
   exchange: BridgeClientExchange | undefined,
   method: "App.onSecondInstance" | "App.onOpenFile" | "App.onOpenUrl" | "App.onBeforeQuit",
   schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, AppError, never> => subscribeNativeEvent(exchange, method, schema)
+): Stream.Stream<A, AppError, never> =>
+  subscribeNativeEvent(exchange, method, schema, StrictParseOptions)
 
 const decodeAppQuitInput = (
   input: unknown
@@ -322,16 +232,6 @@ const decodeAppRestartInput = (
   input: unknown
 ): Effect.Effect<AppRestartInput, HostProtocolError, never> =>
   decodeInput(AppRestartInput, input, "App.restart")
-
-const decodeAppOpenAtLoginInput = (
-  input: unknown
-): Effect.Effect<AppOpenAtLoginInput, HostProtocolError, never> =>
-  decodeInput(AppOpenAtLoginInput, input, "App.setOpenAtLogin")
-
-const decodeAppProtocolInput = (
-  input: unknown
-): Effect.Effect<AppProtocolInput, HostProtocolError, never> =>
-  decodeInput(AppProtocolInput, input, "App.registerProtocol")
 
 const decodeInput = <A>(
   schema: Schema.Codec<A, unknown, never, never>,
@@ -354,7 +254,7 @@ function appRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: AppSupport
   })
 }
 

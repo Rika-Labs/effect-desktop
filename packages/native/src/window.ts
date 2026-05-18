@@ -5,36 +5,91 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostWindowClientOptions,
   type HostWindowExchange,
+  type WindowBoundsInput as HostWindowBoundsInput,
+  type WindowProgressInput as HostWindowProgressInput,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
+  makeHostProtocolInvalidStateError,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   makeStaleHandleError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup,
-  type HostProtocolError
+  type HostProtocolError,
+  WINDOW_EVENT_METHOD
 } from "@effect-desktop/bridge"
 import {
   P,
   PermissionRegistry,
   ResourceRegistry,
   makeResourceId,
-  type DesktopRpcClient
+  type DesktopRpcClient,
+  type ResourceRegistryApi
 } from "@effect-desktop/core"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { type AppEventRouterApi, windowScope } from "./app-events.js"
 export * from "./contracts/window.js"
 import {
   WindowCreateInput,
+  WindowBounds,
+  WindowBoundsInput,
+  WindowAlwaysOnTopInput,
+  type WindowAttentionType,
+  type WindowBoundsType,
   type WindowCreateOptions,
+  WindowDecorationsInput,
+  WindowDisplayInput,
+  WindowEvent,
+  WindowFullscreenInput,
   type WindowHandle,
   WindowHandleInput,
-  WindowResource
+  WindowListResult,
+  WindowLookupInput,
+  WindowParentResult,
+  WindowProgressInput,
+  type WindowProgressOptions,
+  WindowRegistryEvent,
+  WindowResizableInput,
+  WindowRequestAttentionInput,
+  WindowResource,
+  WindowSkipTaskbarInput,
+  WindowState,
+  WindowStateEvent,
+  WindowSubscribeEventsResult,
+  WindowTitleInput,
+  WindowTrafficLightsInput
 } from "./contracts/window.js"
+
+const WindowTrafficLightsMacosOnlyReason = "traffic-light-placement-macos-only"
+
+const WindowTrafficLightsSupport = NativeSurface.support.partial(
+  WindowTrafficLightsMacosOnlyReason,
+  {
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported", reason: WindowTrafficLightsMacosOnlyReason },
+      { platform: "linux", status: "unsupported", reason: WindowTrafficLightsMacosOnlyReason }
+    ]
+  }
+) satisfies RpcSupportMetadata
+const WindowSkipTaskbarMacosUnsupportedReason = "skip-taskbar-macos-unsupported"
+
+const WindowSkipTaskbarSupport = NativeSurface.support.partial(
+  WindowSkipTaskbarMacosUnsupportedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: WindowSkipTaskbarMacosUnsupportedReason },
+      { platform: "windows", status: "supported" },
+      { platform: "linux", status: "supported" }
+    ]
+  }
+) satisfies RpcSupportMetadata
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type WindowError = HostProtocolError
 
@@ -50,8 +105,203 @@ export const WindowClose = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["close"] })
 )
+export const WindowDestroy = windowRpc(
+  "destroy",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["destroy"] })
+)
+export const WindowShow = windowRpc(
+  "show",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["show"] })
+)
+export const WindowHide = windowRpc(
+  "hide",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["hide"] })
+)
+export const WindowFocus = windowRpc(
+  "focus",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["focus"] })
+)
+export const WindowGetCurrent = windowRpc(
+  "getCurrent",
+  Schema.Void,
+  WindowResource,
+  P.nativeInvoke({ primitive: "Window", methods: ["getCurrent"] })
+)
+export const WindowGetById = windowRpc(
+  "getById",
+  WindowLookupInput,
+  WindowResource,
+  P.nativeInvoke({ primitive: "Window", methods: ["getById"] })
+)
+export const WindowList = windowRpc(
+  "list",
+  Schema.Void,
+  WindowListResult,
+  P.nativeInvoke({ primitive: "Window", methods: ["list"] })
+)
+export const WindowGetParent = windowRpc(
+  "getParent",
+  WindowHandleInput,
+  WindowParentResult,
+  P.nativeInvoke({ primitive: "Window", methods: ["getParent"] })
+)
+export const WindowSubscribeEvents = windowRpc(
+  "subscribeEvents",
+  Schema.Void,
+  WindowSubscribeEventsResult,
+  P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
+)
+export const WindowGetBounds = windowRpc(
+  "getBounds",
+  WindowHandleInput,
+  WindowBounds,
+  P.nativeInvoke({ primitive: "Window", methods: ["getBounds"] })
+)
+export const WindowSetBounds = windowRpc(
+  "setBounds",
+  WindowBoundsInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
+)
+export const WindowCenter = windowRpc(
+  "center",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["center"] })
+)
+export const WindowCenterOnDisplay = windowRpc(
+  "centerOnDisplay",
+  WindowDisplayInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["centerOnDisplay"] })
+)
+export const WindowSetTitle = windowRpc(
+  "setTitle",
+  WindowTitleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setTitle"] })
+)
+export const WindowSetResizable = windowRpc(
+  "setResizable",
+  WindowResizableInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setResizable"] })
+)
+export const WindowSetDecorations = windowRpc(
+  "setDecorations",
+  WindowDecorationsInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setDecorations"] })
+)
+export const WindowSetTrafficLights = windowRpc(
+  "setTrafficLights",
+  WindowTrafficLightsInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setTrafficLights"] }),
+  WindowTrafficLightsSupport
+)
+export const WindowSetAlwaysOnTop = windowRpc(
+  "setAlwaysOnTop",
+  WindowAlwaysOnTopInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setAlwaysOnTop"] })
+)
+export const WindowSetSkipTaskbar = windowRpc(
+  "setSkipTaskbar",
+  WindowSkipTaskbarInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setSkipTaskbar"] }),
+  WindowSkipTaskbarSupport
+)
+export const WindowSetProgress = windowRpc(
+  "setProgress",
+  WindowProgressInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setProgress"] })
+)
+export const WindowRequestAttention = windowRpc(
+  "requestAttention",
+  WindowRequestAttentionInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["requestAttention"] })
+)
+export const WindowCancelAttention = windowRpc(
+  "cancelAttention",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["cancelAttention"] })
+)
+export const WindowMinimize = windowRpc(
+  "minimize",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["minimize"] })
+)
+export const WindowMaximize = windowRpc(
+  "maximize",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["maximize"] })
+)
+export const WindowRestore = windowRpc(
+  "restore",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["restore"] })
+)
+export const WindowSetFullscreen = windowRpc(
+  "setFullscreen",
+  WindowFullscreenInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
+)
+export const WindowGetState = windowRpc(
+  "getState",
+  WindowHandleInput,
+  WindowState,
+  P.nativeInvoke({ primitive: "Window", methods: ["getState"] })
+)
 
-const makeWindowRpcGroup = () => RpcGroup.make(WindowCreate, WindowClose)
+const makeWindowRpcGroup = () =>
+  RpcGroup.make(
+    WindowCreate,
+    WindowClose,
+    WindowDestroy,
+    WindowShow,
+    WindowHide,
+    WindowFocus,
+    WindowGetCurrent,
+    WindowGetById,
+    WindowList,
+    WindowGetParent,
+    WindowSubscribeEvents,
+    WindowGetBounds,
+    WindowSetBounds,
+    WindowCenter,
+    WindowCenterOnDisplay,
+    WindowSetTitle,
+    WindowSetResizable,
+    WindowSetDecorations,
+    WindowSetTrafficLights,
+    WindowSetAlwaysOnTop,
+    WindowSetSkipTaskbar,
+    WindowSetProgress,
+    WindowRequestAttention,
+    WindowCancelAttention,
+    WindowMinimize,
+    WindowMaximize,
+    WindowRestore,
+    WindowSetFullscreen,
+    WindowGetState
+  )
 
 const WindowRpcGroup = makeWindowRpcGroup()
 
@@ -59,19 +309,121 @@ type WindowRpcUnion = RpcGroup.Rpcs<typeof WindowRpcGroup>
 
 export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
 
+export const WindowRpcEvents = Object.freeze({
+  Event: { payload: WindowEvent }
+})
+
+export type WindowRpcEvents = typeof WindowRpcEvents
+
 export type WindowSupportedRpc = WindowRpcUnion
 
 export const WindowSupportedRpcs: RpcGroup.RpcGroup<WindowSupportedRpc> = WindowRpcs
 
 export type WindowBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
 
-type WindowRpcClient = DesktopRpcClient<WindowSupportedRpc>
+type WindowRpcClient = DesktopRpcClient<WindowRpcUnion>
 
-export const WindowMethodNames = Object.freeze(["create", "close"] as const)
+export const WindowMethodNames = Object.freeze([
+  "create",
+  "close",
+  "destroy",
+  "show",
+  "hide",
+  "focus",
+  "getCurrent",
+  "getById",
+  "list",
+  "getParent",
+  "getBounds",
+  "setBounds",
+  "center",
+  "centerOnDisplay",
+  "setTitle",
+  "setResizable",
+  "setDecorations",
+  "setTrafficLights",
+  "setAlwaysOnTop",
+  "setSkipTaskbar",
+  "setProgress",
+  "requestAttention",
+  "cancelAttention",
+  "minimize",
+  "maximize",
+  "restore",
+  "setFullscreen",
+  "getState"
+] as const)
+
+const WindowCapabilityMethodNames = Object.freeze([
+  ...WindowMethodNames,
+  "subscribeEvents"
+] as const)
 
 export interface WindowClientApi {
   readonly create: (input: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
   readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly destroy: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly show: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly hide: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly focus: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly getCurrent: () => Effect.Effect<WindowHandle, WindowError, never>
+  readonly getById: (windowId: string) => Effect.Effect<WindowHandle, WindowError, never>
+  readonly list: () => Effect.Effect<readonly WindowHandle[], WindowError, never>
+  readonly getParent: (
+    window: WindowHandle
+  ) => Effect.Effect<WindowHandle | undefined, WindowError, never>
+  readonly getBounds: (window: WindowHandle) => Effect.Effect<WindowBounds, WindowError, never>
+  readonly setBounds: (
+    window: WindowHandle,
+    bounds: WindowBoundsType
+  ) => Effect.Effect<void, WindowError, never>
+  readonly center: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly centerOnDisplay: (
+    window: WindowHandle,
+    displayId: string
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setTitle: (
+    window: WindowHandle,
+    title: string
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setResizable: (
+    window: WindowHandle,
+    resizable: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setDecorations: (
+    window: WindowHandle,
+    decorations: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setTrafficLights: (
+    window: WindowHandle,
+    trafficLights: { readonly x: number; readonly y: number }
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setAlwaysOnTop: (
+    window: WindowHandle,
+    alwaysOnTop: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setSkipTaskbar: (
+    window: WindowHandle,
+    skipTaskbar: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setProgress: (
+    window: WindowHandle,
+    input: WindowProgressOptions
+  ) => Effect.Effect<void, WindowError, never>
+  readonly requestAttention: (
+    window: WindowHandle,
+    requestType: WindowAttentionType
+  ) => Effect.Effect<void, WindowError, never>
+  readonly cancelAttention: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly minimize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly maximize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly restore: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly setFullscreen: (
+    window: WindowHandle,
+    fullscreen: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly getState: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
+  readonly events: () => Stream.Stream<WindowEvent, WindowError, never>
 }
 
 export class WindowClient extends Context.Service<WindowClient, WindowClientApi>()(
@@ -104,7 +456,20 @@ export const makeWindowServiceLayer = (client: WindowClientApi): Layer.Layer<Win
 export const makeWindowBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: WindowBridgeClientOptions = {}
-): Layer.Layer<WindowClient> => WindowSurface.bridgeClientLayer(exchange, options)
+): Layer.Layer<WindowClient, never, ResourceRegistry> =>
+  Layer.effect(
+    WindowClient,
+    Effect.gen(function* () {
+      const client = yield* WindowClient
+      const registry = yield* ResourceRegistry
+      return WindowClient.of(
+        Object.freeze({
+          ...client,
+          events: () => reconcileWindowEventStream(client.events(), registry)
+        } satisfies WindowClientApi)
+      )
+    })
+  ).pipe(Layer.provide(WindowSurface.bridgeClientLayer(exchange, options)))
 
 export type WindowRpcHandlers = ReturnType<typeof makeHostWindowHandlers>
 
@@ -118,14 +483,148 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
     Effect.gen(function* () {
       const window = yield* Window
       yield* window.close(input.window)
+    }),
+  "Window.destroy": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.destroy(input.window)
+    }),
+  "Window.show": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.show(input.window)
+    }),
+  "Window.hide": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.hide(input.window)
+    }),
+  "Window.focus": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.focus(input.window)
+    }),
+  "Window.getCurrent": () =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.getCurrent()
+    }),
+  "Window.getById": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.getById(input.windowId)
+    }),
+  "Window.list": () =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return new WindowListResult({ windows: yield* window.list() })
+    }),
+  "Window.getParent": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      const parent = yield* window.getParent(input.window)
+      return new WindowParentResult(parent === undefined ? {} : { parent })
+    }),
+  "Window.subscribeEvents": () =>
+    Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),
+  "Window.getBounds": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.getBounds(input.window)
+    }),
+  "Window.setBounds": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setBounds(input.window, input.bounds)
+    }),
+  "Window.center": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.center(input.window)
+    }),
+  "Window.centerOnDisplay": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.centerOnDisplay(input.window, input.displayId)
+    }),
+  "Window.setTitle": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setTitle(input.window, input.title)
+    }),
+  "Window.setResizable": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setResizable(input.window, input.resizable)
+    }),
+  "Window.setDecorations": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setDecorations(input.window, input.decorations)
+    }),
+  "Window.setTrafficLights": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setTrafficLights(input.window, input.trafficLights)
+    }),
+  "Window.setAlwaysOnTop": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setAlwaysOnTop(input.window, input.alwaysOnTop)
+    }),
+  "Window.setSkipTaskbar": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setSkipTaskbar(input.window, input.skipTaskbar)
+    }),
+  "Window.setProgress": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setProgress(input.window, input)
+    }),
+  "Window.requestAttention": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.requestAttention(input.window, input.requestType)
+    }),
+  "Window.cancelAttention": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.cancelAttention(input.window)
+    }),
+  "Window.minimize": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.minimize(input.window)
+    }),
+  "Window.maximize": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.maximize(input.window)
+    }),
+  "Window.restore": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.restore(input.window)
+    }),
+  "Window.setFullscreen": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setFullscreen(input.window, input.fullscreen)
+    }),
+  "Window.getState": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.getState(input.window)
     })
 })
 
 export const WindowSurface = NativeSurface.make("Window", WindowRpcGroup, {
   service: WindowClient,
-  capabilities: WindowMethodNames,
+  capabilities: WindowCapabilityMethodNames,
   handlers: WindowHandlersLive,
-  client: windowClientFromRpcClient
+  client: (client) => windowClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => windowClientFromRpcClient(client, exchange)
 })
 
 export const makeHostWindowRpcRuntime = (
@@ -156,13 +655,43 @@ export interface WindowPosition {
 const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
   const service: WindowServiceApi = {
     create: (input) => client.create(input ?? {}),
-    close: (window) => client.close(window)
+    close: (window) => client.close(window),
+    destroy: (window) => client.destroy(window),
+    show: (window) => client.show(window),
+    hide: (window) => client.hide(window),
+    focus: (window) => client.focus(window),
+    getCurrent: () => client.getCurrent(),
+    getById: (windowId) => client.getById(windowId),
+    list: () => client.list(),
+    getParent: (window) => client.getParent(window),
+    getBounds: (window) => client.getBounds(window),
+    setBounds: (window, bounds) => client.setBounds(window, bounds),
+    center: (window) => client.center(window),
+    centerOnDisplay: (window, displayId) => client.centerOnDisplay(window, displayId),
+    setTitle: (window, title) => client.setTitle(window, title),
+    setResizable: (window, resizable) => client.setResizable(window, resizable),
+    setDecorations: (window, decorations) => client.setDecorations(window, decorations),
+    setTrafficLights: (window, trafficLights) => client.setTrafficLights(window, trafficLights),
+    setAlwaysOnTop: (window, alwaysOnTop) => client.setAlwaysOnTop(window, alwaysOnTop),
+    setSkipTaskbar: (window, skipTaskbar) => client.setSkipTaskbar(window, skipTaskbar),
+    setProgress: (window, input) => client.setProgress(window, input),
+    requestAttention: (window, requestType) => client.requestAttention(window, requestType),
+    cancelAttention: (window) => client.cancelAttention(window),
+    minimize: (window) => client.minimize(window),
+    maximize: (window) => client.maximize(window),
+    restore: (window) => client.restore(window),
+    setFullscreen: (window, fullscreen) => client.setFullscreen(window, fullscreen),
+    getState: (window) => client.getState(window),
+    events: () => client.events()
   }
 
   return Object.freeze(service)
 }
 
-function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
+function windowClientFromRpcClient(
+  client: WindowRpcClient,
+  exchange?: BridgeClientExchange
+): WindowClientApi {
   return Object.freeze({
     create: (input) =>
       Effect.gen(function* () {
@@ -181,24 +710,367 @@ function windowClientFromRpcClient(client: WindowRpcClient): WindowClientApi {
         const window = yield* runWindowRpc(client["Window.create"](decoded), "Window.create")
         return yield* decodeWindowHandle(window, "Window.create")
       }),
-    close: (window) =>
+    close: (window) => runWindowHandleRpc(client, "Window.close", window),
+    destroy: (window) => runWindowHandleRpc(client, "Window.destroy", window),
+    show: (window) => runWindowHandleRpc(client, "Window.show", window),
+    hide: (window) => runWindowHandleRpc(client, "Window.hide", window),
+    focus: (window) => runWindowHandleRpc(client, "Window.focus", window),
+    getCurrent: () =>
       Effect.gen(function* () {
-        const decoded = yield* Schema.decodeUnknownEffect(WindowHandleInput)(
-          { window },
+        const window = yield* runWindowRpc(
+          client["Window.getCurrent"](undefined),
+          "Window.getCurrent"
+        )
+        return yield* decodeWindowHandle(window, "Window.getCurrent")
+      }),
+    getById: (windowId) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(WindowLookupInput)(
+          { windowId },
           StrictParseOptions
         ).pipe(
           Effect.mapError((error) =>
             makeHostProtocolInvalidArgumentError(
               "payload",
               formatUnknownError(error),
-              "Window.close"
+              "Window.getById"
             )
           )
         )
-        yield* runWindowRpc(client["Window.close"](decoded), "Window.close")
-      })
+        const window = yield* runWindowRpc(client["Window.getById"](decoded), "Window.getById")
+        return yield* decodeWindowHandle(window, "Window.getById")
+      }),
+    list: () =>
+      Effect.gen(function* () {
+        const result = yield* runWindowRpc(client["Window.list"](undefined), "Window.list")
+        const decoded = yield* Schema.decodeUnknownEffect(WindowListResult)(
+          result,
+          StrictParseOptions
+        ).pipe(
+          Effect.mapError((error) =>
+            makeHostProtocolInvalidOutputError("Window.list", formatUnknownError(error))
+          )
+        )
+        return decoded.windows
+      }),
+    getParent: (window) =>
+      Effect.gen(function* () {
+        const decodedInput = yield* decodeWindowHandleInput(window, "Window.getParent")
+        const result = yield* runWindowRpc(
+          client["Window.getParent"](decodedInput),
+          "Window.getParent"
+        )
+        const decoded = yield* Schema.decodeUnknownEffect(WindowParentResult)(
+          result,
+          StrictParseOptions
+        ).pipe(
+          Effect.mapError((error) =>
+            makeHostProtocolInvalidOutputError("Window.getParent", formatUnknownError(error))
+          )
+        )
+        return decoded.parent
+      }),
+    getBounds: (window) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowHandleInput(window, "Window.getBounds")
+        const bounds = yield* runWindowRpc(client["Window.getBounds"](decoded), "Window.getBounds")
+        return yield* decodeWindowBounds(bounds, "Window.getBounds")
+      }),
+    setBounds: (window, bounds) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowBoundsInput(window, bounds, "Window.setBounds")
+        yield* runWindowRpc(client["Window.setBounds"](decoded), "Window.setBounds")
+      }),
+    center: (window) => runWindowHandleRpc(client, "Window.center", window),
+    centerOnDisplay: (window, displayId) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowDisplayInput(window, displayId, "Window.centerOnDisplay")
+        yield* runWindowRpc(client["Window.centerOnDisplay"](decoded), "Window.centerOnDisplay")
+      }),
+    setTitle: (window, title) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowTitleInput(window, title, "Window.setTitle")
+        yield* runWindowRpc(client["Window.setTitle"](decoded), "Window.setTitle")
+      }),
+    setResizable: (window, resizable) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowResizableInput(window, resizable, "Window.setResizable")
+        yield* runWindowRpc(client["Window.setResizable"](decoded), "Window.setResizable")
+      }),
+    setDecorations: (window, decorations) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowDecorationsInput(
+          window,
+          decorations,
+          "Window.setDecorations"
+        )
+        yield* runWindowRpc(client["Window.setDecorations"](decoded), "Window.setDecorations")
+      }),
+    setTrafficLights: (window, trafficLights) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowTrafficLightsInput(
+          window,
+          trafficLights,
+          "Window.setTrafficLights"
+        )
+        yield* runWindowRpc(client["Window.setTrafficLights"](decoded), "Window.setTrafficLights")
+      }),
+    setAlwaysOnTop: (window, alwaysOnTop) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowAlwaysOnTopInput(
+          window,
+          alwaysOnTop,
+          "Window.setAlwaysOnTop"
+        )
+        yield* runWindowRpc(client["Window.setAlwaysOnTop"](decoded), "Window.setAlwaysOnTop")
+      }),
+    setSkipTaskbar: (window, skipTaskbar) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowSkipTaskbarInput(
+          window,
+          skipTaskbar,
+          "Window.setSkipTaskbar"
+        )
+        yield* runWindowRpc(client["Window.setSkipTaskbar"](decoded), "Window.setSkipTaskbar")
+      }),
+    setProgress: (window, input) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowProgressInput(window, input, "Window.setProgress")
+        yield* runWindowRpc(client["Window.setProgress"](decoded), "Window.setProgress")
+      }),
+    requestAttention: (window, requestType) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowRequestAttentionInput(
+          window,
+          requestType,
+          "Window.requestAttention"
+        )
+        yield* runWindowRpc(client["Window.requestAttention"](decoded), "Window.requestAttention")
+      }),
+    cancelAttention: (window) => runWindowHandleRpc(client, "Window.cancelAttention", window),
+    minimize: (window) => runWindowHandleRpc(client, "Window.minimize", window),
+    maximize: (window) => runWindowHandleRpc(client, "Window.maximize", window),
+    restore: (window) => runWindowHandleRpc(client, "Window.restore", window),
+    setFullscreen: (window, fullscreen) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowFullscreenInput(
+          window,
+          fullscreen,
+          "Window.setFullscreen"
+        )
+        yield* runWindowRpc(client["Window.setFullscreen"](decoded), "Window.setFullscreen")
+      }),
+    getState: (window) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowHandleInput(window, "Window.getState")
+        const state = yield* runWindowRpc(client["Window.getState"](decoded), "Window.getState")
+        return yield* decodeWindowState(state, "Window.getState")
+      }),
+    events: () =>
+      Stream.unwrap(
+        runWindowRpc(client["Window.subscribeEvents"](undefined), "Window.subscribeEvents").pipe(
+          Effect.map(() => subscribeNativeEvent(exchange, WINDOW_EVENT_METHOD, WindowEvent))
+        )
+      )
   } satisfies WindowClientApi)
 }
+
+const runWindowHandleRpc = (
+  client: WindowRpcClient,
+  operation:
+    | "Window.show"
+    | "Window.close"
+    | "Window.destroy"
+    | "Window.hide"
+    | "Window.focus"
+    | "Window.center"
+    | "Window.cancelAttention"
+    | "Window.minimize"
+    | "Window.maximize"
+    | "Window.restore",
+  window: WindowHandle
+): Effect.Effect<void, WindowError, never> =>
+  Effect.gen(function* () {
+    const decoded = yield* decodeWindowHandleInput(window, operation)
+    yield* runWindowRpc(client[operation](decoded), operation)
+  })
+
+const decodeWindowHandleInput = (
+  window: WindowHandle,
+  operation: string
+): Effect.Effect<WindowHandleInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowHandleInput)({ window }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowBoundsInput = (
+  window: WindowHandle,
+  bounds: WindowBoundsType,
+  operation: string
+): Effect.Effect<WindowBoundsInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowBoundsInput)({ window, bounds }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowDisplayInput = (
+  window: WindowHandle,
+  displayId: string,
+  operation: string
+): Effect.Effect<WindowDisplayInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowDisplayInput)({ window, displayId }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowTitleInput = (
+  window: WindowHandle,
+  title: string,
+  operation: string
+): Effect.Effect<WindowTitleInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowTitleInput)({ window, title }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowResizableInput = (
+  window: WindowHandle,
+  resizable: boolean,
+  operation: string
+): Effect.Effect<WindowResizableInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowResizableInput)({ window, resizable }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowDecorationsInput = (
+  window: WindowHandle,
+  decorations: boolean,
+  operation: string
+): Effect.Effect<WindowDecorationsInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowDecorationsInput)(
+    { window, decorations },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowTrafficLightsInput = (
+  window: WindowHandle,
+  trafficLights: { readonly x: number; readonly y: number },
+  operation: string
+): Effect.Effect<WindowTrafficLightsInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowTrafficLightsInput)(
+    { window, trafficLights },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowAlwaysOnTopInput = (
+  window: WindowHandle,
+  alwaysOnTop: boolean,
+  operation: string
+): Effect.Effect<WindowAlwaysOnTopInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowAlwaysOnTopInput)(
+    { window, alwaysOnTop },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowSkipTaskbarInput = (
+  window: WindowHandle,
+  skipTaskbar: boolean,
+  operation: string
+): Effect.Effect<WindowSkipTaskbarInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowSkipTaskbarInput)(
+    { window, skipTaskbar },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowProgressInput = (
+  window: WindowHandle,
+  input: WindowProgressOptions,
+  operation: string
+): Effect.Effect<WindowProgressInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowProgressInput)(
+    {
+      window,
+      ...(input.state === undefined ? {} : { state: input.state }),
+      ...(input.progress === undefined ? {} : { progress: input.progress }),
+      ...(input.desktopFilename === undefined ? {} : { desktopFilename: input.desktopFilename })
+    },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowRequestAttentionInput = (
+  window: WindowHandle,
+  requestType: WindowAttentionType,
+  operation: string
+): Effect.Effect<WindowRequestAttentionInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowRequestAttentionInput)(
+    { window, requestType },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowFullscreenInput = (
+  window: WindowHandle,
+  fullscreen: boolean,
+  operation: string
+): Effect.Effect<WindowFullscreenInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowFullscreenInput)(
+    { window, fullscreen },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowBounds = (
+  input: unknown,
+  operation: string
+): Effect.Effect<WindowBounds, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowBounds)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
+  )
+
+const decodeWindowState = (
+  input: unknown,
+  operation: string
+): Effect.Effect<WindowState, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowState)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
+  )
 
 const decodeWindowHandle = (
   input: unknown,
@@ -210,6 +1082,150 @@ const decodeWindowHandle = (
       makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
     )
   )
+
+const reconcileWindowEventStream = (
+  events: Stream.Stream<WindowEvent, WindowError, never>,
+  registry: ResourceRegistryApi
+): Stream.Stream<WindowEvent, WindowError, never> =>
+  events.pipe(Stream.mapEffect((event) => reconcileWindowEvent(event, registry)))
+
+const reconcileWindowEvent = (
+  event: WindowEvent,
+  registry: ResourceRegistryApi
+): Effect.Effect<WindowEvent, WindowError, never> =>
+  Effect.gen(function* () {
+    yield* validateWindowEventHandle(event)
+    if (event.type === "window-state-event") {
+      const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
+      return Option.isNone(window)
+        ? stateEventWithoutWindow(event)
+        : stateEventWithWindow(event, window.value)
+    }
+
+    const terminal = event.phase === "closed"
+    if (event.terminal !== terminal) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError(
+          WINDOW_EVENT_METHOD,
+          `window event terminal=${event.terminal} does not match phase=${event.phase}`
+        )
+      )
+    }
+
+    if (event.phase === "opened") {
+      const window = yield* ensureWindowHandleForEvent(event, registry)
+      return eventWithWindow(event, window)
+    }
+
+    if (event.phase === "focused") {
+      const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
+      return Option.isNone(window)
+        ? eventWithoutWindow(event)
+        : eventWithWindow(event, window.value)
+    }
+
+    const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
+    if (Option.isNone(window)) {
+      return eventWithoutWindow(event)
+    }
+    yield* registry.closeScope(window.value.ownerScope)
+    return eventWithWindow(event, window.value)
+  })
+
+const ensureWindowHandleForEvent = (
+  event: WindowRegistryEvent,
+  registry: ResourceRegistryApi
+): Effect.Effect<WindowHandle, WindowError, never> =>
+  Effect.gen(function* () {
+    const existing = yield* lookupWindowHandleForEvent(event.windowId, registry)
+    if (Option.isSome(existing)) {
+      return existing.value
+    }
+
+    const ownerScope = windowScope(event.windowId)
+    yield* registry
+      .declareScope(ownerScope, "app")
+      .pipe(
+        Effect.mapError((error) =>
+          makeHostProtocolInvalidOutputError(WINDOW_EVENT_METHOD, formatUnknownError(error))
+        )
+      )
+    const handle = yield* registry
+      .register({
+        kind: "window",
+        id: makeResourceId(event.windowId),
+        ownerScope,
+        state: "open"
+      })
+      .pipe(
+        Effect.mapError((error) =>
+          makeHostProtocolInvalidOutputError(WINDOW_EVENT_METHOD, formatUnknownError(error))
+        )
+      )
+    return toWindowHandle(handle)
+  })
+
+const validateWindowEventHandle = (event: WindowEvent): Effect.Effect<void, WindowError, never> => {
+  if (event.window === undefined) {
+    return Effect.void
+  }
+  const expectedOwnerScope = windowScope(event.windowId)
+  if (event.window.id !== event.windowId || event.window.ownerScope !== expectedOwnerScope) {
+    return Effect.fail(
+      makeHostProtocolInvalidOutputError(
+        WINDOW_EVENT_METHOD,
+        `window event handle must match Window:${event.windowId}`
+      )
+    )
+  }
+
+  return Effect.void
+}
+
+const lookupWindowHandleForEvent = (
+  windowId: string,
+  registry: ResourceRegistryApi
+): Effect.Effect<Option.Option<WindowHandle>, WindowError, never> =>
+  Effect.gen(function* () {
+    const entry = yield* registry.get(makeResourceId(windowId))
+    if (Option.isNone(entry)) {
+      return Option.none()
+    }
+    const window = yield* decodeWindowHandle(entry.value.handle, WINDOW_EVENT_METHOD)
+    return Option.some(window)
+  })
+
+const eventWithWindow = (event: WindowRegistryEvent, window: WindowHandle): WindowRegistryEvent =>
+  new WindowRegistryEvent({
+    type: event.type,
+    phase: event.phase,
+    windowId: event.windowId,
+    window,
+    terminal: event.terminal
+  })
+
+const eventWithoutWindow = (event: WindowRegistryEvent): WindowRegistryEvent =>
+  new WindowRegistryEvent({
+    type: event.type,
+    phase: event.phase,
+    windowId: event.windowId,
+    terminal: event.terminal
+  })
+
+const stateEventWithWindow = (event: WindowStateEvent, window: WindowHandle): WindowStateEvent =>
+  new WindowStateEvent({
+    type: event.type,
+    windowId: event.windowId,
+    window,
+    state: event.state
+  })
+
+const stateEventWithoutWindow = (event: WindowStateEvent): WindowStateEvent =>
+  new WindowStateEvent({
+    type: event.type,
+    windowId: event.windowId,
+    state: event.state
+  })
 
 const runWindowRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
@@ -235,15 +1251,63 @@ const isWindowError = (error: unknown): error is WindowError =>
 const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindowRpcOptions) => {
   const host = makeHostWindowClient(exchange, options)
   const knownWindowIds = new Set<string>()
+  const childWindowIdsByParentId = new Map<string, Set<string>>()
+  const parentWindowIdByChildId = new Map<string, string>()
+  const windowHandleById = new Map<string, WindowHandle>()
+  const destroyKnownWindow = (
+    input: WindowHandleInput,
+    operation: "Window.close" | "Window.destroy"
+  ) =>
+    Effect.gen(function* () {
+      const registry = yield* ResourceRegistry
+      const { window } = input
+      const resourceId = window.id
+      if (!knownWindowIds.has(window.id)) {
+        return yield* Effect.fail(makeHostProtocolNotFoundError(`Window:${window.id}`, operation))
+      }
+
+      const existing = yield* registry.get(resourceId)
+      if (Option.isNone(existing)) {
+        return yield* Effect.fail(makeStaleHandleError(operation, window, window.generation + 1))
+      }
+
+      yield* registry
+        .assertFresh({
+          kind: window.kind,
+          generation: window.generation,
+          ownerScope: window.ownerScope,
+          state: window.state,
+          id: resourceId
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            makeStaleHandleError(operation, window, error.actualGeneration)
+          )
+        )
+      yield* closeKnownWindowTree(window, operation, host, registry, {
+        ...(options.appEventRouter === undefined ? {} : { appEventRouter: options.appEventRouter }),
+        childWindowIdsByParentId,
+        parentWindowIdByChildId,
+        windowHandleById
+      })
+    })
 
   return {
     "Window.create": (input: WindowCreateInput) =>
       Effect.gen(function* () {
         const registry = yield* ResourceRegistry
-        const created = yield* host.create(toHostWindowCreateInput(input))
+        const parent =
+          input.parent === undefined
+            ? undefined
+            : (yield* assertKnownFreshWindow(
+                { window: input.parent },
+                knownWindowIds,
+                "Window.create"
+              )).window
+        const created = yield* host.create(toHostWindowCreateInput(input, parent?.id))
         knownWindowIds.add(created.windowId)
         const ownerScope = windowScope(created.windowId)
-        yield* registry.declareScope(ownerScope, "app").pipe(Effect.orDie)
+        yield* registry.declareScope(ownerScope, parent?.ownerScope ?? "app").pipe(Effect.orDie)
         const handle = yield* registry
           .register({
             kind: "window",
@@ -253,61 +1317,322 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           })
           .pipe(Effect.orDie)
         const window = toWindowHandle(handle)
+        windowHandleById.set(window.id, window)
+        if (parent !== undefined) {
+          const children = childWindowIdsByParentId.get(parent.id) ?? new Set<string>()
+          children.add(window.id)
+          childWindowIdsByParentId.set(parent.id, children)
+          parentWindowIdByChildId.set(window.id, parent.id)
+        }
         if (options.appEventRouter !== undefined) {
           yield* options.appEventRouter.windowOpened(window)
         }
         return window
       }),
-    "Window.close": (input: WindowHandleInput) =>
+    "Window.close": (input: WindowHandleInput) => destroyKnownWindow(input, "Window.close"),
+    "Window.destroy": (input: WindowHandleInput) => destroyKnownWindow(input, "Window.destroy"),
+    "Window.show": (input: WindowHandleInput) =>
       Effect.gen(function* () {
-        const registry = yield* ResourceRegistry
-        const { window } = input
-        const resourceId = window.id
-        if (!knownWindowIds.has(window.id)) {
-          return yield* Effect.fail(
-            makeHostProtocolNotFoundError(`Window:${window.id}`, "Window.close")
-          )
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.show")
+        yield* host.show(window.id)
+      }),
+    "Window.hide": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.hide")
+        yield* host.hide(window.id)
+      }),
+    "Window.focus": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.focus")
+        yield* host.focus(window.id)
+        if (options.appEventRouter !== undefined) {
+          yield* options.appEventRouter
+            .windowFocused(window.id)
+            .pipe(
+              Effect.mapError((error) =>
+                makeHostProtocolInvalidStateError(error.windowId, "focused", "Window.focus")
+              )
+            )
         }
-
-        const existing = yield* registry.get(resourceId)
-        if (Option.isNone(existing)) {
+      }),
+    "Window.getCurrent": () =>
+      Effect.gen(function* () {
+        const current = yield* host.getCurrent()
+        return yield* lookupKnownFreshWindow(
+          current.windowId,
+          knownWindowIds,
+          windowHandleById,
+          "Window.getCurrent"
+        )
+      }),
+    "Window.getById": (input: WindowLookupInput) =>
+      Effect.gen(function* () {
+        const found = yield* host.getById(input.windowId)
+        if (found.windowId !== input.windowId) {
           return yield* Effect.fail(
-            makeStaleHandleError("Window.close", window, window.generation + 1)
-          )
-        }
-
-        yield* registry
-          .assertFresh({
-            kind: window.kind,
-            generation: window.generation,
-            ownerScope: window.ownerScope,
-            state: window.state,
-            id: resourceId
-          })
-          .pipe(
-            Effect.mapError((error) =>
-              makeStaleHandleError("Window.close", window, error.actualGeneration)
+            makeHostProtocolInvalidOutputError(
+              "Window.getById",
+              `host returned Window:${found.windowId} for requested Window:${input.windowId}`
             )
           )
-        yield* host.destroy(window.id)
-        if (options.appEventRouter !== undefined) {
-          yield* options.appEventRouter.windowClosed(window.id)
         }
-        yield* registry.closeScope(window.ownerScope)
+        return yield* lookupKnownFreshWindow(
+          found.windowId,
+          knownWindowIds,
+          windowHandleById,
+          "Window.getById"
+        )
+      }),
+    "Window.list": () =>
+      Effect.gen(function* () {
+        const listed = yield* host.list()
+        const freshWindows = yield* Effect.forEach(
+          listed.windows,
+          ({ windowId }) =>
+            lookupKnownFreshWindow(windowId, knownWindowIds, windowHandleById, "Window.list").pipe(
+              Effect.map((window) => window)
+            ),
+          { concurrency: "unbounded" }
+        )
+        return new WindowListResult({ windows: freshWindows })
+      }),
+    "Window.getParent": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.getParent")
+        const parent = yield* host.getParent(window.id)
+        if (parent.parentWindowId === undefined) {
+          return new WindowParentResult({})
+        }
+        const parentWindow = yield* lookupKnownFreshWindow(
+          parent.parentWindowId,
+          knownWindowIds,
+          windowHandleById,
+          "Window.getParent"
+        )
+        return new WindowParentResult({ parent: parentWindow })
+      }),
+    "Window.subscribeEvents": () =>
+      Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),
+    "Window.getBounds": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.getBounds")
+        const bounds = yield* host.getBounds(window.id)
+        return yield* decodeWindowBounds(bounds, "Window.getBounds")
+      }),
+    "Window.setBounds": (input: WindowBoundsInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setBounds"
+        )
+        yield* host.setBounds(window.id, toHostWindowBoundsInput(input.bounds))
+      }),
+    "Window.center": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.center")
+        yield* host.center(window.id)
+      }),
+    "Window.centerOnDisplay": (input: WindowDisplayInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.centerOnDisplay"
+        )
+        yield* host.centerOnDisplay(window.id, input.displayId)
+      }),
+    "Window.setTitle": (input: WindowTitleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setTitle"
+        )
+        yield* host.setTitle(window.id, input.title)
+      }),
+    "Window.setResizable": (input: WindowResizableInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setResizable"
+        )
+        yield* host.setResizable(window.id, input.resizable)
+      }),
+    "Window.setDecorations": (input: WindowDecorationsInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setDecorations"
+        )
+        yield* host.setDecorations(window.id, input.decorations)
+      }),
+    "Window.setTrafficLights": (input: WindowTrafficLightsInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setTrafficLights"
+        )
+        yield* host.setTrafficLights(window.id, input.trafficLights)
+      }),
+    "Window.setAlwaysOnTop": (input: WindowAlwaysOnTopInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setAlwaysOnTop"
+        )
+        yield* host.setAlwaysOnTop(window.id, input.alwaysOnTop)
+      }),
+    "Window.setSkipTaskbar": (input: WindowSkipTaskbarInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setSkipTaskbar"
+        )
+        yield* host.setSkipTaskbar(window.id, input.skipTaskbar)
+      }),
+    "Window.setProgress": (input: WindowProgressInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setProgress"
+        )
+        yield* host.setProgress(window.id, toHostWindowProgressInput(input))
+      }),
+    "Window.requestAttention": (input: WindowRequestAttentionInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.requestAttention"
+        )
+        yield* host.requestAttention(window.id, input.requestType)
+      }),
+    "Window.cancelAttention": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          input,
+          knownWindowIds,
+          "Window.cancelAttention"
+        )
+        yield* host.cancelAttention(window.id)
+      }),
+    "Window.minimize": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.minimize")
+        yield* host.minimize(window.id)
+      }),
+    "Window.maximize": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.maximize")
+        yield* host.maximize(window.id)
+      }),
+    "Window.restore": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.restore")
+        yield* host.restore(window.id)
+      }),
+    "Window.setFullscreen": (input: WindowFullscreenInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setFullscreen"
+        )
+        yield* host.setFullscreen(window.id, input.fullscreen)
+      }),
+    "Window.getState": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.getState")
+        const state = yield* host.getState(window.id)
+        return yield* decodeWindowState(state, "Window.getState")
       })
   }
 }
 
-const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOptions => {
+const assertKnownFreshWindow = (
+  input: WindowHandleInput,
+  knownWindowIds: ReadonlySet<string>,
+  operation: string
+): Effect.Effect<{ readonly window: WindowHandle }, WindowError, ResourceRegistry> =>
+  Effect.gen(function* () {
+    const registry = yield* ResourceRegistry
+    const { window } = input
+    const resourceId = window.id
+    if (!knownWindowIds.has(window.id)) {
+      return yield* Effect.fail(makeHostProtocolNotFoundError(`Window:${window.id}`, operation))
+    }
+
+    const existing = yield* registry.get(resourceId)
+    if (Option.isNone(existing)) {
+      return yield* Effect.fail(makeStaleHandleError(operation, window, window.generation + 1))
+    }
+
+    yield* registry
+      .assertFresh({
+        kind: window.kind,
+        generation: window.generation,
+        ownerScope: window.ownerScope,
+        state: window.state,
+        id: resourceId
+      })
+      .pipe(
+        Effect.mapError((error) => makeStaleHandleError(operation, window, error.actualGeneration))
+      )
+
+    return { window }
+  })
+
+const lookupKnownFreshWindow = (
+  windowId: string,
+  knownWindowIds: ReadonlySet<string>,
+  windowHandleById: ReadonlyMap<string, WindowHandle>,
+  operation: string
+): Effect.Effect<WindowHandle, WindowError, ResourceRegistry> =>
+  Effect.gen(function* () {
+    const window = windowHandleById.get(windowId)
+    if (window === undefined) {
+      return yield* Effect.fail(makeHostProtocolNotFoundError(`Window:${windowId}`, operation))
+    }
+    const fresh = yield* assertKnownFreshWindow({ window }, knownWindowIds, operation)
+    return fresh.window
+  })
+
+const toHostWindowCreateInput = (
+  input: WindowCreateOptions,
+  parentWindowId?: string
+): WindowCreateOptions & { readonly parentWindowId?: string } => {
   return {
     ...(input.title === undefined ? {} : { title: input.title }),
     ...(input.width === undefined ? {} : { width: input.width }),
     ...(input.height === undefined ? {} : { height: input.height }),
+    ...(parentWindowId === undefined ? {} : { parentWindowId }),
     ...(input.titleBarStyle === undefined ? {} : { titleBarStyle: input.titleBarStyle }),
     ...(input.vibrancy === undefined ? {} : { vibrancy: input.vibrancy }),
     ...(input.trafficLights === undefined ? {} : { trafficLights: input.trafficLights })
   }
 }
+
+const toHostWindowBoundsInput = (bounds: WindowBoundsType): HostWindowBoundsInput =>
+  Object.freeze({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height
+  })
+
+const toHostWindowProgressInput = (input: WindowProgressInput): HostWindowProgressInput =>
+  Object.freeze({
+    ...(input.state === undefined ? {} : { state: input.state }),
+    ...(input.progress === undefined ? {} : { progress: input.progress }),
+    ...(input.desktopFilename === undefined ? {} : { desktopFilename: input.desktopFilename })
+  })
 
 const toWindowHandle = (handle: WindowHandle): WindowHandle =>
   Object.freeze({
@@ -317,6 +1642,44 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
     ownerScope: handle.ownerScope,
     state: handle.state
   }) as WindowHandle
+
+const closeKnownWindowTree = (
+  window: WindowHandle,
+  operation: "Window.close" | "Window.destroy",
+  host: ReturnType<typeof makeHostWindowClient>,
+  registry: ResourceRegistryApi,
+  context: {
+    readonly appEventRouter?: AppEventRouterApi
+    readonly childWindowIdsByParentId: Map<string, Set<string>>
+    readonly parentWindowIdByChildId: Map<string, string>
+    readonly windowHandleById: Map<string, WindowHandle>
+  }
+): Effect.Effect<void, WindowError, never> =>
+  Effect.gen(function* () {
+    const childWindowIds = Array.from(context.childWindowIdsByParentId.get(window.id) ?? [])
+    for (const childWindowId of childWindowIds) {
+      const childWindow = context.windowHandleById.get(childWindowId)
+      if (childWindow === undefined) {
+        return yield* Effect.fail(
+          makeHostProtocolInternalError(`Missing tracked child Window:${childWindowId}`, operation)
+        )
+      }
+      yield* closeKnownWindowTree(childWindow, operation, host, registry, context)
+    }
+
+    yield* host.destroy(window.id)
+    if (context.appEventRouter !== undefined) {
+      yield* context.appEventRouter.windowClosed(window.id)
+    }
+    yield* registry.closeScope(window.ownerScope)
+    context.windowHandleById.delete(window.id)
+    context.childWindowIdsByParentId.delete(window.id)
+    const parentWindowId = context.parentWindowIdByChildId.get(window.id)
+    if (parentWindowId !== undefined) {
+      context.childWindowIdsByParentId.get(parentWindowId)?.delete(window.id)
+      context.parentWindowIdByChildId.delete(window.id)
+    }
+  })
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
@@ -332,12 +1695,18 @@ function windowRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends WindowRpcSuccess
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  capability: RpcCapabilityMetadata,
+  support: RpcSupportMetadata = NativeSurface.support.supported
+) {
   return NativeSurface.rpc("Window", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support
   })
 }

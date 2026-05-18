@@ -1,6 +1,6 @@
 //! Runtime child-process supervision.
 
-mod platform;
+pub(crate) mod platform;
 
 use crate::{
     methods,
@@ -857,36 +857,120 @@ where
     })
 }
 
-fn serve_framed_host_requests<R, W>(
+pub(crate) fn serve_framed_host_requests<R, W>(
     reader: R,
     writer: W,
     method_router: &methods::HostMethodRouter,
 ) -> Result<()>
 where
     R: Read,
-    W: Write,
+    W: Write + Send,
 {
     let mut reader = FrameReader::new(reader);
-    let mut writer = FrameWriter::new(writer);
+    let (outgoing_tx, outgoing_rx) = mpsc::channel::<HostProtocolEnvelope>();
+    let (session_failure_tx, session_failure_rx) = mpsc::channel();
+    method_router
+        .install_runtime_event_sender(outgoing_tx.clone())
+        .map_err(|error| anyhow::anyhow!("failed to install runtime event sender: {error}"))?;
+    method_router
+        .install_runtime_session_failure_sender(session_failure_tx.clone())
+        .map_err(|error| {
+            anyhow::anyhow!("failed to install runtime session failure sender: {error}")
+        })?;
 
-    while let Some(frame) = reader.recv().context(format!(
-        "failed to read runtime protocol frame after {RUNTIME_READY_EVENT}"
-    ))? {
-        let envelope: HostProtocolEnvelope = serde_json::from_slice(&frame).context(format!(
-            "failed to decode host protocol frame after {RUNTIME_READY_EVENT}"
-        ))?;
+    let result = thread::scope(|scope| -> Result<()> {
+        let writer_thread = scope.spawn(move || -> Result<()> {
+            let mut writer = FrameWriter::new(writer);
+            while let Ok(frame) = outgoing_rx.recv() {
+                let frame = serde_json::to_vec(&frame).context(format!(
+                    "failed to encode host protocol response after {RUNTIME_READY_EVENT}"
+                ))?;
+                writer.send(&frame).context(format!(
+                    "failed to write host protocol response after {RUNTIME_READY_EVENT}"
+                ))?;
+            }
+            Ok(())
+        });
+        let failure_router = method_router.clone();
+        let failure_thread = scope.spawn(move || {
+            while let Ok(key) = session_failure_rx.recv() {
+                failure_router.handle_realtime_media_session_failure(key);
+            }
+        });
 
-        if let Some(response) = method_router.dispatch(envelope) {
-            let response = serde_json::to_vec(&response).context(format!(
-                "failed to encode host protocol response after {RUNTIME_READY_EVENT}"
-            ))?;
-            writer.send(&response).context(format!(
-                "failed to write host protocol response after {RUNTIME_READY_EVENT}"
-            ))?;
-        }
-    }
+        let read_result = (|| -> Result<()> {
+            while let Some(frame) = reader.recv().context(format!(
+                "failed to read runtime protocol frame after {RUNTIME_READY_EVENT}"
+            ))? {
+                let envelope: HostProtocolEnvelope = serde_json::from_slice(&frame).context(
+                    format!("failed to decode host protocol frame after {RUNTIME_READY_EVENT}"),
+                )?;
 
-    Ok(())
+                if dispatch_runtime_request_async(&envelope) {
+                    method_router
+                        .track_pending_local_tool_runtime_run_request(&envelope)
+                        .map_err(|error| {
+                            anyhow::anyhow!(
+                                "failed to track pending local tool runtime request: {error}"
+                            )
+                        })?;
+                    let router = method_router.clone();
+                    let sender = outgoing_tx.clone();
+                    scope.spawn(move || {
+                        for frame in router.dispatch_frames(envelope) {
+                            if sender.send(frame).is_err() {
+                                break;
+                            }
+                        }
+                    });
+                } else {
+                    for frame in method_router.dispatch_frames(envelope) {
+                        outgoing_tx.send(frame).context(format!(
+                            "failed to queue host protocol response after {RUNTIME_READY_EVENT}"
+                        ))?;
+                    }
+                }
+            }
+
+            Ok(())
+        })();
+
+        let clear_failure_sender = method_router
+            .clear_runtime_session_failure_sender()
+            .map_err(|error| {
+                anyhow::anyhow!("failed to clear runtime session failure sender: {error}")
+            });
+        let clear_sender = method_router
+            .clear_runtime_event_sender()
+            .map_err(|error| anyhow::anyhow!("failed to clear runtime event sender: {error}"));
+        let cleanup = method_router.clear_runtime_resources().map_err(|error| {
+            anyhow::anyhow!("failed to clear host runtime resources after disconnect: {error}")
+        });
+        drop(session_failure_tx);
+        drop(outgoing_tx);
+        let failure_result = failure_thread
+            .join()
+            .map_err(|_| anyhow::anyhow!("runtime session failure thread panicked"));
+        let write_result = writer_thread
+            .join()
+            .unwrap_or_else(|_| Err(anyhow::anyhow!("runtime frame writer thread panicked")));
+
+        read_result
+            .and(clear_failure_sender)
+            .and(clear_sender)
+            .and(cleanup)
+            .and(failure_result)
+            .and(write_result)
+    });
+    result
+}
+
+fn dispatch_runtime_request_async(envelope: &HostProtocolEnvelope) -> bool {
+    matches!(
+        envelope,
+        HostProtocolEnvelope::Request { method, .. }
+            if method == host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD
+    )
 }
 
 fn trim_line_end(line: &mut String) {
@@ -1013,6 +1097,8 @@ mod tests {
         RestartPolicy, RuntimeChild, RuntimeConfig, RuntimeEvent, RuntimeProfile, RuntimeReady,
         RuntimeStream, Supervisor, Termination,
     };
+    #[cfg(unix)]
+    use std::os::unix::net::UnixStream;
     use std::{
         ffi::OsString,
         fs,
@@ -1490,6 +1576,428 @@ console.log("this is not framed");
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn framed_runtime_can_stop_active_local_tool_run() {
+        let root = unique_temp_dir("local-tool-runtime-framed-stop");
+        fs::create_dir_all(&root).expect("temp dir should be created");
+        let executable = root.join("sleep.sh");
+        write_executable(&executable, "#!/bin/sh\nsleep 30\n");
+        let (input_reader, input_writer) = UnixStream::pair().expect("input socket pair");
+        let (mut output_reader, output_writer) = UnixStream::pair().expect("output socket pair");
+        output_reader
+            .set_read_timeout(Some(EVENT_TIMEOUT))
+            .expect("output reader timeout should be set");
+
+        let server = thread::spawn(move || {
+            super::serve_framed_host_requests(input_reader, output_writer, &test_router())
+                .expect("framed runtime should dispatch");
+        });
+        let mut frame_writer = FrameWriter::new(input_writer);
+        let mut frame_reader = FrameReader::new(&mut output_reader);
+
+        write_host_frame(
+            &mut frame_writer,
+            &local_tool_runtime_request(
+                "register",
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                local_tool_runtime_register_payload(&root, "runtime-framed-stop", &executable),
+            ),
+        );
+        let register_frames = read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_response_id(frame, "request-local-tool-runtime-register"),
+            "register response",
+        );
+        assert!(
+            register_frames
+                .iter()
+                .any(|frame| is_local_tool_runtime_event(frame, "registered")),
+            "registered event missing: {register_frames:?}"
+        );
+
+        write_host_frame(
+            &mut frame_writer,
+            &local_tool_runtime_request(
+                "run-stop",
+                host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD,
+                serde_json::json!({
+                    "runtimeId": "runtime-framed-stop",
+                    "commandId": "sleep",
+                    "runId": "run-framed-stop"
+                }),
+            ),
+        );
+        let run_frames = read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_local_tool_runtime_event(frame, "run-started"),
+            "run-started event",
+        );
+        assert!(
+            run_frames
+                .iter()
+                .any(|frame| is_local_tool_runtime_event(frame, "run-started")),
+            "run-started event missing: {run_frames:?}"
+        );
+
+        assert!(
+            write_and_wait_for_stop_response(
+                &mut frame_writer,
+                &mut frame_reader,
+                "runtime-framed-stop"
+            ) < Duration::from_secs(2),
+            "stop response must not wait for the local tool timeout"
+        );
+        drop(frame_writer);
+        server.join().expect("framed runtime thread should join");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn framed_runtime_cancel_stops_active_local_tool_run() {
+        let root = unique_temp_dir("local-tool-runtime-framed-cancel");
+        fs::create_dir_all(&root).expect("temp dir should be created");
+        let executable = root.join("sleep.sh");
+        write_executable(&executable, "#!/bin/sh\nsleep 30\n");
+        let (input_reader, input_writer) = UnixStream::pair().expect("input socket pair");
+        let (mut output_reader, output_writer) = UnixStream::pair().expect("output socket pair");
+        output_reader
+            .set_read_timeout(Some(EVENT_TIMEOUT))
+            .expect("output reader timeout should be set");
+
+        let server = thread::spawn(move || {
+            super::serve_framed_host_requests(input_reader, output_writer, &test_router())
+                .expect("framed runtime should dispatch");
+        });
+        let mut frame_writer = FrameWriter::new(input_writer);
+        let mut frame_reader = FrameReader::new(&mut output_reader);
+
+        write_host_frame(
+            &mut frame_writer,
+            &local_tool_runtime_request(
+                "register",
+                host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
+                local_tool_runtime_register_payload(&root, "runtime-framed-cancel", &executable),
+            ),
+        );
+        read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_response_id(frame, "request-local-tool-runtime-register"),
+            "register response",
+        );
+
+        write_host_frame(
+            &mut frame_writer,
+            &local_tool_runtime_request(
+                "run-cancel",
+                host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD,
+                serde_json::json!({
+                    "runtimeId": "runtime-framed-cancel",
+                    "commandId": "sleep",
+                    "runId": "run-framed-cancel"
+                }),
+            ),
+        );
+        read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_local_tool_runtime_event(frame, "run-started"),
+            "run-started event",
+        );
+
+        let started = Instant::now();
+        write_host_frame(
+            &mut frame_writer,
+            &HostProtocolEnvelope::Cancel {
+                id: Some("request-local-tool-runtime-run-cancel".to_string()),
+                resource_id: None,
+                timestamp: 1710000000001,
+                trace_id: "trace-local-tool-runtime-cancel".to_string(),
+            },
+        );
+        let cancel_frames = read_host_frames_until(
+            &mut frame_reader,
+            |frame| is_response_id(frame, "request-local-tool-runtime-run-cancel"),
+            "run response after cancel",
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "cancel response must not wait for the local tool timeout"
+        );
+        assert!(
+            !cancel_frames
+                .iter()
+                .any(|frame| is_local_tool_runtime_event(frame, "run-completed")),
+            "canceled run must not emit run-completed: {cancel_frames:?}"
+        );
+
+        drop(frame_writer);
+        server.join().expect("framed runtime thread should join");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn framed_runtime_extension_config_requests_use_host_persistence_and_events() {
+        let _guard = crate::methods::EXTENSION_CONFIG_ENV_LOCK
+            .lock()
+            .expect("extension config env lock should not be poisoned");
+        let dir = unique_temp_dir("extension-config-framed-runtime");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let store_path = dir.join("extension-config.json");
+        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE");
+        std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", &store_path);
+        let mut input = Vec::new();
+        {
+            let mut writer = FrameWriter::new(&mut input);
+            for request in [
+                extension_config_request(
+                    "write",
+                    host_protocol::EXTENSION_CONFIG_WRITE_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "extensionId": "extension-1",
+                        "fields": extension_config_fields(),
+                        "values": [{ "key": "theme", "value": "dark" }],
+                        "secretKeys": ["apiKey"],
+                        "traceId": "trace-extension-config"
+                    }),
+                ),
+                extension_config_request(
+                    "read",
+                    host_protocol::EXTENSION_CONFIG_READ_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "extensionId": "extension-1",
+                        "fields": extension_config_fields(),
+                        "traceId": "trace-extension-config"
+                    }),
+                ),
+                extension_config_request(
+                    "redact",
+                    host_protocol::EXTENSION_CONFIG_REDACT_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "extensionId": "extension-1",
+                        "fields": extension_config_fields(),
+                        "traceId": "trace-extension-config"
+                    }),
+                ),
+                extension_config_request(
+                    "reset",
+                    host_protocol::EXTENSION_CONFIG_RESET_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "extensionId": "extension-1",
+                        "fields": extension_config_fields(),
+                        "keys": ["theme", "apiKey"],
+                        "traceId": "trace-extension-config"
+                    }),
+                ),
+            ] {
+                let request_bytes = serde_json::to_vec(&request).expect("request should encode");
+                writer
+                    .send(&request_bytes)
+                    .expect("request frame should encode");
+            }
+        }
+        let mut output = Vec::new();
+
+        super::serve_framed_host_requests(Cursor::new(input), &mut output, &test_router())
+            .expect("extension config frames should dispatch");
+
+        match previous_store_path {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_CONFIG_STORE"),
+        }
+        let _ = fs::remove_dir_all(dir);
+
+        let mut reader = FrameReader::new(Cursor::new(output));
+        let mut frames = Vec::new();
+        while let Some(frame) = reader.recv().expect("response frame should decode") {
+            frames.push(
+                serde_json::from_slice::<HostProtocolEnvelope>(&frame)
+                    .expect("host protocol frame should decode"),
+            );
+        }
+
+        assert_eq!(frames.len(), 8);
+        assert_extension_config_event(&frames[0], "written", Some(1));
+        assert_extension_config_response(
+            &frames[1],
+            "request-extension-config-write",
+            serde_json::json!({
+                "extensionId": "extension-1",
+                "writtenKeys": ["theme", "apiKey"],
+                "revision": 1
+            }),
+        );
+        assert_extension_config_event(&frames[2], "read", Some(1));
+        assert_extension_config_response(
+            &frames[3],
+            "request-extension-config-read",
+            serde_json::json!({
+                "extensionId": "extension-1",
+                "values": [{ "key": "theme", "value": "dark" }],
+                "secrets": [{ "key": "apiKey", "present": true }],
+                "revision": 1
+            }),
+        );
+        assert_extension_config_event(&frames[4], "redacted", None);
+        assert_extension_config_response(
+            &frames[5],
+            "request-extension-config-redact",
+            serde_json::json!({
+                "extensionId": "extension-1",
+                "values": [
+                    { "key": "theme", "value": "dark" },
+                    { "key": "apiKey", "value": "<redacted:ExtensionConfigSecret>" }
+                ],
+                "redactions": [{ "key": "apiKey", "reason": "secret-field" }]
+            }),
+        );
+        assert_extension_config_event(&frames[6], "reset", Some(2));
+        assert_extension_config_response(
+            &frames[7],
+            "request-extension-config-reset",
+            serde_json::json!({
+                "extensionId": "extension-1",
+                "resetKeys": ["theme", "apiKey"],
+                "revision": 2
+            }),
+        );
+    }
+
+    #[test]
+    fn framed_runtime_extension_package_requests_use_host_persistence_and_events() {
+        let _guard = crate::methods::EXTENSION_PACKAGE_ENV_LOCK
+            .lock()
+            .expect("extension package env lock should not be poisoned");
+        let dir = unique_temp_dir("extension-package-framed-runtime");
+        let source = dir.join("source");
+        fs::create_dir_all(source.join("dist")).expect("source dir should be created");
+        fs::write(source.join("dist/main.js"), "export default 1\n")
+            .expect("source file should be written");
+        let store_path = dir.join("store");
+        let previous_store_path = std::env::var_os("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE");
+        std::env::set_var("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE", &store_path);
+        let mut input = Vec::new();
+        {
+            let mut writer = FrameWriter::new(&mut input);
+            for request in [
+                extension_package_request(
+                    "install",
+                    host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
+                    extension_package_install_payload(&source, "1.0.0", None),
+                ),
+                extension_package_request(
+                    "list-installed",
+                    host_protocol::EXTENSION_PACKAGE_LIST_METHOD,
+                    serde_json::Value::Null,
+                ),
+                extension_package_request(
+                    "update",
+                    host_protocol::EXTENSION_PACKAGE_UPDATE_METHOD,
+                    extension_package_install_payload(&source, "1.1.0", Some("1.0.0")),
+                ),
+                extension_package_request(
+                    "list-updated",
+                    host_protocol::EXTENSION_PACKAGE_LIST_METHOD,
+                    serde_json::Value::Null,
+                ),
+                extension_package_request(
+                    "remove",
+                    host_protocol::EXTENSION_PACKAGE_REMOVE_METHOD,
+                    serde_json::json!({
+                        "actor": { "kind": "extension", "id": "extension-1" },
+                        "packageId": "extension-1",
+                        "traceId": "trace-extension-package"
+                    }),
+                ),
+                extension_package_request(
+                    "list-removed",
+                    host_protocol::EXTENSION_PACKAGE_LIST_METHOD,
+                    serde_json::Value::Null,
+                ),
+            ] {
+                let request_bytes = serde_json::to_vec(&request).expect("request should encode");
+                writer
+                    .send(&request_bytes)
+                    .expect("request frame should encode");
+            }
+        }
+        let mut output = Vec::new();
+
+        super::serve_framed_host_requests(Cursor::new(input), &mut output, &test_router())
+            .expect("extension package frames should dispatch");
+
+        match previous_store_path {
+            Some(path) => std::env::set_var("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE", path),
+            None => std::env::remove_var("EFFECT_DESKTOP_EXTENSION_PACKAGE_STORE"),
+        }
+        let _ = fs::remove_dir_all(dir);
+
+        let mut reader = FrameReader::new(Cursor::new(output));
+        let mut frames = Vec::new();
+        while let Some(frame) = reader.recv().expect("response frame should decode") {
+            frames.push(
+                serde_json::from_slice::<HostProtocolEnvelope>(&frame)
+                    .expect("host protocol frame should decode"),
+            );
+        }
+
+        assert_eq!(frames.len(), 9);
+        assert_extension_package_event(&frames[0], "installed", Some("1.0.0"), Some(1));
+        assert_extension_package_response(
+            &frames[1],
+            "request-extension-package-install",
+            serde_json::json!({
+                "packageId": "extension-1",
+                "version": "1.0.0",
+                "revision": 1,
+                "registeredCapabilities": [extension_package_capability()]
+            }),
+        );
+        assert_extension_package_list(
+            &frames[2],
+            "request-extension-package-list-installed",
+            1,
+            "1.0.0",
+        );
+        assert_extension_package_event(&frames[3], "updated", Some("1.1.0"), Some(2));
+        assert_extension_package_response(
+            &frames[4],
+            "request-extension-package-update",
+            serde_json::json!({
+                "packageId": "extension-1",
+                "previousVersion": "1.0.0",
+                "version": "1.1.0",
+                "revision": 2,
+                "registeredCapabilities": [extension_package_capability()]
+            }),
+        );
+        assert_extension_package_list(
+            &frames[5],
+            "request-extension-package-list-updated",
+            2,
+            "1.1.0",
+        );
+        assert_extension_package_event(&frames[6], "removed", None, Some(3));
+        assert_extension_package_response(
+            &frames[7],
+            "request-extension-package-remove",
+            serde_json::json!({
+                "packageId": "extension-1",
+                "removed": true,
+                "revision": 3
+            }),
+        );
+        assert_extension_package_response(
+            &frames[8],
+            "request-extension-package-list-removed",
+            serde_json::json!({ "packages": [] }),
+        );
+    }
+
     #[test]
     fn child_runtime_round_trips_ping_and_version_after_ready_for_bun_and_node() {
         for executable in runtime_provider_executables() {
@@ -1889,6 +2397,376 @@ console.log("this is not framed");
 
     fn test_router() -> HostMethodRouter {
         HostMethodRouter::new(Arc::new(WindowMethodPort::new()))
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("effect-desktop-runtime-{nanos}-{name}"))
+    }
+
+    fn write_host_frame<W: std::io::Write>(
+        writer: &mut FrameWriter<W>,
+        envelope: &HostProtocolEnvelope,
+    ) {
+        let bytes = serde_json::to_vec(envelope).expect("host frame should encode");
+        writer.send(&bytes).expect("host frame should write");
+    }
+
+    #[cfg(unix)]
+    fn read_host_frames_until<R>(
+        reader: &mut FrameReader<R>,
+        matches_expected: impl Fn(&HostProtocolEnvelope) -> bool,
+        expected: &str,
+    ) -> Vec<HostProtocolEnvelope>
+    where
+        R: std::io::Read,
+    {
+        let mut frames = Vec::new();
+        for _ in 0..8 {
+            let frame = reader
+                .recv()
+                .expect("host frame should decode")
+                .expect("host frame should exist");
+            let envelope = serde_json::from_slice::<HostProtocolEnvelope>(&frame)
+                .expect("host protocol frame should decode");
+            let found = matches_expected(&envelope);
+            frames.push(envelope);
+            if found {
+                return frames;
+            }
+        }
+
+        panic!("{expected} missing: {frames:?}");
+    }
+
+    #[cfg(unix)]
+    fn write_and_wait_for_stop_response<W, R>(
+        writer: &mut FrameWriter<W>,
+        reader: &mut FrameReader<R>,
+        runtime_id: &str,
+    ) -> Duration
+    where
+        W: std::io::Write,
+        R: std::io::Read,
+    {
+        let started = Instant::now();
+        write_host_frame(
+            writer,
+            &local_tool_runtime_request(
+                "stop",
+                host_protocol::LOCAL_TOOL_RUNTIME_STOP_METHOD,
+                serde_json::json!({ "runtimeId": runtime_id }),
+            ),
+        );
+        read_host_frames_until(
+            reader,
+            |frame| is_response_id(frame, "request-local-tool-runtime-stop"),
+            "stop response",
+        );
+        started.elapsed()
+    }
+
+    fn is_response_id(frame: &HostProtocolEnvelope, expected: &str) -> bool {
+        matches!(
+            frame,
+            HostProtocolEnvelope::Response { id, error, .. } if id == expected && error.is_none()
+        )
+    }
+
+    fn is_local_tool_runtime_event(frame: &HostProtocolEnvelope, expected_phase: &str) -> bool {
+        matches!(
+            frame,
+            HostProtocolEnvelope::Event { method, payload, .. }
+                if method == host_protocol::LOCAL_TOOL_RUNTIME_EVENT
+                    && payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("phase"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some(expected_phase)
+        )
+    }
+
+    fn local_tool_runtime_request(
+        id: &str,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> HostProtocolEnvelope {
+        HostProtocolEnvelope::Request {
+            id: format!("request-local-tool-runtime-{id}"),
+            method: method.to_string(),
+            timestamp: 1710000000000,
+            trace_id: format!("trace-local-tool-runtime-{id}"),
+            window_id: None,
+            origin_token: None,
+            payload: Some(payload),
+        }
+    }
+
+    fn local_tool_runtime_register_payload(
+        root: &Path,
+        runtime_id: &str,
+        executable: &Path,
+    ) -> serde_json::Value {
+        let root = root.display().to_string();
+        let executable = executable.display().to_string();
+        serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "manifest": {
+                "toolId": "tool-1",
+                "name": "Tool One",
+                "version": "1.0.0",
+                "commands": [{
+                    "commandId": "sleep",
+                    "executable": executable,
+                    "defaultArgs": [],
+                    "cwd": root,
+                    "environment": [],
+                    "timeoutMillis": 30_000
+                }],
+                "permissions": [{
+                    "kind": "process.spawn",
+                    "commands": [executable],
+                    "cwd": [root],
+                    "environment": "none",
+                    "shell": false,
+                    "audit": "always"
+                }],
+                "policy": {
+                    "cwd": { "roots": [root] },
+                    "environment": { "variables": [] },
+                    "filesystem": { "readRoots": [root] },
+                    "network": { "hosts": [] },
+                    "budgets": {
+                        "cpuMillis": 9007199254740991u64,
+                        "memoryBytes": 9007199254740991u64,
+                        "wallClockMillis": 30_000,
+                        "stdoutBytes": 1024,
+                        "stderrBytes": 1024
+                    },
+                    "stdio": { "stdout": "capture", "stderr": "capture" },
+                    "cleanup": {
+                        "killProcessTree": true,
+                        "removeWorkingDirectory": false
+                    }
+                }
+            },
+            "runtimeId": runtime_id,
+            "traceId": "trace-local-tool-runtime"
+        })
+    }
+
+    #[cfg(unix)]
+    fn write_executable(path: &Path, contents: &str) {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::write(path, contents).expect("script should write");
+        let mut permissions = fs::metadata(path).expect("script metadata").permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("script should be executable");
+    }
+
+    fn extension_config_fields() -> serde_json::Value {
+        serde_json::json!([
+            {
+                "key": "theme",
+                "valueType": "string",
+                "secret": false,
+                "defaultValue": "light"
+            },
+            { "key": "apiKey", "valueType": "string", "secret": true }
+        ])
+    }
+
+    fn extension_config_request(
+        id: &str,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> HostProtocolEnvelope {
+        HostProtocolEnvelope::Request {
+            id: format!("request-extension-config-{id}"),
+            method: method.to_string(),
+            timestamp: 1710000000000,
+            trace_id: format!("trace-extension-config-{id}"),
+            window_id: None,
+            origin_token: None,
+            payload: Some(payload),
+        }
+    }
+
+    fn extension_package_capability() -> serde_json::Value {
+        serde_json::json!({
+            "kind": "filesystem.read",
+            "roots": ["/tmp/extensions"],
+            "audit": "always"
+        })
+    }
+
+    fn extension_package_install_payload(
+        source: &Path,
+        version: &str,
+        expected_version: Option<&str>,
+    ) -> serde_json::Value {
+        let mut payload = serde_json::json!({
+            "actor": { "kind": "extension", "id": "extension-1" },
+            "source": {
+                "kind": "directory",
+                "uri": source.to_string_lossy()
+            },
+            "manifest": {
+                "id": "extension-1",
+                "name": "Extension One",
+                "version": version,
+                "entrypoint": "dist/main.js",
+                "compatibility": {
+                    "minHostVersion": "1.0.0",
+                    "maxHostVersion": "2.0.0"
+                },
+                "capabilities": [
+                    {
+                        "capability": extension_package_capability(),
+                        "reason": "read extension files"
+                    }
+                ]
+            },
+            "traceId": "trace-extension-package"
+        });
+        if let Some(expected_version) = expected_version {
+            payload["expectedVersion"] = serde_json::json!(expected_version);
+        }
+        payload
+    }
+
+    fn extension_package_request(
+        id: &str,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> HostProtocolEnvelope {
+        HostProtocolEnvelope::Request {
+            id: format!("request-extension-package-{id}"),
+            method: method.to_string(),
+            timestamp: 1710000000000,
+            trace_id: format!("trace-extension-package-{id}"),
+            window_id: None,
+            origin_token: None,
+            payload: if payload.is_null() {
+                None
+            } else {
+                Some(payload)
+            },
+        }
+    }
+
+    fn assert_extension_config_event(
+        frame: &HostProtocolEnvelope,
+        phase: &str,
+        revision: Option<u64>,
+    ) {
+        let HostProtocolEnvelope::Event {
+            method,
+            payload: Some(payload),
+            ..
+        } = frame
+        else {
+            panic!("expected extension config event frame: {frame:?}");
+        };
+        assert_eq!(method, host_protocol::EXTENSION_CONFIG_EVENT);
+        assert_eq!(payload["phase"], phase);
+        assert_eq!(payload["extensionId"], "extension-1");
+        assert_eq!(payload["keys"], serde_json::json!(["theme", "apiKey"]));
+        match revision {
+            Some(revision) => assert_eq!(payload["revision"], revision),
+            None => assert!(payload.get("revision").is_none()),
+        }
+    }
+
+    fn assert_extension_config_response(
+        frame: &HostProtocolEnvelope,
+        id: &str,
+        expected_payload: serde_json::Value,
+    ) {
+        let HostProtocolEnvelope::Response {
+            id: response_id,
+            payload,
+            error,
+            ..
+        } = frame
+        else {
+            panic!("expected extension config response frame: {frame:?}");
+        };
+        assert_eq!(response_id, id);
+        assert_eq!(payload.as_ref(), Some(&expected_payload));
+        assert_eq!(error, &None);
+    }
+
+    fn assert_extension_package_event(
+        frame: &HostProtocolEnvelope,
+        phase: &str,
+        version: Option<&str>,
+        revision: Option<u64>,
+    ) {
+        let HostProtocolEnvelope::Event {
+            method,
+            payload: Some(payload),
+            ..
+        } = frame
+        else {
+            panic!("expected extension package event frame: {frame:?}");
+        };
+        assert_eq!(method, host_protocol::EXTENSION_PACKAGE_EVENT);
+        assert_eq!(payload["phase"], phase);
+        assert_eq!(payload["packageId"], "extension-1");
+        match version {
+            Some(version) => assert_eq!(payload["version"], version),
+            None => assert!(payload.get("version").is_none()),
+        }
+        match revision {
+            Some(revision) => assert_eq!(payload["revision"], revision),
+            None => assert!(payload.get("revision").is_none()),
+        }
+    }
+
+    fn assert_extension_package_response(
+        frame: &HostProtocolEnvelope,
+        id: &str,
+        expected_payload: serde_json::Value,
+    ) {
+        let HostProtocolEnvelope::Response {
+            id: response_id,
+            payload,
+            error,
+            ..
+        } = frame
+        else {
+            panic!("expected extension package response frame: {frame:?}");
+        };
+        assert_eq!(response_id, id);
+        assert_eq!(payload.as_ref(), Some(&expected_payload));
+        assert_eq!(error, &None);
+    }
+
+    fn assert_extension_package_list(
+        frame: &HostProtocolEnvelope,
+        id: &str,
+        revision: u64,
+        version: &str,
+    ) {
+        let HostProtocolEnvelope::Response {
+            id: response_id,
+            payload: Some(payload),
+            error,
+            ..
+        } = frame
+        else {
+            panic!("expected extension package list response frame: {frame:?}");
+        };
+        assert_eq!(response_id, id);
+        assert_eq!(error, &None);
+        assert_eq!(payload["packages"][0]["packageId"], "extension-1");
+        assert_eq!(payload["packages"][0]["manifest"]["version"], version);
+        assert_eq!(payload["packages"][0]["revision"], revision);
     }
 
     fn crash_once_runtime_config(count_path: &Path) -> RuntimeConfig {

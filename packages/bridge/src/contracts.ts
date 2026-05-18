@@ -356,18 +356,74 @@ const validateSupportSpec = (tag: string, method: string, spec: RpcSupportMetada
   }
 
   if (!supportStatuses.has(spec.status)) {
-    throw invalidSpec(tag, method, "support.status must be supported or unsupported")
+    throw invalidSpec(tag, method, "support.status must be supported, partial, or unsupported")
   }
 
   if (spec.status === "supported") {
     if ("reason" in spec && spec.reason !== undefined) {
-      throw invalidSpec(tag, method, "support.reason is only allowed when status is unsupported")
+      throw invalidSpec(
+        tag,
+        method,
+        "support.reason is only allowed when status is partial or unsupported"
+      )
     }
-    return
+  } else if (typeof spec.reason !== "string" || spec.reason.trim().length === 0) {
+    throw invalidSpec(
+      tag,
+      method,
+      "partial and unsupported methods must declare a non-empty support.reason"
+    )
   }
 
-  if (typeof spec.reason !== "string" || spec.reason.length === 0) {
-    throw invalidSpec(tag, method, "unsupported methods must declare a non-empty support.reason")
+  if (spec.platforms !== undefined) {
+    validatePlatformSupportSpec(tag, method, spec.platforms)
+  }
+}
+
+const validatePlatformSupportSpec = (tag: string, method: string, platforms: unknown): void => {
+  if (!Array.isArray(platforms)) {
+    throw invalidSpec(tag, method, "support.platforms must be an array")
+  }
+
+  const seen = new Set<string>()
+  for (const platformSpec of platforms) {
+    if (typeof platformSpec !== "object" || platformSpec === null || Array.isArray(platformSpec)) {
+      throw invalidSpec(tag, method, "support.platforms entries must be objects")
+    }
+    const platform = (platformSpec as { readonly platform?: unknown }).platform
+    const status = (platformSpec as { readonly status?: unknown }).status
+    const reason = (platformSpec as { readonly reason?: unknown }).reason
+    if (typeof platform !== "string" || !supportPlatforms.has(platform)) {
+      throw invalidSpec(tag, method, "support.platforms.platform must be macos, windows, or linux")
+    }
+    if (seen.has(platform)) {
+      throw invalidSpec(tag, method, `support.platforms has duplicate platform ${platform}`)
+    }
+    seen.add(platform)
+    if (typeof status !== "string" || !supportStatuses.has(status)) {
+      throw invalidSpec(
+        tag,
+        method,
+        "support.platforms.status must be supported, partial, or unsupported"
+      )
+    }
+    if (status === "supported") {
+      if (reason !== undefined) {
+        throw invalidSpec(
+          tag,
+          method,
+          "support.platforms.reason is only allowed when status is partial or unsupported"
+        )
+      }
+      continue
+    }
+    if (typeof reason !== "string" || reason.trim().length === 0) {
+      throw invalidSpec(
+        tag,
+        method,
+        "partial and unsupported platform entries must declare a non-empty reason"
+      )
+    }
   }
 }
 
@@ -377,6 +433,12 @@ const freezeRpcSpec = <Spec extends BridgeContractSpec>(spec: Spec): Spec => {
       Object.freeze(methodSpec.backpressure)
     }
     if (methodSpec.support !== undefined) {
+      if (methodSpec.support.platforms !== undefined) {
+        for (const platform of methodSpec.support.platforms) {
+          Object.freeze(platform)
+        }
+        Object.freeze(methodSpec.support.platforms)
+      }
       Object.freeze(methodSpec.support)
     }
     if (isStreamSpec(methodSpec.output) && methodSpec.output.backpressure !== undefined) {
@@ -530,4 +592,5 @@ const backpressureOverflows = new Set<NonNullable<BackpressureSpec["overflow"]>>
   "dropNewest",
   "block"
 ])
-const supportStatuses = new Set<RpcSupportMetadata["status"]>(["supported", "unsupported"])
+const supportStatuses = new Set<unknown>(["supported", "partial", "unsupported"])
+const supportPlatforms = new Set<unknown>(["macos", "windows", "linux"])

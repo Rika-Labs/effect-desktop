@@ -137,10 +137,10 @@ instead of a panel-side cache. Invalid buffer sizes fail construction as typed
 
 ### Worker
 
-`Worker` is the runtime primitive for isolated background TypeScript work. It
-spawns Bun workers through a substitutable adapter, validates every outbound and
-inbound channel message with Effect Schema, and registers each worker as a
-scope-bound `ResourceRegistry` handle.
+`Worker` is the runtime primitive for background TypeScript work in a separate
+worker runtime. It spawns Bun workers through a substitutable adapter, validates
+every outbound and inbound channel message with Effect Schema, and registers
+each worker as a scope-bound `ResourceRegistry` handle.
 
 `spawn({ script, ownerScope, inputSchema, outputSchema, context, capabilities })`
 checks every declared capability against `PermissionRegistry` before touching

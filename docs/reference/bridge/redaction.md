@@ -28,7 +28,7 @@ Custom patterns and explicit allowlist paths can be configured per-instance.
 
 - Every audit event, before append.
 - Every bridge error, before emission.
-- Every `CrashReporter` breadcrumb's `data`.
+- Every `CrashReporter` breadcrumb's `details`.
 - Every devtools snapshot.
 
 You can opt **in** to redaction in custom paths but you can't opt **out** at the audit layer.

@@ -12,6 +12,10 @@ effect_version: 4
 
 Permissions make privileged behavior explicit. Filesystem writes, process execution, secret access, updater install, external navigation, and native operations cross **named capability policy**.
 
+This is not a WebView session permission manager. Browser permission prompts
+for camera, microphone, notifications, geolocation, clipboard, and display
+capture still need a dedicated profile/session-partitioned native service.
+
 ## Public surface
 
 `@effect-desktop/core` exports:

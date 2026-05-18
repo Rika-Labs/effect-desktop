@@ -1,17 +1,22 @@
 import { Schema } from "effect"
 import { BridgeSafeNonEmptyString, PrintableNonEmptyString } from "./strings.js"
-import { ProtocolScheme } from "./protocol.js"
 
 const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0))
 const PortableExitCode = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0),
   Schema.isLessThanOrEqualTo(255)
 )
-const AppVersion = Schema.NonEmptyString.check(
-  Schema.isPattern(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u)
-)
 // eslint-disable-next-line no-control-regex -- App launch args must reject NUL.
 const ArgString = Schema.NonEmptyString.check(Schema.isPattern(/^[^\u0000]*$/))
+const DangerousOpenIntentSchemes = new Set([
+  "about:",
+  "blob:",
+  "data:",
+  "file:",
+  "javascript:",
+  "vbscript:",
+  "view-source:"
+])
 const isAppUrl = (value: string): boolean => {
   if (value.length === 0) {
     return false
@@ -22,9 +27,8 @@ const isAppUrl = (value: string): boolean => {
   }
 
   try {
-    // eslint-disable-next-line no-new -- URL validates URL-like strings and protocol prefixes.
-    new URL(value)
-    return true
+    const url = new URL(value)
+    return !DangerousOpenIntentSchemes.has(url.protocol.toLowerCase())
   } catch {
     return false
   }
@@ -33,17 +37,29 @@ const isAppUrl = (value: string): boolean => {
 const AppUrl = PrintableNonEmptyString.check(
   Schema.makeFilter((value) => isAppUrl(value) || "must be a valid URL")
 )
+const AppOpenFilePath = PrintableNonEmptyString.check(
+  Schema.makeFilter(
+    (value) => isSafeAbsolutePlatformPath(value) || "must be an absolute path without dot segments"
+  )
+)
 
-export class AppInfo extends Schema.Class<AppInfo>("AppInfo")({
-  id: PrintableNonEmptyString,
-  name: PrintableNonEmptyString,
-  version: AppVersion
-}) {}
+const WindowsDriveAbsolutePathPattern = /^[A-Za-z]:[\\/]/u
+const WindowsUncAbsolutePathPattern = /^\\\\[^\\/]+\\[^\\/]+(?:[\\/]|$)/u
 
-export class AppCommandLine extends Schema.Class<AppCommandLine>("AppCommandLine")({
-  argv: Schema.Array(ArgString),
-  cwd: BridgeSafeNonEmptyString
-}) {}
+const isSafeAbsolutePlatformPath = (value: string): boolean => {
+  if (value.startsWith("/")) {
+    return !hasDotPathSegment(value, /\/+/u)
+  }
+
+  if (WindowsDriveAbsolutePathPattern.test(value) || WindowsUncAbsolutePathPattern.test(value)) {
+    return !hasDotPathSegment(value, /[\\/]+/u)
+  }
+
+  return false
+}
+
+const hasDotPathSegment = (value: string, separator: RegExp): boolean =>
+  value.split(separator).some((segment) => segment === "." || segment === "..")
 
 export class AppQuitInput extends Schema.Class<AppQuitInput>("AppQuitInput")({
   exitCode: Schema.optionalKey(PortableExitCode)
@@ -72,30 +88,19 @@ export const AppSingleInstanceOutput = AppSingleInstanceResult.check(
   )
 )
 
-export class AppOpenAtLoginInput extends Schema.Class<AppOpenAtLoginInput>("AppOpenAtLoginInput")({
-  enabled: Schema.Boolean,
-  args: Schema.optionalKey(Schema.Array(ArgString))
-}) {}
-
-export type AppOpenAtLoginOptions = Schema.Schema.Type<typeof AppOpenAtLoginInput>
-
-export class AppProtocolInput extends Schema.Class<AppProtocolInput>("AppProtocolInput")({
-  scheme: ProtocolScheme
-}) {}
-
-export type AppProtocolOptions = Schema.Schema.Type<typeof AppProtocolInput>
+export const AppActivationReason = Schema.Literals(["launch", "open-file", "open-url", "unknown"])
 
 export class AppSecondInstanceEvent extends Schema.Class<AppSecondInstanceEvent>(
   "AppSecondInstanceEvent"
 )({
   argv: Schema.Array(ArgString),
   cwd: BridgeSafeNonEmptyString,
+  activationReason: AppActivationReason,
   traceId: PrintableNonEmptyString
 }) {}
 
 export class AppOpenFileEvent extends Schema.Class<AppOpenFileEvent>("AppOpenFileEvent")({
-  // eslint-disable-next-line no-control-regex
-  path: Schema.NonEmptyString.check(Schema.isPattern(/^[^\x00]*$/))
+  path: AppOpenFilePath
 }) {}
 
 export class AppOpenUrlEvent extends Schema.Class<AppOpenUrlEvent>("AppOpenUrlEvent")({

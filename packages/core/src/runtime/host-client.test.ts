@@ -4,11 +4,12 @@ import {
   HostProtocolFrameTooLargeError,
   HostProtocolHostUnavailableError,
   HostProtocolInvalidOutputError,
+  HostProtocolEventEnvelope,
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   encodeHostProtocolEnvelope
 } from "@effect-desktop/bridge"
-import { Effect, Exit, Stream } from "effect"
+import { Effect, Exit, Fiber, Option, Queue, Stream } from "effect"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import { createHostProtocolExchange } from "./host-client.js"
@@ -262,6 +263,248 @@ test("host protocol exchange rejects invalid minted trace IDs before auditing", 
   expect(rows).toEqual([])
 })
 
+test("host protocol exchange routes native events before the matching response", async () => {
+  const inbound = await Effect.runPromise(Queue.unbounded<Uint8Array>())
+  const event = new HostProtocolEventEnvelope({
+    kind: "event",
+    method: "EgressPolicy.DecisionRecorded",
+    timestamp: 1,
+    traceId: "trace-1",
+    payload: { type: "decision-recorded" }
+  })
+  const response = new HostProtocolResponseEnvelope({
+    kind: "response",
+    id: "request-1",
+    timestamp: 2,
+    traceId: "trace-1"
+  })
+  await Effect.runPromise(Queue.offer(inbound, frame(event)))
+  await Effect.runPromise(Queue.offer(inbound, frame(response)))
+  const exchange = createHostProtocolExchange(
+    transport({
+      receive: Stream.fromQueue(inbound)
+    })
+  )
+
+  const first = await Effect.runPromise(exchange.request(request()))
+  const eventStream = exchange.subscribe?.("EgressPolicy.DecisionRecorded")
+  expect(eventStream).toBeDefined()
+  const observed = await Effect.runPromise(
+    (eventStream ?? Stream.die("subscription should be supported")).pipe(
+      Stream.runHead,
+      Effect.map(Option.getOrThrow)
+    )
+  )
+  expect(first.id).toBe("request-1")
+  expect(observed.method).toBe("EgressPolicy.DecisionRecorded")
+})
+
+test("host protocol exchange starts event reads only when the event stream is consumed", async () => {
+  let reads = 0
+  const inbound = await Effect.runPromise(Queue.unbounded<Uint8Array>())
+  const event = new HostProtocolEventEnvelope({
+    kind: "event",
+    method: "EgressPolicy.DecisionRecorded",
+    timestamp: 1,
+    traceId: "trace-1",
+    payload: { type: "decision-recorded" }
+  })
+  const exchange = createHostProtocolExchange(
+    transport({
+      receive: Stream.fromQueue(inbound).pipe(
+        Stream.map((frame) => {
+          reads += 1
+          return frame
+        })
+      )
+    })
+  )
+
+  const eventStream = exchange.subscribe?.("EgressPolicy.DecisionRecorded")
+  expect(eventStream).toBeDefined()
+  expect(reads).toBe(0)
+  await Effect.runPromise(Queue.offer(inbound, frame(event)))
+
+  const observed = await Effect.runPromise(
+    (eventStream ?? Stream.die("subscription should be supported")).pipe(
+      Stream.runHead,
+      Effect.map(Option.getOrThrow)
+    )
+  )
+
+  expect(observed.method).toBe("EgressPolicy.DecisionRecorded")
+  expect(reads).toBe(1)
+})
+
+test("host protocol exchange close interrupts active event reads and closes transport", async () => {
+  let closed = 0
+  const exchange = createHostProtocolExchange(
+    transport({
+      receive: Stream.never,
+      close: () =>
+        Effect.sync(() => {
+          closed += 1
+        })
+    })
+  )
+  const eventStream = exchange.subscribe?.("EgressPolicy.DecisionRecorded")
+  expect(eventStream).toBeDefined()
+  const fiber = Effect.runFork(
+    (eventStream ?? Stream.die("subscription should be supported")).pipe(Stream.runDrain)
+  )
+
+  await Effect.runPromise(exchange.close?.() ?? Effect.void)
+  await Effect.runPromise(Fiber.interrupt(fiber))
+
+  expect(closed).toBeGreaterThanOrEqual(1)
+})
+
+test("host protocol exchange routes native events after a completed request", async () => {
+  const inbound = await Effect.runPromise(Queue.unbounded<Uint8Array>())
+  const sent = await Effect.runPromise(Queue.unbounded<void>())
+  const response = new HostProtocolResponseEnvelope({
+    kind: "response",
+    id: "request-1",
+    timestamp: 1,
+    traceId: "trace-1"
+  })
+  const event = new HostProtocolEventEnvelope({
+    kind: "event",
+    method: "EgressPolicy.DecisionRecorded",
+    timestamp: 2,
+    traceId: "trace-1",
+    payload: { type: "decision-recorded" }
+  })
+  const exchange = createHostProtocolExchange(
+    transport({
+      send: () => Queue.offer(sent, undefined),
+      receive: Stream.fromQueue(inbound)
+    })
+  )
+
+  const eventStream = exchange.subscribe?.("EgressPolicy.DecisionRecorded")
+  expect(eventStream).toBeDefined()
+  const firstFiber = Effect.runFork(exchange.request(request()))
+  await Effect.runPromise(Queue.take(sent))
+  await Effect.runPromise(Queue.offer(inbound, frame(response)))
+  const first = await Effect.runPromise(Fiber.join(firstFiber))
+  await Effect.runPromise(Queue.offer(inbound, frame(event)))
+  const observed = await Effect.runPromise(
+    (eventStream ?? Stream.die("subscription should be supported")).pipe(
+      Stream.runHead,
+      Effect.map(Option.getOrThrow),
+      Effect.timeout("100 millis")
+    )
+  )
+
+  expect(first.id).toBe("request-1")
+  expect(observed.method).toBe("EgressPolicy.DecisionRecorded")
+})
+
+test("host protocol exchange routes out-of-order responses by request id", async () => {
+  const inbound = await Effect.runPromise(Queue.unbounded<Uint8Array>())
+  const sent = await Effect.runPromise(Queue.unbounded<void>())
+  const exchange = createHostProtocolExchange(
+    transport({
+      send: () => Queue.offer(sent, undefined),
+      receive: Stream.fromQueue(inbound)
+    })
+  )
+  const requestTwo = new HostProtocolRequestEnvelope({
+    kind: "request",
+    id: "request-2",
+    method: "host.ping",
+    timestamp: 2,
+    traceId: "trace-2"
+  })
+  const firstFiber = Effect.runFork(exchange.request(request()))
+  const secondFiber = Effect.runFork(exchange.request(requestTwo))
+  await Effect.runPromise(Queue.take(sent))
+  await Effect.runPromise(Queue.take(sent))
+
+  await Effect.runPromise(
+    Queue.offer(
+      inbound,
+      frame(
+        new HostProtocolResponseEnvelope({
+          kind: "response",
+          id: "request-2",
+          timestamp: 3,
+          traceId: "trace-2"
+        })
+      )
+    )
+  )
+  await Effect.runPromise(
+    Queue.offer(
+      inbound,
+      frame(
+        new HostProtocolResponseEnvelope({
+          kind: "response",
+          id: "request-1",
+          timestamp: 4,
+          traceId: "trace-1"
+        })
+      )
+    )
+  )
+
+  const [first, second] = await Effect.runPromise(
+    Effect.all([Fiber.join(firstFiber), Fiber.join(secondFiber)])
+  )
+
+  expect(first.id).toBe("request-1")
+  expect(second.id).toBe("request-2")
+})
+
+test("host protocol exchange fails active event streams when the host reader fails", async () => {
+  const exchange = createHostProtocolExchange(
+    transport({
+      receive: Stream.fail(
+        new TransportFrameTruncatedError({
+          operation: "TransportConnection.receive",
+          stage: "body",
+          expected: 8,
+          read: 2
+        })
+      )
+    })
+  )
+  const eventStream = exchange.subscribe?.("EgressPolicy.DecisionRecorded")
+  expect(eventStream).toBeDefined()
+
+  const exit = await Effect.runPromiseExit(
+    (eventStream ?? Stream.die("subscription should be supported")).pipe(Stream.runHead)
+  )
+
+  expectFailure(exit, HostProtocolBinaryDecodeError)
+  expect(getFailure(exit)).toMatchObject({
+    operation: "TransportConnection.receive",
+    tag: "BinaryDecodeError"
+  })
+})
+
+test("host protocol exchange fails new event streams after the host reader is fatal", async () => {
+  const exchange = createHostProtocolExchange(
+    transport({
+      receive: Stream.empty
+    })
+  )
+  await Effect.runPromiseExit(exchange.request(request()))
+  const eventStream = exchange.subscribe?.("EgressPolicy.DecisionRecorded")
+  expect(eventStream).toBeDefined()
+
+  const exit = await Effect.runPromiseExit(
+    (eventStream ?? Stream.die("subscription should be supported")).pipe(Stream.runHead)
+  )
+
+  expectFailure(exit, HostProtocolHostUnavailableError)
+  expect(getFailure(exit)).toMatchObject({
+    operation: "TransportConnection.receive",
+    tag: "HostUnavailable"
+  })
+})
+
 test("host protocol exchange maps oversized outbound frames to FrameTooLarge", async () => {
   const exchange = createHostProtocolExchange(
     transport({
@@ -315,6 +558,9 @@ const transport = (overrides: Partial<TransportConnection>): TransportConnection
   close: () => Effect.void,
   ...overrides
 })
+
+const frame = (envelope: HostProtocolEventEnvelope | HostProtocolResponseEnvelope): Uint8Array =>
+  new TextEncoder().encode(JSON.stringify(encodeHostProtocolEnvelope(envelope)))
 
 const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>

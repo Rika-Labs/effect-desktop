@@ -3,11 +3,8 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -18,28 +15,42 @@ import { NativeSurface } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import {
   PowerMonitorIsSupportedInput,
+  PowerMonitorLockScreenEvent,
   type PowerMonitorMethod,
   PowerMonitorResumeEvent,
   PowerMonitorShutdownEvent,
   PowerMonitorSourceChangedEvent,
   PowerMonitorSupportedResult,
-  PowerMonitorSuspendEvent
+  PowerMonitorSuspendEvent,
+  PowerMonitorUnlockScreenEvent
 } from "./contracts/power-monitor.js"
 
 export type PowerMonitorError = HostProtocolError
+
+const UnsupportedReason = "host-adapter-unimplemented"
+
+const PowerMonitorSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
 
 export const PowerMonitorIsSupported = NativeSurface.rpc("PowerMonitor", "isSupported", {
   payload: PowerMonitorIsSupportedInput,
   success: PowerMonitorSupportedResult,
   authority: NativeSurface.authority.none,
-  endpoint: "mutation",
-  support: NativeSurface.support.supported
+  endpoint: "query",
+  support: PowerMonitorSupport
 })
 
 export const PowerMonitorRpcEvents = Object.freeze({
   Suspend: { payload: PowerMonitorSuspendEvent },
   Resume: { payload: PowerMonitorResumeEvent },
   Shutdown: { payload: PowerMonitorShutdownEvent },
+  LockScreen: { payload: PowerMonitorLockScreenEvent },
+  UnlockScreen: { payload: PowerMonitorUnlockScreenEvent },
   PowerSourceChanged: { payload: PowerMonitorSourceChangedEvent }
 })
 
@@ -55,6 +66,12 @@ export interface PowerMonitorClientApi {
   readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never>
   readonly onResume: () => Stream.Stream<PowerMonitorResumeEvent, PowerMonitorError, never>
   readonly onShutdown: () => Stream.Stream<PowerMonitorShutdownEvent, PowerMonitorError, never>
+  readonly onLockScreen: () => Stream.Stream<PowerMonitorLockScreenEvent, PowerMonitorError, never>
+  readonly onUnlockScreen: () => Stream.Stream<
+    PowerMonitorUnlockScreenEvent,
+    PowerMonitorError,
+    never
+  >
   readonly onPowerSourceChanged: () => Stream.Stream<
     PowerMonitorSourceChangedEvent,
     PowerMonitorError,
@@ -86,6 +103,8 @@ export class PowerMonitor extends Context.Service<PowerMonitor, PowerMonitorServ
         onSuspend: () => client.onSuspend(),
         onResume: () => client.onResume(),
         onShutdown: () => client.onShutdown(),
+        onLockScreen: () => client.onLockScreen(),
+        onUnlockScreen: () => client.onUnlockScreen(),
         onPowerSourceChanged: () => client.onPowerSourceChanged(),
         isSupported: (method) =>
           client.isSupported(method).pipe(Effect.map((result) => result.supported))
@@ -107,13 +126,7 @@ export const makePowerMonitorServiceLayer = (
 export const makePowerMonitorBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
-): Layer.Layer<PowerMonitorClient> =>
-  Layer.effect(
-    PowerMonitorClient,
-    RpcClient.make(PowerMonitorRpcGroup).pipe(
-      Effect.map((client) => powerMonitorClientFromRpcClient(client, exchange))
-    )
-  ).pipe(Layer.provide(makePowerMonitorBridgeProtocolLayer(exchange, options)))
+): Layer.Layer<PowerMonitorClient> => PowerMonitorSurface.bridgeClientLayer(exchange, options)
 
 export type PowerMonitorRpc = RpcGroup.Rpcs<typeof PowerMonitorRpcGroup>
 
@@ -131,7 +144,8 @@ export const PowerMonitorHandlersLive = PowerMonitorRpcGroup.toLayer({
 export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonitorRpcGroup, {
   service: PowerMonitorClient,
   handlers: PowerMonitorHandlersLive,
-  client: (client) => powerMonitorClientFromRpcClient(client, undefined)
+  client: (client) => powerMonitorClientFromRpcClient(client, undefined),
+  bridgeClient: (client, exchange) => powerMonitorClientFromRpcClient(client, exchange)
 })
 
 export const makeHostPowerMonitorRpcRuntime = (
@@ -143,14 +157,22 @@ export const makeHostPowerMonitorRpcRuntime = (
 const powerMonitorClientFromRpcClient = (
   client: DesktopRpcClient<PowerMonitorRpc>,
   exchange: BridgeClientExchange | undefined
-): PowerMonitorClientApi => {
-  return Object.freeze({
+): PowerMonitorClientApi =>
+  Object.freeze({
     onSuspend: () =>
       subscribePowerMonitorEvent(exchange, "PowerMonitor.Suspend", PowerMonitorSuspendEvent),
     onResume: () =>
       subscribePowerMonitorEvent(exchange, "PowerMonitor.Resume", PowerMonitorResumeEvent),
     onShutdown: () =>
       subscribePowerMonitorEvent(exchange, "PowerMonitor.Shutdown", PowerMonitorShutdownEvent),
+    onLockScreen: () =>
+      subscribePowerMonitorEvent(exchange, "PowerMonitor.LockScreen", PowerMonitorLockScreenEvent),
+    onUnlockScreen: () =>
+      subscribePowerMonitorEvent(
+        exchange,
+        "PowerMonitor.UnlockScreen",
+        PowerMonitorUnlockScreenEvent
+      ),
     onPowerSourceChanged: () =>
       subscribePowerMonitorEvent(
         exchange,
@@ -163,17 +185,6 @@ const powerMonitorClientFromRpcClient = (
         "PowerMonitor.isSupported"
       )
   } satisfies PowerMonitorClientApi)
-}
-
-const makePowerMonitorBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribePowerMonitorEvent = <A>(
   exchange: BridgeClientExchange | undefined,

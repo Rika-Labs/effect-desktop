@@ -4,7 +4,7 @@ use std::{
 };
 
 #[cfg(unix)]
-pub(super) fn configure_command(command: &mut Command) {
+pub(crate) fn configure_command(command: &mut Command) {
     use std::os::unix::process::CommandExt;
 
     command.process_group(0);
@@ -30,26 +30,26 @@ pub(super) fn configure_command(command: &mut Command) {
 }
 
 #[cfg(windows)]
-pub(super) fn configure_command(_command: &mut Command) {}
+pub(crate) fn configure_command(_command: &mut Command) {}
 
 #[cfg(not(any(unix, windows)))]
-pub(super) fn configure_command(_command: &mut Command) {}
+pub(crate) fn configure_command(_command: &mut Command) {}
 
 #[cfg(unix)]
-pub(super) struct ChildGuard;
+pub(crate) struct ChildGuard;
 
 #[cfg(unix)]
 impl ChildGuard {
-    pub(super) fn attach(_child: &Child) -> io::Result<Self> {
+    pub(crate) fn attach(_child: &Child) -> io::Result<Self> {
         Ok(Self)
     }
 }
 
 #[cfg(unix)]
-pub(super) fn release_child_guard(_guard: ChildGuard) {}
+pub(crate) fn release_child_guard(_guard: ChildGuard) {}
 
 #[cfg(windows)]
-pub(super) struct ChildGuard {
+pub(crate) struct ChildGuard {
     job: windows_sys::Win32::Foundation::HANDLE,
 }
 
@@ -62,14 +62,14 @@ unsafe impl Send for ChildGuard {}
 
 #[cfg(windows)]
 impl ChildGuard {
-    pub(super) fn attach(child: &Child) -> io::Result<Self> {
+    pub(crate) fn attach(child: &Child) -> io::Result<Self> {
         use std::{mem::size_of, os::windows::io::AsRawHandle, ptr::null};
         use windows_sys::Win32::{
             Foundation::HANDLE,
             System::JobObjects::{
                 AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
                 SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-                JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
             },
         };
 
@@ -82,8 +82,7 @@ impl ChildGuard {
 
         let guard = Self { job };
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        limits.BasicLimitInformation.LimitFlags =
-            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 
         // SAFETY: `limits` is a valid JOBOBJECT_EXTENDED_LIMIT_INFORMATION
         // buffer for the given information class, and `guard.job` is live.
@@ -125,35 +124,35 @@ impl Drop for ChildGuard {
 }
 
 #[cfg(windows)]
-pub(super) fn release_child_guard(guard: ChildGuard) {
+pub(crate) fn release_child_guard(guard: ChildGuard) {
     drop(guard);
 }
 
 #[cfg(not(any(unix, windows)))]
-pub(super) struct ChildGuard;
+pub(crate) struct ChildGuard;
 
 #[cfg(not(any(unix, windows)))]
 impl ChildGuard {
-    pub(super) fn attach(_child: &Child) -> io::Result<Self> {
+    pub(crate) fn attach(_child: &Child) -> io::Result<Self> {
         Ok(Self)
     }
 }
 
 #[cfg(not(any(unix, windows)))]
-pub(super) fn release_child_guard(_guard: ChildGuard) {}
+pub(crate) fn release_child_guard(_guard: ChildGuard) {}
 
 #[cfg(unix)]
-pub(super) fn request_termination(child: &mut Child) -> io::Result<()> {
+pub(crate) fn request_termination(child: &mut Child) -> io::Result<()> {
     send_signal_to_process_group(child, libc::SIGTERM)
 }
 
 #[cfg(unix)]
-pub(super) fn force_termination(child: &mut Child) -> io::Result<()> {
+pub(crate) fn force_termination(child: &mut Child) -> io::Result<()> {
     send_signal_to_process_group(child, libc::SIGKILL)
 }
 
 #[cfg(unix)]
-pub(super) fn cleanup_process_tree_after_exit(child: &Child) -> io::Result<()> {
+pub(crate) fn cleanup_process_tree_after_exit(child: &Child) -> io::Result<()> {
     send_signal_to_process_group(child, libc::SIGKILL)
 }
 
@@ -183,16 +182,16 @@ fn send_signal_to_process_group(child: &Child, signal: libc::c_int) -> io::Resul
 }
 
 #[cfg(not(unix))]
-pub(super) fn request_termination(child: &mut Child) -> io::Result<()> {
+pub(crate) fn request_termination(child: &mut Child) -> io::Result<()> {
     child.kill()
 }
 
 #[cfg(not(unix))]
-pub(super) fn force_termination(child: &mut Child) -> io::Result<()> {
+pub(crate) fn force_termination(child: &mut Child) -> io::Result<()> {
     child.kill()
 }
 
 #[cfg(not(unix))]
-pub(super) fn cleanup_process_tree_after_exit(_child: &Child) -> io::Result<()> {
+pub(crate) fn cleanup_process_tree_after_exit(_child: &Child) -> io::Result<()> {
     Ok(())
 }

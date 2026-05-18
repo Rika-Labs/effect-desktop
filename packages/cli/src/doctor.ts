@@ -1,7 +1,11 @@
-import { isAbsolute, join, relative, resolve } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { DesktopSchedules, type LayerGraphSnapshot } from "@effect-desktop/core"
+import {
+  DesktopSchedules,
+  LayerGraphSnapshot,
+  NativeParityMatrixResult
+} from "@effect-desktop/core"
 import { Context, Data, Effect, Option, Result, Schema } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
@@ -17,6 +21,15 @@ export class DoctorMissing extends Data.TaggedError("DoctorMissing")<{
   readonly docsUrl: string
 }> {}
 
+export class DoctorCapabilityTruthUnavailable extends Data.TaggedError(
+  "DoctorCapabilityTruthUnavailable"
+)<{
+  readonly reason: "unavailable" | "invalid"
+  readonly path: string
+  readonly message: string
+  readonly cause: unknown
+}> {}
+
 export type DoctorProbeName =
   | "bun-version"
   | "rust-toolchain"
@@ -25,6 +38,7 @@ export type DoctorProbeName =
   | "signing-credentials"
   | "build-tools"
   | "package-manager-state"
+  | "native-capabilities"
   | "native-host-cache"
   | "config"
 
@@ -44,6 +58,7 @@ export class DoctorDiagnostic extends Schema.Class<DoctorDiagnostic>("DoctorDiag
     "signing-credentials",
     "build-tools",
     "package-manager-state",
+    "native-capabilities",
     "native-host-cache",
     "config"
   ]),
@@ -99,16 +114,17 @@ export interface DesktopDoctorOptions {
   readonly commandRunner: DoctorCommandRunner
   readonly env?: Readonly<Record<string, string | undefined>>
   readonly layerGraph?: LayerGraphSnapshot
+  readonly nativeParityMatrixPath?: string
 }
 
-export interface DesktopDoctorReport {
-  readonly passed: boolean
-  readonly ci: boolean
-  readonly platform: string
-  readonly arch: string
-  readonly probes: readonly DoctorDiagnostic[]
-  readonly layerGraph: LayerGraphSnapshot | undefined
-}
+export class DesktopDoctorReport extends Schema.Class<DesktopDoctorReport>("DesktopDoctorReport")({
+  passed: Schema.Boolean,
+  ci: Schema.Boolean,
+  platform: Schema.String,
+  arch: Schema.String,
+  probes: Schema.Array(DoctorDiagnostic),
+  layerGraph: Schema.UndefinedOr(LayerGraphSnapshot)
+}) {}
 
 interface AppConfig {
   readonly app?: {
@@ -155,6 +171,10 @@ interface AppConfig {
 }
 
 const DOCS_URL = "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/troubleshooting.md"
+const NATIVE_PARITY_MATRIX_PATH = join(dirname(import.meta.path), "native-parity-matrix.json")
+const NATIVE_PARITY_MATRIX_EVIDENCE_PATH = "packages/cli/src/native-parity-matrix.json"
+const NATIVE_PARITY_MATRIX_DOCS_URL =
+  "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/reference/native/parity-matrix.md"
 const MAX_PROTOCOL_FRAME_BYTES = 16 * 1024 * 1024
 const MAX_PROTOCOL_CONCURRENT_REQUESTS_PER_WINDOW = 4096
 const MAX_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW = 1024
@@ -162,7 +182,7 @@ const MAX_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 65_536
 
 export const runDesktopDoctor = (
   options: DesktopDoctorOptions
-): Effect.Effect<DesktopDoctorReport, never, never> =>
+): Effect.Effect<DesktopDoctorReport, DoctorCapabilityTruthUnavailable, never> =>
   Effect.gen(function* () {
     const probes = yield* Effect.all(
       [
@@ -173,21 +193,39 @@ export const runDesktopDoctor = (
         probeSigningCredentials(options),
         probeBuildTools(options),
         probePackageManagerState(options),
+        probeNativeCapabilities(options),
         probeNativeHostCache(options),
         probeConfig(options)
       ],
       { concurrency: 1 }
     )
 
-    return {
+    return new DesktopDoctorReport({
       passed: probes.every((probe) => probe.status !== "missing"),
       ci: options.ci,
       platform: options.platform,
       arch: options.arch,
       probes,
       layerGraph: options.layerGraph
-    }
+    })
   }).pipe(Effect.provideService(DoctorEnvironment, makeDoctorEnvironment(options.env ?? {})))
+
+export const encodeDesktopDoctorReport = (report: DesktopDoctorReport): unknown =>
+  Schema.encodeUnknownSync(DesktopDoctorReport)(report)
+
+export const formatDoctorError = (
+  error: DoctorCapabilityTruthUnavailable
+): {
+  readonly tag: "DoctorCapabilityTruthUnavailable"
+  readonly reason: "unavailable" | "invalid"
+  readonly path: string
+  readonly message: string
+} => ({
+  tag: "DoctorCapabilityTruthUnavailable",
+  reason: error.reason,
+  path: error.path,
+  message: error.message
+})
 
 export const runDoctorCommand: DoctorCommandRunner = (invocation) =>
   Effect.gen(function* () {
@@ -435,6 +473,66 @@ const probeNativeHostCache = (
       "Run `bun desktop build` or `cargo build -p host --release` before packaging.",
       "cargo build -p host --release"
     )
+  })
+
+const probeNativeCapabilities = (
+  options: DesktopDoctorOptions
+): Effect.Effect<DoctorProbeResult, DoctorCapabilityTruthUnavailable, never> =>
+  Effect.gen(function* () {
+    const path = options.nativeParityMatrixPath ?? NATIVE_PARITY_MATRIX_PATH
+    const content = yield* readNativeParityMatrixFile(path)
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(NativeParityMatrixResult))(
+      content
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DoctorCapabilityTruthUnavailable({
+            reason: "invalid",
+            path,
+            message: `native capability parity matrix is invalid at ${path}`,
+            cause
+          })
+      )
+    )
+  }).pipe(
+    Effect.map((matrix) => {
+      const status = matrix.summary.missing === 0 ? "ok" : "warning"
+      const diagnostic = {
+        name: "native-capabilities",
+        status,
+        component: "native parity matrix",
+        message: `native capability matrix reports ${matrix.summary.total} methods, ${matrix.summary.routed} host-routed, ${matrix.summary.missing} missing host routes`,
+        docsUrl: NATIVE_PARITY_MATRIX_DOCS_URL,
+        evidence: [
+          new DoctorEvidence({ key: "source", value: NATIVE_PARITY_MATRIX_EVIDENCE_PATH }),
+          new DoctorEvidence({ key: "total", value: String(matrix.summary.total) }),
+          new DoctorEvidence({ key: "routed", value: String(matrix.summary.routed) }),
+          new DoctorEvidence({ key: "missing", value: String(matrix.summary.missing) })
+        ]
+      } satisfies ConstructorParameters<typeof DoctorDiagnostic>[0]
+      if (status === "ok") {
+        return new DoctorDiagnostic(diagnostic)
+      }
+      return new DoctorDiagnostic({
+        ...diagnostic,
+        remediation:
+          "Inspect the native parity matrix before using methods with missing host routes."
+      })
+    })
+  )
+
+const readNativeParityMatrixFile = (
+  path: string
+): Effect.Effect<string, DoctorCapabilityTruthUnavailable, never> =>
+  Effect.tryPromise({
+    try: () => Bun.file(path).text(),
+    catch: (cause) =>
+      new DoctorCapabilityTruthUnavailable({
+        reason: "unavailable",
+        path,
+        message: `native capability parity matrix is unavailable at ${path}`,
+        cause
+      })
   })
 
 const probeConfig = (

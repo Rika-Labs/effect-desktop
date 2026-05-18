@@ -1,5 +1,6 @@
-import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
+import { Context, Effect, Layer, Option, Ref, Schema, Stream } from "effect"
 
+import { HostProtocolNotFoundError } from "@effect-desktop/bridge"
 import {
   makePermissionRegistry,
   NormalizedCapability,
@@ -35,7 +36,10 @@ import {
 import {
   ClipboardImage,
   ScreenDisplay,
+  ScreenDisplaysChangedEvent,
   ScreenPoint,
+  WindowBounds,
+  WindowState,
   type ClipboardCapability,
   type ClipboardImageOptions,
   type DialogConfirmOptions,
@@ -52,13 +56,14 @@ import { assertNoOpenResources } from "./index.js"
 
 export interface TestClipboardOptions {
   readonly text?: string
+  readonly html?: string
   readonly supported?: Partial<Record<ClipboardCapability, boolean>>
 }
 
 export interface TestDialogOptions {
   readonly openFilePaths?: readonly string[]
   readonly openDirectoryPaths?: readonly string[]
-  readonly saveFilePath?: string
+  readonly saveFilePath?: string | null
   readonly confirmResult?: boolean
 }
 
@@ -193,15 +198,18 @@ export const makeClipboardScenarioLayer = (
 ): Layer.Layer<Clipboard, never, never> =>
   Layer.succeed(Clipboard)(
     makeClipboardScenario({
+      initialHtml: options.html ?? "",
       initialText: options.text ?? "",
       supported: options.supported ?? {}
     })
   )
 
 const makeClipboardScenario = (options: {
+  readonly initialHtml: string
   readonly initialText: string
   readonly supported: Partial<Record<ClipboardCapability, boolean>>
 }): ClipboardServiceApi => {
+  let htmlContent = options.initialHtml
   let textContent = options.initialText
   let imageContent: ClipboardImage | undefined
 
@@ -210,6 +218,11 @@ const makeClipboardScenario = (options: {
     writeText: (text: string): Effect.Effect<void, ClipboardError, never> =>
       Effect.sync(() => {
         textContent = text
+      }),
+    readHtml: (): Effect.Effect<string, ClipboardError, never> => Effect.sync(() => htmlContent),
+    writeHtml: (html: string): Effect.Effect<void, ClipboardError, never> =>
+      Effect.sync(() => {
+        htmlContent = html
       }),
     readImage: (): Effect.Effect<ClipboardImage, ClipboardError, never> =>
       Effect.sync(
@@ -221,6 +234,7 @@ const makeClipboardScenario = (options: {
       }),
     clear: (): Effect.Effect<void, ClipboardError, never> =>
       Effect.sync(() => {
+        htmlContent = ""
         textContent = ""
         imageContent = undefined
       }),
@@ -241,8 +255,10 @@ const makeDialogScenario = (options: TestDialogOptions): DialogServiceApi =>
       _input?: DialogOpenDirectoryOptions
     ): Effect.Effect<readonly string[], DialogError> =>
       Effect.succeed([...(options.openDirectoryPaths ?? [])]),
-    saveFile: (_input?: DialogSaveFileOptions): Effect.Effect<string, DialogError> =>
-      Effect.succeed(options.saveFilePath ?? "/tmp/save"),
+    saveFile: (_input?: DialogSaveFileOptions): Effect.Effect<string | undefined, DialogError> =>
+      Effect.succeed(
+        options.saveFilePath === null ? undefined : (options.saveFilePath ?? "/tmp/save")
+      ),
     message: (_input: DialogMessageOptions): Effect.Effect<void, DialogError> => Effect.void,
     confirm: (_input: DialogConfirmOptions): Effect.Effect<boolean, DialogError> =>
       Effect.succeed(options.confirmResult ?? true)
@@ -291,6 +307,7 @@ const makeScreenScenario = (options: TestScreenOptions): ScreenServiceApi => {
       Effect.succeed(primaryDisplay),
     getPointerPoint: (): Effect.Effect<ScreenPoint, ScreenError> =>
       Effect.succeed(new ScreenPoint({ x: 0, y: 0 })),
+    onDisplaysChanged: () => Stream.make(new ScreenDisplaysChangedEvent({ displays })),
     isSupported: (_method: ScreenMethod): Effect.Effect<boolean, ScreenError> =>
       Effect.succeed(true)
   } satisfies ScreenServiceApi)
@@ -351,8 +368,84 @@ const makeWindowScenario = (
           next.delete(window.id)
           return next
         })
-      })
+      }),
+    destroy: (window): Effect.Effect<void, WindowError, never> =>
+      Effect.gen(function* () {
+        yield* registry.dispose(window.id)
+        yield* Ref.update(windows, (records) => {
+          const next = new Map(records)
+          next.delete(window.id)
+          return next
+        })
+      }),
+    show: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    hide: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    focus: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    getCurrent: (): Effect.Effect<WindowHandle, WindowError, never> =>
+      Ref.get(windows).pipe(
+        Effect.flatMap((records) => {
+          const window = records.values().next().value?.window
+          return window === undefined
+            ? Effect.fail(notFoundWindow("current", "Window.getCurrent"))
+            : Effect.succeed(window)
+        })
+      ),
+    getById: (windowId): Effect.Effect<WindowHandle, WindowError, never> =>
+      Ref.get(windows).pipe(
+        Effect.flatMap((records) => {
+          const window = records.get(windowId)?.window
+          return window === undefined
+            ? Effect.fail(notFoundWindow(windowId, "Window.getById"))
+            : Effect.succeed(window)
+        })
+      ),
+    list: (): Effect.Effect<readonly WindowHandle[], WindowError, never> =>
+      Ref.get(windows).pipe(
+        Effect.map((records) => [...records.values()].map((record) => record.window))
+      ),
+    getParent: (window): Effect.Effect<WindowHandle | undefined, WindowError, never> =>
+      Ref.get(windows).pipe(
+        Effect.flatMap((records) => {
+          const record = records.get(window.id)
+          if (record === undefined) {
+            return Effect.fail(notFoundWindow(window.id, "Window.getParent"))
+          }
+          return Effect.succeed(record.input.parent)
+        })
+      ),
+    getBounds: (_window): Effect.Effect<WindowBounds, WindowError, never> =>
+      Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
+    setBounds: (_window, _bounds): Effect.Effect<void, WindowError, never> => Effect.void,
+    center: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    centerOnDisplay: (_window, _displayId): Effect.Effect<void, WindowError, never> => Effect.void,
+    setTitle: (_window, _title): Effect.Effect<void, WindowError, never> => Effect.void,
+    setResizable: (_window, _resizable): Effect.Effect<void, WindowError, never> => Effect.void,
+    setDecorations: (_window, _decorations): Effect.Effect<void, WindowError, never> => Effect.void,
+    setTrafficLights: (_window, _trafficLights): Effect.Effect<void, WindowError, never> =>
+      Effect.void,
+    setAlwaysOnTop: (_window, _alwaysOnTop): Effect.Effect<void, WindowError, never> => Effect.void,
+    setSkipTaskbar: (_window, _skipTaskbar): Effect.Effect<void, WindowError, never> => Effect.void,
+    setProgress: (_window, _input): Effect.Effect<void, WindowError, never> => Effect.void,
+    requestAttention: (_window, _requestType): Effect.Effect<void, WindowError, never> =>
+      Effect.void,
+    cancelAttention: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    minimize: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    maximize: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    restore: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    setFullscreen: (_window, _fullscreen): Effect.Effect<void, WindowError, never> => Effect.void,
+    getState: (_window): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false })),
+    events: () => Stream.empty
   } satisfies WindowServiceApi)
+
+const notFoundWindow = (windowId: string, operation: string): WindowError =>
+  new HostProtocolNotFoundError({
+    tag: "NotFound",
+    resource: `Window:${windowId}`,
+    message: `window not found: ${windowId}`,
+    operation,
+    recoverable: true
+  })
 
 function testNativeSurface(surface: {
   readonly tag: string

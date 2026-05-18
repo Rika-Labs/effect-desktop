@@ -12,6 +12,11 @@ Privileged operations cross `PermissionRegistry`. The registry is **deny-by-defa
 
 This page explains how decisions are made, how approval prompts integrate, and how audit events keep the system observable.
 
+The registry is not a central browser/session permission manager. WebView
+permission prompts for camera, microphone, notifications, geolocation,
+clipboard, and display capture require a separate native service with explicit
+profile/session partitioning.
+
 ## Three concepts
 
 - **Capability** — what the call wants to do. A normalized value like `{ kind: "filesystem.write", path: "/Users/me/Documents" }`, `{ kind: "process.spawn", command: "git", args: ["status"] }`, or `{ kind: "secrets.read", namespace: "tokens" }`. Capabilities are values you can compare, log, and serialize.

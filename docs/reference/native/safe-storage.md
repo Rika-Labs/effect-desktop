@@ -1,6 +1,6 @@
 ---
 title: SafeStorage (native)
-description: Platform credential store as raw encrypt/decrypt bytes.
+description: Platform credential store primitive for scoped secret bytes.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,14 +8,23 @@ effect_version: 4
 
 # `SafeStorage`
 
-Lower-level encryption boundary backed by the platform credential store. Most apps use [`Secrets`](../services/secrets.md) instead, which adds permission checks, redaction, and auditing on top.
+Lower-level credential-store boundary for scoped secret bytes. Most apps use [`Secrets`](../services/secrets.md) instead, which adds namespace permissions, redaction, key derivation, and auditing on top.
+
+The current native host only routes availability probing. Mutating or reading secret bytes requires a real platform adapter; until those host methods exist, `set`, `get`, `delete`, and `list` report `host-adapter-unimplemented` in capability metadata and bridge calls fail instead of falling back to plaintext storage.
+
+SafeStorage is not an HTTP auth credential broker. Proxy credentials,
+authentication challenges, and certificate decisions are absent; adding them
+would require a new network-auth service and host adapter.
 
 ## Methods
 
-| Method    | Payload                      | Success                      |
-| --------- | ---------------------------- | ---------------------------- |
-| `encrypt` | `{ plaintext: Uint8Array }`  | `{ ciphertext: Uint8Array }` |
-| `decrypt` | `{ ciphertext: Uint8Array }` | `{ plaintext: Uint8Array }`  |
+| Method        | Payload                              | Success                  |
+| ------------- | ------------------------------------ | ------------------------ |
+| `set`         | `{ key: string, value: Uint8Array }` | `void`                   |
+| `get`         | `{ key: string }`                    | `{ value: Uint8Array }`  |
+| `delete`      | `{ key: string }`                    | `void`                   |
+| `list`        | `void`                               | `{ keys: string[] }`     |
+| `isAvailable` | `void`                               | `{ available: boolean }` |
 
 ## Helpers
 
@@ -27,8 +36,8 @@ Lower-level encryption boundary backed by the platform credential store. Most ap
 
 ## When to use SafeStorage directly
 
-- You're storing the encrypted bytes off-platform (sync server).
-- You need raw control over the encryption boundary.
+- You are implementing a framework service that already owns namespace permissions and audit events.
+- You need the raw credential-store key/value primitive instead of the app-facing `Secrets` facade.
 
 For everything else, use `Secrets`.
 

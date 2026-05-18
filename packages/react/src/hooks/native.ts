@@ -1,9 +1,11 @@
 import type { ScreenError, SystemAppearanceError, PowerMonitorError } from "@effect-desktop/native"
 import type {
+  PowerMonitorLockScreenEvent,
   PowerMonitorResumeEvent,
   PowerMonitorShutdownEvent,
   PowerMonitorSourceChangedEvent,
   PowerMonitorSuspendEvent,
+  PowerMonitorUnlockScreenEvent,
   ScreenDisplay,
   SystemAppearanceChangedEvent,
   SystemAppearanceMode
@@ -27,6 +29,8 @@ export type PowerEvent =
   | PowerMonitorSuspendEvent
   | PowerMonitorResumeEvent
   | PowerMonitorShutdownEvent
+  | PowerMonitorLockScreenEvent
+  | PowerMonitorUnlockScreenEvent
   | PowerMonitorSourceChangedEvent
 
 export type PowerState = StreamState<PowerEvent, PowerMonitorError>
@@ -35,6 +39,12 @@ export const usePower = (streams: {
   readonly onSuspend: () => Stream.Stream<PowerMonitorSuspendEvent, PowerMonitorError, never>
   readonly onResume: () => Stream.Stream<PowerMonitorResumeEvent, PowerMonitorError, never>
   readonly onShutdown: () => Stream.Stream<PowerMonitorShutdownEvent, PowerMonitorError, never>
+  readonly onLockScreen: () => Stream.Stream<PowerMonitorLockScreenEvent, PowerMonitorError, never>
+  readonly onUnlockScreen: () => Stream.Stream<
+    PowerMonitorUnlockScreenEvent,
+    PowerMonitorError,
+    never
+  >
   readonly onPowerSourceChanged: () => Stream.Stream<
     PowerMonitorSourceChangedEvent,
     PowerMonitorError,
@@ -51,9 +61,11 @@ export const usePower = (streams: {
         asEvent(streams.onSuspend()),
         asEvent(streams.onResume()),
         asEvent(streams.onShutdown()),
+        asEvent(streams.onLockScreen()),
+        asEvent(streams.onUnlockScreen()),
         asEvent(streams.onPowerSourceChanged())
       ],
-      { concurrency: 4 }
+      { concurrency: 6 }
     )
   )
 }

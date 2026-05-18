@@ -10,7 +10,7 @@ effect_version: 4
 
 > Full references: [`reference/cli.md`](reference/cli.md), [`reference/native/updater.md`](reference/native/updater.md). How-to: [`ship an update`](how-to/ship-an-update.md).
 
-Updates use signed manifests and client-side verification. The CLI publishes update metadata; native updater crates verify and apply updates.
+Updates are designed around signed manifests and client-side verification. The CLI can publish update metadata, but the native runtime updater host adapter is not implemented yet; do not treat the current `Updater` surface as production update verification or installation.
 
 ## CLI
 

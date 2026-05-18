@@ -33,11 +33,12 @@ import { WindowState, type WindowStateApi } from "@effect-desktop/core"
 - `restore` returns the current window's persisted state or `Option.none()`.
 - `clear` removes the current window record and leaves other windows intact.
 - Off-screen rectangles snap to the primary display.
+- Records may include `displayId`; if that display is gone on restore, the rectangle snaps to the current primary display and the restored record uses the current display id.
 - Corrupt files are renamed to `window-state.corrupt.<timestamp>.json`; runtime continues with defaults; `corrupt-renamed` event emitted.
 
 ## Wiring it up
 
-There is no built-in `restoreState` flag on `WindowSpec` today. To use `WindowState` in your app, wire `WindowState.window(...)` into the third argument of `Desktop.window(...)` and add a small handler wrapper around `Window.create` that calls `restore()` before opening, then subscribes to size/position changes and calls `persist(state)`. Persistence policy stays explicit rather than hidden behind a config flag.
+There is no built-in `restoreState` flag on `WindowSpec` today. Runtime code that already has native access can use `WindowPersistence` from `@effect-desktop/native`; lower-level core code can wire `WindowState.window(...)` into the third argument of `Desktop.window(...)` and provide its own capture/apply policy.
 
 ## Related
 

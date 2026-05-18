@@ -1,0 +1,838 @@
+import { expect, test } from "bun:test"
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import {
+  type BridgeClientExchange,
+  type BridgeClientResponse,
+  encodeHostProtocolEnvelope,
+  HostProtocolEventEnvelope,
+  type HostProtocolError,
+  type HostProtocolRequestEnvelope,
+  makeHostProtocolInternalError
+} from "@effect-desktop/bridge"
+import {
+  type AuditEvent,
+  type AuditEventsApi,
+  makePermissionRegistry,
+  P
+} from "@effect-desktop/core"
+import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Queue, Stream } from "effect"
+
+import {
+  LocalToolRuntime,
+  LocalToolRuntimeClient,
+  type LocalToolRuntimeClientApi,
+  LocalToolRuntimeSurface,
+  makeLocalToolRuntimeBridgeClientLayer,
+  makeLocalToolRuntimeMemoryClient,
+  makeLocalToolRuntimeServiceLayer,
+  makeLocalToolRuntimeUnsupportedClient
+} from "./local-tool-runtime.js"
+import { NativeCapabilities, makeNativeCapabilitiesLayer } from "./capabilities.js"
+import { Native } from "./native.js"
+import {
+  LocalToolRuntimeActor,
+  LocalToolRuntimeBudgetPolicy,
+  LocalToolRuntimeCleanupPolicy,
+  LocalToolRuntimeCommand,
+  LocalToolRuntimeCwdPolicy,
+  LocalToolRuntimeEnvironmentPolicy,
+  LocalToolRuntimeFilesystemPolicy,
+  LocalToolRuntimeHealthCheck,
+  LocalToolRuntimeHealthInput,
+  LocalToolRuntimeHealthRequest,
+  LocalToolRuntimeManifest,
+  LocalToolRuntimeNetworkPolicy,
+  LocalToolRuntimePolicy,
+  LocalToolRuntimeRegisterInput,
+  LocalToolRuntimeRegisterRequest,
+  LocalToolRuntimeRunRequest,
+  LocalToolRuntimeStdioPolicy,
+  LocalToolRuntimeStopRequest
+} from "./contracts/local-tool-runtime.js"
+
+const hostProtocolStdioTest = process.platform === "win32" ? test.skip : test
+const UnboundedOsBudget = Number.MAX_SAFE_INTEGER
+
+test("LocalToolRuntime service registers, runs manifest commands, checks health, stops, emits events, and audits use", async () => {
+  const rows: AuditEvent[] = []
+  const permissions = await configuredPermissions(rows)
+  const client = await Effect.runPromise(
+    makeLocalToolRuntimeMemoryClient({
+      nextRuntimeId: () => "runtime-1",
+      nextRunId: () => "run-1",
+      stdout: "v20.0.0"
+    })
+  )
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const runtime = yield* LocalToolRuntime
+      const registered = yield* runtime.register(registerRequest())
+      const run = yield* runtime.run(runRequest(registered.runtimeId))
+      const health = yield* runtime.health(
+        new LocalToolRuntimeHealthRequest({ runtimeId: registered.runtimeId })
+      )
+      const stopped = yield* runtime.stop(
+        new LocalToolRuntimeStopRequest({ runtimeId: registered.runtimeId })
+      )
+      const event = yield* runtime.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+      return { event, health, registered, run, stopped }
+    }).pipe(
+      Effect.provide(
+        makeLocalToolRuntimeServiceLayer(client, {
+          permissions,
+          audit: memoryAudit(rows),
+          nextRuntimeId: () => "runtime-1",
+          nextRunId: () => "run-1",
+          nextTraceId: () => "trace-tool"
+        })
+      )
+    )
+  )
+
+  expect(result.registered.runtimeId).toBe("runtime-1")
+  expect(result.registered.toolId).toBe("tool-1")
+  expect(result.registered.manifest.commands[0]?.timeoutMillis).toBe(1_000)
+  expect(result.run).toMatchObject({
+    runtimeId: "runtime-1",
+    commandId: "node-version",
+    runId: "run-1",
+    status: "completed",
+    stdout: "v20.0.0"
+  })
+  expect(result.health.status).toBe("healthy")
+  expect(result.stopped.stopped).toBe(true)
+  expect(result.event.phase).toBe("registered")
+  expect(rows.some((row) => row.kind === "permission-used")).toBe(true)
+  expect(rows.find((row) => row.source === "LocalToolRuntime.run")?.actor).toMatchObject({
+    id: "extension:extension-1"
+  })
+})
+
+hostProtocolStdioTest(
+  "LocalToolRuntime public Effect API executes a declared command through the real Rust host",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "effect-desktop-local-tool-runtime-"))
+    const rows: AuditEvent[] = []
+    const host = makeHostProtocolStdioExchange()
+
+    try {
+      const permissions = await configuredPermissions(rows, {
+        command: "/bin/sh",
+        root
+      })
+      const result = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            let runSequence = 0
+            const clientContext = yield* Layer.build(
+              makeLocalToolRuntimeBridgeClientLayer(host.exchange, {
+                nextRequestId: () => `request-${globalThis.crypto.randomUUID()}`,
+                nextTraceId: () => `trace-${globalThis.crypto.randomUUID()}`,
+                now: () => 1_710_000_000_000
+              })
+            )
+            const client = Context.get(clientContext, LocalToolRuntimeClient)
+            const runtimeContext = yield* Layer.build(
+              makeLocalToolRuntimeServiceLayer(client, {
+                permissions,
+                audit: memoryAudit(rows),
+                nextRuntimeId: () => "runtime-real-host",
+                nextRunId: () => `run-real-host-${++runSequence}`,
+                nextTraceId: () => "trace-real-host"
+              })
+            )
+            const runtime = Context.get(runtimeContext, LocalToolRuntime)
+            const eventsFiber = yield* Effect.forkScoped(
+              runtime.events().pipe(Stream.take(10), Stream.runCollect)
+            )
+            const registered = yield* runtime.register(
+              registerRequestWithManifest(realHostManifest(root))
+            )
+            const run = yield* runtime.run(
+              new LocalToolRuntimeRunRequest({
+                runtimeId: registered.runtimeId,
+                commandId: "print",
+                traceId: "trace-real-run"
+              })
+            )
+            const failure = yield* runtime.run(
+              new LocalToolRuntimeRunRequest({
+                runtimeId: registered.runtimeId,
+                commandId: "fail",
+                traceId: "trace-real-fail"
+              })
+            )
+            const timeout = yield* runtime.run(
+              new LocalToolRuntimeRunRequest({
+                runtimeId: registered.runtimeId,
+                commandId: "timeout",
+                traceId: "trace-real-timeout"
+              })
+            )
+            const health = yield* runtime.health(
+              new LocalToolRuntimeHealthRequest({ runtimeId: registered.runtimeId })
+            )
+            const stoppedRunFiber = yield* Effect.forkScoped(
+              runtime.run(
+                new LocalToolRuntimeRunRequest({
+                  runtimeId: registered.runtimeId,
+                  commandId: "long",
+                  traceId: "trace-real-stop"
+                })
+              )
+            )
+            yield* Effect.sleep("100 millis")
+            const stopped = yield* runtime.stop(
+              new LocalToolRuntimeStopRequest({ runtimeId: registered.runtimeId })
+            )
+            const stoppedRun = yield* Fiber.join(stoppedRunFiber)
+            const events = yield* Fiber.join(eventsFiber)
+            return {
+              events: Array.from(events),
+              failure,
+              health,
+              registered,
+              run,
+              stoppedRun,
+              stopped,
+              timeout
+            }
+          })
+        )
+      )
+
+      expect(result.registered.runtimeId).toBe("runtime-real-host")
+      expect(result.run).toMatchObject({
+        runtimeId: "runtime-real-host",
+        commandId: "print",
+        runId: "run-real-host-1",
+        status: "completed",
+        stdout: "host-ok"
+      })
+      expect(result.failure).toMatchObject({
+        runtimeId: "runtime-real-host",
+        commandId: "fail",
+        runId: "run-real-host-2",
+        status: "failed",
+        exitCode: 7,
+        stderr: "denied\n"
+      })
+      expect(result.timeout).toMatchObject({
+        runtimeId: "runtime-real-host",
+        commandId: "timeout",
+        runId: "run-real-host-3",
+        status: "timeout"
+      })
+      expect(result.health.status).toBe("healthy")
+      expect(result.stopped.stopped).toBe(true)
+      expect(result.stoppedRun).toMatchObject({
+        runtimeId: "runtime-real-host",
+        commandId: "long",
+        runId: "run-real-host-4",
+        status: "failed"
+      })
+      expect(result.events.map((event) => event.phase)).toEqual([
+        "registered",
+        "run-started",
+        "run-completed",
+        "run-started",
+        "run-completed",
+        "run-started",
+        "run-completed",
+        "health-checked",
+        "run-started",
+        "stopped"
+      ])
+      expect(rows.find((row) => row.source === "LocalToolRuntime.run")?.resource).toBe(
+        "runtime-real-host"
+      )
+    } finally {
+      await host.close()
+      await rm(root, { force: true, recursive: true })
+    }
+  },
+  20_000
+)
+
+test("LocalToolRuntime denies register before host side effects", async () => {
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  let calls = 0
+  const baseClient = await Effect.runPromise(makeLocalToolRuntimeMemoryClient())
+  const client: LocalToolRuntimeClientApi = {
+    ...baseClient,
+    register: (input) =>
+      Effect.sync(() => {
+        calls += 1
+      }).pipe(Effect.andThen(baseClient.register(input)))
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const runtime = yield* LocalToolRuntime
+      return yield* Effect.exit(runtime.register(registerRequest()))
+    }).pipe(Effect.provide(makeLocalToolRuntimeServiceLayer(client, { permissions })))
+  )
+
+  expect(calls).toBe(0)
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({ tag: "PermissionDenied", operation: "LocalToolRuntime.register" })
+  })
+})
+
+test("LocalToolRuntime rejects malformed manifests before bridge transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({
+        kind: "success",
+        payload: {
+          runtimeId: "runtime-1",
+          toolId: "tool-1",
+          manifest: manifest(),
+          state: "registered"
+        }
+      })
+    },
+    subscribe: () => Stream.empty
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* LocalToolRuntimeClient
+      return yield* Effect.exit(
+        client.register(
+          new LocalToolRuntimeRegisterInput({
+            actor: actor(),
+            manifest: manifest({
+              commands: [command({ executable: "/usr/bin/node;rm" })]
+            })
+          })
+        )
+      )
+    }).pipe(Effect.provide(makeLocalToolRuntimeBridgeClientLayer(exchange)))
+  )
+
+  expect(requests).toEqual([])
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "LocalToolRuntime.register" })
+  })
+})
+
+test("LocalToolRuntime refuses commands not declared in the manifest before run side effects", async () => {
+  const permissions = await configuredPermissions([])
+  let runs = 0
+  const baseClient = await Effect.runPromise(makeLocalToolRuntimeMemoryClient())
+  const client: LocalToolRuntimeClientApi = {
+    ...baseClient,
+    run: (input) =>
+      Effect.sync(() => {
+        runs += 1
+      }).pipe(Effect.andThen(baseClient.run(input)))
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const runtime = yield* LocalToolRuntime
+      const registered = yield* runtime.register(registerRequest())
+      return yield* Effect.exit(
+        runtime.run(
+          new LocalToolRuntimeRunRequest({
+            runtimeId: registered.runtimeId,
+            commandId: "undeclared"
+          })
+        )
+      )
+    }).pipe(
+      Effect.provide(
+        makeLocalToolRuntimeServiceLayer(client, {
+          permissions,
+          nextRuntimeId: () => "runtime-1"
+        })
+      )
+    )
+  )
+
+  expect(runs).toBe(0)
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "LocalToolRuntime.run" })
+  })
+})
+
+test("LocalToolRuntime denies run before host side effects when process permission is missing", async () => {
+  const permissions = await configuredPermissions([])
+  let runs = 0
+  const baseClient = await Effect.runPromise(makeLocalToolRuntimeMemoryClient())
+  const client: LocalToolRuntimeClientApi = {
+    ...baseClient,
+    run: (input) =>
+      Effect.sync(() => {
+        runs += 1
+      }).pipe(Effect.andThen(baseClient.run(input)))
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const runtime = yield* LocalToolRuntime
+      const registered = yield* runtime.register(
+        registerRequestWithManifest(
+          manifest({
+            commands: [
+              command({
+                environment: [{ name: "LOCAL_TOOL_VALUE", value: "1" }]
+              })
+            ]
+          })
+        )
+      )
+      return yield* Effect.exit(runtime.run(runRequest(registered.runtimeId)))
+    }).pipe(
+      Effect.provide(
+        makeLocalToolRuntimeServiceLayer(client, {
+          permissions,
+          nextRuntimeId: () => "runtime-1"
+        })
+      )
+    )
+  )
+
+  expect(runs).toBe(0)
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({ tag: "PermissionDenied", operation: "LocalToolRuntime.run" })
+  })
+})
+
+test("LocalToolRuntime unsupported client exposes typed unsupported failures", async () => {
+  const client = makeLocalToolRuntimeUnsupportedClient()
+  const registerExit = await Effect.runPromise(Effect.exit(client.register(registerInput())))
+  const runExit = await Effect.runPromise(Effect.exit(client.run(runInput("runtime-1"))))
+  const stopExit = await Effect.runPromise(Effect.exit(client.stop({ runtimeId: "runtime-1" })))
+  const healthExit = await Effect.runPromise(
+    Effect.exit(client.health(new LocalToolRuntimeHealthInput({ runtimeId: "runtime-1" })))
+  )
+
+  for (const exit of [registerExit, runExit, stopExit, healthExit]) {
+    expectExitFailure(exit, (error) => {
+      expect(error).toMatchObject({ tag: "Unsupported" })
+    })
+  }
+  const supported = await Effect.runPromise(client.isSupported())
+  expect(supported.supported).toBe(false)
+})
+
+test("LocalToolRuntime support metadata reports Windows supported after host CI coverage", async () => {
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const capabilities = yield* NativeCapabilities
+      const support = yield* capabilities.support("LocalToolRuntime.register")
+      yield* capabilities.requirePlatform("LocalToolRuntime.register", "macos")
+      yield* capabilities.requirePlatform("LocalToolRuntime.register", "linux")
+      const windows = yield* Effect.exit(
+        capabilities.requirePlatform("LocalToolRuntime.register", "windows")
+      )
+      return { support, windows }
+    }).pipe(
+      Effect.provide(
+        makeNativeCapabilitiesLayer(Native.available(LocalToolRuntimeSurface.selection))
+      )
+    )
+  )
+
+  expect(result.support).toEqual({ status: "supported" })
+  expect(Exit.isSuccess(result.windows)).toBe(true)
+})
+
+interface PermissionFixtureOptions {
+  readonly command?: string
+  readonly root?: string
+}
+
+const configuredPermissions = async (
+  rows: AuditEvent[],
+  options: PermissionFixtureOptions = {}
+) => {
+  const commandPath = options.command ?? "/usr/bin/node"
+  const root = options.root ?? "/tmp/app"
+  const permissions = await Effect.runPromise(
+    makePermissionRegistry({
+      audit: memoryAudit(rows),
+      traceId: () => "trace-permission",
+      nextToken: () => "grant-1"
+    })
+  )
+  await Effect.runPromise(
+    Effect.all([
+      permissions.declare(P.nativeInvoke({ primitive: "LocalToolRuntime", methods: ["register"] })),
+      permissions.declare(P.nativeInvoke({ primitive: "LocalToolRuntime", methods: ["stop"] })),
+      permissions.declare(P.nativeInvoke({ primitive: "LocalToolRuntime", methods: ["health"] })),
+      permissions.declare(processPermission({ command: commandPath, root })),
+      permissions.declare(P.filesystemRead({ roots: [root] })),
+      permissions.declare(P.networkConnect({ hosts: ["api.example.test"] }))
+    ])
+  )
+  return permissions
+}
+
+const actor = (): LocalToolRuntimeActor =>
+  new LocalToolRuntimeActor({ kind: "extension", id: "extension-1" })
+
+const command = (
+  options: Partial<ConstructorParameters<typeof LocalToolRuntimeCommand>[0]> = {}
+): LocalToolRuntimeCommand =>
+  new LocalToolRuntimeCommand({
+    commandId: "node-version",
+    executable: "/usr/bin/node",
+    defaultArgs: ["--version"],
+    cwd: "/tmp/app",
+    timeoutMillis: 1_000,
+    ...options
+  })
+
+const manifest = (
+  options: Partial<ConstructorParameters<typeof LocalToolRuntimeManifest>[0]> = {}
+): LocalToolRuntimeManifest =>
+  new LocalToolRuntimeManifest({
+    toolId: "tool-1",
+    name: "Tool One",
+    version: "1.0.0",
+    commands: [command()],
+    permissions: [processPermission(), P.filesystemRead({ roots: ["/tmp/app"] })],
+    policy: policy(),
+    ...options
+  })
+
+const realHostManifest = (root: string): LocalToolRuntimeManifest =>
+  new LocalToolRuntimeManifest({
+    toolId: "tool-real-host",
+    name: "Real Host Tool",
+    version: "1.0.0",
+    commands: [
+      new LocalToolRuntimeCommand({
+        commandId: "print",
+        executable: "/bin/sh",
+        defaultArgs: ["-c", "printf host-ok"],
+        cwd: root,
+        timeoutMillis: 1_000
+      }),
+      new LocalToolRuntimeCommand({
+        commandId: "fail",
+        executable: "/bin/sh",
+        defaultArgs: ["-c", "printf 'denied\\n' >&2; exit 7"],
+        cwd: root,
+        timeoutMillis: 1_000
+      }),
+      new LocalToolRuntimeCommand({
+        commandId: "timeout",
+        executable: "/bin/sh",
+        defaultArgs: ["-c", "sleep 1"],
+        cwd: root,
+        timeoutMillis: 50
+      }),
+      new LocalToolRuntimeCommand({
+        commandId: "long",
+        executable: "/bin/sh",
+        defaultArgs: ["-c", "sleep 30"],
+        cwd: root,
+        timeoutMillis: 60_000
+      })
+    ],
+    permissions: [
+      processPermission({ command: "/bin/sh", root }),
+      P.filesystemRead({ roots: [root] })
+    ],
+    health: new LocalToolRuntimeHealthCheck({
+      commandId: "print",
+      intervalMillis: 1_000,
+      timeoutMillis: 1_000
+    }),
+    policy: new LocalToolRuntimePolicy({
+      cwd: new LocalToolRuntimeCwdPolicy({ roots: [root] }),
+      environment: new LocalToolRuntimeEnvironmentPolicy({ variables: [] }),
+      filesystem: new LocalToolRuntimeFilesystemPolicy({ readRoots: [root] }),
+      network: new LocalToolRuntimeNetworkPolicy({ hosts: [] }),
+      budgets: new LocalToolRuntimeBudgetPolicy({
+        cpuMillis: UnboundedOsBudget,
+        memoryBytes: UnboundedOsBudget,
+        wallClockMillis: 1_000,
+        stdoutBytes: 1_024,
+        stderrBytes: 1_024
+      }),
+      stdio: new LocalToolRuntimeStdioPolicy({ stdout: "capture", stderr: "capture" }),
+      cleanup: new LocalToolRuntimeCleanupPolicy({
+        killProcessTree: true,
+        removeWorkingDirectory: false
+      })
+    })
+  })
+
+const policy = (): LocalToolRuntimePolicy =>
+  new LocalToolRuntimePolicy({
+    cwd: new LocalToolRuntimeCwdPolicy({ roots: ["/tmp/app"] }),
+    environment: new LocalToolRuntimeEnvironmentPolicy({ variables: [] }),
+    filesystem: new LocalToolRuntimeFilesystemPolicy({ readRoots: ["/tmp/app"] }),
+    network: new LocalToolRuntimeNetworkPolicy({ hosts: [] }),
+    budgets: new LocalToolRuntimeBudgetPolicy({
+      cpuMillis: 500,
+      memoryBytes: 67_108_864,
+      wallClockMillis: 1_000,
+      stdoutBytes: 1_024,
+      stderrBytes: 1_024
+    }),
+    stdio: new LocalToolRuntimeStdioPolicy({ stdout: "capture", stderr: "capture" }),
+    cleanup: new LocalToolRuntimeCleanupPolicy({
+      killProcessTree: true,
+      removeWorkingDirectory: true
+    })
+  })
+
+const registerRequest = (): LocalToolRuntimeRegisterRequest =>
+  new LocalToolRuntimeRegisterRequest({
+    actor: actor(),
+    manifest: manifest(),
+    traceId: "trace-register"
+  })
+
+const registerRequestWithManifest = (
+  value: LocalToolRuntimeManifest
+): LocalToolRuntimeRegisterRequest =>
+  new LocalToolRuntimeRegisterRequest({
+    actor: actor(),
+    manifest: value,
+    traceId: "trace-register"
+  })
+
+const registerInput = (): LocalToolRuntimeRegisterInput =>
+  new LocalToolRuntimeRegisterInput({
+    actor: actor(),
+    manifest: manifest(),
+    traceId: "trace-register"
+  })
+
+const runRequest = (runtimeId: string): LocalToolRuntimeRunRequest =>
+  new LocalToolRuntimeRunRequest({
+    runtimeId,
+    commandId: "node-version",
+    args: ["--version"],
+    traceId: "trace-run"
+  })
+
+const runInput = (runtimeId: string) => ({
+  runtimeId,
+  commandId: "node-version",
+  args: ["--version"],
+  traceId: "trace-run"
+})
+
+interface ProcessPermissionOptions {
+  readonly command?: string
+  readonly root?: string
+}
+
+const processPermission = (options: ProcessPermissionOptions = {}) =>
+  P.processSpawn({
+    commands: [options.command ?? "/usr/bin/node"],
+    cwd: [options.root ?? "/tmp/app"],
+    environment: "none"
+  })
+
+const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
+  emit: (event: AuditEvent) =>
+    Effect.sync(() => {
+      rows.push(event)
+    }),
+  observe: () => Stream.fromIterable(rows)
+})
+
+interface HostProtocolStdioExchange {
+  readonly exchange: BridgeClientExchange
+  readonly close: () => Promise<void>
+}
+
+interface PendingHostRequest {
+  readonly resolve: (response: BridgeClientResponse) => void
+  readonly reject: (error: HostProtocolError) => void
+}
+
+const makeHostProtocolStdioExchange = (): HostProtocolStdioExchange => {
+  const child = spawn("cargo", ["run", "-q", "-p", "host", "--", "--host-protocol-stdio"], {
+    cwd: process.cwd(),
+    stdio: "pipe"
+  })
+  const pending = new Map<string, PendingHostRequest>()
+  const eventQueues = new Map<string, Queue.Queue<HostProtocolEventEnvelope>>()
+  const eventReplay = new Map<string, HostProtocolEventEnvelope[]>()
+  let stdout: Buffer<ArrayBufferLike> = Buffer.alloc(0)
+  let stderr = ""
+
+  child.stdout.on("data", (chunk: Buffer) => {
+    stdout = Buffer.concat([stdout, chunk])
+    drainHostFrames(stdout, (remaining, envelope) => {
+      stdout = remaining
+      routeHostEnvelope(envelope, pending, eventQueues, eventReplay)
+    })
+  })
+  child.stderr.setEncoding("utf8")
+  child.stderr.on("data", (chunk: string) => {
+    stderr += chunk
+  })
+  child.on("exit", (code, signal) => {
+    const error = makeHostProtocolInternalError(
+      `host protocol stdio exited with code ${code ?? "null"} signal ${signal ?? "null"}: ${stderr}`,
+      "LocalToolRuntime.hostProtocolStdio"
+    )
+    for (const request of pending.values()) {
+      request.reject(error)
+    }
+    pending.clear()
+  })
+
+  return {
+    exchange: {
+      request: (request) =>
+        Effect.tryPromise({
+          try: () => sendHostRequest(child, pending, request),
+          catch: (error) =>
+            makeHostProtocolInternalError(
+              formatUnknown(error),
+              "LocalToolRuntime.hostProtocolStdio"
+            )
+        }),
+      subscribe: (method) => {
+        const queue = eventQueue(eventQueues, method)
+        const replay = eventReplay.get(method) ?? []
+        return Stream.fromIterable(replay).pipe(Stream.concat(Stream.fromQueue(queue)))
+      }
+    },
+    close: async () => {
+      child.stdin.end()
+      if (child.exitCode === null) {
+        child.kill()
+      }
+      for (const queue of eventQueues.values()) {
+        await Effect.runPromise(Queue.shutdown(queue))
+      }
+    }
+  }
+}
+
+const sendHostRequest = (
+  child: ChildProcessWithoutNullStreams,
+  pending: Map<string, PendingHostRequest>,
+  request: HostProtocolRequestEnvelope
+): Promise<BridgeClientResponse> =>
+  new Promise((resolve, reject) => {
+    pending.set(request.id, { resolve, reject })
+    const body = Buffer.from(JSON.stringify(encodeHostProtocolEnvelope(request)), "utf8")
+    const frame = Buffer.alloc(4 + body.byteLength)
+    frame.writeUInt32BE(body.byteLength, 0)
+    body.copy(frame, 4)
+    child.stdin.write(frame, (error) => {
+      if (error !== null && error !== undefined) {
+        pending.delete(request.id)
+        reject(
+          makeHostProtocolInternalError(
+            formatUnknown(error),
+            "LocalToolRuntime.hostProtocolStdio.write"
+          )
+        )
+      }
+    })
+  })
+
+const drainHostFrames = (
+  buffer: Buffer,
+  handle: (remaining: Buffer, envelope: unknown) => void
+) => {
+  let offset = 0
+  while (buffer.byteLength - offset >= 4) {
+    const length = buffer.readUInt32BE(offset)
+    const frameStart = offset + 4
+    const frameEnd = frameStart + length
+    if (buffer.byteLength < frameEnd) {
+      break
+    }
+    const envelope = JSON.parse(buffer.subarray(frameStart, frameEnd).toString("utf8")) as unknown
+    offset = frameEnd
+    handle(buffer.subarray(offset), envelope)
+  }
+}
+
+const routeHostEnvelope = (
+  envelope: unknown,
+  pending: Map<string, PendingHostRequest>,
+  eventQueues: Map<string, Queue.Queue<HostProtocolEventEnvelope>>,
+  eventReplay: Map<string, HostProtocolEventEnvelope[]>
+) => {
+  if (!isRecord(envelope)) {
+    return
+  }
+  const kind = envelope["kind"]
+  if (kind === "response" && typeof envelope["id"] === "string") {
+    const id = envelope["id"]
+    const request = pending.get(id)
+    if (request === undefined) {
+      return
+    }
+    pending.delete(id)
+    const error = envelope["error"]
+    if (error !== undefined && error !== null) {
+      request.resolve({ kind: "failure", error })
+      return
+    }
+    request.resolve({ kind: "success", payload: envelope["payload"] })
+    return
+  }
+  if (kind === "event" && typeof envelope["method"] === "string") {
+    const timestamp = envelope["timestamp"]
+    const traceId = envelope["traceId"]
+    if (typeof timestamp !== "number" || typeof traceId !== "string") {
+      return
+    }
+    const windowId = envelope["windowId"]
+    const event = new HostProtocolEventEnvelope({
+      kind: "event",
+      method: envelope["method"],
+      timestamp,
+      traceId,
+      ...(typeof windowId === "string" ? { windowId } : {}),
+      ...("payload" in envelope ? { payload: envelope["payload"] } : {})
+    })
+    const replay = eventReplay.get(event.method) ?? []
+    replay.push(event)
+    eventReplay.set(event.method, replay.slice(-64))
+    void Effect.runPromise(Queue.offer(eventQueue(eventQueues, event.method), event))
+  }
+}
+
+const eventQueue = (
+  queues: Map<string, Queue.Queue<HostProtocolEventEnvelope>>,
+  method: string
+): Queue.Queue<HostProtocolEventEnvelope> => {
+  const existing = queues.get(method)
+  if (existing !== undefined) {
+    return existing
+  }
+  const queue = Effect.runSync(Queue.unbounded<HostProtocolEventEnvelope>())
+  queues.set(method, queue)
+  return queue
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
+const formatUnknown = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+const expectExitFailure = (
+  exit: Exit.Exit<unknown, HostProtocolError>,
+  assertion: (error: unknown) => void
+) => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    assertion(Cause.squash(exit.cause))
+  }
+}

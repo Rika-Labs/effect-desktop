@@ -43,7 +43,10 @@ export class SystemAppearanceBooleanResult extends Schema.Class<SystemAppearance
 export class SystemAppearanceChangedEvent extends Schema.Class<SystemAppearanceChangedEvent>(
   "SystemAppearanceChangedEvent"
 )({
-  appearance: SystemAppearanceMode
+  appearance: SystemAppearanceMode,
+  accentColor: Schema.NullOr(SystemAppearanceColor),
+  reducedMotion: Schema.Boolean,
+  reducedTransparency: Schema.Boolean
 }) {}
 
 export class SystemAppearanceIsSupportedInput extends Schema.Class<SystemAppearanceIsSupportedInput>(

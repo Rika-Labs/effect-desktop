@@ -62,7 +62,7 @@ But you cannot turn redaction _off_ at the audit layer. It runs before every eve
 
 `Secrets.get(...)` returns `Redacted<Uint8Array>`. The bytes are an opaque container — you have to call `Redacted.value(...)` to access them, and you should `wipeSecretBytes(...)` when you're done. The audit event for `secret/accessed` records the namespace and key but never the value.
 
-`SafeStorage.encrypt` and `SafeStorage.decrypt` deal in raw bytes (because they are the encryption boundary), but everything else in the runtime traffics in `Redacted`. The bridge knows about `Redacted` and refuses to send it across the wire as plaintext.
+`SafeStorage` is the lower-level key/value credential-store boundary. Its public service accepts and returns `SecretBytes`, while the bridge payload carries raw bytes only inside the Schema-validated native request. Everything above that boundary traffics in `Redacted`, and there is no plaintext fallback when the platform credential store is unavailable.
 
 ## What you do with this
 

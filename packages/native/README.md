@@ -4,7 +4,7 @@
 
 ## Purpose
 
-TypeScript-facing native services backed by the Rust host: `App`, `Window`, `WebView`, `Menu`, `Tray`, `Dialog`, `Clipboard`, `Notification`, `Shell`, `Screen`, `GlobalShortcut`, `Protocol`, `SafeStorage`, `Path`, `Updater`, `CrashReporter`, `PowerMonitor`, `SystemAppearance`, `Dock`.
+TypeScript-facing native services expose Layer-first Effect APIs backed by Schema-typed RPC contracts. The Rust host backs the implemented subset; prerelease surfaces and methods report support metadata and fail through typed host errors until their platform adapters exist. Current surfaces include `App`, `Window`, `WebView`, `Menu`, `Tray`, `Dialog`, `Clipboard`, `Notification`, `Shell`, `Screen`, `GlobalShortcut`, `Protocol`, `SafeStorage`, `Path`, `Updater`, `CrashReporter`, `DiagnosticsBundle`, `EgressPolicy`, `ExecutionSandbox`, `ExtensionConfig`, `ExtensionPackage`, `LocalToolRuntime`, `TransactionalFileMutation`, `WorkspaceIndex`, `PowerMonitor`, `SystemAppearance`, `Dock`, and `RealtimeMediaSession`.
 
 ## Public API
 
@@ -12,7 +12,9 @@ Each native module exposes a canonical Effect `RpcGroup`, a generated `*Surface`
 
 Native RPC endpoints are authored through the package-internal `NativeSurface` helper. New native endpoints must declare payload and success schemas, endpoint kind, support status, and authority in one place. Authority is explicit: either a native invoke capability, an explicit no-permission endpoint, or a custom capability for desktop-specific policy. Native service files should not call `Rpc.make(...)` directly.
 
-`NativeCapabilities` builds its manifest from selected native layers, not from a parallel table of RPC groups. Every manifest fact includes the endpoint tag, capability metadata, and support metadata. Duplicate tags, missing capability metadata, and unsupported endpoints without reasons fail as typed manifest errors.
+Event-aware native services should pass their bridge-specific client mapper through `NativeSurface.make({ bridgeClient })`. The shared surface owns bridge protocol layer construction; service modules keep only durable event subscription policy such as method names, Schema decoding, filtering, and resource-specific stream composition.
+
+`NativeCapabilities` builds its manifest from selected native layers, not from a parallel table of RPC groups. Every manifest fact includes the endpoint tag, capability metadata, and Schema-typed support metadata: `supported`, `partial`, or `unsupported`, with per-platform reasons when behavior differs across macOS, Windows, and Linux. `requirePlatform(tag, platform)` turns platform-specific unsupported entries into typed `UnsupportedCapability` failures. Duplicate tags, missing capability metadata, and malformed maturity metadata fail as typed manifest errors.
 
 `Window` is exposed as an Effect service. `WindowRpcs` is the full Window method descriptor with support metadata, and `WindowSupportedRpcs` is the generated callable group used by the bridge client layer. The host runtime binds handlers through canonical Effect RPC groups and bridge protocol adapters. `WindowClient` remains the substitutable port used by tests and adapters, but its supported callable surface is `create` and `close`.
 

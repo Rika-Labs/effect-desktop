@@ -31,6 +31,7 @@ import {
   formatDoctorReport,
   runCli,
   runDocsReleaseGate,
+  runDesktopDoctor,
   runDesktopPackage,
   runDesktopReproCheck,
   runReleaseWorkflow,
@@ -264,8 +265,17 @@ const DoctorJsonReport = Schema.fromJsonString(
       Schema.Struct({
         name: Schema.String,
         status: Schema.String,
+        message: Schema.optionalKey(Schema.String),
         installCommand: Schema.optionalKey(Schema.String),
-        installHint: Schema.optionalKey(Schema.String)
+        installHint: Schema.optionalKey(Schema.String),
+        evidence: Schema.optionalKey(
+          Schema.Array(
+            Schema.Struct({
+              key: Schema.String,
+              value: Schema.String
+            })
+          )
+        )
       })
     )
   })
@@ -1172,6 +1182,99 @@ test("desktop doctor exits zero with warnings for optional signing and host cach
     expect(output).toContain("WARN")
     expect(output).toContain("signing credentials are not configured")
     expect(output).toContain("native host build cache is empty")
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop doctor reports native capability truth from the generated parity matrix", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-capabilities-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const stdout: string[] = []
+    const matrix = JSON.parse(
+      await readFile(join(REPO_ROOT, "packages/cli/src/native-parity-matrix.json"), "utf8")
+    ) as {
+      readonly summary: {
+        readonly total: number
+        readonly routed: number
+        readonly missing: number
+      }
+    }
+
+    const exitCode = await Effect.runPromise(
+      runCli({
+        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
+        cwd: directory,
+        platform: "linux",
+        arch: "x64",
+        bunVersion: "1.3.13",
+        doctorCommandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "pkg-config": true,
+          "dpkg-deb": true
+        }),
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
+      })
+    )
+
+    const report = decodeDoctorJsonReport(stdout.join(""))
+    const capabilityProbe = report.probes.find((probe) => probe.name === "native-capabilities")
+    expect(exitCode).toBe(0)
+    expect(capabilityProbe).toMatchObject({
+      status: matrix.summary.missing === 0 ? "ok" : "warning",
+      message: `native capability matrix reports ${matrix.summary.total} methods, ${matrix.summary.routed} host-routed, ${matrix.summary.missing} missing host routes`
+    })
+    expect(capabilityProbe?.evidence).toEqual([
+      { key: "source", value: "packages/cli/src/native-parity-matrix.json" },
+      { key: "total", value: String(matrix.summary.total) },
+      { key: "routed", value: String(matrix.summary.routed) },
+      { key: "missing", value: String(matrix.summary.missing) }
+    ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("desktop doctor fails when native capability truth is malformed", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-capabilities-"))
+  try {
+    await writePlaygroundFixture(directory)
+    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+    await writeFile(join(directory, "bun.lock"), "")
+    const matrixPath = join(directory, "native-parity-matrix.json")
+    await writeFile(matrixPath, '{"rows":[],"summary":{"total":"bad"}}\n')
+
+    const error = await Effect.runPromise(
+      runDesktopDoctor({
+        cwd: directory,
+        configPath: "apps/inspector/desktop.config.ts",
+        ci: false,
+        platform: "linux",
+        arch: "x64",
+        bunVersion: "1.3.13",
+        nativeParityMatrixPath: matrixPath,
+        commandRunner: doctorRunner({
+          cargo: true,
+          rustc: true,
+          "pkg-config": true,
+          "dpkg-deb": true
+        })
+      }).pipe(Effect.flip)
+    )
+
+    expect(error).toMatchObject({
+      _tag: "DoctorCapabilityTruthUnavailable",
+      reason: "invalid",
+      path: matrixPath,
+      message: `native capability parity matrix is invalid at ${matrixPath}`
+    })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

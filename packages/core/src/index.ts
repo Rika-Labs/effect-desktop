@@ -146,6 +146,24 @@ export {
 } from "./runtime/desktop-app.js"
 export { DesktopRuntime, DesktopRuntimeLive } from "./runtime/desktop-app.js"
 export { DesktopConfigError as DesktopSpineConfigError } from "./runtime/desktop-app.js"
+export {
+  NativeHostMethodInventorySnapshot,
+  NativeParityHostStatus,
+  NativeParityMatrixError,
+  NativeParityMatrixErrorReason,
+  NativeParityMatrixResult,
+  NativeParityMatrixRow,
+  NativeParityMatrixSummary,
+  NativeParityPlatform,
+  NativeParityPlatformSupport,
+  NativeParitySupport,
+  NativeParitySupportStatus,
+  type NativeHostMethodInventorySnapshotType,
+  type NativeParityCapabilityKind,
+  type NativeParityMatrixResultType,
+  type NativeParityMatrixRowType,
+  type NativeParityMatrixSummaryType
+} from "./native-parity-matrix.js"
 
 export interface DesktopWorkflowEngineOptions<RIn = never, E = never> {
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>

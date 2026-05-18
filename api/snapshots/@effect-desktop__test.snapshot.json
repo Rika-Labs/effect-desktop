@@ -81,7 +81,7 @@
     {
       "name": "HeadlessHostState",
       "kind": "interface",
-      "signature": "export interface HeadlessHostState { readonly windows: ReadonlyMap<string, WindowCreateInput> }"
+      "signature": "export interface HeadlessHostState { readonly windows: ReadonlyMap<string, WindowCreateInput> readonly focusedWindowId: () => string | undefined }"
     },
     {
       "name": "HeadlessRuntime",
@@ -346,7 +346,7 @@
     {
       "name": "TestClipboardOptions",
       "kind": "interface",
-      "signature": "export interface TestClipboardOptions { readonly text?: string readonly supported?: Partial<Record<ClipboardCapability, boolean>> }"
+      "signature": "export interface TestClipboardOptions { readonly text?: string readonly html?: string readonly supported?: Partial<Record<ClipboardCapability, boolean>> }"
     },
     {
       "name": "TestDesktop",
@@ -376,7 +376,7 @@
     {
       "name": "TestDialogOptions",
       "kind": "interface",
-      "signature": "export interface TestDialogOptions { readonly openFilePaths?: readonly string[] readonly openDirectoryPaths?: readonly string[] readonly saveFilePath?: string readonly confirmResult?: boolean }"
+      "signature": "export interface TestDialogOptions { readonly openFilePaths?: readonly string[] readonly openDirectoryPaths?: readonly string[] readonly saveFilePath?: string | null readonly confirmResult?: boolean }"
     },
     {
       "name": "TestNativeSurface",

@@ -3,11 +3,8 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
-  makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcClient,
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
@@ -30,6 +27,17 @@ import {
 } from "./contracts/system-appearance.js"
 
 export type SystemAppearanceError = HostProtocolError
+
+const UnsupportedReason = "host-adapter-unimplemented"
+const StrictParseOptions = { onExcessProperty: "error" } as const
+
+const SystemAppearanceSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
 
 export const SystemAppearanceGetAppearance = systemAppearanceRpc(
   "getAppearance",
@@ -181,16 +189,7 @@ export const makeSystemAppearanceBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: BridgeClientOptions = {}
 ): Layer.Layer<SystemAppearanceClient> =>
-  Layer.effect(
-    SystemAppearanceClient,
-    RpcClient.make(SystemAppearanceRpcGroup).pipe(
-      Effect.map((client) =>
-        systemAppearanceClientFromRpcClient(client, () =>
-          subscribeSystemAppearanceEvent(exchange, "SystemAppearance.AppearanceChanged")
-        )
-      )
-    )
-  ).pipe(Layer.provide(makeSystemAppearanceBridgeProtocolLayer(exchange, options)))
+  SystemAppearanceSurface.bridgeClientLayer(exchange, options)
 
 export type SystemAppearanceRpc = RpcGroup.Rpcs<typeof SystemAppearanceRpcGroup>
 
@@ -244,6 +243,10 @@ export const SystemAppearanceSurface = NativeSurface.make(
             "event exchange does not support subscriptions"
           )
         )
+      ),
+    bridgeClient: (client, exchange) =>
+      systemAppearanceClientFromRpcClient(client, () =>
+        subscribeSystemAppearanceEvent(exchange, "SystemAppearance.AppearanceChanged")
       )
   }
 )
@@ -261,8 +264,8 @@ const systemAppearanceClientFromRpcClient = (
     SystemAppearanceError,
     never
   >
-): SystemAppearanceClientApi => {
-  return Object.freeze({
+): SystemAppearanceClientApi =>
+  Object.freeze({
     getAppearance: () =>
       runSystemAppearanceRpc(
         client["SystemAppearance.getAppearance"](undefined),
@@ -290,23 +293,12 @@ const systemAppearanceClientFromRpcClient = (
         "SystemAppearance.isSupported"
       )
   } satisfies SystemAppearanceClientApi)
-}
-
-const makeSystemAppearanceBridgeProtocolLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions
-): Layer.Layer<RpcClient.Protocol> =>
-  Layer.effect(RpcClient.Protocol)(
-    makeUnaryDesktopTransportFromBridgeClientExchange(exchange, options).pipe(
-      Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
-    )
-  )
 
 const subscribeSystemAppearanceEvent = (
   exchange: BridgeClientExchange,
   method: "SystemAppearance.AppearanceChanged"
 ): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> =>
-  subscribeNativeEvent(exchange, method, SystemAppearanceChangedEvent)
+  subscribeNativeEvent(exchange, method, SystemAppearanceChangedEvent, StrictParseOptions)
 
 function systemAppearanceRpc<
   const Method extends string,
@@ -318,7 +310,7 @@ function systemAppearanceRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support: SystemAppearanceSupport
   })
 }
 

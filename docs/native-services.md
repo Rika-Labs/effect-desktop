@@ -1,6 +1,6 @@
 ---
 title: Native services
-description: 20 host-backed native capabilities exposed as Effect RPC groups.
+description: Native capability surfaces exposed as Effect services and RPC groups.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -10,7 +10,7 @@ effect_version: 4
 
 > Full references: [`reference/native/`](reference/native/) — one page per service.
 
-Native services expose host-backed desktop capability through Effect services and RPC groups.
+Native services expose desktop capability through Effect services and RPC groups. The Rust host backs the implemented subset; prerelease surfaces and methods report support metadata and fail through typed host errors until their platform adapters exist.
 Apps select native capabilities by passing generated `Native` selections to `Desktop.native(...)`.
 
 ## App composition
@@ -74,28 +74,38 @@ Native service authors should use the internal native surface authoring path, no
 
 ## Current native modules
 
-| Module             | Purpose                     | Reference                                                         |
-| ------------------ | --------------------------- | ----------------------------------------------------------------- |
-| `App`              | App lifecycle               | [native/app](reference/native/app.md)                             |
-| `Clipboard`        | Read/write clipboard        | [native/clipboard](reference/native/clipboard.md)                 |
-| `ContextMenu`      | Context menus               | [native/context-menu](reference/native/context-menu.md)           |
-| `CrashReporter`    | Crash reporter              | [native/crash-reporter](reference/native/crash-reporter.md)       |
-| `Dialog`           | File, save, message dialogs | [native/dialog](reference/native/dialog.md)                       |
-| `Dock`             | macOS dock                  | [native/dock](reference/native/dock.md)                           |
-| `GlobalShortcut`   | OS keyboard shortcuts       | [native/global-shortcut](reference/native/global-shortcut.md)     |
-| `Menu`             | App and window menus        | [native/menu](reference/native/menu.md)                           |
-| `Notification`     | System notifications        | [native/notification](reference/native/notification.md)           |
-| `Path`             | Platform path lookup        | [native/path](reference/native/path.md)                           |
-| `Protocol`         | App protocol routing        | [native/protocol](reference/native/protocol.md)                   |
-| `PowerMonitor`     | Power source events         | [native/power-monitor](reference/native/power-monitor.md)         |
-| `SafeStorage`      | Encrypted storage primitive | [native/safe-storage](reference/native/safe-storage.md)           |
-| `Screen`           | Displays, pointer           | [native/screen](reference/native/screen.md)                       |
-| `Shell`            | Open path, external URL     | [native/shell](reference/native/shell.md)                         |
-| `SystemAppearance` | Theme, accent               | [native/system-appearance](reference/native/system-appearance.md) |
-| `Tray`             | Tray icon and menu          | [native/tray](reference/native/tray.md)                           |
-| `Updater`          | Check, download, install    | [native/updater](reference/native/updater.md)                     |
-| `WebView`          | Embedded WebView            | [native/webview](reference/native/webview.md)                     |
-| `Window`           | Window lifecycle            | [native/window](reference/native/window.md)                       |
+| Module                      | Purpose                                 | Reference                                                                             |
+| --------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------- |
+| `App`                       | App lifecycle                           | [native/app](reference/native/app.md)                                                 |
+| `Clipboard`                 | Read/write clipboard                    | [native/clipboard](reference/native/clipboard.md)                                     |
+| `ContextMenu`               | Context menu contracts                  | [native/context-menu](reference/native/context-menu.md)                               |
+| `CrashReporter`             | Crash reporter                          | [native/crash-reporter](reference/native/crash-reporter.md)                           |
+| `DiagnosticsBundle`         | Diagnostics export                      | [native/diagnostics-bundle](reference/native/diagnostics-bundle.md)                   |
+| `Dialog`                    | File, save, message dialogs             | [native/dialog](reference/native/dialog.md)                                           |
+| `Dock`                      | Dock/taskbar state                      | [native/dock](reference/native/dock.md)                                               |
+| `EgressPolicy`              | Network egress decisions, not transport | [native/egress-policy](reference/native/egress-policy.md)                             |
+| `ExecutionSandbox`          | Isolated execution policy               | [native/execution-sandbox](reference/native/execution-sandbox.md)                     |
+| `ExtensionConfig`           | Extension settings                      | [native/extension-config](reference/native/extension-config.md)                       |
+| `ExtensionPackage`          | Extension package lifecycle             | [native/extension-package](reference/native/extension-package.md)                     |
+| `LocalToolRuntime`          | Local tool runtime                      | [native/local-tool-runtime](reference/native/local-tool-runtime.md)                   |
+| `TransactionalFileMutation` | Safe file mutation prepare/commit       | [native/transactional-file-mutation](reference/native/transactional-file-mutation.md) |
+| `WorkspaceIndex`            | Workspace index sessions                | [native/workspace-index](reference/native/workspace-index.md)                         |
+| `GlobalShortcut`            | Shortcut command contracts              | [native/global-shortcut](reference/native/global-shortcut.md)                         |
+| `Menu`                      | App/window menu install and contracts   | [native/menu](reference/native/menu.md)                                               |
+| `NativeFileSystem`          | Filesystem handles and watches          | [native/native-file-system](reference/native/native-file-system.md)                   |
+| `Notification`              | System notifications                    | [native/notification](reference/native/notification.md)                               |
+| `Path`                      | Platform path lookup                    | [native/path](reference/native/path.md)                                               |
+| `Protocol`                  | App protocol routing                    | [native/protocol](reference/native/protocol.md)                                       |
+| `PowerMonitor`              | Power lifecycle events                  | [native/power-monitor](reference/native/power-monitor.md)                             |
+| `RealtimeMediaSession`      | Realtime media sessions                 | [native/realtime-media-session](reference/native/realtime-media-session.md)           |
+| `SafeStorage`               | Credential-store boundary               | [native/safe-storage](reference/native/safe-storage.md)                               |
+| `Screen`                    | Displays, pointer                       | [native/screen](reference/native/screen.md)                                           |
+| `Shell`                     | Open path, external URL                 | [native/shell](reference/native/shell.md)                                             |
+| `SystemAppearance`          | Theme, accent                           | [native/system-appearance](reference/native/system-appearance.md)                     |
+| `Tray`                      | Tray icon and menu                      | [native/tray](reference/native/tray.md)                                               |
+| `Updater`                   | Update-specific lifecycle               | [native/updater](reference/native/updater.md)                                         |
+| `WebView`                   | Embedded WebView, no network-auth hooks | [native/webview](reference/native/webview.md)                                         |
+| `Window`                    | Window lifecycle                        | [native/window](reference/native/window.md)                                           |
 
 ## Verify Native Exports
 
@@ -111,7 +121,11 @@ if (ClipboardRpcs === undefined || DialogRpcs === undefined || WindowRpcs === un
 
 Platform-limited operations must be guarded through support metadata or `isSupported` methods. Unsupported capability is a **typed result**, not an implicit no-op.
 
-`NativeCapabilities` exposes a manifest of native method facts. Each fact includes the method tag, its capability metadata, and its support metadata. Unknown tags fail with `NativeCapabilityLookupError`; unsupported methods fail `require(tag)` with `UnsupportedCapability`.
+`NativeCapabilities` exposes a manifest of native method facts. Each fact includes the method tag, its capability metadata, and Schema-typed maturity metadata. Status is `supported`, `partial`, or `unsupported`; `partial` and `unsupported` include a reason, and platform-specific entries record macOS, Windows, and Linux differences. Unknown tags fail with `NativeCapabilityLookupError`; unsupported methods fail `require(tag)` with `UnsupportedCapability`; platform-specific unsupported entries fail `requirePlatform(tag, platform)` with the same typed error and platform detail.
+
+The generated [native parity matrix](reference/native/parity-matrix.md) is the docs/doctor reporting artifact. It is generated from `Native.all` schema docs and the Rust host dispatch registry, and the generator writes the same JSON snapshot to the docs tree and the CLI package. `desktop doctor` decodes the bundled CLI snapshot for its `native-capabilities` probe, so installed CLIs do not depend on a repository-local docs path.
+
+Native boundary failures use the closed `HostProtocolError` Schema vocabulary on every native RPC surface. Application code that needs a smaller decision surface can use `NativeBoundaryErrors` or `normalizeNativeBoundaryEffect` to classify host-protocol failures into `denied`, `unsupported`, `missing-host-method`, `invalid-input`, `invalid-output`, or `host-failed` without string parsing.
 
 ## Where to go next
 

@@ -10,12 +10,14 @@ import {
   type RpcCapabilityMetadata,
   RpcEndpoint,
   type RpcEndpointKind,
+  type RpcPlatformSupportMetadata,
   RpcSupport,
   type RpcSupportMetadata
 } from "@effect-desktop/bridge"
 import {
   type AnyDesktopNativeRegistration,
   DesktopRpc,
+  type DesktopRpcClient,
   type DesktopNativeSurfaceSelection,
   type DesktopRpcSurface,
   type DesktopRpcSurfaceDirectOptions,
@@ -25,7 +27,7 @@ import {
   P,
   type PermissionRegistry
 } from "@effect-desktop/core"
-import { Effect, Layer, Option, Schema } from "effect"
+import { Context, Effect, Layer, Option, Schema } from "effect"
 import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
 
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -74,6 +76,13 @@ export interface NativeRpcSurfaceSelectionOptions<Method extends string = never>
   readonly capabilities?: readonly Method[]
 }
 
+export interface NativeRpcSurfaceBridgeClientOptions<Rpcs extends Rpc.Any, Service> {
+  readonly bridgeClient?: (
+    client: DesktopRpcClient<Rpcs>,
+    exchange: BridgeClientExchange
+  ) => Service
+}
+
 export interface NativeRpcSurface<
   Tag extends string,
   Group extends NativeRpcGroup<Rpcs>,
@@ -107,8 +116,14 @@ export const nativeAuthority = Object.freeze({
 
 export const NativeRpcSupport = Object.freeze({
   supported: Object.freeze({ status: "supported" } satisfies RpcSupportMetadata),
-  unsupported: (reason: string): RpcSupportMetadata =>
-    Object.freeze({ status: "unsupported", reason })
+  partial: (
+    reason: string,
+    options: { readonly platforms?: readonly RpcPlatformSupportMetadata[] } = {}
+  ): RpcSupportMetadata => Object.freeze({ status: "partial", reason, ...options }),
+  unsupported: (
+    reason: string,
+    options: { readonly platforms?: readonly RpcPlatformSupportMetadata[] } = {}
+  ): RpcSupportMetadata => Object.freeze({ status: "unsupported", reason, ...options })
 })
 
 const rpc = <
@@ -164,7 +179,8 @@ function make<
     ServerE,
     ServerR
   > &
-    NativeRpcSurfaceSelectionOptions<Method>
+    NativeRpcSurfaceSelectionOptions<Method> &
+    NativeRpcSurfaceBridgeClientOptions<RpcGroup.Rpcs<Group>, Service>
 ): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
 function make<
   const Tag extends string,
@@ -181,8 +197,20 @@ function make<
     | (DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> &
         NativeRpcSurfaceSelectionOptions<Method>)
     | (DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR> &
-        NativeRpcSurfaceSelectionOptions<Method>)
+        NativeRpcSurfaceSelectionOptions<Method> &
+        NativeRpcSurfaceBridgeClientOptions<RpcGroup.Rpcs<Group>, Service>)
 ): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method> {
+  type Rpcs = RpcGroup.Rpcs<Group>
+  const service = options.service as Context.Key<ServiceId, DesktopRpcClient<Rpcs> | Service>
+  const toBridgeService = (
+    client: DesktopRpcClient<Rpcs>,
+    exchange: BridgeClientExchange
+  ): DesktopRpcClient<Rpcs> | Service =>
+    "bridgeClient" in options && options.bridgeClient !== undefined
+      ? options.bridgeClient(client, exchange)
+      : "client" in options
+        ? options.client(client)
+        : client
   const desktopSurface =
     "client" in options
       ? DesktopRpc.surface(tag, group, options)
@@ -191,7 +219,10 @@ function make<
   const surfaceWithoutSelection = Object.freeze({
     ...desktopSurface,
     bridgeClientLayer: (exchange: BridgeClientExchange, bridgeOptions: BridgeClientOptions = {}) =>
-      Layer.provide(desktopSurface.clientLayer, makeBridgeProtocolLayer(exchange, bridgeOptions)),
+      Layer.effect(
+        service,
+        RpcClient.make(group).pipe(Effect.map((client) => toBridgeService(client, exchange)))
+      ).pipe(Layer.provide(makeBridgeProtocolLayer(exchange, bridgeOptions))),
     hostRuntime: (
       handlers: NativeRpcHandlers<Group>,
       runtimeOptions: BridgeHandlerRuntimeOptions = {}
@@ -348,8 +379,19 @@ const applyCapability = <R extends Rpc.Any>(
 
 const applySupport = <R extends Rpc.Any>(rpc: R, support: RpcSupportMetadata): R =>
   support.status === "supported"
-    ? RpcSupport.supported(rpc)
-    : RpcSupport.unsupported(support.reason)(rpc)
+    ? RpcSupport.supported(
+        rpc,
+        support.platforms === undefined ? {} : { platforms: support.platforms }
+      )
+    : support.status === "partial"
+      ? RpcSupport.partial(
+          support.reason,
+          support.platforms === undefined ? {} : { platforms: support.platforms }
+        )(rpc)
+      : RpcSupport.unsupported(
+          support.reason,
+          support.platforms === undefined ? {} : { platforms: support.platforms }
+        )(rpc)
 
 const capabilityFor = (
   surface: string,

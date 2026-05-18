@@ -1,0 +1,4466 @@
+{
+  "rows": [
+    {
+      "tag": "ActivationRegistry.isSupported",
+      "surface": "ActivationRegistry",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ActivationRegistry.listSurfaces",
+      "surface": "ActivationRegistry",
+      "method": "listSurfaces",
+      "capability": "none",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ActivationRegistry.registerSurface",
+      "surface": "ActivationRegistry",
+      "method": "registerSurface",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ActivationRegistry.unregisterSurface",
+      "surface": "ActivationRegistry",
+      "method": "unregisterSurface",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "App.focus",
+      "surface": "App",
+      "method": "focus",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "App.quit",
+      "surface": "App",
+      "method": "quit",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "App.requestSingleInstanceLock",
+      "surface": "App",
+      "method": "requestSingleInstanceLock",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "App.restart",
+      "surface": "App",
+      "method": "restart",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "AppMetadata.getInfo",
+      "surface": "AppMetadata",
+      "method": "getInfo",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "AppMetadata.getLaunchContext",
+      "surface": "AppMetadata",
+      "method": "getLaunchContext",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "AppMetadata.getPaths",
+      "surface": "AppMetadata",
+      "method": "getPaths",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Association.getFileAssociations",
+      "surface": "Association",
+      "method": "getFileAssociations",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Association.isDefaultProtocolClient",
+      "surface": "Association",
+      "method": "isDefaultProtocolClient",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Association.setDefaultProtocolClient",
+      "surface": "Association",
+      "method": "setDefaultProtocolClient",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "AttachmentIntake.dispose",
+      "surface": "AttachmentIntake",
+      "method": "dispose",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "AttachmentIntake.ingest",
+      "surface": "AttachmentIntake",
+      "method": "ingest",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "AttachmentIntake.inspect",
+      "surface": "AttachmentIntake",
+      "method": "inspect",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "AttachmentIntake.isSupported",
+      "surface": "AttachmentIntake",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Autostart.disable",
+      "surface": "Autostart",
+      "method": "disable",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Autostart.enable",
+      "surface": "Autostart",
+      "method": "enable",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Autostart.isEnabled",
+      "surface": "Autostart",
+      "method": "isEnabled",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.clear",
+      "surface": "Clipboard",
+      "method": "clear",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.isSupported",
+      "surface": "Clipboard",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.readHtml",
+      "surface": "Clipboard",
+      "method": "readHtml",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.readImage",
+      "surface": "Clipboard",
+      "method": "readImage",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.readText",
+      "surface": "Clipboard",
+      "method": "readText",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.writeHtml",
+      "surface": "Clipboard",
+      "method": "writeHtml",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.writeImage",
+      "surface": "Clipboard",
+      "method": "writeImage",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Clipboard.writeText",
+      "surface": "Clipboard",
+      "method": "writeText",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ContextMenu.bindCommand",
+      "surface": "ContextMenu",
+      "method": "bindCommand",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "ContextMenu.buildFromTemplate",
+      "surface": "ContextMenu",
+      "method": "buildFromTemplate",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "ContextMenu.show",
+      "surface": "ContextMenu",
+      "method": "show",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "CrashReporter.flush",
+      "surface": "CrashReporter",
+      "method": "flush",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "CrashReporter.getReports",
+      "surface": "CrashReporter",
+      "method": "getReports",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "CrashReporter.recordBreadcrumb",
+      "surface": "CrashReporter",
+      "method": "recordBreadcrumb",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "CrashReporter.start",
+      "surface": "CrashReporter",
+      "method": "start",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DiagnosticsBundle.collect",
+      "surface": "DiagnosticsBundle",
+      "method": "collect",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DiagnosticsBundle.isSupported",
+      "surface": "DiagnosticsBundle",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DiagnosticsBundle.redact",
+      "surface": "DiagnosticsBundle",
+      "method": "redact",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DiagnosticsBundle.write",
+      "surface": "DiagnosticsBundle",
+      "method": "write",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dialog.confirm",
+      "surface": "Dialog",
+      "method": "confirm",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dialog.message",
+      "surface": "Dialog",
+      "method": "message",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dialog.openDirectory",
+      "surface": "Dialog",
+      "method": "openDirectory",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "linux-zenity-multi-selection-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "partial",
+            "reason": "linux-zenity-multi-selection-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dialog.openFile",
+      "surface": "Dialog",
+      "method": "openFile",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "linux-zenity-multi-selection-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "partial",
+            "reason": "linux-zenity-multi-selection-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dialog.saveFile",
+      "surface": "Dialog",
+      "method": "saveFile",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DisplayCapture.captureDisplay",
+      "surface": "DisplayCapture",
+      "method": "captureDisplay",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DisplayCapture.captureRegion",
+      "surface": "DisplayCapture",
+      "method": "captureRegion",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DisplayCapture.captureWindow",
+      "surface": "DisplayCapture",
+      "method": "captureWindow",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DisplayCapture.isSupported",
+      "surface": "DisplayCapture",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DistributionParity.isSupported",
+      "surface": "DistributionParity",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "DistributionParity.verify",
+      "surface": "DistributionParity",
+      "method": "verify",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dock.isSupported",
+      "surface": "Dock",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dock.requestAttention",
+      "surface": "Dock",
+      "method": "requestAttention",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dock.setBadgeCount",
+      "surface": "Dock",
+      "method": "setBadgeCount",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "dock behavior is platform-specific",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "Linux launcher badge labels are not wired in the host adapter"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "Windows taskbar badges require jump-list/taskbar integration"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dock.setBadgeText",
+      "surface": "Dock",
+      "method": "setBadgeText",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "dock behavior is platform-specific",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "Linux host only exposes numeric launcher badge labels"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "Windows taskbar badges require jump-list/taskbar integration"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dock.setJumpList",
+      "surface": "Dock",
+      "method": "setJumpList",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host adapter does not implement this Dock method on any platform",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host adapter does not implement this Dock method on any platform"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host adapter does not implement this Dock method on any platform"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host adapter does not implement this Dock method on any platform"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "Dock.setMenu",
+      "surface": "Dock",
+      "method": "setMenu",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host adapter does not implement this Dock method on any platform",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host adapter does not implement this Dock method on any platform"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host adapter does not implement this Dock method on any platform"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host adapter does not implement this Dock method on any platform"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Dock.setProgress",
+      "surface": "Dock",
+      "method": "setProgress",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host adapter does not implement this Dock method on any platform",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "macOS Dock does not expose taskbar progress"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "Linux launcher progress is not wired in the host adapter"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "Windows taskbar progress is not wired yet"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "EgressPolicy.decide",
+      "surface": "EgressPolicy",
+      "method": "decide",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-decision-log-runtime-probed",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "partial",
+            "reason": "host-decision-log-runtime-probed"
+          },
+          {
+            "platform": "windows",
+            "status": "partial",
+            "reason": "host-decision-log-runtime-probed"
+          },
+          {
+            "platform": "linux",
+            "status": "partial",
+            "reason": "host-decision-log-runtime-probed"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "EgressPolicy.isSupported",
+      "surface": "EgressPolicy",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "partial",
+        "reason": "host-decision-log-runtime-probed",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "partial",
+            "reason": "host-decision-log-runtime-probed"
+          },
+          {
+            "platform": "windows",
+            "status": "partial",
+            "reason": "host-decision-log-runtime-probed"
+          },
+          {
+            "platform": "linux",
+            "status": "partial",
+            "reason": "host-decision-log-runtime-probed"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "EgressPolicy.record",
+      "surface": "EgressPolicy",
+      "method": "record",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-decision-log-runtime-probed",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "partial",
+            "reason": "host-decision-log-runtime-probed"
+          },
+          {
+            "platform": "windows",
+            "status": "partial",
+            "reason": "host-decision-log-runtime-probed"
+          },
+          {
+            "platform": "linux",
+            "status": "partial",
+            "reason": "host-decision-log-runtime-probed"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExecutionSandbox.create",
+      "surface": "ExecutionSandbox",
+      "method": "create",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExecutionSandbox.destroy",
+      "surface": "ExecutionSandbox",
+      "method": "destroy",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExecutionSandbox.isSupported",
+      "surface": "ExecutionSandbox",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExecutionSandbox.run",
+      "surface": "ExecutionSandbox",
+      "method": "run",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionConfig.isSupported",
+      "surface": "ExtensionConfig",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionConfig.read",
+      "surface": "ExtensionConfig",
+      "method": "read",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionConfig.redact",
+      "surface": "ExtensionConfig",
+      "method": "redact",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionConfig.reset",
+      "surface": "ExtensionConfig",
+      "method": "reset",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionConfig.write",
+      "surface": "ExtensionConfig",
+      "method": "write",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionPackage.install",
+      "surface": "ExtensionPackage",
+      "method": "install",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionPackage.isSupported",
+      "surface": "ExtensionPackage",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionPackage.list",
+      "surface": "ExtensionPackage",
+      "method": "list",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionPackage.remove",
+      "surface": "ExtensionPackage",
+      "method": "remove",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ExtensionPackage.update",
+      "surface": "ExtensionPackage",
+      "method": "update",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "FocusedApplicationContext.isSupported",
+      "surface": "FocusedApplicationContext",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "FocusedApplicationContext.snapshot",
+      "surface": "FocusedApplicationContext",
+      "method": "snapshot",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "FocusedApplicationContext.stopWatching",
+      "surface": "FocusedApplicationContext",
+      "method": "stopWatching",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "FocusedApplicationContext.watch",
+      "surface": "FocusedApplicationContext",
+      "method": "watch",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "GlobalShortcut.isRegistered",
+      "surface": "GlobalShortcut",
+      "method": "isRegistered",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "GlobalShortcut.isSupported",
+      "surface": "GlobalShortcut",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "GlobalShortcut.register",
+      "surface": "GlobalShortcut",
+      "method": "register",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "GlobalShortcut.unregister",
+      "surface": "GlobalShortcut",
+      "method": "unregister",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "GlobalShortcut.unregisterAll",
+      "surface": "GlobalShortcut",
+      "method": "unregisterAll",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.fail",
+      "surface": "Job",
+      "method": "fail",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.get",
+      "surface": "Job",
+      "method": "get",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.interrupt",
+      "surface": "Job",
+      "method": "interrupt",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.isSupported",
+      "surface": "Job",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.pause",
+      "surface": "Job",
+      "method": "pause",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.reportProgress",
+      "surface": "Job",
+      "method": "reportProgress",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.resume",
+      "surface": "Job",
+      "method": "resume",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.retry",
+      "surface": "Job",
+      "method": "retry",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.start",
+      "surface": "Job",
+      "method": "start",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Job.succeed",
+      "surface": "Job",
+      "method": "succeed",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "LocalToolRuntime.health",
+      "surface": "LocalToolRuntime",
+      "method": "health",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "LocalToolRuntime.isSupported",
+      "surface": "LocalToolRuntime",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "LocalToolRuntime.register",
+      "surface": "LocalToolRuntime",
+      "method": "register",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "LocalToolRuntime.run",
+      "surface": "LocalToolRuntime",
+      "method": "run",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "LocalToolRuntime.stop",
+      "surface": "LocalToolRuntime",
+      "method": "stop",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Menu.bindCommand",
+      "surface": "Menu",
+      "method": "bindCommand",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "Menu.capability",
+      "surface": "Menu",
+      "method": "capability",
+      "capability": "none",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "Menu.clear",
+      "surface": "Menu",
+      "method": "clear",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "Menu.setApplicationMenu",
+      "surface": "Menu",
+      "method": "setApplicationMenu",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Menu.setWindowMenu",
+      "surface": "Menu",
+      "method": "setWindowMenu",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "NativeFileSystem.isSupported",
+      "surface": "NativeFileSystem",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "NativeFileSystem.open",
+      "surface": "NativeFileSystem",
+      "method": "open",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "NativeFileSystem.stat",
+      "surface": "NativeFileSystem",
+      "method": "stat",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "NativeFileSystem.stopWatching",
+      "surface": "NativeFileSystem",
+      "method": "stopWatching",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "NativeFileSystem.watch",
+      "surface": "NativeFileSystem",
+      "method": "watch",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Notification.close",
+      "surface": "Notification",
+      "method": "close",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-notification-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Notification.getPermissionStatus",
+      "surface": "Notification",
+      "method": "getPermissionStatus",
+      "capability": "none",
+      "support": {
+        "status": "partial",
+        "reason": "host-notification-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Notification.isSupported",
+      "surface": "Notification",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Notification.requestPermission",
+      "surface": "Notification",
+      "method": "requestPermission",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-notification-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Notification.show",
+      "surface": "Notification",
+      "method": "show",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-notification-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-notification-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Path.appData",
+      "surface": "Path",
+      "method": "appData",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Path.cache",
+      "surface": "Path",
+      "method": "cache",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Path.downloads",
+      "surface": "Path",
+      "method": "downloads",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Path.home",
+      "surface": "Path",
+      "method": "home",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Path.logs",
+      "surface": "Path",
+      "method": "logs",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Path.temp",
+      "surface": "Path",
+      "method": "temp",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "PowerMonitor.isSupported",
+      "surface": "PowerMonitor",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Protocol.deny",
+      "surface": "Protocol",
+      "method": "deny",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Protocol.registerAppProtocol",
+      "surface": "Protocol",
+      "method": "registerAppProtocol",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Protocol.serveAsset",
+      "surface": "Protocol",
+      "method": "serveAsset",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Protocol.serveRoute",
+      "surface": "Protocol",
+      "method": "serveRoute",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RealtimeMediaSession.close",
+      "surface": "RealtimeMediaSession",
+      "method": "close",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-media-runtime-verified",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "partial",
+            "reason": "host-media-runtime-verified"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-media-startup-unverified"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-media-startup-unverified"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RealtimeMediaSession.interrupt",
+      "surface": "RealtimeMediaSession",
+      "method": "interrupt",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-media-runtime-verified",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "partial",
+            "reason": "host-media-runtime-verified"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-media-startup-unverified"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-media-startup-unverified"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RealtimeMediaSession.isSupported",
+      "surface": "RealtimeMediaSession",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RealtimeMediaSession.open",
+      "surface": "RealtimeMediaSession",
+      "method": "open",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-media-runtime-verified",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "partial",
+            "reason": "host-media-runtime-verified"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-media-startup-unverified"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-media-startup-unverified"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RealtimeMediaSession.selectDevice",
+      "surface": "RealtimeMediaSession",
+      "method": "selectDevice",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-media-runtime-verified",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "partial",
+            "reason": "host-media-runtime-verified"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-media-startup-unverified"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-media-startup-unverified"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RecentDocuments.add",
+      "surface": "RecentDocuments",
+      "method": "add",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RecentDocuments.clear",
+      "surface": "RecentDocuments",
+      "method": "clear",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "RecentDocuments.list",
+      "surface": "RecentDocuments",
+      "method": "list",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ResidentLifecycle.disable",
+      "surface": "ResidentLifecycle",
+      "method": "disable",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ResidentLifecycle.enable",
+      "surface": "ResidentLifecycle",
+      "method": "enable",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ResidentLifecycle.getState",
+      "surface": "ResidentLifecycle",
+      "method": "getState",
+      "capability": "none",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ResidentLifecycle.isSupported",
+      "surface": "ResidentLifecycle",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SafeStorage.delete",
+      "surface": "SafeStorage",
+      "method": "delete",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "SafeStorage.get",
+      "surface": "SafeStorage",
+      "method": "get",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "SafeStorage.isAvailable",
+      "surface": "SafeStorage",
+      "method": "isAvailable",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SafeStorage.list",
+      "surface": "SafeStorage",
+      "method": "list",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "SafeStorage.set",
+      "surface": "SafeStorage",
+      "method": "set",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "ScopedAccessGrant.grant",
+      "surface": "ScopedAccessGrant",
+      "method": "grant",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ScopedAccessGrant.isSupported",
+      "surface": "ScopedAccessGrant",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ScopedAccessGrant.resolve",
+      "surface": "ScopedAccessGrant",
+      "method": "resolve",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "ScopedAccessGrant.revoke",
+      "surface": "ScopedAccessGrant",
+      "method": "revoke",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Screen.getDisplays",
+      "surface": "Screen",
+      "method": "getDisplays",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Screen.getPointerPoint",
+      "surface": "Screen",
+      "method": "getPointerPoint",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Screen.getPrimaryDisplay",
+      "surface": "Screen",
+      "method": "getPrimaryDisplay",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Screen.isSupported",
+      "surface": "Screen",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SelectionContext.isSupported",
+      "surface": "SelectionContext",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SelectionContext.readDocumentContext",
+      "surface": "SelectionContext",
+      "method": "readDocumentContext",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SelectionContext.readSelection",
+      "surface": "SelectionContext",
+      "method": "readSelection",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SelectionContext.stopWatching",
+      "surface": "SelectionContext",
+      "method": "stopWatching",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SelectionContext.watchFocus",
+      "surface": "SelectionContext",
+      "method": "watchFocus",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Shell.openExternal",
+      "surface": "Shell",
+      "method": "openExternal",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Shell.openPath",
+      "surface": "Shell",
+      "method": "openPath",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Shell.showItemInFolder",
+      "surface": "Shell",
+      "method": "showItemInFolder",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Shell.trashItem",
+      "surface": "Shell",
+      "method": "trashItem",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "windows-trash-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "windows-trash-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SystemAppearance.getAccentColor",
+      "surface": "SystemAppearance",
+      "method": "getAccentColor",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SystemAppearance.getAppearance",
+      "surface": "SystemAppearance",
+      "method": "getAppearance",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SystemAppearance.getReducedMotion",
+      "surface": "SystemAppearance",
+      "method": "getReducedMotion",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SystemAppearance.getReducedTransparency",
+      "surface": "SystemAppearance",
+      "method": "getReducedTransparency",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SystemAppearance.isSupported",
+      "surface": "SystemAppearance",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "TransactionalFileMutation.commit",
+      "surface": "TransactionalFileMutation",
+      "method": "commit",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "TransactionalFileMutation.isSupported",
+      "surface": "TransactionalFileMutation",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "TransactionalFileMutation.prepare",
+      "surface": "TransactionalFileMutation",
+      "method": "prepare",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "TransactionalFileMutation.rollback",
+      "surface": "TransactionalFileMutation",
+      "method": "rollback",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "TransientWindowRole.dismiss",
+      "surface": "TransientWindowRole",
+      "method": "dismiss",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "TransientWindowRole.isSupported",
+      "surface": "TransientWindowRole",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "TransientWindowRole.open",
+      "surface": "TransientWindowRole",
+      "method": "open",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "TransientWindowRole.reposition",
+      "surface": "TransientWindowRole",
+      "method": "reposition",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Tray.create",
+      "surface": "Tray",
+      "method": "create",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Tray.destroy",
+      "surface": "Tray",
+      "method": "destroy",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Tray.isSupported",
+      "surface": "Tray",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Tray.setIcon",
+      "surface": "Tray",
+      "method": "setIcon",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Tray.setMenu",
+      "surface": "Tray",
+      "method": "setMenu",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Tray.setTitle",
+      "surface": "Tray",
+      "method": "setTitle",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "windows-tray-title-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "windows-tray-title-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Tray.setTooltip",
+      "surface": "Tray",
+      "method": "setTooltip",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "linux-tray-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-tray-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Updater.check",
+      "surface": "Updater",
+      "method": "check",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Updater.download",
+      "surface": "Updater",
+      "method": "download",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Updater.getStatus",
+      "surface": "Updater",
+      "method": "getStatus",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Updater.install",
+      "surface": "Updater",
+      "method": "install",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Updater.installAndRestart",
+      "surface": "Updater",
+      "method": "installAndRestart",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Updater.readyForRestart",
+      "surface": "Updater",
+      "method": "readyForRestart",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WebView.capability",
+      "surface": "WebView",
+      "method": "capability",
+      "capability": "none",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.captureScreenshot",
+      "surface": "WebView",
+      "method": "captureScreenshot",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.create",
+      "surface": "WebView",
+      "method": "create",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.destroy",
+      "surface": "WebView",
+      "method": "destroy",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.getNavigationState",
+      "surface": "WebView",
+      "method": "getNavigationState",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.goBack",
+      "surface": "WebView",
+      "method": "goBack",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.goForward",
+      "surface": "WebView",
+      "method": "goForward",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.loadRoute",
+      "surface": "WebView",
+      "method": "loadRoute",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.loadUrl",
+      "surface": "WebView",
+      "method": "loadUrl",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.reload",
+      "surface": "WebView",
+      "method": "reload",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.setNavigationPolicy",
+      "surface": "WebView",
+      "method": "setNavigationPolicy",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "WebView.stop",
+      "surface": "WebView",
+      "method": "stop",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-adapter-unimplemented",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "missing"
+    },
+    {
+      "tag": "Window.cancelAttention",
+      "surface": "Window",
+      "method": "cancelAttention",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.center",
+      "surface": "Window",
+      "method": "center",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.centerOnDisplay",
+      "surface": "Window",
+      "method": "centerOnDisplay",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.close",
+      "surface": "Window",
+      "method": "close",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed",
+      "hostMethod": "Window.destroy"
+    },
+    {
+      "tag": "Window.create",
+      "surface": "Window",
+      "method": "create",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.destroy",
+      "surface": "Window",
+      "method": "destroy",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.focus",
+      "surface": "Window",
+      "method": "focus",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.getBounds",
+      "surface": "Window",
+      "method": "getBounds",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.getById",
+      "surface": "Window",
+      "method": "getById",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.getCurrent",
+      "surface": "Window",
+      "method": "getCurrent",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.getParent",
+      "surface": "Window",
+      "method": "getParent",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.getState",
+      "surface": "Window",
+      "method": "getState",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.hide",
+      "surface": "Window",
+      "method": "hide",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.list",
+      "surface": "Window",
+      "method": "list",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.maximize",
+      "surface": "Window",
+      "method": "maximize",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.minimize",
+      "surface": "Window",
+      "method": "minimize",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.requestAttention",
+      "surface": "Window",
+      "method": "requestAttention",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.restore",
+      "surface": "Window",
+      "method": "restore",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setAlwaysOnTop",
+      "surface": "Window",
+      "method": "setAlwaysOnTop",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setBounds",
+      "surface": "Window",
+      "method": "setBounds",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setDecorations",
+      "surface": "Window",
+      "method": "setDecorations",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setFullscreen",
+      "surface": "Window",
+      "method": "setFullscreen",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setProgress",
+      "surface": "Window",
+      "method": "setProgress",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setResizable",
+      "surface": "Window",
+      "method": "setResizable",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setSkipTaskbar",
+      "surface": "Window",
+      "method": "setSkipTaskbar",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "skip-taskbar-macos-unsupported",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "skip-taskbar-macos-unsupported"
+          },
+          {
+            "platform": "windows",
+            "status": "supported"
+          },
+          {
+            "platform": "linux",
+            "status": "supported"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setTitle",
+      "surface": "Window",
+      "method": "setTitle",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.setTrafficLights",
+      "surface": "Window",
+      "method": "setTrafficLights",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "traffic-light-placement-macos-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "traffic-light-placement-macos-only"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "traffic-light-placement-macos-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.show",
+      "surface": "Window",
+      "method": "show",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Window.subscribeEvents",
+      "surface": "Window",
+      "method": "subscribeEvents",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed",
+      "hostMethod": "Window.Event"
+    },
+    {
+      "tag": "WorkspaceIndex.close",
+      "surface": "WorkspaceIndex",
+      "method": "close",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WorkspaceIndex.isSupported",
+      "surface": "WorkspaceIndex",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WorkspaceIndex.open",
+      "surface": "WorkspaceIndex",
+      "method": "open",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WorkspaceIndex.refresh",
+      "surface": "WorkspaceIndex",
+      "method": "refresh",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    }
+  ],
+  "summary": {
+    "total": 230,
+    "routed": 206,
+    "missing": 24,
+    "supported": 109,
+    "partial": 24,
+    "unsupported": 97
+  }
+}

@@ -4,6 +4,7 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -30,17 +31,28 @@ import {
 
 export type DialogError = HostProtocolError
 
+const DialogLinuxMultiSelectionReason = "linux-zenity-multi-selection-unavailable"
+const DialogSelectionSupport = NativeSurface.support.partial(DialogLinuxMultiSelectionReason, {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "supported" },
+    { platform: "linux", status: "partial", reason: DialogLinuxMultiSelectionReason }
+  ]
+}) satisfies RpcSupportMetadata
+
 export const DialogOpenFile = dialogRpc(
   "openFile",
   DialogOpenFileInput,
   DialogOpenResult,
-  P.nativeInvoke({ primitive: "Dialog", methods: ["openFile"] })
+  P.nativeInvoke({ primitive: "Dialog", methods: ["openFile"] }),
+  DialogSelectionSupport
 )
 export const DialogOpenDirectory = dialogRpc(
   "openDirectory",
   DialogOpenDirectoryInput,
   DialogOpenResult,
-  P.nativeInvoke({ primitive: "Dialog", methods: ["openDirectory"] })
+  P.nativeInvoke({ primitive: "Dialog", methods: ["openDirectory"] }),
+  DialogSelectionSupport
 )
 export const DialogSaveFile = dialogRpc(
   "saveFile",
@@ -112,7 +124,9 @@ export interface DialogServiceApi {
   readonly openDirectory: (
     input?: DialogOpenDirectoryOptions
   ) => Effect.Effect<ReadonlyArray<string>, DialogError, never>
-  readonly saveFile: (input?: DialogSaveFileOptions) => Effect.Effect<string, DialogError, never>
+  readonly saveFile: (
+    input?: DialogSaveFileOptions
+  ) => Effect.Effect<string | undefined, DialogError, never>
   readonly message: (input: DialogMessageOptions) => Effect.Effect<void, DialogError, never>
   readonly confirm: (input: DialogConfirmOptions) => Effect.Effect<boolean, DialogError, never>
 }
@@ -160,7 +174,7 @@ export const DialogHandlersLive = DialogRpcGroup.toLayer({
     Effect.gen(function* () {
       const dialog = yield* Dialog
       const path = yield* dialog.saveFile(input)
-      return new DialogSaveResult({ path })
+      return path === undefined ? new DialogSaveResult({}) : new DialogSaveResult({ path })
     }),
   "Dialog.message": (input) =>
     Effect.gen(function* () {
@@ -271,12 +285,18 @@ function dialogRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  capability: RpcCapabilityMetadata,
+  support: RpcSupportMetadata = NativeSurface.support.supported
+) {
   return NativeSurface.rpc("Dialog", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: NativeSurface.support.supported
+    support
   })
 }

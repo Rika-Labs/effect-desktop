@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { PermissionRegistry, makePermissionRegistry } from "@effect-desktop/core"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Layer, Schema, Stream } from "effect"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { HttpApiClient } from "effect/unstable/httpapi"
 
@@ -22,7 +22,34 @@ const windowHandle = Schema.decodeUnknownSync(WindowResource)({
 
 const windowClient: WindowClientApi = {
   create: () => Effect.succeed(windowHandle),
-  close: () => Effect.void
+  close: () => Effect.void,
+  destroy: () => Effect.void,
+  show: () => Effect.void,
+  hide: () => Effect.void,
+  focus: () => Effect.void,
+  getCurrent: () => Effect.succeed(windowHandle),
+  getById: () => Effect.succeed(windowHandle),
+  list: () => Effect.succeed([windowHandle]),
+  getParent: () => Effect.succeed(undefined),
+  getBounds: () => Effect.succeed({ x: 0, y: 0, width: 640, height: 480 }),
+  setBounds: () => Effect.void,
+  center: () => Effect.void,
+  centerOnDisplay: () => Effect.void,
+  setTitle: () => Effect.void,
+  setResizable: () => Effect.void,
+  setDecorations: () => Effect.void,
+  setTrafficLights: () => Effect.void,
+  setAlwaysOnTop: () => Effect.void,
+  setSkipTaskbar: () => Effect.void,
+  setProgress: () => Effect.void,
+  requestAttention: () => Effect.void,
+  cancelAttention: () => Effect.void,
+  minimize: () => Effect.void,
+  maximize: () => Effect.void,
+  restore: () => Effect.void,
+  setFullscreen: () => Effect.void,
+  getState: () => Effect.succeed({ minimized: false, maximized: false, fullscreen: false }),
+  events: () => Stream.empty
 }
 
 const makeHandler = (permissions: Layer.Layer<PermissionRegistry>) =>

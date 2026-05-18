@@ -10,6 +10,7 @@ const ReservedSchemes = [
   "http",
   "https",
   "javascript",
+  "vbscript",
   "chrome",
   "view-source"
 ] as const

@@ -9,7 +9,7 @@ use std::env;
 #[cfg(target_os = "linux")]
 use std::process::Command;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 const WAYLAND_GLOBAL_SHORTCUT_REASON: &str = "wayland-no-global-shortcut";
 const HOST_ADAPTER_UNIMPLEMENTED_REASON: &str = "host-adapter-unimplemented";
 
@@ -115,13 +115,17 @@ fn dock_method_supported(method: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn global_shortcut_support_payload() -> Value {
-    match LinuxSession::detect() {
+    support_payload_for_session(LinuxSession::detect())
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn support_payload_for_session(session: LinuxSession) -> Value {
+    match session {
         LinuxSession::Wayland => json!({
             "supported": false,
             "reason": WAYLAND_GLOBAL_SHORTCUT_REASON
         }),
-        LinuxSession::X11 => json!({ "supported": true }),
-        LinuxSession::Unknown => json!({
+        LinuxSession::X11 | LinuxSession::Unknown => json!({
             "supported": false,
             "reason": HOST_ADAPTER_UNIMPLEMENTED_REASON
         }),
@@ -189,12 +193,15 @@ fn platform_dock_method_supported(method: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn platform_dock_method_supported(method: &str) -> bool {
-    matches!(method, "setBadgeCount" | "setProgress" | "requestAttention")
+    matches!(method, "requestAttention")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_method, dock_method_supported, LinuxSession};
+    use super::{
+        decode_method, dock_method_supported, support_payload_for_session, LinuxSession,
+        HOST_ADAPTER_UNIMPLEMENTED_REASON,
+    };
     use serde_json::json;
 
     #[test]
@@ -212,6 +219,17 @@ mod tests {
     #[test]
     fn detects_x11_sessions() {
         assert_eq!(LinuxSession::from_value(Some("x11")), LinuxSession::X11);
+    }
+
+    #[test]
+    fn x11_global_shortcut_support_remains_unimplemented_until_adapter_exists() {
+        assert_eq!(
+            support_payload_for_session(LinuxSession::X11),
+            json!({
+                "supported": false,
+                "reason": HOST_ADAPTER_UNIMPLEMENTED_REASON
+            })
+        );
     }
 
     #[test]
@@ -244,10 +262,10 @@ mod tests {
 
         #[cfg(target_os = "linux")]
         {
-            assert!(dock_method_supported("setBadgeCount"));
-            assert!(dock_method_supported("setProgress"));
             assert!(dock_method_supported("requestAttention"));
+            assert!(!dock_method_supported("setBadgeCount"));
             assert!(!dock_method_supported("setBadgeText"));
+            assert!(!dock_method_supported("setProgress"));
             assert!(!dock_method_supported("setMenu"));
             assert!(!dock_method_supported("setJumpList"));
         }

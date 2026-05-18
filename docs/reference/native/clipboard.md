@@ -1,6 +1,6 @@
 ---
 title: Clipboard (native)
-description: Read and write the system clipboard.
+description: Clipboard host protocol surface.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Clipboard`
 
-System clipboard read/write.
+Clipboard host protocol surface.
 
 ## Import
 
@@ -17,16 +17,31 @@ import { Desktop } from "@effect-desktop/core"
 import { Clipboard, ClipboardError, ClipboardRpcs, Native } from "@effect-desktop/native"
 ```
 
+## Status
+
+The TypeScript service, Effect RPC contracts, and Rust host router are wired for text, HTML, image, clear,
+and capability checks. The current Rust host adapter returns typed `Unsupported` errors for clipboard
+operations on macOS, Windows, and Linux until an OS clipboard backend is added. `isSupported` reports
+`false` with reason `host-adapter-unimplemented`; Linux primary-selection behavior is explicitly
+unsupported through the `selection` capability.
+
 ## Methods
 
-| Method      | Payload            | Success            |
-| ----------- | ------------------ | ------------------ |
-| `readText`  | —                  | `{ text: string }` |
-| `writeText` | `{ text: string }` | `void`             |
+| Method        | Payload                                                                 | Success                                                    |
+| ------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `readText`    | —                                                                       | `{ text: string }`                                         |
+| `writeText`   | `{ text: string }`                                                      | `void`                                                     |
+| `readHtml`    | —                                                                       | `{ html: string }`                                         |
+| `writeHtml`   | `{ html: string }`                                                      | `void`                                                     |
+| `readImage`   | —                                                                       | `{ mime: "image/png" \| "image/jpeg", bytes: Uint8Array }` |
+| `writeImage`  | `{ mime: "image/png" \| "image/jpeg", bytes: Uint8Array }`              | `void`                                                     |
+| `clear`       | —                                                                       | `void`                                                     |
+| `isSupported` | `{ capability: "text" \| "html" \| "image" \| "clear" \| "selection" }` | `{ supported: boolean, reason?: string }`                  |
 
 ## Errors
 
-`ClipboardError` — generic platform clipboard failure.
+`ClipboardError` is the host protocol error union. Current host operations fail with
+`HostProtocolUnsupportedError` rather than silently succeeding or returning fake data.
 
 ## App composition
 

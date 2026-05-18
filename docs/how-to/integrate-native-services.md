@@ -104,21 +104,37 @@ await show.run({ title: "Done", body: "Indexing complete." })
 The React adapter wraps a few high-frequency reads as hooks:
 
 ```tsx
-import { useTheme, useDisplays, usePower } from "@effect-desktop/react"
+import type { PowerMonitor, Screen, SystemAppearance } from "@effect-desktop/native"
+import { useDisplays, usePower, useTheme } from "@effect-desktop/react"
 
-function StatusBar() {
-  const theme = useTheme() // { isDark: boolean }
-  const displays = useDisplays() // { displays: Display[] }
-  const power = usePower() // { event?: PowerEvent }
+function StatusBar(props: {
+  readonly appearance: SystemAppearance["Service"]
+  readonly screen: Screen["Service"]
+  readonly powerMonitor: PowerMonitor["Service"]
+}) {
+  const theme = useTheme(props.appearance.onAppearanceChanged)
+  const displays = useDisplays(props.screen.getDisplays)
+  const power = usePower({
+    onSuspend: props.powerMonitor.onSuspend,
+    onResume: props.powerMonitor.onResume,
+    onShutdown: props.powerMonitor.onShutdown,
+    onLockScreen: props.powerMonitor.onLockScreen,
+    onUnlockScreen: props.powerMonitor.onUnlockScreen,
+    onPowerSourceChanged: props.powerMonitor.onPowerSourceChanged
+  })
   return (
     <span>
-      {theme.isDark ? "🌙" : "☀️"} · {displays.displays.length} displays
+      {theme.data?.appearance ?? "unknown"} · {displays.data?.length ?? 0} displays
     </span>
   )
 }
 ```
 
-These are convenience hooks over the matching RPC clients; under the hood they call `Screen.getDisplays`, `SystemAppearance.theme`, and `PowerMonitor` events.
+These are convenience hooks over the matching RPC clients; under the hood they
+call `Screen.getDisplays`, the TypeScript `SystemAppearance` stream, and the
+TypeScript `PowerMonitor` event streams. Native OS appearance and power-event
+delivery are currently unsupported until the corresponding host adapters are
+implemented.
 
 ## Support checks
 

@@ -65,6 +65,14 @@ export class WebViewLoadUrlInput extends Schema.Class<WebViewLoadUrlInput>("WebV
   url: WebViewNavigationUrl
 }) {}
 
+export class WebViewNavigationState extends Schema.Class<WebViewNavigationState>(
+  "WebViewNavigationState"
+)({
+  canGoBack: Schema.Boolean,
+  canGoForward: Schema.Boolean,
+  loading: Schema.Boolean
+}) {}
+
 export class WebViewSetNavigationPolicyInput extends Schema.Class<WebViewSetNavigationPolicyInput>(
   "WebViewSetNavigationPolicyInput"
 )({

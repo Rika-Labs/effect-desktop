@@ -69,7 +69,7 @@ const attachEndpointSupport = <Endpoint extends object>(
   Object.freeze({
     ...endpoint,
     support,
-    isSupported: support.status === "supported"
+    isSupported: support.status !== "unsupported"
   })
 
 const asEffect = (

@@ -187,7 +187,7 @@ export const DesktopRpc = Object.freeze({
 })
 
 const isSupportedRpc = <R extends Rpc.Any>(rpc: R): rpc is SupportedRpc<R> =>
-  rpcSupport(rpc).status === "supported"
+  rpcSupport(rpc).status !== "unsupported"
 
 const schemaDocs = (group: RpcGroupRequests): readonly DesktopRpcSchemaDoc[] =>
   Object.freeze(

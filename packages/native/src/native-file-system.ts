@@ -1,0 +1,316 @@
+import {
+  type BridgeClientExchange,
+  type BridgeClientOptions,
+  type BridgeHandlerRuntime,
+  type BridgeHandlerRuntimeOptions,
+  type HostProtocolError,
+  type RpcCapabilityMetadata,
+  type RpcEndpointKind,
+  RpcGroup
+} from "@effect-desktop/bridge"
+import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
+import { Context, Effect, Layer, Schema, Stream } from "effect"
+
+import {
+  NativeFileSystemEvent,
+  NativeFileSystemMetadata,
+  NativeFileSystemOpenInput,
+  type NativeFileSystemOpenOptions,
+  NativeFileSystemOpenResult,
+  NativeFileSystemStatInput,
+  type NativeFileSystemStatOptions,
+  NativeFileSystemStopWatchingInput,
+  type NativeFileSystemStopWatchingOptions,
+  NativeFileSystemStopWatchingResult,
+  NativeFileSystemSupportedResult,
+  NativeFileSystemWatchInput,
+  type NativeFileSystemWatchOptions,
+  NativeFileSystemWatchResult
+} from "./contracts/native-file-system.js"
+import { subscribeNativeEvent } from "./event-stream.js"
+import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { NativeSurface } from "./native-surface.js"
+
+export * from "./contracts/native-file-system.js"
+
+const Surface = "NativeFileSystem"
+const UnsupportedReason = "host-adapter-unimplemented"
+const NativeFileSystemSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
+
+export type NativeFileSystemError = HostProtocolError
+
+export const NativeFileSystemOpen = nativeFileSystemRpc(
+  "open",
+  NativeFileSystemOpenInput,
+  NativeFileSystemOpenResult,
+  P.nativeInvoke({ primitive: Surface, methods: ["open"] }),
+  "mutation"
+)
+export const NativeFileSystemStat = nativeFileSystemRpc(
+  "stat",
+  NativeFileSystemStatInput,
+  NativeFileSystemMetadata,
+  P.nativeInvoke({ primitive: Surface, methods: ["stat"] }),
+  "query"
+)
+export const NativeFileSystemWatch = nativeFileSystemRpc(
+  "watch",
+  NativeFileSystemWatchInput,
+  NativeFileSystemWatchResult,
+  P.nativeInvoke({ primitive: Surface, methods: ["watch"] }),
+  "mutation"
+)
+export const NativeFileSystemStopWatching = nativeFileSystemRpc(
+  "stopWatching",
+  NativeFileSystemStopWatchingInput,
+  NativeFileSystemStopWatchingResult,
+  P.nativeInvoke({ primitive: Surface, methods: ["stopWatching"] }),
+  "mutation"
+)
+export const NativeFileSystemIsSupported = nativeFileSystemRpc(
+  "isSupported",
+  Schema.Void,
+  NativeFileSystemSupportedResult,
+  NativeSurface.authority.none,
+  "query"
+)
+
+export const NativeFileSystemRpcEvents = Object.freeze({
+  Event: { payload: NativeFileSystemEvent }
+})
+
+const NativeFileSystemRpcGroup = RpcGroup.make(
+  NativeFileSystemOpen,
+  NativeFileSystemStat,
+  NativeFileSystemWatch,
+  NativeFileSystemStopWatching,
+  NativeFileSystemIsSupported
+)
+
+export const NativeFileSystemRpcs: RpcGroup.RpcGroup<NativeFileSystemRpc> = NativeFileSystemRpcGroup
+
+export const NativeFileSystemMethodNames = Object.freeze([
+  "open",
+  "stat",
+  "watch",
+  "stopWatching",
+  "isSupported"
+] as const)
+
+const NativeFileSystemCapabilityMethods = Object.freeze([
+  "open",
+  "stat",
+  "watch",
+  "stopWatching"
+] as const satisfies readonly (typeof NativeFileSystemMethodNames)[number][])
+
+export interface NativeFileSystemClientApi {
+  readonly open: (
+    input: NativeFileSystemOpenOptions
+  ) => Effect.Effect<NativeFileSystemOpenResult, NativeFileSystemError, never>
+  readonly stat: (
+    input: NativeFileSystemStatOptions
+  ) => Effect.Effect<NativeFileSystemMetadata, NativeFileSystemError, never>
+  readonly watch: (
+    input: NativeFileSystemWatchOptions
+  ) => Effect.Effect<NativeFileSystemWatchResult, NativeFileSystemError, never>
+  readonly stopWatching: (
+    input: NativeFileSystemStopWatchingOptions
+  ) => Effect.Effect<NativeFileSystemStopWatchingResult, NativeFileSystemError, never>
+  readonly isSupported: () => Effect.Effect<
+    NativeFileSystemSupportedResult,
+    NativeFileSystemError,
+    never
+  >
+  readonly events: () => Stream.Stream<NativeFileSystemEvent, NativeFileSystemError, never>
+}
+
+export class NativeFileSystemClient extends Context.Service<
+  NativeFileSystemClient,
+  NativeFileSystemClientApi
+>()("@effect-desktop/native/NativeFileSystemClient") {}
+
+export type NativeFileSystemServiceApi = NativeFileSystemClientApi
+
+export class NativeFileSystem extends Context.Service<
+  NativeFileSystem,
+  NativeFileSystemServiceApi
+>()("@effect-desktop/native/NativeFileSystem") {
+  static readonly layer = Layer.effect(NativeFileSystem)(
+    Effect.gen(function* () {
+      const client = yield* NativeFileSystemClient
+      return NativeFileSystem.of({
+        open: (input) => client.open(input),
+        stat: (input) => client.stat(input),
+        watch: (input) => client.watch(input),
+        stopWatching: (input) => client.stopWatching(input),
+        isSupported: () => client.isSupported(),
+        events: () => client.events()
+      } satisfies NativeFileSystemServiceApi)
+    })
+  )
+}
+
+export const NativeFileSystemLive = NativeFileSystem.layer
+
+export const makeNativeFileSystemClientLayer = (
+  client: NativeFileSystemClientApi
+): Layer.Layer<NativeFileSystemClient> => Layer.succeed(NativeFileSystemClient)(client)
+
+export const makeNativeFileSystemServiceLayer = (
+  client: NativeFileSystemClientApi
+): Layer.Layer<NativeFileSystem> =>
+  Layer.provide(NativeFileSystemLive, makeNativeFileSystemClientLayer(client))
+
+export const makeNativeFileSystemBridgeClientLayer = (
+  exchange: BridgeClientExchange,
+  options: BridgeClientOptions = {}
+): Layer.Layer<NativeFileSystemClient> =>
+  NativeFileSystemSurface.bridgeClientLayer(exchange, options)
+
+export type NativeFileSystemRpc = RpcGroup.Rpcs<typeof NativeFileSystemRpcGroup>
+export type NativeFileSystemRpcHandlers = RpcGroup.HandlersFrom<NativeFileSystemRpc>
+
+export const NativeFileSystemHandlersLive = NativeFileSystemRpcGroup.toLayer({
+  "NativeFileSystem.open": (input) =>
+    Effect.gen(function* () {
+      const nativeFileSystem = yield* NativeFileSystem
+      return yield* nativeFileSystem.open(input)
+    }),
+  "NativeFileSystem.stat": (input) =>
+    Effect.gen(function* () {
+      const nativeFileSystem = yield* NativeFileSystem
+      return yield* nativeFileSystem.stat(input)
+    }),
+  "NativeFileSystem.watch": (input) =>
+    Effect.gen(function* () {
+      const nativeFileSystem = yield* NativeFileSystem
+      return yield* nativeFileSystem.watch(input)
+    }),
+  "NativeFileSystem.stopWatching": (input) =>
+    Effect.gen(function* () {
+      const nativeFileSystem = yield* NativeFileSystem
+      return yield* nativeFileSystem.stopWatching(input)
+    }),
+  "NativeFileSystem.isSupported": () =>
+    Effect.gen(function* () {
+      const nativeFileSystem = yield* NativeFileSystem
+      return yield* nativeFileSystem.isSupported()
+    })
+})
+
+export const NativeFileSystemSurface = NativeSurface.make(
+  "NativeFileSystem",
+  NativeFileSystemRpcGroup,
+  {
+    service: NativeFileSystemClient,
+    capabilities: NativeFileSystemCapabilityMethods,
+    handlers: NativeFileSystemHandlersLive,
+    client: (client) => nativeFileSystemClientFromRpcClient(client),
+    bridgeClient: (client, exchange) => nativeFileSystemClientFromRpcClient(client, exchange)
+  }
+)
+
+export const makeHostNativeFileSystemRpcRuntime = (
+  handlers: NativeFileSystemRpcHandlers,
+  runtimeOptions: BridgeHandlerRuntimeOptions = {}
+): BridgeHandlerRuntime<PermissionRegistry> =>
+  NativeFileSystemSurface.hostRuntime(handlers, runtimeOptions)
+
+const nativeFileSystemClientFromRpcClient = (
+  client: DesktopRpcClient<NativeFileSystemRpc>,
+  exchange?: BridgeClientExchange
+): NativeFileSystemClientApi =>
+  Object.freeze({
+    open: (input) =>
+      decodeNativeFileSystemOpenInput(input, "NativeFileSystem.open").pipe(
+        Effect.flatMap((decoded) =>
+          runNativeFileSystemRpc(client["NativeFileSystem.open"](decoded), "NativeFileSystem.open")
+        )
+      ),
+    stat: (input) =>
+      decodeNativeFileSystemStatInput(input, "NativeFileSystem.stat").pipe(
+        Effect.flatMap((decoded) =>
+          runNativeFileSystemRpc(client["NativeFileSystem.stat"](decoded), "NativeFileSystem.stat")
+        )
+      ),
+    watch: (input) =>
+      decodeNativeFileSystemWatchInput(input, "NativeFileSystem.watch").pipe(
+        Effect.flatMap((decoded) =>
+          runNativeFileSystemRpc(
+            client["NativeFileSystem.watch"](decoded),
+            "NativeFileSystem.watch"
+          )
+        )
+      ),
+    stopWatching: (input) =>
+      decodeNativeFileSystemStopWatchingInput(input, "NativeFileSystem.stopWatching").pipe(
+        Effect.flatMap((decoded) =>
+          runNativeFileSystemRpc(
+            client["NativeFileSystem.stopWatching"](decoded),
+            "NativeFileSystem.stopWatching"
+          )
+        )
+      ),
+    isSupported: () =>
+      runNativeFileSystemRpc(
+        client["NativeFileSystem.isSupported"](),
+        "NativeFileSystem.isSupported"
+      ),
+    events: () => subscribeNativeEvent(exchange, "NativeFileSystem.Event", NativeFileSystemEvent)
+  } satisfies NativeFileSystemClientApi)
+
+const decodeNativeFileSystemOpenInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<NativeFileSystemOpenInput, NativeFileSystemError, never> =>
+  decodeNativeInput(NativeFileSystemOpenInput, input, operation)
+
+const decodeNativeFileSystemStatInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<NativeFileSystemStatInput, NativeFileSystemError, never> =>
+  decodeNativeInput(NativeFileSystemStatInput, input, operation)
+
+const decodeNativeFileSystemWatchInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<NativeFileSystemWatchInput, NativeFileSystemError, never> =>
+  decodeNativeInput(NativeFileSystemWatchInput, input, operation)
+
+const decodeNativeFileSystemStopWatchingInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<NativeFileSystemStopWatchingInput, NativeFileSystemError, never> =>
+  decodeNativeInput(NativeFileSystemStopWatchingInput, input, operation)
+
+function nativeFileSystemRpc<
+  const Method extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+  Success extends Schema.Codec<unknown, unknown, never, never>
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  authority: RpcCapabilityMetadata,
+  endpoint: RpcEndpointKind
+) {
+  return NativeSurface.rpc(Surface, method, {
+    payload,
+    success,
+    authority: NativeSurface.authority.custom(authority),
+    endpoint,
+    support: NativeFileSystemSupport
+  })
+}
+
+const runNativeFileSystemRpc = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  operation: string
+): Effect.Effect<A, NativeFileSystemError, never> => runNativeRpc(effect, operation, Surface)

@@ -4,6 +4,8 @@ export const PowerMonitorMethod = Schema.Literals([
   "onSuspend",
   "onResume",
   "onShutdown",
+  "onLockScreen",
+  "onUnlockScreen",
   "onPowerSourceChanged"
 ])
 
@@ -28,6 +30,18 @@ export class PowerMonitorResumeEvent extends Schema.Class<PowerMonitorResumeEven
 
 export class PowerMonitorShutdownEvent extends Schema.Class<PowerMonitorShutdownEvent>(
   "PowerMonitorShutdownEvent"
+)({
+  reason: Schema.optionalKey(PowerMonitorReason)
+}) {}
+
+export class PowerMonitorLockScreenEvent extends Schema.Class<PowerMonitorLockScreenEvent>(
+  "PowerMonitorLockScreenEvent"
+)({
+  reason: Schema.optionalKey(PowerMonitorReason)
+}) {}
+
+export class PowerMonitorUnlockScreenEvent extends Schema.Class<PowerMonitorUnlockScreenEvent>(
+  "PowerMonitorUnlockScreenEvent"
 )({
   reason: Schema.optionalKey(PowerMonitorReason)
 }) {}

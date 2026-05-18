@@ -551,7 +551,12 @@ test("RpcCapability and RpcSupport keep boundary metadata on Effect RPC contract
   const Open = Rpc.make("Filesystem.Open").pipe(
     RpcEndpoint.mutation,
     RpcCapability({ kind: "filesystem:read", path: "/notes" }),
-    RpcSupport.unsupported("host method is not implemented")
+    RpcSupport.partial("platform implementations differ", {
+      platforms: [
+        { platform: "macos", status: "supported" },
+        { platform: "linux", status: "unsupported", reason: "portal missing" }
+      ]
+    })
   )
   const capability = rpcCapability(Open)
 
@@ -560,8 +565,12 @@ test("RpcCapability and RpcSupport keep boundary metadata on Effect RPC contract
     expect(capability.value).toEqual({ kind: "filesystem:read", path: "/notes" })
   }
   expect(rpcSupport(Open)).toEqual({
-    status: "unsupported",
-    reason: "host method is not implemented"
+    status: "partial",
+    reason: "platform implementations differ",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "portal missing" }
+    ]
   })
   expect(rpcSupport(Rpc.make("Filesystem.Stat"))).toEqual({ status: "supported" })
 })
