@@ -1,6 +1,6 @@
 ---
 title: Dock (native)
-description: macOS-oriented dock behavior with Linux fallbacks.
+description: Dock and taskbar-facing application state with explicit platform gaps.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,16 +8,19 @@ effect_version: 4
 
 # `Dock`
 
-macOS-oriented dock integration. Linux gets a stub via `makeLinuxDockClient()` so the same interface compiles cross-platform.
+Dock/taskbar-facing application state. The surface is intentionally explicit about platform gaps: badge count/text and attention are host-routed, while progress and jump lists remain unavailable until platform adapters are implemented.
 
 ## Methods
 
-| Method     | Payload                                   | Success |
-| ---------- | ----------------------------------------- | ------- |
-| `show`     | —                                         | `void`  |
-| `hide`     | —                                         | `void`  |
-| `bounce`   | `{ type: "critical" \| "informational" }` | `void`  |
-| `setBadge` | `{ text }`                                | `void`  |
+| Method             | Payload                                                         | Success                  |
+| ------------------ | --------------------------------------------------------------- | ------------------------ |
+| `setBadgeCount`    | `{ count: number }`                                             | `void`                   |
+| `setBadgeText`     | `{ text: string \| null }`                                      | `void`                   |
+| `setProgress`      | `{ value: number \| null, options?: { state?: ProgressState } }` | `void`                   |
+| `setMenu`          | `{ menu: MenuTemplate \| null }`                                | `void`                   |
+| `setJumpList`      | `{ items: DockJumpListItem[] }`                                 | `void`                   |
+| `requestAttention` | `{ critical?: boolean }`                                        | `void`                   |
+| `isSupported`      | `{ method: DockMethod }`                                        | `{ supported: boolean }` |
 
 ## Errors
 
@@ -25,9 +28,11 @@ macOS-oriented dock integration. Linux gets a stub via `makeLinuxDockClient()` s
 
 ## Platform support
 
-- macOS: full support.
-- Linux: returns `Unsupported` for non-trivial methods.
-- Windows: not supported (use `Tray`).
+- `requestAttention` is supported.
+- `setBadgeCount` and `setBadgeText` are partial: macOS is supported; Linux and Windows are not wired in the current host adapter.
+- `setProgress` is unsupported: macOS has no taskbar-progress equivalent, and Linux/Windows progress adapters are not wired yet.
+- `setMenu` is currently marked unsupported by the public capability metadata. The Rust host validates and routes the call, but macOS dock menu installation still requires a native delegate bridge.
+- `setJumpList` is unsupported and has no Rust host route yet.
 
 ## Related
 
