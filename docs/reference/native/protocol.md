@@ -1,6 +1,6 @@
 ---
 title: Protocol (native)
-description: App protocol handler registration for deep linking.
+description: Host-backed custom protocol policy registration.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,24 +8,37 @@ effect_version: 4
 
 # `Protocol`
 
-Register and route custom URL schemes (deep linking). When the user clicks `myapp://` URL elsewhere, the OS routes it to your app.
+Register custom renderer protocol policy with the native host. Protocol policy is scoped by scheme and path; it does not expose arbitrary filesystem paths unless `serveAsset` registers an explicit existing directory root for that scheme. Registered policies are applied when the host builds WebViews; existing WebViews keep the custom protocol registrations they were built with.
+
+The fixed internal `app://localhost/` WebView asset protocol is owned by the host runtime and remains separate from this public custom protocol policy surface.
 
 ## Methods
 
-| Method       | Payload      | Success |
-| ------------ | ------------ | ------- |
-| `register`   | `{ scheme }` | `void`  |
-| `unregister` | `{ scheme }` | `void`  |
+| Method                | Payload             | Success |
+| --------------------- | ------------------- | ------- |
+| `registerAppProtocol` | `{ scheme }`        | `void`  |
+| `serveAsset`          | `{ scheme, root }`  | `void`  |
+| `serveRoute`          | `{ scheme, route }` | `void`  |
+| `deny`                | `{ scheme, path }`  | `void`  |
 
-Event stream of `{ url: string }` for incoming protocol activations.
+## Platform Matrix
+
+| Method                | macOS     | Windows   | Linux     |
+| --------------------- | --------- | --------- | --------- |
+| `registerAppProtocol` | supported | supported | supported |
+| `serveAsset`          | supported | supported | supported |
+| `serveRoute`          | supported | supported | supported |
+| `deny`                | supported | supported | supported |
+
+## Validation
+
+Schemes must match `^[a-z][a-z0-9+.-]*$` and cannot be reserved browser or host schemes such as `app`, `file`, `http`, `https`, `data`, or `javascript`.
+
+`serveAsset.root` must be a non-empty absolute local path to an existing scoped directory, not a filesystem root. It rejects control characters and traversal segments. URL paths for `serveRoute.route` and `deny.path` must start with `/` and reject malformed percent escapes, encoded traversal, backslashes, control characters, and `.` or `..` segments before native transport.
 
 ## Errors
 
-`ProtocolError`.
-
-## Production check
-
-`app-protocol-path-traversal` rule (in `desktop check`) catches handlers that allow `..` traversal in the URL path.
+`ProtocolError` is the host protocol error union. Malformed schemes, roots, and URL paths return `InvalidArgument`. Host transport failure returns `HostUnavailable`; platform or host policy refusal returns `Unsupported`.
 
 ## Related
 

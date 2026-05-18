@@ -1746,7 +1746,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Protocol.registerAppProtocol",
@@ -1756,7 +1756,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Protocol.serveAsset",
@@ -1766,7 +1766,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Protocol.serveRoute",
@@ -1776,7 +1776,7 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "RealtimeMediaSession.close",
@@ -2931,8 +2931,8 @@
   ],
   "summary": {
     "total": 187,
-    "routed": 138,
-    "missing": 49,
+    "routed": 142,
+    "missing": 45,
     "supported": 127,
     "partial": 22,
     "unsupported": 38

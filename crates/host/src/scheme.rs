@@ -1,4 +1,4 @@
-use crate::{assets, csp, html_csp};
+use crate::{assets, csp, html_csp, methods::protocol};
 use std::borrow::Cow;
 use tracing::{debug, error, warn};
 
@@ -26,14 +26,74 @@ type Rewriter =
 type PolicyResolver = fn() -> Result<csp::CspPolicy, csp::CspPolicyError>;
 
 pub(crate) fn register_app_scheme<'a>(builder: WebViewBuilder<'a>) -> WebViewBuilder<'a> {
-    builder.with_custom_protocol(APP_SCHEME.into(), |_webview_id, request| {
+    let mut builder = builder.with_custom_protocol(APP_SCHEME.into(), |_webview_id, request| {
         app_scheme_response_with(&request, html_csp::rewrite_with_nonce)
-    })
+    });
+    for scheme in protocol::registered_schemes() {
+        builder = builder.with_custom_protocol(scheme, |_webview_id, request| {
+            custom_scheme_response_with(&request)
+        });
+    }
+    builder
 }
 
 #[cfg(test)]
 fn app_scheme_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
     app_scheme_response_with(request, html_csp::rewrite_with_nonce)
+}
+
+#[cfg(test)]
+fn custom_scheme_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
+    custom_scheme_response_with(request)
+}
+
+fn custom_scheme_response_with(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
+    let trace_id = request_trace_id(request);
+    if request.method() != Method::GET && request.method() != Method::HEAD {
+        return plain_response(
+            StatusCode::METHOD_NOT_ALLOWED,
+            Cow::Borrowed(b"custom protocol supports only GET and HEAD requests"),
+            &trace_id,
+        );
+    }
+    let Some(scheme) = request.uri().scheme_str() else {
+        return plain_response(
+            StatusCode::NOT_FOUND,
+            Cow::Borrowed(b"custom protocol asset not found"),
+            &trace_id,
+        );
+    };
+    match protocol::resolve_custom_protocol_request(scheme, request.uri().path()) {
+        protocol::ProtocolResponse::Asset {
+            bytes,
+            content_type,
+        } => {
+            let body = if request.method() == Method::HEAD {
+                Cow::Borrowed::<[u8]>(b"")
+            } else {
+                Cow::Owned(bytes)
+            };
+            let mut response = Response::new(body);
+            *response.status_mut() = StatusCode::OK;
+            response
+                .headers_mut()
+                .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+            response
+                .headers_mut()
+                .insert(TRACE_ID_HEADER, trace_id.clone());
+            response
+        }
+        protocol::ProtocolResponse::Denied => plain_response(
+            StatusCode::FORBIDDEN,
+            Cow::Borrowed(b"custom protocol path denied"),
+            &trace_id,
+        ),
+        protocol::ProtocolResponse::NotFound => plain_response(
+            StatusCode::NOT_FOUND,
+            Cow::Borrowed(b"custom protocol asset not found"),
+            &trace_id,
+        ),
+    }
 }
 
 fn app_scheme_response_with(
@@ -233,6 +293,22 @@ fn app_policy_error_response(
     response
 }
 
+fn plain_response(
+    status: StatusCode,
+    body: Cow<'static, [u8]>,
+    trace_id: &HeaderValue,
+) -> Response<Cow<'static, [u8]>> {
+    let mut response = Response::new(body);
+    *response.status_mut() = status;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static(TEXT_CONTENT_TYPE));
+    response
+        .headers_mut()
+        .insert(TRACE_ID_HEADER, trace_id.clone());
+    response
+}
+
 fn app_response(
     status: StatusCode,
     content_type: &'static str,
@@ -275,11 +351,12 @@ fn request_trace_id(request: &Request<Vec<u8>>) -> HeaderValue {
 mod tests {
     use super::{
         app_scheme_response, app_scheme_response_with, app_scheme_response_with_policy,
-        APP_PROTOCOL_SOURCE_KIND, APP_URL, POLICY_FAILED_BODY_PREFIX, REWRITE_FAILED_BODY_PREFIX,
-        TEXT_CONTENT_TYPE, TRACE_ID_HEADER,
+        custom_scheme_response, APP_PROTOCOL_SOURCE_KIND, APP_URL, POLICY_FAILED_BODY_PREFIX,
+        REWRITE_FAILED_BODY_PREFIX, TEXT_CONTENT_TYPE, TRACE_ID_HEADER,
     };
     use crate::csp::{CspNonce, CspPolicy, CspPolicyError};
     use crate::html_csp::{rewrite_with_nonce, RewriteError, RewriteOutcome};
+    use crate::methods::protocol::{deny, serve_asset};
     use lol_html::errors::RewritingError;
     use std::collections::BTreeSet;
     use wry::http::{
@@ -470,6 +547,82 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.body().as_ref(), b"");
+    }
+
+    #[test]
+    fn custom_scheme_response_serves_registered_asset_roots_and_denies_scoped_paths() {
+        let root = std::env::temp_dir().join(format!(
+            "effect-desktop-protocol-scheme-{}",
+            uuid::Uuid::now_v7()
+        ));
+        std::fs::create_dir_all(&root).expect("asset root should be created");
+        std::fs::write(root.join("file.txt"), b"hello").expect("asset file should be written");
+        std::fs::create_dir_all(root.join("private")).expect("private dir should be created");
+        std::fs::write(root.join("private").join("secret.txt"), b"secret")
+            .expect("private file should be written");
+
+        serve_asset(Some(serde_json::json!({
+            "scheme": "assetstest",
+            "root": root
+        })))
+        .expect("asset policy should register");
+        deny(Some(serde_json::json!({
+            "scheme": "assetstest",
+            "path": "/private/"
+        })))
+        .expect("deny policy should register");
+
+        let request = Request::builder()
+            .uri("assetstest://localhost/file.txt")
+            .header(TRACE_ID_HEADER, "trace-custom")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = custom_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(TRACE_ID_HEADER),
+            Some(&HeaderValue::from_static("trace-custom"))
+        );
+        assert_eq!(response.body().as_ref(), b"hello");
+
+        let denied = Request::builder()
+            .uri("assetstest://localhost/private/secret.txt")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = custom_scheme_response(&denied);
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn custom_scheme_response_rejects_encoded_traversal() {
+        let root = std::env::temp_dir().join(format!(
+            "effect-desktop-protocol-encoded-{}",
+            uuid::Uuid::now_v7()
+        ));
+        std::fs::create_dir_all(&root).expect("asset root should be created");
+        serve_asset(Some(serde_json::json!({
+            "scheme": "encodedtest",
+            "root": root
+        })))
+        .expect("asset policy should register");
+
+        let request = Request::builder()
+            .uri("encodedtest://localhost/%2e%2e/secret.txt")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = custom_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        let request = Request::builder()
+            .uri("encodedtest://localhost/%5c..%5csecret.txt")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = custom_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[test]

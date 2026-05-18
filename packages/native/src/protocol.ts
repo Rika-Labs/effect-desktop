@@ -256,6 +256,16 @@ const validateLocalPath = (
     )
   }
 
+  if (nodePath.parse(inputPath).root === inputPath) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError(
+        field,
+        "must name a scoped directory, not a filesystem root",
+        operation
+      )
+    )
+  }
+
   if (TraversalSegmentPattern.test(inputPath)) {
     return Effect.fail(
       makeHostProtocolInvalidArgumentError(field, "must not contain traversal segments", operation)
@@ -280,13 +290,55 @@ const validateRoutePath = (
     return Effect.fail(makeHostProtocolInvalidArgumentError(field, "must start with /", operation))
   }
 
-  if (path.split("/").includes("..")) {
+  const decoded = decodeUrlPath(path, field, operation)
+  if (decoded._tag === "Left") {
+    return Effect.fail(decoded.left)
+  }
+
+  if (decoded.right.split("/").includes("..")) {
     return Effect.fail(
       makeHostProtocolInvalidArgumentError(field, "must not contain .. segments", operation)
     )
   }
 
-  return validateLocalPath(path, field, operation)
+  if (decoded.right.split("/").includes(".")) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError(field, "must not contain . segments", operation)
+    )
+  }
+
+  if (ControlCharPattern.test(decoded.right)) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError(field, "must not contain control characters", operation)
+    )
+  }
+
+  if (decoded.right.includes("\\")) {
+    return Effect.fail(
+      makeHostProtocolInvalidArgumentError(field, "must not contain backslashes", operation)
+    )
+  }
+
+  return Effect.succeed(path)
+}
+
+type DecodeUrlPathResult =
+  | { readonly _tag: "Left"; readonly left: ProtocolError }
+  | { readonly _tag: "Right"; readonly right: string }
+
+const decodeUrlPath = (path: string, field: string, operation: string): DecodeUrlPathResult => {
+  try {
+    return { _tag: "Right", right: decodeURIComponent(path) }
+  } catch {
+    return {
+      _tag: "Left",
+      left: makeHostProtocolInvalidArgumentError(
+        field,
+        "must not contain malformed percent escapes",
+        operation
+      )
+    }
+  }
 }
 
 const decodeProtocolRegisterAppProtocolInput = (

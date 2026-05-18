@@ -55,6 +55,10 @@ pub const PATH_TEMP_METHOD: &str = "Path.temp";
 pub const PATH_HOME_METHOD: &str = "Path.home";
 pub const PATH_DOWNLOADS_METHOD: &str = "Path.downloads";
 pub const PATH_UNSUPPORTED_REASON: &str = "host-path-unavailable";
+pub const PROTOCOL_REGISTER_APP_PROTOCOL_METHOD: &str = "Protocol.registerAppProtocol";
+pub const PROTOCOL_SERVE_ASSET_METHOD: &str = "Protocol.serveAsset";
+pub const PROTOCOL_SERVE_ROUTE_METHOD: &str = "Protocol.serveRoute";
+pub const PROTOCOL_DENY_METHOD: &str = "Protocol.deny";
 pub const SCREEN_GET_DISPLAYS_METHOD: &str = "Screen.getDisplays";
 pub const SCREEN_GET_PRIMARY_DISPLAY_METHOD: &str = "Screen.getPrimaryDisplay";
 pub const SCREEN_GET_POINTER_POINT_METHOD: &str = "Screen.getPointerPoint";
@@ -1016,6 +1020,96 @@ pub struct CanonicalPathPayload {
 impl CanonicalPathPayload {
     pub fn new(path: impl Into<String>) -> Self {
         Self { path: path.into() }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProtocolRegisterAppProtocolPayload {
+    scheme: String,
+}
+
+impl ProtocolRegisterAppProtocolPayload {
+    pub fn new(scheme: impl Into<String>) -> Self {
+        Self {
+            scheme: scheme.into(),
+        }
+    }
+
+    pub fn scheme(&self) -> &str {
+        &self.scheme
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProtocolServeAssetPayload {
+    scheme: String,
+    root: String,
+}
+
+impl ProtocolServeAssetPayload {
+    pub fn new(scheme: impl Into<String>, root: impl Into<String>) -> Self {
+        Self {
+            scheme: scheme.into(),
+            root: root.into(),
+        }
+    }
+
+    pub fn scheme(&self) -> &str {
+        &self.scheme
+    }
+
+    pub fn root(&self) -> &str {
+        &self.root
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProtocolServeRoutePayload {
+    scheme: String,
+    route: String,
+}
+
+impl ProtocolServeRoutePayload {
+    pub fn new(scheme: impl Into<String>, route: impl Into<String>) -> Self {
+        Self {
+            scheme: scheme.into(),
+            route: route.into(),
+        }
+    }
+
+    pub fn scheme(&self) -> &str {
+        &self.scheme
+    }
+
+    pub fn route(&self) -> &str {
+        &self.route
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProtocolDenyPayload {
+    scheme: String,
+    path: String,
+}
+
+impl ProtocolDenyPayload {
+    pub fn new(scheme: impl Into<String>, path: impl Into<String>) -> Self {
+        Self {
+            scheme: scheme.into(),
+            path: path.into(),
+        }
+    }
+
+    pub fn scheme(&self) -> &str {
+        &self.scheme
     }
 
     pub fn path(&self) -> &str {
@@ -9150,7 +9244,8 @@ mod tests {
         NotificationActionEventPayload, NotificationActionPayload, NotificationClickEventPayload,
         NotificationPermissionPayload, NotificationPermissionStatePayload,
         NotificationResourcePayload, NotificationShowPayload, NotificationSupportedPayload,
-        RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
+        ProtocolDenyPayload, ProtocolRegisterAppProtocolPayload, ProtocolServeAssetPayload,
+        ProtocolServeRoutePayload, RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
         RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
         RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
         RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
@@ -11110,6 +11205,39 @@ mod tests {
             "extra": true
         });
         let error = serde_json::from_value::<CanonicalPathPayload>(value)
+            .expect_err("excess field should reject");
+        assert!(error.to_string().contains("unknown field `extra`"));
+    }
+
+    #[test]
+    fn protocol_payloads_serialize_canonically_and_reject_excess_fields() {
+        assert_eq!(
+            serde_json::to_string(&ProtocolRegisterAppProtocolPayload::new("assets"))
+                .expect("register protocol payload should encode"),
+            r#"{"scheme":"assets"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProtocolServeAssetPayload::new("assets", "/app/assets"))
+                .expect("serve asset payload should encode"),
+            r#"{"scheme":"assets","root":"/app/assets"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProtocolServeRoutePayload::new("assets", "/settings"))
+                .expect("serve route payload should encode"),
+            r#"{"scheme":"assets","route":"/settings"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProtocolDenyPayload::new("assets", "/private"))
+                .expect("deny payload should encode"),
+            r#"{"scheme":"assets","path":"/private"}"#
+        );
+
+        let value = serde_json::json!({
+            "scheme": "assets",
+            "root": "/app/assets",
+            "extra": true
+        });
+        let error = serde_json::from_value::<ProtocolServeAssetPayload>(value)
             .expect_err("excess field should reject");
         assert!(error.to_string().contains("unknown field `extra`"));
     }

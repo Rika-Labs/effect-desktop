@@ -267,7 +267,7 @@ import {
 } from "./notification.js"
 import { makeHostPathRpcRuntime, makePathBridgeClientLayer } from "./path.js"
 import { makePowerMonitorBridgeClientLayer } from "./power-monitor.js"
-import { makeProtocolBridgeClientLayer } from "./protocol.js"
+import { makeHostProtocolRpcRuntime, makeProtocolBridgeClientLayer } from "./protocol.js"
 import { makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
@@ -3924,10 +3924,25 @@ test("Protocol bridge client validates custom schemes and path boundaries", asyn
       const traversalExit = yield* Effect.exit(
         client.serveRoute({ scheme: "myapp", route: "/../secret" })
       )
+      const encodedTraversalExit = yield* Effect.exit(
+        client.serveRoute({ scheme: "myapp", route: "/%2e%2e/secret" })
+      )
+      const encodedBackslashTraversalExit = yield* Effect.exit(
+        client.serveRoute({ scheme: "myapp", route: "/%5c..%5csecret" })
+      )
+      const broadRootExit = yield* Effect.exit(client.serveAsset({ scheme: "assets", root: "/" }))
       const relativeDenyExit = yield* Effect.exit(
         client.deny({ scheme: "assets", path: "private" })
       )
-      return { relativeDenyExit, reservedSchemeExit, traversalExit, uppercaseSchemeExit }
+      return {
+        broadRootExit,
+        encodedBackslashTraversalExit,
+        encodedTraversalExit,
+        relativeDenyExit,
+        reservedSchemeExit,
+        traversalExit,
+        uppercaseSchemeExit
+      }
     }).pipe(
       Effect.provide(
         Layer.provide(
@@ -3943,6 +3958,11 @@ test("Protocol bridge client validates custom schemes and path boundaries", asyn
   expectExitFailure(result.reservedSchemeExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(result.uppercaseSchemeExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(result.traversalExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(result.encodedTraversalExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(result.encodedBackslashTraversalExit, (error) =>
+    hasErrorTag(error, "InvalidArgument")
+  )
+  expectExitFailure(result.broadRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(result.relativeDenyExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["Protocol.registerAppProtocol", { scheme: "myapp" }],
@@ -3979,6 +3999,78 @@ test("Protocol bridge client rejects control characters in paths as InvalidArgum
   expectExitFailure(newlineExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(denyExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
+})
+
+test("native host RPC runtime denies protected Protocol calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostProtocolRpcRuntime(
+    {
+      "Protocol.registerAppProtocol": (input) =>
+        Effect.sync(() => {
+          calls.push(`register:${input.scheme}`)
+        }),
+      "Protocol.serveAsset": () => Effect.void,
+      "Protocol.serveRoute": () => Effect.void,
+      "Protocol.deny": () => Effect.void
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "protocol-denied",
+          method: "Protocol.registerAppProtocol",
+          timestamp: 1710000000000,
+          traceId: "trace-protocol-denied",
+          payload: { scheme: "myapp" }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("Protocol service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-protocol-unavailable",
+    message: "unsupported Protocol.registerAppProtocol",
+    operation: "Protocol.registerAppProtocol",
+    recoverable: false
+  })
+  const unsupportedClient: ProtocolClientApi = {
+    ...protocolClient([]),
+    registerAppProtocol: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: ProtocolClientApi = {
+    ...protocolClient([]),
+    registerAppProtocol: () =>
+      Effect.fail(makeHostProtocolHostUnavailableError("Protocol.registerAppProtocol"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const protocol = yield* Protocol
+      return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
+    }).pipe(Effect.provide(makeProtocolServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const protocol = yield* Protocol
+      return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
+    }).pipe(Effect.provide(makeProtocolServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("SafeStorageRpcs declares the Phase 8 SafeStorage method surface", () => {

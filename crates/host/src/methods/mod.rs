@@ -17,6 +17,7 @@ mod local_tool_runtime;
 mod menu;
 mod notification;
 mod path;
+pub(crate) mod protocol;
 mod realtime_media_session;
 mod resident_lifecycle;
 mod scoped_access_grant;
@@ -368,6 +369,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::PATH_DOWNLOADS_METHOD,
         HostMethodDispatcher::Payload(path::downloads),
+    ),
+    route(
+        host_protocol::PROTOCOL_REGISTER_APP_PROTOCOL_METHOD,
+        HostMethodDispatcher::Payload(protocol::register_app_protocol),
+    ),
+    route(
+        host_protocol::PROTOCOL_SERVE_ASSET_METHOD,
+        HostMethodDispatcher::Payload(protocol::serve_asset),
+    ),
+    route(
+        host_protocol::PROTOCOL_SERVE_ROUTE_METHOD,
+        HostMethodDispatcher::Payload(protocol::serve_route),
+    ),
+    route(
+        host_protocol::PROTOCOL_DENY_METHOD,
+        HostMethodDispatcher::Payload(protocol::deny),
     ),
     route(
         host_protocol::CLIPBOARD_READ_TEXT_METHOD,
@@ -2947,6 +2964,89 @@ mod tests {
                 )),
             }
         );
+    }
+
+    #[test]
+    fn protocol_methods_dispatch_policy_updates_through_router() {
+        let asset_root = std::env::temp_dir().join("effect-desktop-protocol-test");
+        std::fs::create_dir_all(&asset_root).expect("asset root should exist");
+        let asset_root = asset_root
+            .to_str()
+            .expect("temp path should be valid UTF-8")
+            .to_string();
+        let cases = [
+            (
+                "register-app-protocol",
+                host_protocol::PROTOCOL_REGISTER_APP_PROTOCOL_METHOD,
+                serde_json::json!({ "scheme": "myapp" }),
+            ),
+            (
+                "serve-asset",
+                host_protocol::PROTOCOL_SERVE_ASSET_METHOD,
+                serde_json::json!({ "scheme": "assets", "root": asset_root }),
+            ),
+            (
+                "serve-route",
+                host_protocol::PROTOCOL_SERVE_ROUTE_METHOD,
+                serde_json::json!({ "scheme": "myapp", "route": "/settings" }),
+            ),
+            (
+                "deny",
+                host_protocol::PROTOCOL_DENY_METHOD,
+                serde_json::json!({ "scheme": "assets", "path": "/private" }),
+            ),
+        ];
+
+        for (name, method, payload) in cases {
+            let request_id = format!("request-protocol-{name}");
+            let response = test_router()
+                .dispatch_at(
+                    request_with_payload(&request_id, method, payload),
+                    1710000000122,
+                )
+                .expect("protocol request should return response");
+
+            assert_eq!(
+                response,
+                HostProtocolEnvelope::Response {
+                    id: request_id,
+                    timestamp: 1710000000122,
+                    trace_id: format!("trace-request-protocol-{name}"),
+                    payload: None,
+                    error: None,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn protocol_methods_reject_unsafe_payloads_through_router() {
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-protocol-traversal",
+                    host_protocol::PROTOCOL_SERVE_ROUTE_METHOD,
+                    serde_json::json!({ "scheme": "myapp", "route": "/../secret" }),
+                ),
+                1710000000123,
+            )
+            .expect("protocol traversal request should return response");
+
+        match response {
+            HostProtocolEnvelope::Response {
+                id,
+                timestamp,
+                trace_id,
+                payload: None,
+                error: Some(HostProtocolError::InvalidArgument { field, .. }),
+            } => {
+                assert_eq!(id, "request-protocol-traversal");
+                assert_eq!(timestamp, 1710000000123);
+                assert_eq!(trace_id, "trace-request-protocol-traversal");
+                assert_eq!(field, "route");
+            }
+            other => panic!("unexpected protocol traversal response: {other:?}"),
+        }
     }
 
     #[test]
