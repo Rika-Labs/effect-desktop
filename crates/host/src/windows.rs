@@ -237,7 +237,6 @@ mod platform {
 #[cfg(not(windows))]
 mod platform {
     use super::{HostProtocolError, WindowsProcessPolish};
-    use host_protocol;
     use tao::window::{Window, WindowBuilder};
 
     pub(super) fn apply_process_polish(

@@ -4081,6 +4081,10 @@ impl AttachmentIntakeItemInputPayload {
         &self.mime_type
     }
 
+    pub fn source(&self) -> AttachmentIntakeSource {
+        self.source
+    }
+
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
@@ -4289,6 +4293,13 @@ pub struct AttachmentIntakeSupportedPayload {
 }
 
 impl AttachmentIntakeSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -4313,6 +4324,52 @@ pub struct AttachmentIntakeEventPayload {
     reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
+}
+
+impl AttachmentIntakeEventPayload {
+    pub fn ingested(timestamp: u64, intake_id: impl Into<String>, item_count: u64) -> Self {
+        Self {
+            r#type: "attachment-intake-event".to_string(),
+            timestamp,
+            intake_id: Some(intake_id.into()),
+            phase: AttachmentIntakeEventPhase::Ingested,
+            state: Some(AttachmentIntakeState::Ingested),
+            item_count: Some(item_count),
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn disposed(timestamp: u64, intake_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "attachment-intake-event".to_string(),
+            timestamp,
+            intake_id: Some(intake_id.into()),
+            phase: AttachmentIntakeEventPhase::Disposed,
+            state: Some(AttachmentIntakeState::Disposed),
+            item_count: None,
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        intake_id: impl Into<String>,
+        reason: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "attachment-intake-event".to_string(),
+            timestamp,
+            intake_id: Some(intake_id.into()),
+            phase: AttachmentIntakeEventPhase::Failed,
+            state: None,
+            item_count: None,
+            reason: Some(reason.into()),
+            message: Some(message.into()),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

@@ -695,15 +695,15 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::ATTACHMENT_INTAKE_INGEST_METHOD,
-        HostMethodDispatcher::Payload(attachment_intake::ingest),
+        HostMethodDispatcher::EventfulPayload(attachment_intake::ingest_with_event_sender),
     ),
     route(
         host_protocol::ATTACHMENT_INTAKE_INSPECT_METHOD,
-        HostMethodDispatcher::Payload(attachment_intake::inspect),
+        HostMethodDispatcher::EventfulPayload(attachment_intake::inspect_with_event_sender),
     ),
     route(
         host_protocol::ATTACHMENT_INTAKE_DISPOSE_METHOD,
-        HostMethodDispatcher::Payload(attachment_intake::dispose),
+        HostMethodDispatcher::EventfulPayload(attachment_intake::dispose_with_event_sender),
     ),
     route(
         host_protocol::ATTACHMENT_INTAKE_IS_SUPPORTED_METHOD,

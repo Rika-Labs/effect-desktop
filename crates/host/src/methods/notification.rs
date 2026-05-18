@@ -67,7 +67,7 @@ pub(crate) fn show_with_event_sender(
     #[cfg(not(target_os = "linux"))]
     {
         let _ = event_sender;
-        return Err(unsupported(host_protocol::NOTIFICATION_SHOW_METHOD));
+        Err(unsupported(host_protocol::NOTIFICATION_SHOW_METHOD))
     }
 
     #[cfg(target_os = "linux")]
@@ -142,7 +142,7 @@ pub(crate) fn close(payload: Option<Value>) -> Result<Option<Value>, HostProtoco
 
     #[cfg(not(target_os = "linux"))]
     {
-        return Err(unsupported(host_protocol::NOTIFICATION_CLOSE_METHOD));
+        Err(unsupported(host_protocol::NOTIFICATION_CLOSE_METHOD))
     }
 
     #[cfg(target_os = "linux")]

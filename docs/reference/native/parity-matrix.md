@@ -32,9 +32,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Association`               | `getFileAssociations`       | `unsupported` | `Association.getFileAssociations`         | `routed`    |
 | `Association`               | `isDefaultProtocolClient`   | `unsupported` | `Association.isDefaultProtocolClient`     | `routed`    |
 | `Association`               | `setDefaultProtocolClient`  | `unsupported` | `Association.setDefaultProtocolClient`    | `routed`    |
-| `AttachmentIntake`          | `dispose`                   | `unsupported` | `AttachmentIntake.dispose`                | `routed`    |
-| `AttachmentIntake`          | `ingest`                    | `unsupported` | `AttachmentIntake.ingest`                 | `routed`    |
-| `AttachmentIntake`          | `inspect`                   | `unsupported` | `AttachmentIntake.inspect`                | `routed`    |
+| `AttachmentIntake`          | `dispose`                   | `supported`   | `AttachmentIntake.dispose`                | `routed`    |
+| `AttachmentIntake`          | `ingest`                    | `supported`   | `AttachmentIntake.ingest`                 | `routed`    |
+| `AttachmentIntake`          | `inspect`                   | `supported`   | `AttachmentIntake.inspect`                | `routed`    |
 | `AttachmentIntake`          | `isSupported`               | `supported`   | `AttachmentIntake.isSupported`            | `routed`    |
 | `Autostart`                 | `disable`                   | `unsupported` | `Autostart.disable`                       | `routed`    |
 | `Autostart`                 | `enable`                    | `unsupported` | `Autostart.enable`                        | `routed`    |

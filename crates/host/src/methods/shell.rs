@@ -293,10 +293,10 @@ fn show_path_in_folder(
 ) -> Result<(), HostProtocolError> {
     #[cfg(target_os = "macos")]
     {
-        return runner(
+        runner(
             shell_command("open", ["-R", path]),
             host_protocol::SHELL_SHOW_ITEM_IN_FOLDER_METHOD,
-        );
+        )
     }
 
     #[cfg(target_os = "windows")]
@@ -327,7 +327,7 @@ fn trash_filesystem_path(
 ) -> Result<(), HostProtocolError> {
     #[cfg(target_os = "macos")]
     {
-        return runner(
+        runner(
             shell_command(
                 "osascript",
                 [
@@ -341,7 +341,7 @@ fn trash_filesystem_path(
                 ],
             ),
             host_protocol::SHELL_TRASH_ITEM_METHOD,
-        );
+        )
     }
 
     #[cfg(target_os = "windows")]
@@ -365,7 +365,7 @@ fn trash_filesystem_path(
 fn shell_open_command(target: &str) -> ShellCommand {
     #[cfg(target_os = "macos")]
     {
-        return shell_command("open", [target]);
+        shell_command("open", [target])
     }
 
     #[cfg(target_os = "windows")]

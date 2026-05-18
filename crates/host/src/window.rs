@@ -3286,7 +3286,7 @@ fn apply_window_parent(
 ) -> std::result::Result<WindowBuilder, HostProtocolError> {
     #[cfg(target_os = "macos")]
     {
-        return macos::apply_window_parent(builder, parent);
+        macos::apply_window_parent(builder, parent)
     }
 
     #[cfg(windows)]
@@ -3821,7 +3821,7 @@ fn build_tray_menu(
     let menu = tray_icon::menu::Menu::new();
     let items = menu_items(value, "menu.items", operation)?;
     for item in items {
-        append_menu_item(&menu, &item, operation)?;
+        append_menu_item(&menu, item, operation)?;
     }
     Ok(menu)
 }
