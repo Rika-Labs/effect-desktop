@@ -12,7 +12,7 @@ use host_protocol::{
     WindowProgressState, WindowSetProgressPayload, WindowStatePayload,
 };
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc, LazyLock, Mutex,
@@ -220,6 +220,7 @@ pub(crate) struct WindowCreateRequest {
     title: String,
     width: f64,
     height: f64,
+    parent_window_id: Option<String>,
     macos_polish: Option<macos::MacosWindowPolish>,
 }
 
@@ -435,6 +436,8 @@ struct NativeTrayResources {
 
 struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
+    child_window_ids_by_parent_id: HashMap<String, HashSet<String>>,
+    parent_window_id_by_child_id: HashMap<String, String>,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     trays: HashMap<String, NativeTrayResources>,
 }
@@ -1294,8 +1297,14 @@ impl WindowCreateRequest {
             title,
             width,
             height,
+            parent_window_id: None,
             macos_polish: None,
         })
+    }
+
+    fn with_parent_window_id(mut self, parent_window_id: Option<String>) -> Self {
+        self.parent_window_id = parent_window_id;
+        self
     }
 
     fn with_macos_polish(mut self, polish: Option<macos::MacosWindowPolish>) -> Self {
@@ -1315,6 +1324,10 @@ impl WindowCreateRequest {
         self.height
     }
 
+    pub(crate) fn parent_window_id(&self) -> Option<&str> {
+        self.parent_window_id.as_deref()
+    }
+
     fn macos_polish(&self) -> Option<&macos::MacosWindowPolish> {
         self.macos_polish.as_ref()
     }
@@ -1329,13 +1342,22 @@ impl TryFrom<WindowCreatePayload> for WindowCreateRequest {
             payload.width().unwrap_or(WINDOW_WIDTH),
             payload.height().unwrap_or(WINDOW_HEIGHT),
         )?;
+        if payload.parent_window_id().is_some_and(str::is_empty) {
+            return Err(HostProtocolError::invalid_argument(
+                "parentWindowId",
+                "must be non-empty",
+                host_protocol::WINDOW_CREATE_METHOD,
+            ));
+        }
         let macos_polish = macos::MacosWindowPolish::new(
             payload.title_bar_style(),
             payload.vibrancy(),
             payload.traffic_lights(),
         )?;
 
-        Ok(request.with_macos_polish(macos_polish))
+        Ok(request
+            .with_parent_window_id(payload.parent_window_id().map(str::to_string))
+            .with_macos_polish(macos_polish))
     }
 }
 
@@ -1381,6 +1403,8 @@ impl WindowRegistry {
     fn new() -> Self {
         Self {
             windows: HashMap::new(),
+            child_window_ids_by_parent_id: HashMap::new(),
+            parent_window_id_by_child_id: HashMap::new(),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             trays: HashMap::new(),
         }
@@ -1393,9 +1417,19 @@ impl WindowRegistry {
         mode: RunMode,
     ) -> std::result::Result<WindowCreateResponse, HostProtocolError> {
         let window_id = Uuid::now_v7().to_string();
-        let builder = WindowBuilder::new()
+        let mut builder = WindowBuilder::new()
             .with_title(request.title())
             .with_inner_size(LogicalSize::new(request.width(), request.height()));
+        let parent_window_id = request.parent_window_id().map(str::to_string);
+        if let Some(parent_window_id) = parent_window_id.as_deref() {
+            let Some(parent) = self.windows.get(parent_window_id) else {
+                return Err(HostProtocolError::not_found(
+                    format!("Window:{parent_window_id}"),
+                    host_protocol::WINDOW_CREATE_METHOD,
+                ));
+            };
+            builder = apply_window_parent(builder, &parent._window)?;
+        }
         let window = macos::apply_window_builder_polish(builder, request.macos_polish())
             .build(target)
             .map_err(|error| {
@@ -1425,23 +1459,63 @@ impl WindowRegistry {
                 _webview: webview,
             },
         );
+        if let Some(parent_window_id) = parent_window_id {
+            self.child_window_ids_by_parent_id
+                .entry(parent_window_id.clone())
+                .or_default()
+                .insert(window_id.clone());
+            self.parent_window_id_by_child_id
+                .insert(window_id.clone(), parent_window_id);
+        }
 
         Ok(WindowCreateResponse::new(window_id))
     }
 
     fn destroy(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
-        if self.windows.remove(window_id).is_none() {
+        if !self.windows.contains_key(window_id) {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
                 host_protocol::WINDOW_DESTROY_METHOD,
             ));
         }
 
-        info!(
-            event = WINDOW_DESTROYED_EVENT,
-            window_id, "host window destroyed"
-        );
+        for destroyed_window_id in self.remove_window_tree(window_id) {
+            info!(
+                event = WINDOW_DESTROYED_EVENT,
+                window_id = destroyed_window_id,
+                "host window destroyed"
+            );
+        }
         Ok(())
+    }
+
+    fn remove_window_tree(&mut self, window_id: &str) -> Vec<String> {
+        let mut child_window_ids = self
+            .child_window_ids_by_parent_id
+            .remove(window_id)
+            .map(|children| children.into_iter().collect::<Vec<_>>())
+            .unwrap_or_default();
+        child_window_ids.sort();
+
+        let mut destroyed_window_ids = Vec::new();
+        for child_window_id in child_window_ids {
+            destroyed_window_ids.extend(self.remove_window_tree(&child_window_id));
+        }
+
+        self.windows.remove(window_id);
+        if let Some(parent_window_id) = self.parent_window_id_by_child_id.remove(window_id) {
+            if let Some(siblings) = self
+                .child_window_ids_by_parent_id
+                .get_mut(&parent_window_id)
+            {
+                siblings.remove(window_id);
+                if siblings.is_empty() {
+                    self.child_window_ids_by_parent_id.remove(&parent_window_id);
+                }
+            }
+        }
+        destroyed_window_ids.push(window_id.to_string());
+        destroyed_window_ids
     }
 
     fn show(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
@@ -2530,6 +2604,30 @@ fn to_tao_attention_type(request_type: WindowAttentionType) -> UserAttentionType
     }
 }
 
+fn apply_window_parent(
+    builder: WindowBuilder,
+    parent: &Window,
+) -> std::result::Result<WindowBuilder, HostProtocolError> {
+    #[cfg(target_os = "macos")]
+    {
+        return macos::apply_window_parent(builder, parent);
+    }
+
+    #[cfg(windows)]
+    {
+        return windows::apply_window_parent(builder, parent);
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let _ = (builder, parent);
+        Err(HostProtocolError::unsupported(
+            "window parent ownership is not implemented for this host platform",
+            host_protocol::WINDOW_CREATE_METHOD,
+        ))
+    }
+}
+
 fn centered_window_bounds(
     window: &Window,
     monitor: &MonitorHandle,
@@ -3255,6 +3353,7 @@ mod tests {
         WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
     };
     use host_protocol::{HostProtocolError, WindowCreatePayload, WindowCreateResponse};
+    use std::collections::HashSet;
     use std::sync::mpsc;
     use std::thread;
     use std::time::Instant;
@@ -3503,5 +3602,34 @@ mod tests {
                 host_protocol::WINDOW_DESTROY_METHOD,
             ))
         );
+    }
+
+    #[test]
+    fn removing_parent_window_tree_clears_tracked_children() {
+        let mut registry = WindowRegistry::new();
+        registry
+            .child_window_ids_by_parent_id
+            .insert("parent".to_string(), HashSet::from(["child".to_string()]));
+        registry.child_window_ids_by_parent_id.insert(
+            "child".to_string(),
+            HashSet::from(["grandchild".to_string()]),
+        );
+        registry
+            .parent_window_id_by_child_id
+            .insert("child".to_string(), "parent".to_string());
+        registry
+            .parent_window_id_by_child_id
+            .insert("grandchild".to_string(), "child".to_string());
+
+        assert_eq!(
+            registry.remove_window_tree("parent"),
+            vec![
+                "grandchild".to_string(),
+                "child".to_string(),
+                "parent".to_string()
+            ]
+        );
+        assert!(registry.child_window_ids_by_parent_id.is_empty());
+        assert!(registry.parent_window_id_by_child_id.is_empty());
     }
 }

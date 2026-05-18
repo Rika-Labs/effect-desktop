@@ -123,6 +123,13 @@ pub(crate) fn apply_window_builder_polish(
     platform::apply_window_builder_polish(builder, polish)
 }
 
+pub(crate) fn apply_window_parent(
+    builder: WindowBuilder,
+    parent: &Window,
+) -> std::result::Result<WindowBuilder, HostProtocolError> {
+    platform::apply_window_parent(builder, parent)
+}
+
 pub(crate) fn apply_window_polish(
     window: &Window,
     polish: Option<&MacosWindowPolish>,
@@ -182,6 +189,13 @@ mod platform {
                 .with_traffic_light_inset(LogicalPosition::new(traffic_lights.x, traffic_lights.y)),
             None => builder,
         }
+    }
+
+    pub(super) fn apply_window_parent(
+        builder: WindowBuilder,
+        parent: &Window,
+    ) -> std::result::Result<WindowBuilder, HostProtocolError> {
+        Ok(builder.with_parent_window(parent.ns_window()))
     }
 
     pub(super) fn apply_window_polish(
@@ -350,6 +364,7 @@ mod platform {
 #[cfg(not(target_os = "macos"))]
 mod platform {
     use super::{HostProtocolError, MacosWindowPolish};
+    use host_protocol;
     use tao::window::{Window, WindowBuilder};
 
     pub(super) fn apply_window_builder_polish(
@@ -357,6 +372,16 @@ mod platform {
         _polish: Option<&MacosWindowPolish>,
     ) -> WindowBuilder {
         builder
+    }
+
+    pub(super) fn apply_window_parent(
+        _builder: WindowBuilder,
+        _parent: &Window,
+    ) -> std::result::Result<WindowBuilder, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window parent ownership is not implemented for this host platform",
+            host_protocol::WINDOW_CREATE_METHOD,
+        ))
     }
 
     pub(super) fn apply_window_polish(

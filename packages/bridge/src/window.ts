@@ -68,6 +68,7 @@ export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>("Wind
   title: Schema.optionalKey(Schema.NonEmptyString),
   width: Schema.optionalKey(PositiveFiniteNumber),
   height: Schema.optionalKey(PositiveFiniteNumber),
+  parentWindowId: Schema.optionalKey(Schema.NonEmptyString),
   titleBarStyle: Schema.optionalKey(WindowTitleBarStyle),
   vibrancy: Schema.optionalKey(WindowVibrancyMaterial),
   trafficLights: Schema.optionalKey(WindowTrafficLights)
@@ -162,6 +163,7 @@ export interface WindowCreateInput {
   readonly title?: string
   readonly width?: number
   readonly height?: number
+  readonly parentWindowId?: string
   readonly titleBarStyle?: Schema.Schema.Type<typeof WindowTitleBarStyle>
   readonly vibrancy?: Schema.Schema.Type<typeof WindowVibrancyMaterial>
   readonly trafficLights?: Schema.Schema.Type<typeof WindowTrafficLights>

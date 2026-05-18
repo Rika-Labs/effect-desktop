@@ -88,6 +88,36 @@ test("host window client preserves macOS polish fields in Window.create", async 
   })
 })
 
+test("host window client requests owned child Window.create", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = makeHostWindowClient(windowExchange(requests), {
+    nextRequestId: () => "request-window-create-child",
+    nextTraceId: () => "trace-window-create-child",
+    now: () => 1710000000006
+  })
+
+  await Effect.runPromise(
+    client.create({
+      title: "Child",
+      parentWindowId: "window-parent"
+    })
+  )
+
+  expect(requests).toEqual([
+    {
+      kind: "request",
+      id: "request-window-create-child",
+      method: WINDOW_CREATE_METHOD,
+      timestamp: 1710000000006,
+      traceId: "trace-window-create-child",
+      payload: {
+        title: "Child",
+        parentWindowId: "window-parent"
+      }
+    }
+  ])
+})
+
 test("host window client requests Window.destroy", async () => {
   const timestamp = 1_715_000_000_001
   const requests: HostProtocolRequestEnvelope[] = []
@@ -312,6 +342,7 @@ test("host window client rejects invalid create bounds before crossing the host 
   const invalidInputs: ReadonlyArray<unknown> = [
     { width: 0 },
     { title: "" },
+    { parentWindowId: "" },
     { vibrancy: "not-a-material" },
     { trafficLights: { x: -1, y: 0 } },
     { trafficLights: { x: 0, y: -1 } }

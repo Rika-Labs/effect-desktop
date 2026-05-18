@@ -23,7 +23,8 @@ import {
   PermissionRegistry,
   ResourceRegistry,
   makeResourceId,
-  type DesktopRpcClient
+  type DesktopRpcClient,
+  type ResourceRegistryApi
 } from "@effect-desktop/core"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
@@ -785,15 +786,26 @@ const isWindowError = (error: unknown): error is WindowError =>
 const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindowRpcOptions) => {
   const host = makeHostWindowClient(exchange, options)
   const knownWindowIds = new Set<string>()
+  const childWindowIdsByParentId = new Map<string, Set<string>>()
+  const parentWindowIdByChildId = new Map<string, string>()
+  const windowHandleById = new Map<string, WindowHandle>()
 
   return {
     "Window.create": (input: WindowCreateInput) =>
       Effect.gen(function* () {
         const registry = yield* ResourceRegistry
-        const created = yield* host.create(toHostWindowCreateInput(input))
+        const parent =
+          input.parent === undefined
+            ? undefined
+            : (yield* assertKnownFreshWindow(
+                { window: input.parent },
+                knownWindowIds,
+                "Window.create"
+              )).window
+        const created = yield* host.create(toHostWindowCreateInput(input, parent?.id))
         knownWindowIds.add(created.windowId)
         const ownerScope = windowScope(created.windowId)
-        yield* registry.declareScope(ownerScope, "app").pipe(Effect.orDie)
+        yield* registry.declareScope(ownerScope, parent?.ownerScope ?? "app").pipe(Effect.orDie)
         const handle = yield* registry
           .register({
             kind: "window",
@@ -803,6 +815,13 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           })
           .pipe(Effect.orDie)
         const window = toWindowHandle(handle)
+        windowHandleById.set(window.id, window)
+        if (parent !== undefined) {
+          const children = childWindowIdsByParentId.get(parent.id) ?? new Set<string>()
+          children.add(window.id)
+          childWindowIdsByParentId.set(parent.id, children)
+          parentWindowIdByChildId.set(window.id, parent.id)
+        }
         if (options.appEventRouter !== undefined) {
           yield* options.appEventRouter.windowOpened(window)
         }
@@ -839,11 +858,14 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
               makeStaleHandleError("Window.close", window, error.actualGeneration)
             )
           )
-        yield* host.destroy(window.id)
-        if (options.appEventRouter !== undefined) {
-          yield* options.appEventRouter.windowClosed(window.id)
-        }
-        yield* registry.closeScope(window.ownerScope)
+        yield* closeKnownWindowTree(window, host, registry, {
+          ...(options.appEventRouter === undefined
+            ? {}
+            : { appEventRouter: options.appEventRouter }),
+          childWindowIdsByParentId,
+          parentWindowIdByChildId,
+          windowHandleById
+        })
       }),
     "Window.show": (input: WindowHandleInput) =>
       Effect.gen(function* () {
@@ -1018,11 +1040,15 @@ const assertKnownFreshWindow = (
     return { window }
   })
 
-const toHostWindowCreateInput = (input: WindowCreateOptions): WindowCreateOptions => {
+const toHostWindowCreateInput = (
+  input: WindowCreateOptions,
+  parentWindowId?: string
+): WindowCreateOptions & { readonly parentWindowId?: string } => {
   return {
     ...(input.title === undefined ? {} : { title: input.title }),
     ...(input.width === undefined ? {} : { width: input.width }),
     ...(input.height === undefined ? {} : { height: input.height }),
+    ...(parentWindowId === undefined ? {} : { parentWindowId }),
     ...(input.titleBarStyle === undefined ? {} : { titleBarStyle: input.titleBarStyle }),
     ...(input.vibrancy === undefined ? {} : { vibrancy: input.vibrancy }),
     ...(input.trafficLights === undefined ? {} : { trafficLights: input.trafficLights })
@@ -1052,6 +1078,46 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
     ownerScope: handle.ownerScope,
     state: handle.state
   }) as WindowHandle
+
+const closeKnownWindowTree = (
+  window: WindowHandle,
+  host: ReturnType<typeof makeHostWindowClient>,
+  registry: ResourceRegistryApi,
+  context: {
+    readonly appEventRouter?: AppEventRouterApi
+    readonly childWindowIdsByParentId: Map<string, Set<string>>
+    readonly parentWindowIdByChildId: Map<string, string>
+    readonly windowHandleById: Map<string, WindowHandle>
+  }
+): Effect.Effect<void, WindowError, never> =>
+  Effect.gen(function* () {
+    const childWindowIds = Array.from(context.childWindowIdsByParentId.get(window.id) ?? [])
+    for (const childWindowId of childWindowIds) {
+      const childWindow = context.windowHandleById.get(childWindowId)
+      if (childWindow === undefined) {
+        return yield* Effect.fail(
+          makeHostProtocolInternalError(
+            `Missing tracked child Window:${childWindowId}`,
+            "Window.close"
+          )
+        )
+      }
+      yield* closeKnownWindowTree(childWindow, host, registry, context)
+    }
+
+    yield* host.destroy(window.id)
+    if (context.appEventRouter !== undefined) {
+      yield* context.appEventRouter.windowClosed(window.id)
+    }
+    yield* registry.closeScope(window.ownerScope)
+    context.windowHandleById.delete(window.id)
+    context.childWindowIdsByParentId.delete(window.id)
+    const parentWindowId = context.parentWindowIdByChildId.get(window.id)
+    if (parentWindowId !== undefined) {
+      context.childWindowIdsByParentId.get(parentWindowId)?.delete(window.id)
+      context.parentWindowIdByChildId.delete(window.id)
+    }
+  })
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

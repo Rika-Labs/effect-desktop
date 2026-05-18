@@ -3040,6 +3040,44 @@ mod tests {
     }
 
     #[test]
+    fn window_create_routes_parent_window_id_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-child")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-create-child",
+                    host_protocol::WINDOW_CREATE_METHOD,
+                    serde_json::json!({
+                        "title": "Child",
+                        "parentWindowId": "window-parent"
+                    }),
+                ),
+                1710000000106,
+            )
+            .expect("child window create should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-create-child".to_string(),
+                timestamp: 1710000000106,
+                trace_id: "trace-request-window-create-child".to_string(),
+                payload: Some(serde_json::json!({
+                    "windowId": "window-child"
+                })),
+                error: None,
+            }
+        );
+        let created = fake.created();
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].parent_window_id(), Some("window-parent"));
+    }
+
+    #[test]
     fn window_create_invalid_bounds_returns_invalid_argument() {
         let response = test_router()
             .dispatch_at(

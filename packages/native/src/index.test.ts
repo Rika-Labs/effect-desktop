@@ -7820,6 +7820,181 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
   ])
 })
 
+test("host WindowClient adapter creates owned child windows and closes children with parent", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const createWindowIds = nextId(["host-parent", "host-child"])
+  const hostExchange: HostWindowExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed(
+        new HostProtocolResponseEnvelope({
+          kind: "response",
+          id: request.id,
+          timestamp: request.timestamp + 1,
+          traceId: request.traceId,
+          ...(request.method === WINDOW_CREATE_METHOD
+            ? { payload: { windowId: createWindowIds() } }
+            : {})
+        })
+      )
+    }
+  }
+  const rpcExchange = makeWindowRpcExchange(hostExchange, registry, {
+    nextRequestId: nextId([
+      "create-parent-request",
+      "create-child-request",
+      "destroy-child-request",
+      "destroy-parent-request"
+    ]),
+    nextTraceId: nextId([
+      "create-parent-trace",
+      "create-child-trace",
+      "destroy-child-trace",
+      "destroy-parent-trace"
+    ]),
+    now: nextNumber([1_710_000_001_000, 1_710_000_001_001, 1_710_000_001_002, 1_710_000_001_003])
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const parent = yield* window.create({ title: "Parent" })
+      const child = yield* window.create({ title: "Child", parent })
+      const duringLifetime = yield* registry.list()
+      yield* window.close(parent)
+      const afterClose = yield* registry.list()
+
+      return { afterClose, child, duringLifetime, parent }
+    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+  )
+
+  expect(String(result.parent.id)).toBe("host-parent")
+  expect(String(result.child.id)).toBe("host-child")
+  expect(result.duringLifetime.entries.map((entry) => String(entry.handle.id)).sort()).toEqual([
+    "host-child",
+    "host-parent"
+  ])
+  expect(result.afterClose.entries).toEqual([])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_CREATE_METHOD, { title: "Parent" }],
+    [WINDOW_CREATE_METHOD, { title: "Child", parentWindowId: "host-parent" }],
+    [WINDOW_DESTROY_METHOD, { windowId: "host-child" }],
+    [WINDOW_DESTROY_METHOD, { windowId: "host-parent" }]
+  ])
+})
+
+test("native host RPC runtime denies owned child Window.create before host transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const runtime = makeHostWindowRpcRuntime(windowExchange(requests), undefined, {
+    originAuth: RendererOriginAuth.unsafeDisabledForTests
+  })
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "window-create-child-denied",
+          method: WINDOW_CREATE_METHOD,
+          payload: { title: "Child", parent: handleFor("parent") },
+          timestamp: 1710000000000,
+          traceId: "trace-window-create-child-denied"
+        })
+      )
+      .pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.effect(PermissionRegistry, makePermissionRegistry()),
+            Layer.effect(ResourceRegistry, makeResourceRegistry())
+          )
+        )
+      )
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(requests).toEqual([])
+})
+
+test("Window service propagates owned child unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "window-parent-ownership-unavailable",
+    message: "unsupported Window.create parent",
+    operation: "Window.create",
+    recoverable: false
+  })
+  const unsupportedClient: WindowClientApi = {
+    ...noopWindowClient,
+    create: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: WindowClientApi = {
+    ...noopWindowClient,
+    create: () => Effect.fail(makeHostProtocolHostUnavailableError("Window.create"))
+  }
+  const parent = handleFor("parent")
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* Effect.exit(window.create({ parent }))
+    }).pipe(Effect.provide(makeWindowServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* Effect.exit(window.create({ parent }))
+    }).pipe(Effect.provide(makeWindowServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+})
+
+test("host WindowClient adapter propagates owned child create host failure", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const hostExchange: HostWindowExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed(
+        new HostProtocolResponseEnvelope({
+          kind: "response",
+          id: request.id,
+          timestamp: request.timestamp + 1,
+          traceId: request.traceId,
+          ...(request.method === WINDOW_CREATE_METHOD && requests.length === 1
+            ? { payload: { windowId: "host-parent" } }
+            : { error: makeHostProtocolHostUnavailableError("Window.create") })
+        })
+      )
+    }
+  }
+  const rpcExchange = makeWindowRpcExchange(hostExchange, registry, {
+    nextRequestId: nextId(["create-parent-request", "create-child-request"]),
+    nextTraceId: nextId(["create-parent-trace", "create-child-trace"]),
+    now: nextNumber([1_710_000_001_100, 1_710_000_001_101])
+  })
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const parent = yield* window.create({ title: "Parent" })
+      const childExit = yield* Effect.exit(window.create({ title: "Child", parent }))
+      return { childExit, parent }
+    }).pipe(Effect.provide(Layer.provide(WindowLive, makeWindowBridgeClientLayer(rpcExchange))))
+  )
+
+  expectExitFailure(result.childExit, (error) => hasErrorTag(error, "HostUnavailable"))
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    [WINDOW_CREATE_METHOD, { title: "Parent" }],
+    [WINDOW_CREATE_METHOD, { title: "Child", parentWindowId: "host-parent" }]
+  ])
+})
+
 test("AppEventRouter sends firstResponder events to the focused window only", async () => {
   const result = await runScopedPromise(
     Effect.gen(function* () {

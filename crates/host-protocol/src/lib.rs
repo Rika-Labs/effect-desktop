@@ -2614,6 +2614,8 @@ pub struct WindowCreatePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     height: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    parent_window_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     title_bar_style: Option<WindowTitleBarStyle>,
     #[serde(skip_serializing_if = "Option::is_none")]
     vibrancy: Option<String>,
@@ -2627,6 +2629,7 @@ impl WindowCreatePayload {
             title,
             width,
             height,
+            parent_window_id: None,
             title_bar_style: None,
             vibrancy: None,
             traffic_lights: None,
@@ -2643,6 +2646,10 @@ impl WindowCreatePayload {
 
     pub fn height(&self) -> Option<f64> {
         self.height
+    }
+
+    pub fn parent_window_id(&self) -> Option<&str> {
+        self.parent_window_id.as_deref()
     }
 
     pub fn title_bar_style(&self) -> Option<WindowTitleBarStyle> {
@@ -11634,11 +11641,12 @@ mod tests {
     #[test]
     fn window_create_payload_accepts_macos_polish_fields() {
         let payload = serde_json::from_str::<WindowCreatePayload>(
-            r#"{"title":"Polished","width":320,"height":240,"titleBarStyle":"hiddenInset","vibrancy":"windowBackground","trafficLights":{"x":12,"y":13}}"#,
+            r#"{"title":"Polished","width":320,"height":240,"parentWindowId":"window-parent","titleBarStyle":"hiddenInset","vibrancy":"windowBackground","trafficLights":{"x":12,"y":13}}"#,
         )
         .expect("macOS window polish payload should decode");
 
         assert_eq!(payload.title(), Some("Polished"));
+        assert_eq!(payload.parent_window_id(), Some("window-parent"));
         assert_eq!(
             payload.title_bar_style(),
             Some(WindowTitleBarStyle::HiddenInset)

@@ -50,6 +50,7 @@ export class WindowCreateInput extends Schema.Class<WindowCreateInput>("WindowCr
   title: Schema.optionalKey(Schema.NonEmptyString),
   width: Schema.optionalKey(PositiveFiniteNumber),
   height: Schema.optionalKey(PositiveFiniteNumber),
+  parent: Schema.optionalKey(WindowResource),
   titleBarStyle: Schema.optionalKey(WindowTitleBarStyle),
   vibrancy: Schema.optionalKey(WindowVibrancyMaterial),
   trafficLights: Schema.optionalKey(WindowTrafficLights)
