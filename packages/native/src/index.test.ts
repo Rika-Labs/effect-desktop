@@ -6269,6 +6269,55 @@ test("Screen bridge client sends typed host envelopes and decodes values", async
 
 test("native host RPC runtime denies protected Screen calls before handlers run", async () => {
   const calls: string[] = []
+  const rows: AuditEvent[] = []
+  const runtime = makeHostScreenRpcRuntime(
+    {
+      "Screen.getDisplays": () =>
+        Effect.sync(() => {
+          calls.push("getDisplays")
+          return new ScreenDisplaysResult({ displays: [primaryDisplay] })
+        }),
+      "Screen.getPrimaryDisplay": () => Effect.succeed(primaryDisplay),
+      "Screen.getPointerPoint": () => Effect.succeed(new ScreenPoint({ x: 12, y: 34 })),
+      "Screen.isSupported": () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+  const permissions = await Effect.runPromise(
+    makePermissionRegistry({
+      audit: memoryAudit(rows),
+      traceId: () => "trace-screen-denied"
+    })
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "screen-denied",
+          method: "Screen.getDisplays",
+          timestamp: 1710000000000,
+          traceId: "trace-screen-denied"
+        })
+      )
+      .pipe(Effect.provideService(PermissionRegistry, permissions))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+  expect(rows.map((row) => row.kind)).toEqual(["permission-denied"])
+  expect(rows.map((row) => row.normalizedCapability)).toEqual([
+    P.nativeInvoke({ primitive: "Screen", methods: ["getDisplays"] })
+  ])
+})
+
+test("native host RPC runtime audits Screen.getDisplays permission use", () => {
+  const rows: AuditEvent[] = []
+  const calls: string[] = []
   const runtime = makeHostScreenRpcRuntime(
     {
       "Screen.getDisplays": () =>
@@ -6283,25 +6332,45 @@ test("native host RPC runtime denies protected Screen calls before handlers run"
     { originAuth: RendererOriginAuth.unsafeDisabledForTests }
   )
 
-  const response = await Effect.runPromise(
-    runtime
-      .dispatch(
-        new HostProtocolRequestEnvelope({
-          kind: "request",
-          id: "screen-denied",
-          method: "Screen.getDisplays",
-          timestamp: 1710000000000,
-          traceId: "trace-screen-denied"
-        })
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* makePermissionRegistry({
+        audit: memoryAudit(rows),
+        traceId: () => "trace-screen-audit"
+      })
+      yield* permissions.declare(
+        P.nativeInvoke({ primitive: "Screen", methods: ["getDisplays"] }),
+        {
+          source: "screen-persistence-test",
+          effect: "allow"
+        }
       )
-      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
-  )
+      const response = yield* runtime
+        .dispatch(
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "screen-get-displays-allowed",
+            method: "Screen.getDisplays",
+            timestamp: 1_710_000_003_200,
+            traceId: "trace-screen-get-displays-allowed"
+          })
+        )
+        .pipe(Effect.provideService(PermissionRegistry, permissions))
 
-  expect(response.kind).toBe("failure")
-  if (response.kind === "failure") {
-    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
-  }
-  expect(calls).toEqual([])
+      expect(response.kind).toBe("success")
+      expect(calls).toEqual(["getDisplays"])
+      expect(rows.map((row) => row.kind)).toEqual([
+        "permission-granted",
+        "permission-granted",
+        "permission-used"
+      ])
+      expect(rows.map((row) => row.normalizedCapability)).toEqual([
+        P.nativeInvoke({ primitive: "Screen", methods: ["getDisplays"] }),
+        P.nativeInvoke({ primitive: "Screen", methods: ["getDisplays"] }),
+        P.nativeInvoke({ primitive: "Screen", methods: ["getDisplays"] })
+      ])
+    })
+  )
 })
 
 test("native host RPC runtime lets permission-free Screen support calls pass through", async () => {
@@ -7487,6 +7556,53 @@ test("WindowRpcs declares only callable Window methods", () => {
   expect("events" in WindowRpcs).toBe(false)
 })
 
+test("WindowPersistence dependency RPCs declare native capabilities", () => {
+  const windowDocs = new Map(WindowSurface.schemaDocs.map((doc) => [doc.tag, doc.capability]))
+  const screenDocs = new Map(ScreenSurface.schemaDocs.map((doc) => [doc.tag, doc.capability]))
+  const expectCapability = (
+    docs: ReadonlyMap<string, Option.Option<unknown>>,
+    tag: string,
+    capability: NormalizedCapability
+  ): void => {
+    const documentedCapability = docs.get(tag)
+    if (documentedCapability === undefined) {
+      throw new Error(`missing schema doc for ${tag}`)
+    }
+    expect(Option.getOrThrow(documentedCapability)).toEqual(capability)
+  }
+
+  expectCapability(
+    windowDocs,
+    WINDOW_GET_BY_ID_METHOD,
+    P.nativeInvoke({ primitive: "Window", methods: ["getById"] })
+  )
+  expectCapability(
+    windowDocs,
+    WINDOW_GET_BOUNDS_METHOD,
+    P.nativeInvoke({ primitive: "Window", methods: ["getBounds"] })
+  )
+  expectCapability(
+    windowDocs,
+    WINDOW_GET_STATE_METHOD,
+    P.nativeInvoke({ primitive: "Window", methods: ["getState"] })
+  )
+  expectCapability(
+    windowDocs,
+    WINDOW_SET_BOUNDS_METHOD,
+    P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
+  )
+  expectCapability(
+    windowDocs,
+    WINDOW_SET_FULLSCREEN_METHOD,
+    P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
+  )
+  expectCapability(
+    screenDocs,
+    "Screen.getDisplays",
+    P.nativeInvoke({ primitive: "Screen", methods: ["getDisplays"] })
+  )
+})
+
 test("Window service delegates through a substitutable WindowClient port", async () => {
   const calls: string[] = []
   const client: WindowClientApi = {
@@ -8504,6 +8620,139 @@ test("native host RPC runtime denies Window.getCurrent before lookup work", asyn
     expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
   }
   expect(requests).toEqual([])
+})
+
+test("native host RPC runtime audits WindowPersistence Window dependency permissions", () => {
+  const windowDependencyCalls = [
+    {
+      method: WINDOW_GET_BY_ID_METHOD,
+      payload: { windowId: "host-window-1" },
+      capability: P.nativeInvoke({ primitive: "Window", methods: ["getById"] })
+    },
+    {
+      method: WINDOW_GET_BOUNDS_METHOD,
+      payload: { window: handleFor("host-window-1") },
+      capability: P.nativeInvoke({ primitive: "Window", methods: ["getBounds"] })
+    },
+    {
+      method: WINDOW_GET_STATE_METHOD,
+      payload: { window: handleFor("host-window-1") },
+      capability: P.nativeInvoke({ primitive: "Window", methods: ["getState"] })
+    },
+    {
+      method: WINDOW_SET_BOUNDS_METHOD,
+      payload: {
+        window: handleFor("host-window-1"),
+        bounds: { x: 10, y: 20, width: 640, height: 480 }
+      },
+      capability: P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
+    },
+    {
+      method: WINDOW_SET_FULLSCREEN_METHOD,
+      payload: { window: handleFor("host-window-1"), fullscreen: true },
+      capability: P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
+    }
+  ] as const
+  const deniedRows: AuditEvent[] = []
+  const deniedRequests: HostProtocolRequestEnvelope[] = []
+  const deniedRuntime = makeHostWindowRpcRuntime(windowExchange(deniedRequests), undefined, {
+    originAuth: RendererOriginAuth.unsafeDisabledForTests
+  })
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const deniedPermissions = yield* makePermissionRegistry({
+        audit: memoryAudit(deniedRows),
+        traceId: () => "trace-denied"
+      })
+      const deniedRegistry = yield* makeResourceRegistry()
+
+      for (const [index, call] of windowDependencyCalls.entries()) {
+        const response = yield* deniedRuntime
+          .dispatch(
+            new HostProtocolRequestEnvelope({
+              kind: "request",
+              id: `window-persistence-denied-${index}`,
+              method: call.method,
+              payload: call.payload,
+              timestamp: 1_710_000_003_000 + index,
+              traceId: `trace-window-persistence-denied-${index}`
+            })
+          )
+          .pipe(
+            Effect.provideService(ResourceRegistry, deniedRegistry),
+            Effect.provideService(PermissionRegistry, deniedPermissions)
+          )
+        expect(response.kind).toBe("failure")
+        if (response.kind === "failure") {
+          expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+        }
+      }
+
+      expect(deniedRequests).toEqual([])
+      expect(deniedRows.map((row) => row.kind)).toEqual(
+        windowDependencyCalls.map(() => "permission-denied")
+      )
+      expect(deniedRows.map((row) => row.normalizedCapability)).toEqual(
+        windowDependencyCalls.map((call) => call.capability)
+      )
+
+      const allowedRows: AuditEvent[] = []
+      const allowedRequests: HostProtocolRequestEnvelope[] = []
+      const allowedPermissions = yield* makePermissionRegistry({
+        audit: memoryAudit(allowedRows),
+        traceId: () => "trace-allowed"
+      })
+      for (const call of windowDependencyCalls) {
+        yield* allowedPermissions.declare(call.capability, {
+          source: "window-persistence-test",
+          effect: "allow"
+        })
+      }
+      const allowedRegistry = yield* makeResourceRegistry()
+      const allowedRuntime = makeHostWindowRpcRuntime(windowExchange(allowedRequests), undefined, {
+        originAuth: RendererOriginAuth.unsafeDisabledForTests
+      })
+
+      const allowedResponses: BridgeClientResponse[] = []
+      for (const [index, call] of windowDependencyCalls.entries()) {
+        const response = yield* allowedRuntime
+          .dispatch(
+            new HostProtocolRequestEnvelope({
+              kind: "request",
+              id: `window-persistence-allowed-${index}`,
+              method: call.method,
+              payload: call.payload,
+              timestamp: 1_710_000_003_100 + index,
+              traceId: `trace-window-persistence-allowed-${index}`
+            })
+          )
+          .pipe(
+            Effect.provideService(ResourceRegistry, allowedRegistry),
+            Effect.provideService(PermissionRegistry, allowedPermissions)
+          )
+        allowedResponses.push(response)
+      }
+
+      expect(allowedResponses.map((response) => response.kind)).toEqual(
+        windowDependencyCalls.map(() => "failure")
+      )
+      for (const response of allowedResponses) {
+        if (response.kind === "failure") {
+          expect(hasErrorTag(response.error, "PermissionDenied")).toBe(false)
+        }
+      }
+      expect(allowedRequests.map((request) => request.method)).toEqual([WINDOW_GET_BY_ID_METHOD])
+      expect(
+        allowedRows.filter((row) => row.kind === "permission-used").map((row) => row.kind)
+      ).toEqual(windowDependencyCalls.map(() => "permission-used"))
+      expect(
+        allowedRows
+          .filter((row) => row.kind === "permission-used")
+          .map((row) => row.normalizedCapability)
+      ).toEqual(windowDependencyCalls.map((call) => call.capability))
+    })
+  )
 })
 
 test("Window lookup uses host transport without runtime router", async () => {
