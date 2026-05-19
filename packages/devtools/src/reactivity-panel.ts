@@ -28,7 +28,7 @@ export interface ReactivityTrackerApi {
 }
 
 export class ReactivityTracker extends Context.Service<ReactivityTracker, ReactivityTrackerApi>()(
-  "@effect-desktop/devtools/ReactivityTracker"
+  "@effect-desktop/devtools/reactivity-panel/ReactivityTracker"
 ) {}
 
 export const makeReactivityTracker = (
@@ -78,7 +78,7 @@ export interface ReactivityPanelOptions {
 }
 
 export class ReactivityPanel extends Context.Service<ReactivityPanel, ReactivityPanelApi>()(
-  "@effect-desktop/devtools/ReactivityPanel"
+  "@effect-desktop/devtools/reactivity-panel/ReactivityPanel"
 ) {}
 
 export const ReactivityPanelLive = (

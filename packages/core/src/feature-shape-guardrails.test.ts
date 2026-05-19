@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test"
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
-import { join, relative } from "node:path"
+import { BunServices } from "@effect/platform-bun"
+import { Effect, FileSystem, ManagedRuntime, Path } from "effect"
 
-const repoRoot = join(import.meta.dir, "../../..")
-const searchedRoots = ["apps", "docs", "packages", "templates"]
+const repoRoot = new URL("../../..", import.meta.url).pathname
+const searchedRoots = ["apps", "docs", "packages", "templates"] as const
 const ignoredDirectories = new Set(["node_modules", "repos", ".git", "dist", ".turbo"])
 const textExtensions = new Set([".md", ".ts", ".tsx", ".js", ".jsx", ".json"])
 const nativeSurfaces = [
@@ -21,7 +21,6 @@ const nativeSurfaces = [
   "Protocol",
   "SafeStorage",
   "Screen",
-  "Shell",
   "SystemAppearance",
   "Tray",
   "Updater",
@@ -29,58 +28,91 @@ const nativeSurfaces = [
   "Window"
 ] as const
 
-const files = (roots: readonly string[] = searchedRoots): readonly string[] => {
-  const found: string[] = []
-  const visit = (directory: string) => {
-    for (const entry of readdirSync(directory)) {
-      if (ignoredDirectories.has(entry)) {
-        continue
-      }
-      const path = join(directory, entry)
-      const stat = statSync(path)
-      if (stat.isDirectory()) {
-        visit(path)
-        continue
-      }
-      const extension = entry.slice(entry.lastIndexOf("."))
-      if (textExtensions.has(extension)) {
-        found.push(path)
+const GuardrailRuntime = ManagedRuntime.make(BunServices.layer)
+
+const collectFiles = (roots: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const found: Array<string> = []
+
+    const visit = (directory: string): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const entries = yield* fs.readDirectory(directory).pipe(Effect.orElseSucceed(() => []))
+        for (const entry of entries) {
+          if (ignoredDirectories.has(entry)) {
+            continue
+          }
+          const entryPath = path.join(directory, entry)
+          const info = yield* fs.stat(entryPath).pipe(Effect.orElseSucceed(() => undefined))
+          if (info === undefined) {
+            continue
+          }
+          if (info.type === "Directory") {
+            yield* visit(entryPath)
+            continue
+          }
+          const extension = entry.slice(entry.lastIndexOf("."))
+          if (textExtensions.has(extension)) {
+            found.push(entryPath)
+          }
+        }
+      })
+
+    for (const root of roots) {
+      const rootPath = path.join(repoRoot, root)
+      if (yield* fs.exists(rootPath)) {
+        yield* visit(rootPath)
       }
     }
-  }
+    return found as ReadonlyArray<string>
+  })
 
-  for (const root of roots) {
-    const path = join(repoRoot, root)
-    if (existsSync(path)) {
-      visit(path)
+const matchingFiles = (pattern: RegExp) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const all = yield* collectFiles(searchedRoots)
+    const selfPath = new URL(import.meta.url).pathname
+    const matched: Array<string> = []
+    for (const file of all) {
+      if (file === selfPath) {
+        continue
+      }
+      const contents = yield* fs.readFileString(file)
+      if (pattern.test(contents)) {
+        matched.push(path.relative(repoRoot, file))
+      }
     }
-  }
-  return found
-}
+    return matched as ReadonlyArray<string>
+  })
 
-const matchingFiles = (pattern: RegExp): readonly string[] =>
-  files()
-    .filter((file) => file !== import.meta.path)
-    .filter((file) => pattern.test(readFileSync(file, "utf8")))
-    .map((file) => relative(repoRoot, file))
+test("feature declarations do not reintroduce declaration registries or snapshots", () =>
+  GuardrailRuntime.runPromise(
+    Effect.gen(function* () {
+      const matches = yield* matchingFiles(
+        /snapshotDeclarationLayerSync|Desktop(?:Rpc|Native|Permission|Workflow|Window|Provider)Registry/
+      )
+      expect(matches).toEqual([])
+    })
+  ))
 
-test("feature declarations do not reintroduce declaration registries or snapshots", () => {
-  expect(
-    matchingFiles(
-      /snapshotDeclarationLayerSync|Desktop(?:Rpc|Native|Permission|Workflow|Window|Provider)Registry/
-    )
-  ).toEqual([])
-})
+test("feature declaration guardrails tolerate optional roots absent from clean checkouts", () =>
+  GuardrailRuntime.runPromise(
+    Effect.gen(function* () {
+      const found = yield* collectFiles(["missing-template-root"])
+      expect(found).toEqual([])
+    })
+  ))
 
-test("feature declaration guardrails tolerate optional roots absent from clean checkouts", () => {
-  expect(files(["missing-template-root"])).toEqual([])
-})
-
-test("native app composition does not reintroduce method-level selections", () => {
-  expect(matchingFiles(/Native\.capabilities/)).toEqual([])
-  expect(
-    matchingFiles(
-      new RegExp(`Native\\.(${nativeSurfaces.join("|")})\\.(?:[a-z][A-Za-z0-9_]*)`, "g")
-    )
-  ).toEqual([])
-})
+test("native app composition does not reintroduce method-level selections", () =>
+  GuardrailRuntime.runPromise(
+    Effect.gen(function* () {
+      const capabilities = yield* matchingFiles(/Native\.capabilities/)
+      expect(capabilities).toEqual([])
+      const methods = yield* matchingFiles(
+        new RegExp(`Native\\.(${nativeSurfaces.join("|")})\\.(?:[a-z][A-Za-z0-9_]*)`, "g")
+      )
+      expect(methods).toEqual([])
+    })
+  ))

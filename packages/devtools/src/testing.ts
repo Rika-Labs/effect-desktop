@@ -56,7 +56,7 @@ export interface InspectorTestApi {
 }
 
 export class InspectorTest extends Context.Service<InspectorTest, InspectorTestApi>()(
-  "@effect-desktop/devtools/InspectorTest"
+  "@effect-desktop/devtools/testing/InspectorTest"
 ) {}
 
 export interface ReplayTransportApi {
@@ -68,7 +68,7 @@ export interface ReplayTransportApi {
 }
 
 export class ReplayTransport extends Context.Service<ReplayTransport, ReplayTransportApi>()(
-  "@effect-desktop/devtools/ReplayTransport"
+  "@effect-desktop/devtools/testing/ReplayTransport"
 ) {}
 
 export interface InspectorTestOptions {

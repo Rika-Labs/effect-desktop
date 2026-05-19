@@ -89,22 +89,22 @@ export interface StreamInspectorCollectorApi {
 export class ResourceInspectorCollector extends Context.Service<
   ResourceInspectorCollector,
   ResourceInspectorCollectorApi
->()("@effect-desktop/devtools/ResourceInspectorCollector") {}
+>()("@effect-desktop/devtools/lifecycle-collectors/ResourceInspectorCollector") {}
 
 export class ScopeInspectorCollector extends Context.Service<
   ScopeInspectorCollector,
   ScopeInspectorCollectorApi
->()("@effect-desktop/devtools/ScopeInspectorCollector") {}
+>()("@effect-desktop/devtools/lifecycle-collectors/ScopeInspectorCollector") {}
 
 export class FiberInspectorCollector extends Context.Service<
   FiberInspectorCollector,
   FiberInspectorCollectorApi
->()("@effect-desktop/devtools/FiberInspectorCollector") {}
+>()("@effect-desktop/devtools/lifecycle-collectors/FiberInspectorCollector") {}
 
 export class StreamInspectorCollector extends Context.Service<
   StreamInspectorCollector,
   StreamInspectorCollectorApi
->()("@effect-desktop/devtools/StreamInspectorCollector") {}
+>()("@effect-desktop/devtools/lifecycle-collectors/StreamInspectorCollector") {}
 
 export const ResourceInspectorCollectorLive: Layer.Layer<
   ResourceInspectorCollector,

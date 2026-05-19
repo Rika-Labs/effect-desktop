@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Layer, Schedule, Schema } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Schedule, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
@@ -18,6 +18,12 @@ import {
   makeCrashReportQueueUploadHandler,
   makeCrashReportQueue
 } from "./crash-report-workflow.js"
+
+class CrashReportWaitingError extends Schema.TaggedErrorClass<CrashReportWaitingError>(
+  "CrashReportWaitingError"
+)("CrashReportWaitingError", {
+  message: Schema.String
+}) {}
 
 const makeTestReport = (id: string): CrashReport =>
   new CrashReport({
@@ -45,8 +51,8 @@ const eventLogLayer = Layer.provide(
   ).pipe(Layer.provideMerge(EL.layerRegistry))
 )
 
-test("CrashReport schema round-trips a report with breadcrumbs", async () => {
-  await Effect.runPromise(
+test("CrashReport schema round-trips a report with breadcrumbs", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const report = makeTestReport("test-id-1")
       const encoded = yield* Schema.encodeUnknownEffect(CrashReport)(report)
@@ -55,13 +61,12 @@ test("CrashReport schema round-trips a report with breadcrumbs", async () => {
       expect(decoded.breadcrumbs).toHaveLength(2)
       expect(decoded.breadcrumbs[0]?.category).toBe("navigation")
     })
-  )
-})
+  ))
 
-test("PersistedQueue deduplicates reports with the same id", async () => {
+test("PersistedQueue deduplicates reports with the same id", () => {
   const report = makeTestReport("dedup-test-1")
-
-  await Effect.runPromise(
+  const runtime = ManagedRuntime.make(queueLayer)
+  return runtime.runPromise(
     Effect.gen(function* () {
       const queue = yield* makeCrashReportQueue
 
@@ -80,12 +85,13 @@ test("PersistedQueue deduplicates reports with the same id", async () => {
       )
 
       expect(count).toBe(1)
-    }).pipe(Effect.provide(queueLayer))
+    })
   )
 })
 
-test("CrashReport queue upload handler enqueues flushed breadcrumbs", async () => {
-  await Effect.runPromise(
+test("CrashReport queue upload handler enqueues flushed breadcrumbs", () => {
+  const runtime = ManagedRuntime.make(queueLayer)
+  return runtime.runPromise(
     Effect.gen(function* () {
       const handler = yield* makeCrashReportQueueUploadHandler({
         now: () => 12345,
@@ -105,11 +111,11 @@ test("CrashReport queue upload handler enqueues flushed breadcrumbs", async () =
       expect(report.platform).toBe("darwin")
       expect(report.breadcrumbs).toHaveLength(1)
       expect(report.breadcrumbs[0]?.message).toBe("boom")
-    }).pipe(Effect.provide(queueLayer))
+    })
   )
 })
 
-test("CrashReport drain consumes queued reports through the submission workflow", async () => {
+test("CrashReport drain consumes queued reports through the submission workflow", () => {
   const requests: Array<{ readonly method: string; readonly url: string }> = []
   const httpLayer = Layer.succeed(
     HttpClient.HttpClient,
@@ -120,8 +126,9 @@ test("CrashReport drain consumes queued reports through the submission workflow"
       })
     )
   )
-
-  await Effect.runPromise(
+  const layer = Layer.mergeAll(queueLayer, eventLogLayer, WorkflowEngine.layerMemory, httpLayer)
+  const runtime = ManagedRuntime.make(layer)
+  return runtime.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         const queue = yield* makeCrashReportQueue
@@ -142,7 +149,9 @@ test("CrashReport drain consumes queued reports through the submission workflow"
               (entry) => entry.event === "crash-report-submitted" && entry.primaryKey === report.id
             )
               ? Effect.succeed(entries)
-              : Effect.fail(new Error("waiting for crash report submission"))
+              : Effect.fail(
+                  new CrashReportWaitingError({ message: "waiting for crash report submission" })
+                )
           ),
           Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(100))))
         )
@@ -150,16 +159,11 @@ test("CrashReport drain consumes queued reports through the submission workflow"
         expect(requests).toEqual([{ method: "POST", url: "https://crash.example/reports" }])
         expect(entries.some((entry) => entry.event === "crash-report-dropped")).toBe(false)
       })
-    ).pipe(
-      Effect.provide(queueLayer),
-      Effect.provide(eventLogLayer),
-      Effect.provide(WorkflowEngine.layerMemory),
-      Effect.provide(httpLayer)
     )
   )
 })
 
-test("CrashSubmissionWorkflow records dropped reports after exhausted submit retries", async () => {
+test("CrashSubmissionWorkflow records dropped reports after exhausted submit retries", () => {
   let attempts = 0
   const httpLayer = Layer.succeed(
     HttpClient.HttpClient,
@@ -176,8 +180,14 @@ test("CrashSubmissionWorkflow records dropped reports after exhausted submit ret
       })
     )
   )
-
-  await Effect.runPromise(
+  const layer = makeCrashSubmissionWorkflowLayer("https://crash.example/reports").pipe(
+    Layer.provideMerge(eventLogLayer),
+    Layer.provideMerge(WorkflowEngine.layerMemory),
+    Layer.provideMerge(httpLayer),
+    Layer.provideMerge(TestClock.layer())
+  )
+  const runtime = ManagedRuntime.make(layer)
+  return runtime.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         const report = makeTestReport("drop-submit-1")
@@ -201,27 +211,24 @@ test("CrashSubmissionWorkflow records dropped reports after exhausted submit ret
           )
         ).toBe(false)
       })
-    ).pipe(
-      Effect.provide(makeCrashSubmissionWorkflowLayer("https://crash.example/reports")),
-      Effect.provide(eventLogLayer),
-      Effect.provide(WorkflowEngine.layerMemory),
-      Effect.provide(httpLayer),
-      Effect.provide(TestClock.layer())
     )
   )
 })
 
-test("crashReportRateLimitIntervalMs rejects invalid rate limits", async () => {
-  const valid = await Effect.runPromise(crashReportRateLimitIntervalMs(120))
-  expect(valid).toBe(30_000)
+test("crashReportRateLimitIntervalMs rejects invalid rate limits", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const valid = yield* crashReportRateLimitIntervalMs(120)
+      expect(valid).toBe(30_000)
 
-  const exit = await Effect.runPromiseExit(crashReportRateLimitIntervalMs(0))
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(CrashReportDrainConfigError)
-  }
-})
+      const exit = yield* Effect.exit(crashReportRateLimitIntervalMs(0))
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(CrashReportDrainConfigError)(failure?.error)).toBe(true)
+      }
+    })
+  ))
 
 test("CrashReport optionalKey fields are absent when not provided", () => {
   const minimal = new CrashReport({

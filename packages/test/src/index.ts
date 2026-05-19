@@ -371,35 +371,28 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
         )
       }
 
-      return Stream.fromIterable(chunks)
-        .pipe(
-          Stream.mapEffect((chunk) =>
+      return Stream.fromIterable(chunks).pipe(
+        Stream.mapEffect((chunk) =>
+          currentTimeMillis(options.now).pipe(
+            Effect.map((timestamp) =>
+              streamEnvelope(request, timestamp, new BridgeStreamDataFrame({ type: "data", chunk }))
+            )
+          )
+        ),
+        Stream.concat(
+          Stream.fromEffect(
             currentTimeMillis(options.now).pipe(
               Effect.map((timestamp) =>
                 streamEnvelope(
                   request,
                   timestamp,
-                  new BridgeStreamDataFrame({ type: "data", chunk })
+                  new BridgeStreamCompleteFrame({ type: "complete" })
                 )
               )
             )
           )
         )
-        .pipe(
-          Stream.concat(
-            Stream.fromEffect(
-              currentTimeMillis(options.now).pipe(
-                Effect.map((timestamp) =>
-                  streamEnvelope(
-                    request,
-                    timestamp,
-                    new BridgeStreamCompleteFrame({ type: "complete" })
-                  )
-                )
-              )
-            )
-          )
-        )
+      )
     },
     cancel: (request: HostProtocolCancelByRequestEnvelope) =>
       Effect.sync(() => {

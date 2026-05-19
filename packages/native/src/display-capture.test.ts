@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange, HostProtocolInternalError } from "@effect-desktop/bridge"
 import { type AuditEvent, makePermissionRegistry, P } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Option, Stream } from "effect"
+import { Cause, Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
 
 import {
   DisplayCapture,
@@ -22,265 +22,296 @@ import {
   DisplayCaptureResult
 } from "./contracts/display-capture.js"
 
-test("DisplayCapture captures image bytes with redacted audit metadata", async () => {
-  const rows: AuditEvent[] = []
-  const permissions = await configuredPermissions(rows)
-  const client = await Effect.runPromise(
-    makeDisplayCaptureMemoryClient({ nextCaptureId: () => "capture-1" })
-  )
-
-  const result = await Effect.runPromise(
+test("DisplayCapture captures image bytes with redacted audit metadata", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const capture = yield* DisplayCapture
-      return yield* capture.captureDisplay(displayRequest())
-    }).pipe(
-      Effect.provide(
-        makeDisplayCaptureServiceLayer(client, {
-          permissions,
-          grants: grantAuthority(),
-          audit: memoryAudit(rows)
-        })
-      )
-    )
-  )
-
-  expect(result.image.mime).toBe("image/png")
-  expect(result.image.bytes.length).toBe(result.metadata.byteLength)
-  expect(result.metadata).toMatchObject({
-    captureId: "capture-1",
-    source: "display",
-    displayId: "display-1"
-  })
-  expect(rows.some((row) => row.source === "DisplayCapture.captureDisplay")).toBe(true)
-  expect(JSON.stringify(rows)).not.toContain(Array.from(result.image.bytes).join(","))
-})
-
-test("DisplayCapture denies before client side effects", async () => {
-  const permissions = await Effect.runPromise(makePermissionRegistry())
-  const baseClient = await Effect.runPromise(makeDisplayCaptureMemoryClient())
-  let calls = 0
-  const client: DisplayCaptureClientApi = {
-    ...baseClient,
-    captureDisplay: (input) =>
-      Effect.sync(() => {
-        calls += 1
-      }).pipe(Effect.andThen(baseClient.captureDisplay(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const capture = yield* DisplayCapture
-      return yield* Effect.exit(capture.captureDisplay(displayRequest()))
-    }).pipe(
-      Effect.provide(
-        makeDisplayCaptureServiceLayer(client, { permissions, grants: grantAuthority() })
-      )
-    )
-  )
-
-  expect(calls).toBe(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "PermissionDenied",
-      operation: "DisplayCapture.captureDisplay"
-    })
-  })
-})
-
-test("DisplayCapture rejects malformed input before client calls", async () => {
-  const permissions = await configuredPermissions([])
-  const baseClient = await Effect.runPromise(makeDisplayCaptureMemoryClient())
-  let calls = 0
-  const client: DisplayCaptureClientApi = {
-    ...baseClient,
-    captureWindow: (input) =>
-      Effect.sync(() => {
-        calls += 1
-      }).pipe(Effect.andThen(baseClient.captureWindow(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const capture = yield* DisplayCapture
-      return yield* Effect.exit(
-        capture.captureWindow({
-          actor: actor(),
-          grant: grant(),
-          target: {
-            source: "window",
-            windowId: "\0"
-          }
-        })
-      )
-    }).pipe(
-      Effect.provide(
-        makeDisplayCaptureServiceLayer(client, { permissions, grants: grantAuthority() })
-      )
-    )
-  )
-
-  expect(calls).toBe(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "InvalidArgument",
-      operation: "DisplayCapture.captureWindow"
-    })
-  })
-})
-
-test("DisplayCapture surfaces injected host failure and audits failure", async () => {
-  const rows: AuditEvent[] = []
-  const permissions = await configuredPermissions(rows)
-  const failure = internalFailure("host failed", "DisplayCapture.captureDisplay")
-  const client = await Effect.runPromise(
-    makeDisplayCaptureMemoryClient({ failure: { captureDisplay: failure } })
-  )
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const capture = yield* DisplayCapture
-      return yield* Effect.exit(capture.captureDisplay(displayRequest()))
-    }).pipe(
-      Effect.provide(
-        makeDisplayCaptureServiceLayer(client, {
-          permissions,
-          grants: grantAuthority(),
-          audit: memoryAudit(rows)
-        })
-      )
-    )
-  )
-
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "Internal",
-      operation: "DisplayCapture.captureDisplay"
-    })
-  })
-  expect(rows.some((row) => row.outcome === "failed")).toBe(true)
-})
-
-test("DisplayCapture unsupported client fails through public service layer", async () => {
-  const permissions = await configuredPermissions([])
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const capture = yield* DisplayCapture
-      return yield* Effect.exit(capture.captureDisplay(displayRequest()))
-    }).pipe(
-      Effect.provide(
-        makeDisplayCaptureServiceLayer(makeDisplayCaptureUnsupportedClient(), {
-          permissions,
-          grants: grantAuthority()
-        })
-      )
-    )
-  )
-
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "Unsupported",
-      operation: "DisplayCapture.captureDisplay"
-    })
-  })
-})
-
-test("DisplayCapture emits substitutable capture events", async () => {
-  const permissions = await configuredPermissions([])
-  const client = await Effect.runPromise(
-    makeDisplayCaptureMemoryClient({ nextCaptureId: () => "capture-event" })
-  )
-
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const capture = yield* DisplayCapture
-      const image = yield* capture.captureDisplay(displayRequest())
-      const event = yield* capture.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
-      return { event, image }
-    }).pipe(
-      Effect.provide(
-        makeDisplayCaptureServiceLayer(client, { permissions, grants: grantAuthority() })
-      )
-    )
-  )
-
-  expect(result.image.metadata.captureId).toBe("capture-event")
-  expect(result.event).toMatchObject({
-    phase: "captured",
-    captureId: "capture-event",
-    source: "display"
-  })
-})
-
-test("DisplayCapture rejects mismatched image header", async () => {
-  const rows: AuditEvent[] = []
-  const permissions = await configuredPermissions([])
-  const baseClient = await Effect.runPromise(makeDisplayCaptureMemoryClient())
-  const client: DisplayCaptureClientApi = {
-    ...baseClient,
-    captureDisplay: (input) =>
-      baseClient.captureDisplay(input).pipe(
-        Effect.map(
-          (result) =>
-            new DisplayCaptureResult({
-              image: new DisplayCaptureImage({ mime: "image/jpeg", bytes: result.image.bytes }),
-              metadata: result.metadata
-            })
+      const rows: AuditEvent[] = []
+      const permissions = yield* configuredPermissionsEffect(rows)
+      const client = yield* makeDisplayCaptureMemoryClient({ nextCaptureId: () => "capture-1" })
+      const layer = makeDisplayCaptureServiceLayer(client, {
+        permissions,
+        grants: grantAuthority(),
+        audit: memoryAudit(rows)
+      })
+      const runtime = ManagedRuntime.make(layer)
+      const result = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const capture = yield* DisplayCapture
+            return yield* capture.captureDisplay(displayRequest())
+          })
         )
       )
-  }
 
-  const exit = await Effect.runPromise(
+      expect(result.image.mime).toBe("image/png")
+      expect(result.image.bytes.length).toBe(result.metadata.byteLength)
+      expect(result.metadata).toMatchObject({
+        captureId: "capture-1",
+        source: "display",
+        displayId: "display-1"
+      })
+      expect(rows.some((row) => row.source === "DisplayCapture.captureDisplay")).toBe(true)
+      expect(JSON.stringify(rows)).not.toContain(Array.from(result.image.bytes).join(","))
+      yield* Effect.promise(() => runtime.dispose())
+    })
+  ))
+
+test("DisplayCapture denies before client side effects", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const capture = yield* DisplayCapture
-      return yield* Effect.exit(capture.captureDisplay(displayRequest()))
-    }).pipe(
-      Effect.provide(
-        makeDisplayCaptureServiceLayer(client, {
-          permissions,
-          grants: grantAuthority(),
-          audit: memoryAudit(rows)
+      const permissions = yield* makePermissionRegistry()
+      const baseClient = yield* makeDisplayCaptureMemoryClient()
+      let calls = 0
+      const client: DisplayCaptureClientApi = {
+        ...baseClient,
+        captureDisplay: (input) =>
+          Effect.sync(() => {
+            calls += 1
+          }).pipe(Effect.andThen(baseClient.captureDisplay(input)))
+      }
+      const layer = makeDisplayCaptureServiceLayer(client, {
+        permissions,
+        grants: grantAuthority()
+      })
+      const runtime = ManagedRuntime.make(layer)
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const capture = yield* DisplayCapture
+            return yield* Effect.exit(capture.captureDisplay(displayRequest()))
+          })
+        )
+      )
+
+      expect(calls).toBe(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "PermissionDenied",
+          operation: "DisplayCapture.captureDisplay"
         })
-      )
-    )
-  )
-
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "InvalidOutput",
-      operation: "DisplayCapture.captureDisplay"
+      })
+      yield* Effect.promise(() => runtime.dispose())
     })
-  })
-  expect(rows.some((row) => row.outcome === "failed")).toBe(true)
-})
+  ))
 
-test("DisplayCapture emits substitutable failure events", async () => {
-  const failure = internalFailure("host failed", "DisplayCapture.captureDisplay")
-  const client = await Effect.runPromise(
-    makeDisplayCaptureMemoryClient({
-      failure: { captureDisplay: failure },
-      nextCaptureId: () => "capture-failed"
-    })
-  )
-
-  const event = await Effect.runPromise(
-    client
-      .captureDisplay(displayRequest())
-      .pipe(
-        Effect.ignore,
-        Effect.andThen(client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow)))
+test("DisplayCapture rejects malformed input before client calls", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* configuredPermissionsEffect([])
+      const baseClient = yield* makeDisplayCaptureMemoryClient()
+      let calls = 0
+      const client: DisplayCaptureClientApi = {
+        ...baseClient,
+        captureWindow: (input) =>
+          Effect.sync(() => {
+            calls += 1
+          }).pipe(Effect.andThen(baseClient.captureWindow(input)))
+      }
+      const layer = makeDisplayCaptureServiceLayer(client, {
+        permissions,
+        grants: grantAuthority()
+      })
+      const runtime = ManagedRuntime.make(layer)
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const capture = yield* DisplayCapture
+            return yield* Effect.exit(
+              capture.captureWindow({
+                actor: actor(),
+                grant: grant(),
+                target: {
+                  source: "window",
+                  windowId: "\0"
+                }
+              })
+            )
+          })
+        )
       )
-  )
 
-  expect(event).toMatchObject({
-    phase: "failed",
-    captureId: "capture-failed",
-    source: "display",
-    reason: "Internal"
-  })
-})
+      expect(calls).toBe(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "DisplayCapture.captureWindow"
+        })
+      })
+      yield* Effect.promise(() => runtime.dispose())
+    })
+  ))
 
-test("DisplayCapture bridge client fails event stream as unsupported before subscribing", async () => {
+test("DisplayCapture surfaces injected host failure and audits failure", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const permissions = yield* configuredPermissionsEffect(rows)
+      const failure = internalFailure("host failed", "DisplayCapture.captureDisplay")
+      const client = yield* makeDisplayCaptureMemoryClient({
+        failure: { captureDisplay: failure }
+      })
+      const layer = makeDisplayCaptureServiceLayer(client, {
+        permissions,
+        grants: grantAuthority(),
+        audit: memoryAudit(rows)
+      })
+      const runtime = ManagedRuntime.make(layer)
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const capture = yield* DisplayCapture
+            return yield* Effect.exit(capture.captureDisplay(displayRequest()))
+          })
+        )
+      )
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Internal",
+          operation: "DisplayCapture.captureDisplay"
+        })
+      })
+      expect(rows.some((row) => row.outcome === "failed")).toBe(true)
+      yield* Effect.promise(() => runtime.dispose())
+    })
+  ))
+
+test("DisplayCapture unsupported client fails through public service layer", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* configuredPermissionsEffect([])
+      const layer = makeDisplayCaptureServiceLayer(makeDisplayCaptureUnsupportedClient(), {
+        permissions,
+        grants: grantAuthority()
+      })
+      const runtime = ManagedRuntime.make(layer)
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const capture = yield* DisplayCapture
+            return yield* Effect.exit(capture.captureDisplay(displayRequest()))
+          })
+        )
+      )
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "DisplayCapture.captureDisplay"
+        })
+      })
+      yield* Effect.promise(() => runtime.dispose())
+    })
+  ))
+
+test("DisplayCapture emits substitutable capture events", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* configuredPermissionsEffect([])
+      const client = yield* makeDisplayCaptureMemoryClient({
+        nextCaptureId: () => "capture-event"
+      })
+      const layer = makeDisplayCaptureServiceLayer(client, {
+        permissions,
+        grants: grantAuthority()
+      })
+      const runtime = ManagedRuntime.make(layer)
+      const result = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const capture = yield* DisplayCapture
+            const image = yield* capture.captureDisplay(displayRequest())
+            const event = yield* capture
+              .events()
+              .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+            return { event, image }
+          })
+        )
+      )
+
+      expect(result.image.metadata.captureId).toBe("capture-event")
+      expect(result.event).toMatchObject({
+        phase: "captured",
+        captureId: "capture-event",
+        source: "display"
+      })
+      yield* Effect.promise(() => runtime.dispose())
+    })
+  ))
+
+test("DisplayCapture rejects mismatched image header", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const permissions = yield* configuredPermissionsEffect([])
+      const baseClient = yield* makeDisplayCaptureMemoryClient()
+      const client: DisplayCaptureClientApi = {
+        ...baseClient,
+        captureDisplay: (input) =>
+          baseClient.captureDisplay(input).pipe(
+            Effect.map(
+              (result) =>
+                new DisplayCaptureResult({
+                  image: new DisplayCaptureImage({
+                    mime: "image/jpeg",
+                    bytes: result.image.bytes
+                  }),
+                  metadata: result.metadata
+                })
+            )
+          )
+      }
+      const layer = makeDisplayCaptureServiceLayer(client, {
+        permissions,
+        grants: grantAuthority(),
+        audit: memoryAudit(rows)
+      })
+      const runtime = ManagedRuntime.make(layer)
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const capture = yield* DisplayCapture
+            return yield* Effect.exit(capture.captureDisplay(displayRequest()))
+          })
+        )
+      )
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidOutput",
+          operation: "DisplayCapture.captureDisplay"
+        })
+      })
+      expect(rows.some((row) => row.outcome === "failed")).toBe(true)
+      yield* Effect.promise(() => runtime.dispose())
+    })
+  ))
+
+test("DisplayCapture emits substitutable failure events", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const failure = internalFailure("host failed", "DisplayCapture.captureDisplay")
+      const client = yield* makeDisplayCaptureMemoryClient({
+        failure: { captureDisplay: failure },
+        nextCaptureId: () => "capture-failed"
+      })
+      const event = yield* client
+        .captureDisplay(displayRequest())
+        .pipe(
+          Effect.ignore,
+          Effect.andThen(client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow)))
+        )
+
+      expect(event).toMatchObject({
+        phase: "failed",
+        captureId: "capture-failed",
+        source: "display",
+        reason: "Internal"
+      })
+    })
+  ))
+
+test("DisplayCapture bridge client fails event stream as unsupported before subscribing", () => {
   const subscriptions: string[] = []
   const exchange: BridgeClientExchange = {
     request: () => Effect.die("unexpected request"),
@@ -289,28 +320,28 @@ test("DisplayCapture bridge client fails event stream as unsupported before subs
       return Stream.empty
     }
   }
-
-  const exit = await Effect.runPromise(
+  const runtime = ManagedRuntime.make(makeDisplayCaptureBridgeClientLayer(exchange))
+  return runtime.runPromise(
     Effect.gen(function* () {
       const client = yield* DisplayCaptureClient
-      return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
-    }).pipe(Effect.provide(makeDisplayCaptureBridgeClientLayer(exchange)))
-  )
+      const exit = yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
 
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "Unsupported",
-      reason: "host-adapter-unimplemented",
-      operation: "DisplayCapture.Event"
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          reason: "host-adapter-unimplemented",
+          operation: "DisplayCapture.Event"
+        })
+      })
+      expect(subscriptions).toEqual([])
     })
-  })
-  expect(subscriptions).toEqual([])
+  )
 })
 
-const configuredPermissions = async (rows: AuditEvent[]) => {
-  const permissions = await Effect.runPromise(makePermissionRegistry())
-  await Effect.runPromise(
-    Effect.all([
+const configuredPermissionsEffect = (rows: AuditEvent[]) =>
+  Effect.gen(function* () {
+    const permissions = yield* makePermissionRegistry()
+    yield* Effect.all([
       permissions.declare(
         P.nativeInvoke({ primitive: "DisplayCapture", methods: ["captureDisplay"] })
       ),
@@ -321,10 +352,9 @@ const configuredPermissions = async (rows: AuditEvent[]) => {
         P.nativeInvoke({ primitive: "DisplayCapture", methods: ["captureRegion"] })
       )
     ])
-  )
-  rows.length = 0
-  return permissions
-}
+    rows.length = 0
+    return permissions
+  })
 
 const memoryAudit = (rows: AuditEvent[]) => ({
   emit: (event: AuditEvent) =>

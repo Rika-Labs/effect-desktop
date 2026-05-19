@@ -91,7 +91,7 @@ export interface LiveRuntimePanelsOptions {
 }
 
 export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRuntimePanelsApi>()(
-  "@effect-desktop/devtools/LiveRuntimePanels"
+  "@effect-desktop/devtools/live-panels/LiveRuntimePanels"
 ) {}
 
 export const LiveRuntimePanelsLive = (

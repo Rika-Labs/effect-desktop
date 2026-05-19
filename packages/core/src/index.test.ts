@@ -19,6 +19,7 @@ import {
   Exit,
   FileSystem,
   Layer,
+  ManagedRuntime,
   Path,
   Queue,
   Schema,
@@ -32,6 +33,7 @@ import type { Socket } from "effect/unstable/socket"
 import { Reactivity } from "effect/unstable/reactivity"
 import { WorkflowEngine } from "effect/unstable/workflow"
 import type * as RuntimeTransport from "@effect-desktop/core/runtime/transport"
+import * as core from "./index.js"
 import type {
   DesktopRuntimeProviderDescriptor,
   DesktopRuntimeProviderServices,
@@ -78,9 +80,15 @@ type _RemovedFramedTransport = RuntimeTransport.FramedTransport
 // @ts-expect-error FramedTransportOptions was replaced by the narrower FrameCodecOptions name.
 type _RemovedFramedTransportOptions = RuntimeTransport.FramedTransportOptions
 
-test("public barrel exports the ResourceRegistry factory", async () => {
-  const core = await import("./index.js")
+const MemoryWorkflowRuntime = ManagedRuntime.make(core.WorkflowEngineMemory)
+const DurableWorkflowRuntime = ManagedRuntime.make(
+  Layer.provide(
+    core.WorkflowEngineDurable,
+    Layer.merge(SqliteClient.layer({ filename: ":memory:" }), Reactivity.layer)
+  )
+)
 
+test("public barrel exports the ResourceRegistry factory", () => {
   expect(runtimeProviderServicesContracts).toEqual([true, true])
   expect(core.makeResourceRegistry).toBeFunction()
   expect(core.makeProcess).toBeFunction()
@@ -93,38 +101,26 @@ test("public barrel exports the ResourceRegistry factory", async () => {
   expect(durableWorkflowEngineContract).toBe(true)
 })
 
-test("workflow engine layers separate memory and durable storage requirements", async () => {
-  const core = await import("./index.js")
-  const memoryRuntime = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        return yield* WorkflowEngine.WorkflowEngine
-      }).pipe(Effect.provide(core.WorkflowEngineMemory))
-    )
-  )
-
-  expect(memoryRuntime).toBeDefined()
-  expect(Layer.isLayer(core.Desktop.WorkflowEngineMemory)).toBe(true)
-  expect(Layer.isLayer(core.Desktop.WorkflowEngineDurable)).toBe(true)
-
-  const durableRuntime = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        return yield* WorkflowEngine.WorkflowEngine
-      }).pipe(
-        Effect.provide(core.WorkflowEngineDurable),
-        Effect.provide(SqliteClient.layer({ filename: ":memory:" })),
-        Effect.provide(Reactivity.layer)
+test("workflow engine layers separate memory and durable storage requirements", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const memoryRuntime = yield* Effect.promise(() =>
+        MemoryWorkflowRuntime.runPromise(WorkflowEngine.WorkflowEngine.asEffect())
       )
-    )
-  )
 
-  expect(durableRuntime).toBeDefined()
-})
+      expect(memoryRuntime).toBeDefined()
+      expect(Layer.isLayer(core.Desktop.WorkflowEngineMemory)).toBe(true)
+      expect(Layer.isLayer(core.Desktop.WorkflowEngineDurable)).toBe(true)
 
-test("public barrel keeps low-level runtime plumbing behind subpaths", async () => {
-  const core = await import("./index.js")
+      const durableRuntime = yield* Effect.promise(() =>
+        DurableWorkflowRuntime.runPromise(WorkflowEngine.WorkflowEngine.asEffect())
+      )
 
+      expect(durableRuntime).toBeDefined()
+    })
+  ))
+
+test("public barrel keeps low-level runtime plumbing behind subpaths", () => {
   expect("FrameDecoder" in core).toBe(false)
   expect("encodeFrame" in core).toBe(false)
   expect("layerStdioSocket" in core).toBe(false)
@@ -142,60 +138,70 @@ test("public barrel keeps low-level runtime plumbing behind subpaths", async () 
   expect("Workflow" in core).toBe(false)
 })
 
-test("public barrel keeps optional runtime provider layers behind provider subpaths", async () => {
-  const core = await import("./index.js")
-  const bunProvider = await import("@effect-desktop/core/providers/bun")
-  const nodeProvider = await import("@effect-desktop/core/providers/node")
-  const testProvider = await import("@effect-desktop/core/providers/test")
+test("public barrel keeps optional runtime provider layers behind provider subpaths", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const bunProvider = yield* Effect.promise(() => import("@effect-desktop/core/providers/bun"))
+      const nodeProvider = yield* Effect.promise(
+        () => import("@effect-desktop/core/providers/node")
+      )
+      const testProvider = yield* Effect.promise(
+        () => import("@effect-desktop/core/providers/test")
+      )
 
-  expect("BunRuntimeProviderLayer" in core).toBe(false)
-  expect("NodeRuntimeProviderLayer" in core).toBe(false)
-  expect("TestRuntimeProviderLayer" in core).toBe(false)
-  expect(Layer.isLayer(core.providerLayerFor({ runtime: "test" }))).toBe(true)
-  expect(Layer.isLayer(bunProvider.BunRuntimeProviderLayer)).toBe(true)
-  expect(Layer.isLayer(nodeProvider.NodeRuntimeProviderLayer)).toBe(true)
-  expect(Layer.isLayer(testProvider.TestRuntimeProviderLayer)).toBe(true)
-})
+      expect("BunRuntimeProviderLayer" in core).toBe(false)
+      expect("NodeRuntimeProviderLayer" in core).toBe(false)
+      expect("TestRuntimeProviderLayer" in core).toBe(false)
+      expect(Layer.isLayer(core.providerLayerFor({ runtime: "test" }))).toBe(true)
+      expect(Layer.isLayer(bunProvider.BunRuntimeProviderLayer)).toBe(true)
+      expect(Layer.isLayer(nodeProvider.NodeRuntimeProviderLayer)).toBe(true)
+      expect(Layer.isLayer(testProvider.TestRuntimeProviderLayer)).toBe(true)
+    })
+  ))
 
-test("runtime transport subpath exposes framed transport helpers", async () => {
-  const transport = await import("@effect-desktop/core/runtime/transport")
+test("runtime transport subpath exposes framed transport helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const transport = yield* Effect.promise(
+        () => import("@effect-desktop/core/runtime/transport")
+      )
 
-  expect(transport.FrameDecoder).toBeFunction()
-  expect(transport.encodeFrame).toBeFunction()
-  expect(transport.makeFramedSocketConnection).toBeFunction()
-  expect(transportConnectContract).toBe(true)
-  expect("createFramedTransport" in transport).toBe(false)
-  expect("createBunStdioTransport" in transport).toBe(false)
-  expect("makeConnection" in transport).toBe(false)
-})
+      expect(transport.FrameDecoder).toBeFunction()
+      expect(transport.encodeFrame).toBeFunction()
+      expect(transport.makeFramedSocketConnection).toBeFunction()
+      expect(transportConnectContract).toBe(true)
+      expect("createFramedTransport" in transport).toBe(false)
+      expect("createBunStdioTransport" in transport).toBe(false)
+      expect("makeConnection" in transport).toBe(false)
+    })
+  ))
 
-test("deleted zero-policy runtime wrapper subpaths are not exported", async () => {
-  for (const module of ["reactivity", "workflow"]) {
-    const specifier = "@effect-desktop/core/runtime/" + module
-    let rejected = false
-    try {
-      await import(specifier)
-    } catch {
-      rejected = true
-    }
-    expect(rejected).toBe(true)
-  }
-})
+test("deleted zero-policy runtime wrapper subpaths are not exported", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const module of ["reactivity", "workflow"]) {
+        const specifier = "@effect-desktop/core/runtime/" + module
+        const exit = yield* Effect.exit(Effect.promise(() => import(specifier)))
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+    })
+  ))
 
-test("runtime event-log subpath exposes desktop policy without raw journal shortcuts", async () => {
-  const eventLog = await import("@effect-desktop/core/runtime/event-log")
+test("runtime event-log subpath exposes desktop policy without raw journal shortcuts", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const eventLog = yield* Effect.promise(() => import("@effect-desktop/core/runtime/event-log"))
 
-  expect(eventLog.DesktopEventLog).toBeDefined()
-  expect(eventLog.DesktopEventSchema).toBeDefined()
-  expect(eventLog.DesktopEventLogLive).toBeFunction()
-  expect("EventJournal" in eventLog).toBe(false)
-  expect("SqlEventJournal" in eventLog).toBe(false)
-  expect("EventLog" in eventLog).toBe(false)
-})
+      expect(eventLog.DesktopEventLog).toBeDefined()
+      expect(eventLog.DesktopEventSchema).toBeDefined()
+      expect(eventLog.DesktopEventLogLive).toBeFunction()
+      expect("EventJournal" in eventLog).toBe(false)
+      expect("SqlEventJournal" in eventLog).toBe(false)
+      expect("EventLog" in eventLog).toBe(false)
+    })
+  ))
 
-test("public Desktop facade exposes Rpc metadata helpers", async () => {
-  const core = await import("./index.js")
-
+test("public Desktop facade exposes Rpc metadata helpers", () => {
   expect(core.Desktop.RpcEndpoint.query).toBeFunction()
   expect(core.Desktop.RpcCapability).toBeFunction()
   expect(core.Desktop.RpcSupport.unsupported).toBeFunction()
@@ -206,8 +212,7 @@ test("public Desktop facade exposes Rpc metadata helpers", async () => {
   })
 })
 
-test("framework boundary errors carry public diagnostic fields", async () => {
-  const core = await import("./index.js")
+test("framework boundary errors carry public diagnostic fields", () => {
   const error = core.makeMissingDesktopContextError(
     "react",
     "ReactDesktopRoot is required before useDesktop(group)"
@@ -225,8 +230,7 @@ test("framework boundary errors carry public diagnostic fields", async () => {
   expect(error.docsUrl).toContain("docs/typed-apis.md")
 })
 
-test("Desktop.make returns metadata descriptor and Desktop.layer returns the runtime Layer", async () => {
-  const core = await import("./index.js")
+test("Desktop.make returns metadata descriptor and Desktop.layer returns the runtime Layer", () => {
   const app = core.Desktop.make({
     id: "notes",
     providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
@@ -242,165 +246,169 @@ test("Desktop.make returns metadata descriptor and Desktop.layer returns the run
   expect("layers" in app).toBe(false)
   expect(Layer.isLayer(core.Desktop.layer(app))).toBe(true)
 
-  const runtime = await Effect.runPromise(
+  const AppRuntime = ManagedRuntime.make(core.Desktop.layer(app))
+  return AppRuntime.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        return yield* core.DesktopRuntime
-      }).pipe(Effect.provide(core.Desktop.layer(app)))
+        const runtime = yield* core.DesktopRuntime
+        expect(runtime.providers).toEqual({ runtime: "test", webview: "system" })
+      })
     )
   )
-  expect(runtime.providers).toEqual({ runtime: "test", webview: "system" })
 })
 
-test("Desktop.runtimeGraph exposes selected providers and composition nodes without launching", async () => {
-  const core = await import("./index.js")
-  const Ping = Rpc.make("Notes.Graph.Ping", { success: Schema.String })
-  const NotesRpcs = RpcGroup.make(Ping)
-  const graph = await Effect.runPromise(
-    core.Desktop.runtimeGraph({
-      id: "notes",
-      windows: core.Desktop.window("main", { title: "Notes" }),
-      providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
-      rpcs: core.Desktop.rpc(
-        NotesRpcs,
-        NotesRpcs.toLayer({
-          "Notes.Graph.Ping": () => Effect.succeed("pong")
-        })
-      ),
-      workflows: core.Desktop.workflow(Layer.empty as DesktopWorkflowLayer)
-    })
-  )
+test("Desktop.runtimeGraph exposes selected providers and composition nodes without launching", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const Ping = Rpc.make("Notes.Graph.Ping", { success: Schema.String })
+      const NotesRpcs = RpcGroup.make(Ping)
+      const graph = yield* core.Desktop.runtimeGraph({
+        id: "notes",
+        windows: core.Desktop.window("main", { title: "Notes" }),
+        providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
+        rpcs: core.Desktop.rpc(
+          NotesRpcs,
+          NotesRpcs.toLayer({
+            "Notes.Graph.Ping": () => Effect.succeed("pong")
+          })
+        ),
+        workflows: core.Desktop.workflow(Layer.empty as DesktopWorkflowLayer)
+      })
 
-  expect(graph).toMatchObject({
-    _tag: "DesktopRuntimeGraph",
-    appId: "notes",
-    providers: { runtime: "test", webview: "system" },
-    providerBudgets: [
-      {
-        id: "test",
+      expect(graph).toMatchObject({
+        _tag: "DesktopRuntimeGraph",
+        appId: "notes",
+        providers: { runtime: "test", webview: "system" },
+        providerBudgets: [
+          {
+            id: "test",
+            kind: "runtime",
+            package: "@effect-desktop/core",
+            importPath: "@effect-desktop/core/providers/test",
+            startupBudgetMs: 25,
+            bundleBudgetKb: 64
+          }
+        ]
+      })
+      expect(graph.nodes.map((node) => [node.id, node.kind])).toEqual([
+        ["provider:runtime:test", "provider"],
+        ["provider:webview:system", "provider"],
+        ["core:resources", "core-service"],
+        ["core:telemetry", "core-service"],
+        ["core:permissions", "core-service"],
+        ["core:reactivity", "core-service"],
+        ["core:logger", "core-service"],
+        ["core:workflow", "core-service"],
+        ["rpc-layer:0", "rpc-layer"],
+        ["workflow:0", "workflow"],
+        ["service:DesktopApp", "app-service"],
+        ["service:DesktopRuntime", "runtime-service"]
+      ])
+      expect(graph.nodes.find((node) => node.id === "rpc-layer:0")?.provides).toEqual([
+        "Notes.Graph.Ping"
+      ])
+      expect(graph.nodes.find((node) => node.id === "workflow:0")).toMatchObject({
+        provides: [],
+        requires: ["WorkflowEngine"]
+      })
+      expect(graph.providerFacts.find((provider) => provider.id === "test")).toMatchObject({
         kind: "runtime",
-        package: "@effect-desktop/core",
-        importPath: "@effect-desktop/core/providers/test",
-        startupBudgetMs: 25,
-        bundleBudgetKb: 64
-      }
-    ]
-  })
-  expect(graph.nodes.map((node) => [node.id, node.kind])).toEqual([
-    ["provider:runtime:test", "provider"],
-    ["provider:webview:system", "provider"],
-    ["core:resources", "core-service"],
-    ["core:telemetry", "core-service"],
-    ["core:permissions", "core-service"],
-    ["core:reactivity", "core-service"],
-    ["core:logger", "core-service"],
-    ["core:workflow", "core-service"],
-    ["rpc-layer:0", "rpc-layer"],
-    ["workflow:0", "workflow"],
-    ["service:DesktopApp", "app-service"],
-    ["service:DesktopRuntime", "runtime-service"]
-  ])
-  expect(graph.nodes.find((node) => node.id === "rpc-layer:0")?.provides).toEqual([
-    "Notes.Graph.Ping"
-  ])
-  expect(graph.nodes.find((node) => node.id === "workflow:0")).toMatchObject({
-    provides: [],
-    requires: ["WorkflowEngine"]
-  })
-  expect(graph.providerFacts.find((provider) => provider.id === "test")).toMatchObject({
-    kind: "runtime",
-    capabilities: ["FileSystem", "Path", "Terminal", "Stdio", "ChildProcessSpawner"]
-  })
-  expect(graph.providerFacts.find((provider) => provider.id === "system")).toMatchObject({
-    kind: "webview",
-    capabilities: ["WindowWebView", "AppProtocol"]
-  })
-  expect(
-    core.layerGraphSnapshotFromGraph(graph).nodes.find((node) => node.id === "rpc-layer:0")
-  ).toMatchObject({
-    provides: ["Notes.Graph.Ping"],
-    requires: ["RpcServer.Protocol"]
-  })
-})
-
-test("Desktop.runtimeGraph exposes node runtime provider selection", async () => {
-  const core = await import("./index.js")
-  const graph = await Effect.runPromise(
-    core.Desktop.runtimeGraph({
-      id: "notes",
-      windows: core.Desktop.window("main", { title: "Notes" }),
-      providers: core.Desktop.providers(
-        core.Desktop.provider(core.Desktop.Provider.Runtime.node),
-        core.Desktop.provider(core.Desktop.Provider.WebView.chrome)
-      )
+        capabilities: ["FileSystem", "Path", "Terminal", "Stdio", "ChildProcessSpawner"]
+      })
+      expect(graph.providerFacts.find((provider) => provider.id === "system")).toMatchObject({
+        kind: "webview",
+        capabilities: ["WindowWebView", "AppProtocol"]
+      })
+      expect(
+        core.layerGraphSnapshotFromGraph(graph).nodes.find((node) => node.id === "rpc-layer:0")
+      ).toMatchObject({
+        provides: ["Notes.Graph.Ping"],
+        requires: ["RpcServer.Protocol"]
+      })
     })
-  )
+  ))
 
-  expect(graph.providers).toEqual({ runtime: "node", webview: "chrome" })
-  expect(graph.providerBudgets).toEqual([
-    {
-      id: "node",
-      kind: "runtime",
-      package: "@effect/platform-node",
-      importPath: "@effect-desktop/core/providers/node",
-      startupBudgetMs: 25,
-      bundleBudgetKb: 64
-    }
-  ])
-  expect(graph.nodes[0]).toMatchObject({
-    id: "provider:runtime:node",
-    kind: "provider",
-    label: "Node runtime provider"
-  })
-  expect(graph.nodes[1]).toMatchObject({
-    id: "provider:webview:chrome",
-    kind: "provider",
-    label: "Bundled Chrome WebView provider"
-  })
-})
+test("Desktop.runtimeGraph exposes node runtime provider selection", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const graph = yield* core.Desktop.runtimeGraph({
+        id: "notes",
+        windows: core.Desktop.window("main", { title: "Notes" }),
+        providers: core.Desktop.providers(
+          core.Desktop.provider(core.Desktop.Provider.Runtime.node),
+          core.Desktop.provider(core.Desktop.Provider.WebView.chrome)
+        )
+      })
 
-test("Desktop.provider accepts custom provider descriptors through layer composition", async () => {
-  const core = await import("./index.js")
-  const { TestRuntimeProviderLayer } = await import("@effect-desktop/core/providers/test")
-  const customRuntime = core.Desktop.Provider.runtime({
-    id: "custom-runtime",
-    layer: TestRuntimeProviderLayer,
-    budget: {
-      id: "custom-runtime",
-      kind: "runtime",
-      package: "@effect-desktop/core",
-      importPath: "@effect-desktop/core/providers/custom-runtime",
-      startupBudgetMs: 25,
-      bundleBudgetKb: 64
-    }
-  })
-  const customWebView = core.Desktop.Provider.webview({
-    id: "custom-webview",
-    hostEngine: "chrome",
-    capabilities: ["WindowWebView", "AppProtocol"]
-  })
-
-  const graph = await Effect.runPromise(
-    core.Desktop.runtimeGraph({
-      id: "notes",
-      windows: core.Desktop.window("main", { title: "Notes" }),
-      providers: core.Desktop.providers(
-        core.Desktop.provider(customRuntime),
-        core.Desktop.provider(customWebView)
-      )
+      expect(graph.providers).toEqual({ runtime: "node", webview: "chrome" })
+      expect(graph.providerBudgets).toEqual([
+        {
+          id: "node",
+          kind: "runtime",
+          package: "@effect/platform-node",
+          importPath: "@effect-desktop/core/providers/node",
+          startupBudgetMs: 25,
+          bundleBudgetKb: 64
+        }
+      ])
+      expect(graph.nodes[0]).toMatchObject({
+        id: "provider:runtime:node",
+        kind: "provider",
+        label: "Node runtime provider"
+      })
+      expect(graph.nodes[1]).toMatchObject({
+        id: "provider:webview:chrome",
+        kind: "provider",
+        label: "Bundled Chrome WebView provider"
+      })
     })
-  )
+  ))
 
-  expect(graph.providers).toEqual({ runtime: "custom-runtime", webview: "custom-webview" })
-  expect(graph.providerBudgets[0]?.id).toBe("custom-runtime")
-  expect(graph.providerFacts.find((provider) => provider.id === "custom-webview")).toMatchObject({
-    kind: "webview",
-    capabilities: ["WindowWebView", "AppProtocol"]
-  })
-})
+test("Desktop.provider accepts custom provider descriptors through layer composition", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const { TestRuntimeProviderLayer } = yield* Effect.promise(
+        () => import("@effect-desktop/core/providers/test")
+      )
+      const customRuntime = core.Desktop.Provider.runtime({
+        id: "custom-runtime",
+        layer: TestRuntimeProviderLayer,
+        budget: {
+          id: "custom-runtime",
+          kind: "runtime",
+          package: "@effect-desktop/core",
+          importPath: "@effect-desktop/core/providers/custom-runtime",
+          startupBudgetMs: 25,
+          bundleBudgetKb: 64
+        }
+      })
+      const customWebView = core.Desktop.Provider.webview({
+        id: "custom-webview",
+        hostEngine: "chrome",
+        capabilities: ["WindowWebView", "AppProtocol"]
+      })
 
-test("Desktop.runtime runs the same provider-backed app program under bun, node, and test graphs", async () => {
-  const core = await import("./index.js")
+      const graph = yield* core.Desktop.runtimeGraph({
+        id: "notes",
+        windows: core.Desktop.window("main", { title: "Notes" }),
+        providers: core.Desktop.providers(
+          core.Desktop.provider(customRuntime),
+          core.Desktop.provider(customWebView)
+        )
+      })
+
+      expect(graph.providers).toEqual({ runtime: "custom-runtime", webview: "custom-webview" })
+      expect(graph.providerBudgets[0]?.id).toBe("custom-runtime")
+      expect(
+        graph.providerFacts.find((provider) => provider.id === "custom-webview")
+      ).toMatchObject({
+        kind: "webview",
+        capabilities: ["WindowWebView", "AppProtocol"]
+      })
+    })
+  ))
+
+test("Desktop.runtime runs the same provider-backed app program under bun, node, and test graphs", () => {
   const config = {
     id: "notes",
     windows: core.Desktop.window("main", { title: "Notes" })
@@ -422,63 +430,58 @@ test("Desktop.runtime runs the same provider-backed app program under bun, node,
     }
   })
 
-  const bun = await Effect.runPromise(
-    Effect.scoped(program.pipe(Effect.provide(core.Desktop.runtime(config))))
+  const BunRuntime = ManagedRuntime.make(core.Desktop.runtime(config))
+  const NodeRuntime = ManagedRuntime.make(
+    core.Desktop.runtime({
+      ...config,
+      providers: core.Desktop.provider(core.Desktop.Provider.Runtime.node)
+    })
   )
-  const node = await Effect.runPromise(
-    Effect.scoped(
-      program.pipe(
-        Effect.provide(
-          core.Desktop.runtime({
-            ...config,
-            providers: core.Desktop.provider(core.Desktop.Provider.Runtime.node)
-          })
-        )
-      )
-    )
-  )
-  const test = await Effect.runPromise(
-    Effect.scoped(
-      program.pipe(
-        Effect.provide(
-          core.Desktop.runtime({
-            ...config,
-            providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test)
-          })
-        )
-      )
-    )
+  const TestRuntime = ManagedRuntime.make(
+    core.Desktop.runtime({
+      ...config,
+      providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test)
+    })
   )
 
-  expect(bun).toEqual({
-    appId: "notes",
-    ownerKind: "app",
-    ownerScope: "notes",
-    runtimeProvider: "bun",
-    graphAppId: "notes",
-    cwdExists: true
-  })
-  expect(node).toEqual({
-    appId: "notes",
-    ownerKind: "app",
-    ownerScope: "notes",
-    runtimeProvider: "node",
-    graphAppId: "notes",
-    cwdExists: true
-  })
-  expect(test).toMatchObject({
-    appId: "notes",
-    ownerKind: "app",
-    ownerScope: "notes",
-    runtimeProvider: "test",
-    graphAppId: "notes"
-  })
-  expect(typeof test.cwdExists).toBe("boolean")
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const bun = yield* Effect.promise(() => BunRuntime.runPromise(Effect.scoped(program)))
+      const node = yield* Effect.promise(() => NodeRuntime.runPromise(Effect.scoped(program)))
+      const test = yield* Effect.promise(() => TestRuntime.runPromise(Effect.scoped(program)))
+
+      expect(bun).toEqual({
+        appId: "notes",
+        ownerKind: "app",
+        ownerScope: "notes",
+        runtimeProvider: "bun",
+        graphAppId: "notes",
+        cwdExists: true
+      })
+      expect(node).toEqual({
+        appId: "notes",
+        ownerKind: "app",
+        ownerScope: "notes",
+        runtimeProvider: "node",
+        graphAppId: "notes",
+        cwdExists: true
+      })
+      expect(test).toMatchObject({
+        appId: "notes",
+        ownerKind: "app",
+        ownerScope: "notes",
+        runtimeProvider: "test",
+        graphAppId: "notes"
+      })
+      expect(typeof test.cwdExists).toBe("boolean")
+    })
+  )
 })
 
-test("Desktop runtime accepts handler services provided around Desktop.layer(App)", async () => {
-  const core = await import("./index.js")
-  class Greeting extends Context.Service<Greeting, { readonly value: string }>()("Greeting") {}
+test("Desktop runtime accepts handler services provided around Desktop.layer(App)", () => {
+  class Greeting extends Context.Service<Greeting, { readonly value: string }>()(
+    "@effect-desktop/core/index.test/Greeting"
+  ) {}
   const GreetingLayer = Layer.succeed(Greeting)({ value: "hello" })
   const Ping = Rpc.make("Notes.Layer.Ping", { success: Schema.String })
   const NotesRpcs = RpcGroup.make(Ping)
@@ -496,15 +499,17 @@ test("Desktop runtime accepts handler services provided around Desktop.layer(App
     rpcs: core.Desktop.rpc(NotesRpcs, NotesLive)
   })
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.runtime(app).pipe(Layer.provide(GreetingLayer))))
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.scoped(Layer.build(core.Desktop.runtime(app).pipe(Layer.provide(GreetingLayer))))
+      )
+      expect(Exit.isSuccess(exit)).toBe(true)
+    })
   )
-
-  expect(Exit.isSuccess(exit)).toBe(true)
 })
 
-test("Desktop.runtime preserves lazy runtime provider load failures as typed startup errors", async () => {
-  const core = await import("./index.js")
+test("Desktop.runtime preserves lazy runtime provider load failures as typed startup errors", () => {
   const providerLoadCause = new Error("missing provider bundle")
   const failingRuntime = {
     kind: "runtime" as const,
@@ -541,38 +546,38 @@ test("Desktop.runtime preserves lazy runtime provider load failures as typed sta
       })
     )
   } satisfies DesktopRuntimeProviderDescriptor
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Effect.gen(function* () {
-        return yield* core.DesktopApp
-      }).pipe(
-        Effect.provide(
-          core.Desktop.runtime({
-            id: "notes",
-            windows: core.Desktop.window("main", { title: "Notes" }),
-            providers: core.Desktop.provider(failingRuntime)
-          })
-        )
-      )
-    )
+
+  const FailingRuntime = ManagedRuntime.make(
+    core.Desktop.runtime({
+      id: "notes",
+      windows: core.Desktop.window("main", { title: "Notes" }),
+      providers: core.Desktop.provider(failingRuntime)
+    })
   )
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
-    expect(failure?.error).toMatchObject({
-      _tag: "DesktopConfigError",
-      reason: "missing-provider",
-      provider: "failing-runtime",
-      providerKind: "runtime",
-      cause: providerLoadCause
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.promise(() =>
+        FailingRuntime.runPromiseExit(Effect.scoped(core.DesktopApp.asEffect()))
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
+        expect(failure?.error).toMatchObject({
+          _tag: "DesktopConfigError",
+          reason: "missing-provider",
+          provider: "failing-runtime",
+          providerKind: "runtime",
+          cause: providerLoadCause
+        })
+      }
     })
-  }
+  )
 })
 
-test("Desktop.runtime rejects duplicate runtime providers as typed startup errors", async () => {
-  const core = await import("./index.js")
+test("Desktop.runtime rejects duplicate runtime providers as typed startup errors", () => {
   const duplicateProviders = core.Desktop.providers(
     core.Desktop.provider(core.Desktop.Provider.Runtime.bun),
     core.Desktop.provider(core.Desktop.Provider.Runtime.node)
@@ -582,107 +587,107 @@ test("Desktop.runtime rejects duplicate runtime providers as typed startup error
     windows: core.Desktop.window("main", { title: "Notes" }),
     providers: duplicateProviders
   }
-  const graphExit = await Effect.runPromiseExit(core.Desktop.runtimeGraph(badConfig))
-  const diagnostics = await Effect.runPromise(core.Desktop.runtimeGraphSnapshot(badConfig))
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Effect.gen(function* () {
-        return yield* core.DesktopApp
-      }).pipe(Effect.provide(core.Desktop.runtime(badConfig)))
-    )
-  )
+  const BadRuntime = ManagedRuntime.make(core.Desktop.runtime(badConfig))
 
-  expect(Exit.isFailure(graphExit)).toBe(true)
-  if (Exit.isFailure(graphExit)) {
-    const failure = graphExit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
-    expect(failure?.error).toMatchObject({
-      _tag: "DesktopConfigError",
-      reason: "invalid-config",
-      provider: "node"
-    })
-  }
-  expect(diagnostics.failures[0]).toMatchObject({
-    reason: "missing-requirement",
-    requirement: "DesktopRuntime",
-    providerPath: ["provider:runtime:node"],
-    message: "Desktop.provider(...) selected more than one runtime provider (bun, node)"
-  })
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
-    expect(failure?.error).toMatchObject({
-      _tag: "DesktopConfigError",
-      reason: "invalid-config",
-      provider: "node"
-    })
-  }
-})
-
-test("Desktop.runtime rejects app ids that cannot become ResourceOwner ids", async () => {
-  const core = await import("./index.js")
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Effect.gen(function* () {
-        return yield* core.DesktopRuntime
-      }).pipe(
-        Effect.provide(
-          core.Desktop.runtime({
-            id: "bad\napp",
-            windows: core.Desktop.window("main", { title: "Notes" })
-          })
-        )
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const graphExit = yield* Effect.exit(core.Desktop.runtimeGraph(badConfig))
+      const diagnostics = yield* core.Desktop.runtimeGraphSnapshot(badConfig)
+      const exit = yield* Effect.promise(() =>
+        BadRuntime.runPromiseExit(Effect.scoped(core.DesktopApp.asEffect()))
       )
-    )
-  )
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
-    expect(failure?.error).toMatchObject({
-      _tag: "DesktopConfigError",
-      reason: "invalid-config",
-      appId: "bad\napp"
-    })
-  }
-})
-
-test("Desktop.runtimeGraphSnapshot preserves provider failure evidence", async () => {
-  const core = await import("./index.js")
-  const duplicateProviders = core.Desktop.providers(
-    core.Desktop.provider(core.Desktop.Provider.Runtime.bun),
-    core.Desktop.provider(core.Desktop.Provider.Runtime.node)
-  )
-  const snapshot = await Effect.runPromise(
-    core.Desktop.runtimeGraphSnapshot({
-      id: "notes",
-      windows: core.Desktop.window("main", { title: "Notes" }),
-      providers: duplicateProviders
-    })
-  )
-
-  expect(snapshot).toMatchObject({
-    appId: "notes",
-    providers: { runtime: "node", webview: "system" },
-    nodes: [],
-    providerFacts: [],
-    failures: [
-      {
-        appId: "notes",
+      expect(Exit.isFailure(graphExit)).toBe(true)
+      if (Exit.isFailure(graphExit)) {
+        const failure = graphExit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
+        expect(failure?.error).toMatchObject({
+          _tag: "DesktopConfigError",
+          reason: "invalid-config",
+          provider: "node"
+        })
+      }
+      expect(diagnostics.failures[0]).toMatchObject({
         reason: "missing-requirement",
         requirement: "DesktopRuntime",
         providerPath: ["provider:runtime:node"],
-        provider: "node"
+        message: "Desktop.provider(...) selected more than one runtime provider (bun, node)"
+      })
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
+        expect(failure?.error).toMatchObject({
+          _tag: "DesktopConfigError",
+          reason: "invalid-config",
+          provider: "node"
+        })
       }
-    ]
-  })
+    })
+  )
 })
 
-test("Desktop.rpc pairs an RpcGroup with its implementation for app adapters", async () => {
-  const core = await import("./index.js")
+test("Desktop.runtime rejects app ids that cannot become ResourceOwner ids", () => {
+  const BadAppRuntime = ManagedRuntime.make(
+    core.Desktop.runtime({
+      id: "bad\napp",
+      windows: core.Desktop.window("main", { title: "Notes" })
+    })
+  )
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.promise(() =>
+        BadAppRuntime.runPromiseExit(Effect.scoped(core.DesktopRuntime.asEffect()))
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toBeInstanceOf(core.DesktopSpineConfigError)
+        expect(failure?.error).toMatchObject({
+          _tag: "DesktopConfigError",
+          reason: "invalid-config",
+          appId: "bad\napp"
+        })
+      }
+    })
+  )
+})
+
+test("Desktop.runtimeGraphSnapshot preserves provider failure evidence", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const duplicateProviders = core.Desktop.providers(
+        core.Desktop.provider(core.Desktop.Provider.Runtime.bun),
+        core.Desktop.provider(core.Desktop.Provider.Runtime.node)
+      )
+      const snapshot = yield* core.Desktop.runtimeGraphSnapshot({
+        id: "notes",
+        windows: core.Desktop.window("main", { title: "Notes" }),
+        providers: duplicateProviders
+      })
+
+      expect(snapshot).toMatchObject({
+        appId: "notes",
+        providers: { runtime: "node", webview: "system" },
+        nodes: [],
+        providerFacts: [],
+        failures: [
+          {
+            appId: "notes",
+            reason: "missing-requirement",
+            requirement: "DesktopRuntime",
+            providerPath: ["provider:runtime:node"],
+            provider: "node"
+          }
+        ]
+      })
+    })
+  ))
+
+test("Desktop.rpc pairs an RpcGroup with its implementation for app adapters", () => {
   const Ping = Rpc.make("Notes.Ping", { success: Schema.String })
   const NotesRpcs = RpcGroup.make(Ping)
   const NotesLive = NotesRpcs.toLayer({
@@ -711,36 +716,37 @@ test("Desktop.rpc pairs an RpcGroup with its implementation for app adapters", a
   })
 })
 
-test("Desktop.native composes an empty native layer without adding runtime surfaces", async () => {
-  const core = await import("./index.js")
-  const app = core.Desktop.make({
-    id: "native-empty",
-    windows: core.Desktop.window("main", { title: "Native" }),
-    providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
-    native: core.Desktop.native()
-  })
-  const graph = await Effect.runPromise(core.Desktop.runtimeGraph(app))
+test("Desktop.native composes an empty native layer without adding runtime surfaces", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const app = core.Desktop.make({
+        id: "native-empty",
+        windows: core.Desktop.window("main", { title: "Native" }),
+        providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
+        native: core.Desktop.native()
+      })
+      const graph = yield* core.Desktop.runtimeGraph(app)
 
-  expect(app.native).toEqual([])
-  expect(core.Desktop.manifest(app).rpcGroups).toEqual([])
-  expect(graph.nodes.some((node) => node.kind === "native-surface")).toBe(false)
-})
+      expect(app.native).toEqual([])
+      expect(core.Desktop.manifest(app).rpcGroups).toEqual([])
+      expect(graph.nodes.some((node) => node.kind === "native-surface")).toBe(false)
+    })
+  ))
 
-test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one RpcGroup", async () => {
-  const core = await import("./index.js")
+test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one RpcGroup", () => {
   const Ping = Rpc.make("Notes.Ping", { success: Schema.String }).pipe(RpcEndpoint.query)
   const NotesRpcs = RpcGroup.make(Ping)
   class NotesClient extends Context.Service<
     NotesClient,
     RpcClient.RpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
-  >()("NotesClient") {}
+  >()("@effect-desktop/core/index.test/NotesClient") {}
   const NotesLive = NotesRpcs.toLayer({
     "Notes.Ping": () => Effect.succeed("pong")
   })
   class NotesFacade extends Context.Service<
     NotesFacade,
     { readonly ping: () => Effect.Effect<string> }
-  >()("NotesFacade") {}
+  >()("@effect-desktop/core/index.test/NotesFacade") {}
   const assertSurfaceRequiresMappedCustomServices = (
     makeSurface: typeof core.Desktop.Rpc.surface
   ): void => {
@@ -761,16 +767,6 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
     rpcs: surface.serverLayer
   })
 
-  for (const law of surface.contractLaws) {
-    await Effect.runPromise(law.check)
-  }
-
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const client = yield* NotesClient
-      return yield* client["Notes.Ping"](undefined)
-    }).pipe(Effect.provide(surface.testClientLayer))
-  )
   const queue = Effect.runSync(Queue.unbounded<HostProtocolEnvelope>())
   const requests: HostProtocolEnvelope[] = []
   const protocolLayer = Layer.effect(RpcClient.Protocol)(
@@ -798,42 +794,62 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
       { nextTraceId: () => "trace-surface-client" }
     )
   )
-  const liveClientResult = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const client = yield* NotesClient
-        return yield* client["Notes.Ping"](undefined)
-      }).pipe(Effect.provide(Layer.provide(surface.clientLayer, protocolLayer)))
-    )
-  )
+  const TestSurfaceRuntime = ManagedRuntime.make(surface.testClientLayer)
+  const LiveSurfaceRuntime = ManagedRuntime.make(Layer.provide(surface.clientLayer, protocolLayer))
 
-  expect(result).toBe("pong")
-  expect(liveClientResult).toBe("pong-live")
-  expect(requests).toMatchObject([
-    {
-      kind: "request",
-      method: "Notes.Ping"
-    }
-  ])
-  expect(surface.group).toBe(NotesRpcs)
-  expect(Array.isArray(surface.serverLayer)).toBe(true)
-  expect(Layer.isLayer(surface.clientLayer)).toBe(true)
-  expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
-  const surfaceRegistrations = surface.serverLayer
-  expect(surfaceRegistrations).toHaveLength(1)
-  expect(surfaceRegistrations[0]?.group).toBe(NotesRpcs)
-  expect(Object.is(surfaceRegistrations[0]?.handlers, NotesLive)).toBe(true)
-  expect(surface.schemaDocs.map((doc) => [doc.name, doc.tag, doc.kind])).toEqual([
-    ["ping", "Notes.Ping", "query"]
-  ])
-  expect(core.Desktop.manifest(app).rpcGroups[0]?.group).toBe(NotesRpcs)
-  expect(core.Desktop.describeRpcs(app, NotesRpcs).map((descriptor) => descriptor.tag)).toEqual([
-    "Notes.Ping"
-  ])
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      for (const law of surface.contractLaws) {
+        yield* law.check
+      }
+
+      const result = yield* Effect.promise(() =>
+        TestSurfaceRuntime.runPromise(
+          Effect.gen(function* () {
+            const client = yield* NotesClient
+            return yield* client["Notes.Ping"](undefined)
+          })
+        )
+      )
+      const liveClientResult = yield* Effect.promise(() =>
+        LiveSurfaceRuntime.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const client = yield* NotesClient
+              return yield* client["Notes.Ping"](undefined)
+            })
+          )
+        )
+      )
+
+      expect(result).toBe("pong")
+      expect(liveClientResult).toBe("pong-live")
+      expect(requests).toMatchObject([
+        {
+          kind: "request",
+          method: "Notes.Ping"
+        }
+      ])
+      expect(surface.group).toBe(NotesRpcs)
+      expect(Array.isArray(surface.serverLayer)).toBe(true)
+      expect(Layer.isLayer(surface.clientLayer)).toBe(true)
+      expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
+      const surfaceRegistrations = surface.serverLayer
+      expect(surfaceRegistrations).toHaveLength(1)
+      expect(surfaceRegistrations[0]?.group).toBe(NotesRpcs)
+      expect(Object.is(surfaceRegistrations[0]?.handlers, NotesLive)).toBe(true)
+      expect(surface.schemaDocs.map((doc) => [doc.name, doc.tag, doc.kind])).toEqual([
+        ["ping", "Notes.Ping", "query"]
+      ])
+      expect(core.Desktop.manifest(app).rpcGroups[0]?.group).toBe(NotesRpcs)
+      expect(core.Desktop.describeRpcs(app, NotesRpcs).map((descriptor) => descriptor.tag)).toEqual(
+        ["Notes.Ping"]
+      )
+    })
+  )
 })
 
-test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients", async () => {
-  const core = await import("./index.js")
+test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients", () => {
   const List = Rpc.make("Notes.List", {
     success: Schema.Array(Schema.String)
   }).pipe(RpcSupport.supported)
@@ -854,7 +870,7 @@ test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients
   class NotesClient extends Context.Service<
     NotesClient,
     DesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
-  >()("NotesClient") {}
+  >()("@effect-desktop/core/index.test/NotesClient") {}
   const assertSupportedClient = (
     client: SupportedDesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
   ): void => {
@@ -886,8 +902,7 @@ test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients
   ])
 })
 
-test("Desktop.Rpc.surface laws reject groups that cannot lower to bridge metadata", async () => {
-  const core = await import("./index.js")
+test("Desktop.Rpc.surface laws reject groups that cannot lower to bridge metadata", () => {
   const Valid = Rpc.make("Notes.Ping", { success: Schema.String })
   const InvalidNamespace = RpcGroup.make(Rpc.make("Other.Ping", { success: Schema.String }))
   const DuplicateNames = RpcGroup.make(Valid, Rpc.make("Tasks.Ping", { success: Schema.String }))
@@ -907,29 +922,33 @@ test("Desktop.Rpc.surface laws reject groups that cannot lower to bridge metadat
     }),
     client: (client) => ({ client })
   })
-  const expectLawFailure = async (
+  const expectLawFailure = (
     law: (typeof invalidNamespace.contractLaws)[number],
     expected: Record<string, unknown>
-  ) => {
-    const exit = await Effect.runPromiseExit(law.check)
-    expect(Exit.isFailure(exit)).toBe(true)
-    if (Exit.isFailure(exit)) {
-      expect(exit.cause.reasons.find(Cause.isFailReason)?.error).toMatchObject(expected)
-    }
-  }
+  ) =>
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(law.check)
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        expect(exit.cause.reasons.find(Cause.isFailReason)?.error).toMatchObject(expected)
+      }
+    })
 
-  await expectLawFailure(invalidNamespace.contractLaws[0]!, {
-    reason: "invalid-tag",
-    tag: "Other.Ping"
-  })
-  await expectLawFailure(duplicateNames.contractLaws[1]!, {
-    reason: "duplicate-endpoint",
-    tag: "Tasks.Ping"
-  })
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      yield* expectLawFailure(invalidNamespace.contractLaws[0]!, {
+        reason: "invalid-tag",
+        tag: "Other.Ping"
+      })
+      yield* expectLawFailure(duplicateNames.contractLaws[1]!, {
+        reason: "duplicate-endpoint",
+        tag: "Tasks.Ping"
+      })
+    })
+  )
 })
 
-test("Desktop.layer binds RpcGroups into the runtime RpcServer protocol", async () => {
-  const core = await import("./index.js")
+test("Desktop.layer binds RpcGroups into the runtime RpcServer protocol", () => {
   let acquired = 0
   const Ping = Rpc.make("Notes.Ping", { success: Schema.String })
   const NotesRpcs = RpcGroup.make(Ping)
@@ -953,16 +972,22 @@ test("Desktop.layer binds RpcGroups into the runtime RpcServer protocol", async 
     run: () => Effect.never
   }
   const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.layer(definition).pipe(Layer.provide(protocolLayer))))
-  )
 
-  expect(Exit.isSuccess(exit)).toBe(true)
-  expect(acquired).toBe(1)
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          Layer.build(core.Desktop.layer(definition).pipe(Layer.provide(protocolLayer)))
+        )
+      )
+
+      expect(Exit.isSuccess(exit)).toBe(true)
+      expect(acquired).toBe(1)
+    })
+  )
 })
 
-test("Desktop.layer rejects RpcGroup methods that declare known capability kinds without scoped fields", async () => {
-  const core = await import("./index.js")
+test("Desktop.layer rejects RpcGroup methods that declare known capability kinds without scoped fields", () => {
   const Connect = Rpc.make("Network.Connect").pipe(
     RpcCapability({
       kind: "network.connect"
@@ -975,29 +1000,30 @@ test("Desktop.layer rejects RpcGroup methods that declare known capability kinds
     rpcs: core.Desktop.rpc(
       NetworkRpcs,
       NetworkRpcs.toLayer({
-        "Network.Connect": () => Effect.succeed(undefined)
+        "Network.Connect": () => Effect.void
       })
     )
   })
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.layer(definition)))
-  )
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(Effect.scoped(Layer.build(core.Desktop.layer(definition))))
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toMatchObject({
-      _tag: "DesktopConfigError",
-      reason: "invalid-config",
-      method: "Network.Connect",
-      permission: "network.connect"
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toMatchObject({
+          _tag: "DesktopConfigError",
+          reason: "invalid-config",
+          method: "Network.Connect",
+          permission: "network.connect"
+        })
+      }
     })
-  }
+  )
 })
 
-test("Desktop.layer rejects RpcGroup methods that require undeclared capabilities", async () => {
-  const core = await import("./index.js")
+test("Desktop.layer rejects RpcGroup methods that require undeclared capabilities", () => {
   const Connect = Rpc.make("Network.Connect").pipe(
     RpcCapability({
       kind: "network.connect",
@@ -1013,29 +1039,30 @@ test("Desktop.layer rejects RpcGroup methods that require undeclared capabilitie
     rpcs: core.Desktop.rpc(
       NetworkRpcs,
       NetworkRpcs.toLayer({
-        "Network.Connect": () => Effect.succeed(undefined)
+        "Network.Connect": () => Effect.void
       })
     )
   })
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.layer(definition)))
-  )
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(Effect.scoped(Layer.build(core.Desktop.layer(definition))))
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toMatchObject({
-      _tag: "DesktopConfigError",
-      reason: "missing-permission",
-      method: "Network.Connect",
-      permission: "network.connect"
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toMatchObject({
+          _tag: "DesktopConfigError",
+          reason: "missing-permission",
+          method: "Network.Connect",
+          permission: "network.connect"
+        })
+      }
     })
-  }
+  )
 })
 
-test("Desktop.layer validates RpcGroup capability scope coverage", async () => {
-  const core = await import("./index.js")
+test("Desktop.layer validates RpcGroup capability scope coverage", () => {
   const requiredCapability = {
     kind: "network.connect",
     hosts: ["api.example.com"],
@@ -1047,7 +1074,7 @@ test("Desktop.layer validates RpcGroup capability scope coverage", async () => {
   const layer = core.Desktop.rpc(
     NetworkRpcs,
     NetworkRpcs.toLayer({
-      "Network.Connect": () => Effect.succeed(undefined)
+      "Network.Connect": () => Effect.void
     })
   )
   const transport = {
@@ -1071,28 +1098,33 @@ test("Desktop.layer validates RpcGroup capability scope coverage", async () => {
     rpcs: layer
   })
 
-  const rejected = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.layer(wrongScope)))
-  )
-  const accepted = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.layer(coveredScope).pipe(Layer.provide(protocolLayer))))
-  )
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const rejected = yield* Effect.exit(
+        Effect.scoped(Layer.build(core.Desktop.layer(wrongScope)))
+      )
+      const accepted = yield* Effect.exit(
+        Effect.scoped(
+          Layer.build(core.Desktop.layer(coveredScope).pipe(Layer.provide(protocolLayer)))
+        )
+      )
 
-  expect(Exit.isFailure(rejected)).toBe(true)
-  if (Exit.isFailure(rejected)) {
-    const failure = rejected.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toMatchObject({
-      _tag: "DesktopConfigError",
-      reason: "missing-permission",
-      method: "Network.Connect",
-      permission: "network.connect"
+      expect(Exit.isFailure(rejected)).toBe(true)
+      if (Exit.isFailure(rejected)) {
+        const failure = rejected.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toMatchObject({
+          _tag: "DesktopConfigError",
+          reason: "missing-permission",
+          method: "Network.Connect",
+          permission: "network.connect"
+        })
+      }
+      expect(Exit.isSuccess(accepted)).toBe(true)
     })
-  }
-  expect(Exit.isSuccess(accepted)).toBe(true)
+  )
 })
 
-test("Desktop.layer treats explicit none capability as permission-free metadata", async () => {
-  const core = await import("./index.js")
+test("Desktop.layer treats explicit none capability as permission-free metadata", () => {
   const IsSupported = Rpc.make("Screen.isSupported", {
     payload: Schema.Void,
     success: Schema.Boolean
@@ -1114,15 +1146,20 @@ test("Desktop.layer treats explicit none capability as permission-free metadata"
   }
   const protocolLayer = Layer.effect(RpcServer.Protocol)(makeDesktopServerProtocol(transport))
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(core.Desktop.layer(definition).pipe(Layer.provide(protocolLayer))))
-  )
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          Layer.build(core.Desktop.layer(definition).pipe(Layer.provide(protocolLayer)))
+        )
+      )
 
-  expect(Exit.isSuccess(exit)).toBe(true)
+      expect(Exit.isSuccess(exit)).toBe(true)
+    })
+  )
 })
 
-test("Desktop.layer permission middleware declares app permissions for protected RPCs", async () => {
-  const core = await import("./index.js")
+test("Desktop.layer permission middleware declares app permissions for protected RPCs", () => {
   const requiredCapability = {
     kind: "network.connect",
     hosts: ["api.example.com"],
@@ -1164,7 +1201,7 @@ test("Desktop.layer permission middleware declares app permissions for protected
     })
   )
 
-  const envelope = await Effect.runPromise(
+  return Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         yield* Layer.build(core.Desktop.layer(definition).pipe(Layer.provide(protocolLayer)))
@@ -1180,21 +1217,20 @@ test("Desktop.layer permission middleware declares app permissions for protected
             payload: { host: "api.example.com" }
           })
         )
-        return yield* Queue.take(response)
+        const envelope = yield* Queue.take(response)
+
+        expect(handlerCalls).toBe(1)
+        expect(envelope.kind).toBe("response")
+        if (envelope.kind === "response") {
+          expect(envelope.payload).toBe("connected:api.example.com")
+          expect(envelope.error).toBeUndefined()
+        }
       })
     )
   )
-
-  expect(handlerCalls).toBe(1)
-  expect(envelope.kind).toBe("response")
-  if (envelope.kind === "response") {
-    expect(envelope.payload).toBe("connected:api.example.com")
-    expect(envelope.error).toBeUndefined()
-  }
 })
 
-test("describeRpcs derives endpoint descriptors from provided RpcGroups", async () => {
-  const core = await import("./index.js")
+test("describeRpcs derives endpoint descriptors from provided RpcGroups", () => {
   const List = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
     RpcEndpoint.query
   )
@@ -1227,8 +1263,7 @@ test("describeRpcs derives endpoint descriptors from provided RpcGroups", async 
   })
 })
 
-test("describeRpcs rejects duplicate endpoint names before adapters build maps", async () => {
-  const core = await import("./index.js")
+test("describeRpcs rejects duplicate endpoint names before adapters build maps", () => {
   const ProjectList = Rpc.make("Projects.List", { success: Schema.Array(Schema.String) })
   const TaskList = Rpc.make("Tasks.List", { success: Schema.Array(Schema.String) })
   const CollidingRpcs = RpcGroup.make(ProjectList, TaskList)
@@ -1248,8 +1283,7 @@ test("describeRpcs rejects duplicate endpoint names before adapters build maps",
   )
 })
 
-test("describeRpcs fails loudly when a group is not provided to the app", async () => {
-  const core = await import("./index.js")
+test("describeRpcs fails loudly when a group is not provided to the app", () => {
   const Missing = RpcGroup.make(Rpc.make("Notes.Missing"))
   const definition = core.Desktop.make({
     windows: core.Desktop.window("main", { title: "Notes" })

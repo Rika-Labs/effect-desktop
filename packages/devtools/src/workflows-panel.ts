@@ -51,7 +51,7 @@ export type WorkflowExecutionEvent =
 export class WorkflowExecutionRegistry extends Context.Service<
   WorkflowExecutionRegistry,
   WorkflowExecutionRegistryApi
->()("@effect-desktop/devtools/WorkflowExecutionRegistry") {}
+>()("@effect-desktop/devtools/workflows-panel/WorkflowExecutionRegistry") {}
 
 export const makeWorkflowExecutionRegistry = (
   options: { readonly maxRows?: number; readonly now?: () => number } = {}
@@ -79,7 +79,7 @@ export interface WorkflowsPanelOptions {
 }
 
 export class WorkflowsPanel extends Context.Service<WorkflowsPanel, WorkflowsPanelApi>()(
-  "@effect-desktop/devtools/WorkflowsPanel"
+  "@effect-desktop/devtools/workflows-panel/WorkflowsPanel"
 ) {}
 
 export const WorkflowsPanelLive = (

@@ -39,7 +39,7 @@ export interface LogsPanelOptions {
 }
 
 export class LogsPanel extends Context.Service<LogsPanel, LogsPanelApi>()(
-  "@effect-desktop/devtools/LogsPanel"
+  "@effect-desktop/devtools/logs-panel/LogsPanel"
 ) {}
 
 export const LogsPanelLive = (

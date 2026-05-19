@@ -102,7 +102,7 @@ export interface DevtoolsShellOptions {
 }
 
 export class DevtoolsShell extends Context.Service<DevtoolsShell, DevtoolsShellApi>()(
-  "@effect-desktop/devtools/DevtoolsShell"
+  "@effect-desktop/devtools/shell/DevtoolsShell"
 ) {}
 
 export const DevtoolsShellLive = (options: DevtoolsShellOptions = {}): Layer.Layer<DevtoolsShell> =>

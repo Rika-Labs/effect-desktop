@@ -26,7 +26,7 @@ export interface LayerGraphPanelOptions {
 }
 
 export class LayerGraphPanel extends Context.Service<LayerGraphPanel, LayerGraphPanelApi>()(
-  "@effect-desktop/devtools/LayerGraphPanel"
+  "@effect-desktop/devtools/layer-graph-panel/LayerGraphPanel"
 ) {}
 
 export const LayerGraphPanelLive = (

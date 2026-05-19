@@ -97,7 +97,7 @@ export interface TestWindowStateApi {
 }
 
 export class TestWindowState extends Context.Service<TestWindowState, TestWindowStateApi>()(
-  "@effect-desktop/test/TestWindowState"
+  "@effect-desktop/test/native/TestWindowState"
 ) {}
 
 export interface TestNativeSurface {

@@ -54,7 +54,7 @@ export interface PerformanceOverlayOptions {
 export class PerformanceOverlay extends Context.Service<
   PerformanceOverlay,
   PerformanceOverlayApi
->()("@effect-desktop/devtools/PerformanceOverlay") {}
+>()("@effect-desktop/devtools/performance-overlay/PerformanceOverlay") {}
 
 export const PerformanceOverlayLive = (
   options: PerformanceOverlayOptions = {}

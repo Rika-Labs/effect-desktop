@@ -52,7 +52,7 @@ export class DevtoolsSnapshotSafetyError extends Data.TaggedError("SnapshotSafet
 export class DevtoolsSnapshotClient extends Context.Service<
   DevtoolsSnapshotClient,
   DevtoolsSnapshotClientApi
->()("@effect-desktop/devtools/DevtoolsSnapshotClient") {}
+>()("@effect-desktop/devtools/snapshot-client/DevtoolsSnapshotClient") {}
 
 export type DevtoolsSnapshotClientRequirements =
   | LiveRuntimePanels

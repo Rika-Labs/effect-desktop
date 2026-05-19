@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { CspPolicy } from "@effect-desktop/config"
-import { Clock, Effect, Fiber, Layer, Stream } from "effect"
+import { Clock, Effect, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
 import { HttpClientRequest, HttpRouter, HttpServer, HttpServerRequest } from "effect/unstable/http"
 
 import {
@@ -16,6 +16,11 @@ import {
   type AppAssetResolverApi,
   type ResolvedAsset
 } from "./app-http-server.js"
+
+class OpenApiDecodeError extends Schema.TaggedErrorClass<OpenApiDecodeError>("OpenApiDecodeError")(
+  "OpenApiDecodeError",
+  { message: Schema.String }
+) {}
 
 const TEXT_ENCODER = new TextEncoder()
 
@@ -44,10 +49,8 @@ const staticResolver: AppAssetResolverApi = {
     )
 }
 
-const makeServer = (resolver: AppAssetResolverApi = staticResolver, policy?: CspPolicy) =>
-  Effect.gen(function* () {
-    return yield* AppHttpServer
-  }).pipe(Effect.provide(makeAppHttpServerLayer(resolver, policy)))
+const serverRuntime = (resolver: AppAssetResolverApi = staticResolver, policy?: CspPolicy) =>
+  ManagedRuntime.make(makeAppHttpServerLayer(resolver, policy))
 
 const makeWebHandler = (resolver: AppAssetResolverApi = staticResolver, policy?: CspPolicy) =>
   HttpRouter.toWebHandler(
@@ -64,16 +67,16 @@ interface OpenApiSpec {
 
 const decodeOpenApiSpec = (input: unknown): OpenApiSpec => {
   if (typeof input !== "object" || input === null) {
-    throw new Error("OpenAPI response must be an object")
+    throw new OpenApiDecodeError({ message: "OpenAPI response must be an object" })
   }
   if (!("info" in input) || typeof input.info !== "object" || input.info === null) {
-    throw new Error("OpenAPI response must include info")
+    throw new OpenApiDecodeError({ message: "OpenAPI response must include info" })
   }
   if (!("title" in input.info) || typeof input.info.title !== "string") {
-    throw new Error("OpenAPI response info must include title")
+    throw new OpenApiDecodeError({ message: "OpenAPI response info must include title" })
   }
   if (!("paths" in input) || typeof input.paths !== "object" || input.paths === null) {
-    throw new Error("OpenAPI response must include paths")
+    throw new OpenApiDecodeError({ message: "OpenAPI response must include paths" })
   }
   const paths: Record<string, { readonly get: { readonly operationId: string } }> = {}
   for (const [path, value] of Object.entries(input.paths)) {
@@ -91,232 +94,255 @@ const decodeOpenApiSpec = (input: unknown): OpenApiSpec => {
   return { info: { title: input.info.title }, paths }
 }
 
-test("serves HTML with nonce injected into script tags and CSP header set", async () => {
-  const response = await Effect.runPromise(
+test("serves HTML with nonce injected into script tags and CSP header set", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
     Effect.gen(function* () {
-      const server = yield* makeServer()
-      return yield* Effect.scoped(server.handle(makeRequest("/")))
+      const server = yield* AppHttpServer
+      const response = yield* Effect.scoped(server.handle(makeRequest("/")))
+
+      expect(response.status).toBe(200)
+      const csp = (response.headers as Record<string, string>)["content-security-policy"]
+      expect(typeof csp).toBe("string")
+      expect(csp).toContain("script-src 'self' 'nonce-")
+      expect(csp).toContain("style-src 'self' 'nonce-")
+      expect(csp).not.toContain("unsafe-eval")
+      expect(csp).toContain("style-src-attr 'unsafe-inline'")
     })
   )
-
-  expect(response.status).toBe(200)
-  const csp = (response.headers as Record<string, string>)["content-security-policy"]
-  expect(typeof csp).toBe("string")
-  expect(csp).toContain("script-src 'self' 'nonce-")
-  expect(csp).toContain("style-src 'self' 'nonce-")
-  expect(csp).not.toContain("unsafe-eval")
-  expect(csp).toContain("style-src-attr 'unsafe-inline'")
 })
 
-test("injects matching nonce into script element in HTML body", async () => {
-  const response = await Effect.runPromise(
+test("injects matching nonce into script element in HTML body", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
     Effect.gen(function* () {
-      const server = yield* makeServer()
-      return yield* Effect.scoped(server.handle(makeRequest("/")))
+      const server = yield* AppHttpServer
+      const response = yield* Effect.scoped(server.handle(makeRequest("/")))
+      const csp = (response.headers as Record<string, string>)["content-security-policy"] ?? ""
+      const nonceMatch = /nonce-([a-f0-9]+)/.exec(csp)
+      expect(nonceMatch).not.toBeNull()
+      const nonce = nonceMatch![1]!
+
+      const body = response.body as { _tag: string; body: ReadableStream<Uint8Array> | Uint8Array }
+      let bodyBytes: Uint8Array
+      if (body._tag === "Uint8Array") {
+        bodyBytes = body.body as Uint8Array
+      } else {
+        const chunks: Uint8Array[] = []
+        const reader = (body.body as ReadableStream<Uint8Array>).getReader()
+        for (;;) {
+          const result = yield* Effect.promise(() => reader.read())
+          if (result.done) break
+          chunks.push(result.value)
+        }
+        const total = chunks.reduce((acc, c) => acc + c.length, 0)
+        bodyBytes = new Uint8Array(total)
+        let offset = 0
+        for (const chunk of chunks) {
+          bodyBytes.set(chunk, offset)
+          offset += chunk.length
+        }
+      }
+
+      const bodyText = new TextDecoder().decode(bodyBytes)
+      expect(bodyText).toContain(`nonce="${nonce}"`)
+      expect(bodyText).toContain(`<style nonce="${nonce}">`)
+      expect(bodyText).toContain(`href='/app.css' nonce="${nonce}"`)
+      expect(bodyText).toContain("rel='preload' as='script' href='/preload.js'")
+      expect(bodyText).not.toContain(`href='/preload.js' nonce="${nonce}"`)
     })
   )
-
-  const csp = (response.headers as Record<string, string>)["content-security-policy"] ?? ""
-  const nonceMatch = /nonce-([a-f0-9]+)/.exec(csp)
-  expect(nonceMatch).not.toBeNull()
-  const nonce = nonceMatch![1]!
-
-  const body = response.body as { _tag: string; body: ReadableStream<Uint8Array> | Uint8Array }
-  let bodyBytes: Uint8Array
-  if (body._tag === "Uint8Array") {
-    bodyBytes = body.body as Uint8Array
-  } else {
-    const chunks: Uint8Array[] = []
-    const reader = (body.body as ReadableStream<Uint8Array>).getReader()
-    for (;;) {
-      const result = await reader.read()
-      if (result.done) break
-      chunks.push(result.value)
-    }
-    const total = chunks.reduce((acc, c) => acc + c.length, 0)
-    bodyBytes = new Uint8Array(total)
-    let offset = 0
-    for (const chunk of chunks) {
-      bodyBytes.set(chunk, offset)
-      offset += chunk.length
-    }
-  }
-
-  const bodyText = new TextDecoder().decode(bodyBytes)
-  expect(bodyText).toContain(`nonce="${nonce}"`)
-  expect(bodyText).toContain(`<style nonce="${nonce}">`)
-  expect(bodyText).toContain(`href='/app.css' nonce="${nonce}"`)
-  expect(bodyText).toContain("rel='preload' as='script' href='/preload.js'")
-  expect(bodyText).not.toContain(`href='/preload.js' nonce="${nonce}"`)
 })
 
-test("mints a fresh nonce on every response", async () => {
-  const server = await Effect.runPromise(makeServer())
-
-  const [r1, r2] = await Promise.all([
-    Effect.runPromise(Effect.scoped(server.handle(makeRequest("/")))),
-    Effect.runPromise(Effect.scoped(server.handle(makeRequest("/"))))
-  ])
-
-  const csp1 = (r1.headers as Record<string, string>)["content-security-policy"] ?? ""
-  const csp2 = (r2.headers as Record<string, string>)["content-security-policy"] ?? ""
-  expect(csp1).not.toBe(csp2)
-})
-
-test("serves non-HTML asset with content-type and ETag but no nonce rewrite", async () => {
-  const response = await Effect.runPromise(
+test("mints a fresh nonce on every response", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
     Effect.gen(function* () {
-      const server = yield* makeServer()
-      return yield* Effect.scoped(server.handle(makeRequest("/app.js")))
+      const server = yield* AppHttpServer
+      const [r1, r2] = yield* Effect.all(
+        [
+          Effect.scoped(server.handle(makeRequest("/"))),
+          Effect.scoped(server.handle(makeRequest("/")))
+        ],
+        { concurrency: "unbounded" }
+      )
+
+      const csp1 = (r1.headers as Record<string, string>)["content-security-policy"] ?? ""
+      const csp2 = (r2.headers as Record<string, string>)["content-security-policy"] ?? ""
+      expect(csp1).not.toBe(csp2)
     })
   )
-
-  expect(response.status).toBe(200)
-  const etag = (response.headers as Record<string, string>)["etag"]
-  expect(typeof etag).toBe("string")
-  expect(etag).toMatch(/^"[a-f0-9]+"$/)
 })
 
-test("returns 304 for conditional GET with matching ETag", async () => {
-  const server = await Effect.runPromise(makeServer())
-
-  const first = await Effect.runPromise(Effect.scoped(server.handle(makeRequest("/app.js"))))
-  const etag = (first.headers as Record<string, string>)["etag"]!
-  expect(first.status).toBe(200)
-
-  const second = await Effect.runPromise(
-    Effect.scoped(server.handle(makeRequest("/app.js", { "if-none-match": etag })))
-  )
-  expect(second.status).toBe(304)
-})
-
-test("does not return 304 for nonce-rewritten HTML", async () => {
-  const server = await Effect.runPromise(makeServer())
-
-  const first = await Effect.runPromise(Effect.scoped(server.handle(makeRequest("/"))))
-  const etag = (first.headers as Record<string, string>)["etag"]!
-  expect(first.status).toBe(200)
-
-  const second = await Effect.runPromise(
-    Effect.scoped(server.handle(makeRequest("/", { "if-none-match": etag })))
-  )
-  expect(second.status).toBe(200)
-  expect((second.headers as Record<string, string>)["cache-control"]).toBe("no-store")
-})
-
-test("omits CSP header when policy is disabled", async () => {
-  const server = await Effect.runPromise(
-    makeServer(staticResolver, new CspPolicy({ directives: [] }))
-  )
-
-  const response = await Effect.runPromise(Effect.scoped(server.handle(makeRequest("/app.js"))))
-
-  expect(response.status).toBe(200)
-  expect((response.headers as Record<string, string>)["content-security-policy"]).toBeUndefined()
-})
-
-test("returns 404 with CSP header for unknown paths", async () => {
-  const response = await Effect.runPromise(
+test("serves non-HTML asset with content-type and ETag but no nonce rewrite", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
     Effect.gen(function* () {
-      const server = yield* makeServer()
-      return yield* Effect.scoped(server.handle(makeRequest("/missing.js")))
+      const server = yield* AppHttpServer
+      const response = yield* Effect.scoped(server.handle(makeRequest("/app.js")))
+
+      expect(response.status).toBe(200)
+      const etag = (response.headers as Record<string, string>)["etag"]
+      expect(typeof etag).toBe("string")
+      expect(etag).toMatch(/^"[a-f0-9]+"$/)
     })
   )
-
-  expect(response.status).toBe(404)
-  const csp = (response.headers as Record<string, string>)["content-security-policy"]
-  expect(typeof csp).toBe("string")
 })
 
-test("traversal URLs are rejected before normalization", async () => {
-  const response = await Effect.runPromise(
+test("returns 304 for conditional GET with matching ETag", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
     Effect.gen(function* () {
-      const server = yield* makeServer()
-      return yield* Effect.scoped(server.handle(makeRequest("/assets/../secret")))
+      const server = yield* AppHttpServer
+      const first = yield* Effect.scoped(server.handle(makeRequest("/app.js")))
+      const etag = (first.headers as Record<string, string>)["etag"]!
+      expect(first.status).toBe(200)
+
+      const second = yield* Effect.scoped(
+        server.handle(makeRequest("/app.js", { "if-none-match": etag }))
+      )
+      expect(second.status).toBe(304)
     })
   )
-
-  expect(response.status).toBe(400)
 })
 
-test("encoded traversal URLs are rejected before normalization", async () => {
-  const response = await Effect.runPromise(
+test("does not return 304 for nonce-rewritten HTML", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
     Effect.gen(function* () {
-      const server = yield* makeServer()
-      return yield* Effect.scoped(server.handle(makeRequest("/%2e%2e/secret")))
+      const server = yield* AppHttpServer
+      const first = yield* Effect.scoped(server.handle(makeRequest("/")))
+      const etag = (first.headers as Record<string, string>)["etag"]!
+      expect(first.status).toBe(200)
+
+      const second = yield* Effect.scoped(
+        server.handle(makeRequest("/", { "if-none-match": etag }))
+      )
+      expect(second.status).toBe(200)
+      expect((second.headers as Record<string, string>)["cache-control"]).toBe("no-store")
     })
   )
-
-  expect(response.status).toBe(400)
 })
 
-test("backslash traversal URLs are rejected before normalization", async () => {
-  const response = await Effect.runPromise(
+test("omits CSP header when policy is disabled", () => {
+  const runtime = serverRuntime(staticResolver, new CspPolicy({ directives: [] }))
+  return runtime.runPromise(
     Effect.gen(function* () {
-      const server = yield* makeServer()
-      return yield* Effect.scoped(server.handle(makeRequest("/assets\\..\\secret")))
+      const server = yield* AppHttpServer
+      const response = yield* Effect.scoped(server.handle(makeRequest("/app.js")))
+
+      expect(response.status).toBe(200)
+      expect(
+        (response.headers as Record<string, string>)["content-security-policy"]
+      ).toBeUndefined()
     })
   )
-
-  expect(response.status).toBe(400)
 })
 
-test("streams CSP blocked decisions through AppCspInspector", async () => {
+test("returns 404 with CSP header for unknown paths", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const server = yield* AppHttpServer
+      const response = yield* Effect.scoped(server.handle(makeRequest("/missing.js")))
+
+      expect(response.status).toBe(404)
+      const csp = (response.headers as Record<string, string>)["content-security-policy"]
+      expect(typeof csp).toBe("string")
+    })
+  )
+})
+
+test("traversal URLs are rejected before normalization", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const server = yield* AppHttpServer
+      const response = yield* Effect.scoped(server.handle(makeRequest("/assets/../secret")))
+      expect(response.status).toBe(400)
+    })
+  )
+})
+
+test("encoded traversal URLs are rejected before normalization", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const server = yield* AppHttpServer
+      const response = yield* Effect.scoped(server.handle(makeRequest("/%2e%2e/secret")))
+      expect(response.status).toBe(400)
+    })
+  )
+})
+
+test("backslash traversal URLs are rejected before normalization", () => {
+  const runtime = serverRuntime()
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const server = yield* AppHttpServer
+      const response = yield* Effect.scoped(server.handle(makeRequest("/assets\\..\\secret")))
+      expect(response.status).toBe(400)
+    })
+  )
+})
+
+test("streams CSP blocked decisions through AppCspInspector", () => {
   const timestamp = 1_710_000_123_456
-  await Effect.runPromise(
+  return Effect.runPromise(
     Effect.gen(function* () {
       const inspector = yield* makeAppCspInspector()
-      const server = yield* Effect.gen(function* () {
-        return yield* AppHttpServer
-      }).pipe(
-        Effect.provide(
-          Layer.provide(
-            AppHttpServerLive,
-            Layer.mergeAll(
-              Layer.succeed(AppAssetResolver)(staticResolver),
-              AppCspPolicyDefault,
-              Layer.succeed(AppCspInspector)(inspector)
-            )
-          )
+      const layer = Layer.provide(
+        AppHttpServerLive,
+        Layer.mergeAll(
+          Layer.succeed(AppAssetResolver)(staticResolver),
+          AppCspPolicyDefault,
+          Layer.succeed(AppCspInspector)(inspector)
         )
       )
-      const fiber = yield* inspector
-        .observe()
-        .pipe(
-          Stream.take(1),
-          (stream) => Stream.runCollect(stream),
-          Effect.forkChild({ startImmediately: true })
+      const runtime = ManagedRuntime.make(layer)
+      const inner = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const server = yield* AppHttpServer
+            const fiber = yield* inspector
+              .observe()
+              .pipe(
+                Stream.take(1),
+                (stream) => Stream.runCollect(stream),
+                Effect.forkChild({ startImmediately: true })
+              )
+
+            const response = yield* Effect.scoped(server.handle(makeRequest("/assets\\..\\secret")))
+            const events = yield* Fiber.join(fiber)
+            return { events, response }
+          }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
         )
+      )
 
-      const response = yield* Effect.scoped(server.handle(makeRequest("/assets\\..\\secret")))
-      const events = yield* Fiber.join(fiber)
-
-      expect(response.status).toBe(400)
-      expect(events[0]?.kind).toBe("csp")
-      expect(events[0]?.decision).toBe("blocked")
-      expect(events[0]?.reason).toBe("path-traversal")
-      expect(events[0]?.timestamp).toBe(timestamp)
-      expect(events[0]?.traceId).toBe(`csp:${timestamp}`)
-    }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+      expect(inner.response.status).toBe(400)
+      expect(inner.events[0]?.kind).toBe("csp")
+      expect(inner.events[0]?.decision).toBe("blocked")
+      expect(inner.events[0]?.reason).toBe("path-traversal")
+      expect(inner.events[0]?.timestamp).toBe(timestamp)
+      expect(inner.events[0]?.traceId).toBe(`csp:${timestamp}`)
+      yield* Effect.promise(() => runtime.dispose())
+    })
   )
 })
 
-test("AppHttpServerLive requires AppAssetResolver", async () => {
-  const server = await Effect.runPromise(
-    Effect.gen(function* () {
-      return yield* AppHttpServer
-    }).pipe(
-      Effect.provide(
-        Layer.provide(
-          AppHttpServerLive,
-          Layer.mergeAll(Layer.succeed(AppAssetResolver)(staticResolver), AppCspPolicyDefault)
-        )
-      )
-    )
+test("AppHttpServerLive requires AppAssetResolver", () => {
+  const layer = Layer.provide(
+    AppHttpServerLive,
+    Layer.mergeAll(Layer.succeed(AppAssetResolver)(staticResolver), AppCspPolicyDefault)
   )
-
-  const response = await Effect.runPromise(Effect.scoped(server.handle(makeRequest("/"))))
-  expect(response.status).toBe(200)
+  const runtime = ManagedRuntime.make(layer)
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const server = yield* AppHttpServer
+      const response = yield* Effect.scoped(server.handle(makeRequest("/")))
+      expect(response.status).toBe(200)
+    })
+  )
 })
 
 test("mimeTypeForPath returns correct types for known extensions", () => {
@@ -329,46 +355,59 @@ test("mimeTypeForPath returns correct types for known extensions", () => {
   expect(mimeTypeForPath("/no-extension")).toBe("application/octet-stream")
 })
 
-test("AppAssetRoutes serves app assets through the generated HttpApi layer", async () => {
-  const { handler, dispose } = makeWebHandler()
-  try {
-    const response = await handler(new Request("http://localhost/app.js"))
-    const body = await response.text()
+test("AppAssetRoutes serves app assets through the generated HttpApi layer", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const { handler, dispose } = makeWebHandler()
+      try {
+        const response = yield* Effect.promise(() =>
+          handler(new Request("http://localhost/app.js"))
+        )
+        const body = yield* Effect.promise(() => response.text())
 
-    expect(response.status).toBe(200)
-    expect(body).toBe("console.log('hello')")
-  } finally {
-    await dispose()
-  }
-})
+        expect(response.status).toBe(200)
+        expect(body).toBe("console.log('hello')")
+      } finally {
+        yield* Effect.promise(() => dispose())
+      }
+    })
+  ))
 
-test("AppAssetRoutes exposes generated OpenAPI", async () => {
-  const { handler, dispose } = makeWebHandler()
-  try {
-    const response = await handler(new Request("http://localhost/openapi.json"))
-    const spec = decodeOpenApiSpec(await response.json())
+test("AppAssetRoutes exposes generated OpenAPI", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const { handler, dispose } = makeWebHandler()
+      try {
+        const response = yield* Effect.promise(() =>
+          handler(new Request("http://localhost/openapi.json"))
+        )
+        const spec = decodeOpenApiSpec(yield* Effect.promise(() => response.json()))
 
-    expect(response.status).toBe(200)
-    expect(spec.info.title).toBe("Effect Desktop Local API")
-    expect(spec.paths["/*"]?.get.operationId).toBe("asset")
-  } finally {
-    await dispose()
-  }
-})
+        expect(response.status).toBe(200)
+        expect(spec.info.title).toBe("Effect Desktop Local API")
+        expect(spec.paths["/*"]?.get.operationId).toBe("asset")
+      } finally {
+        yield* Effect.promise(() => dispose())
+      }
+    })
+  ))
 
-test("AppAssetRoutes exposes Scalar documentation", async () => {
-  const { handler, dispose } = makeWebHandler()
-  try {
-    const response = await handler(new Request("http://localhost/docs"))
-    const body = await response.text()
+test("AppAssetRoutes exposes Scalar documentation", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const { handler, dispose } = makeWebHandler()
+      try {
+        const response = yield* Effect.promise(() => handler(new Request("http://localhost/docs")))
+        const body = yield* Effect.promise(() => response.text())
 
-    expect(response.status).toBe(200)
-    expect(body).toContain("Effect Desktop Local API")
-    expect(body).toContain('"openapi":"3.1.0"')
-  } finally {
-    await dispose()
-  }
-})
+        expect(response.status).toBe(200)
+        expect(body).toContain("Effect Desktop Local API")
+        expect(body).toContain('"openapi":"3.1.0"')
+      } finally {
+        yield* Effect.promise(() => dispose())
+      }
+    })
+  ))
 
 const fixedClock = (timestamp: number): Clock.Clock => ({
   currentTimeMillisUnsafe: () => timestamp,
