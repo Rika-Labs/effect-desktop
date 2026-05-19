@@ -784,8 +784,11 @@ const expectedWindowCapabilityMethods = [...expectedWindowMethods, "subscribeEve
 
 const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
   "quit",
+  "exit",
   "restart",
+  "relaunch",
   "focus",
+  "activate",
   "requestSingleInstanceLock"
 ]
 
@@ -1102,8 +1105,11 @@ test("App service delegates through a substitutable AppClient port", async () =>
     Effect.gen(function* () {
       const app = yield* App
       yield* app.focus()
+      yield* app.activate()
       yield* app.quit()
+      yield* app.exit({ exitCode: 7 })
       yield* app.restart({ args: ["--restarted"] })
+      yield* app.relaunch({ args: ["--relaunched"] })
       const protocolEvents = yield* app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect)
 
       return { protocolEvents }
@@ -1113,16 +1119,33 @@ test("App service delegates through a substitutable AppClient port", async () =>
   expect(Array.from(result.protocolEvents)).toEqual([
     new AppOpenUrlEvent({ url: "effect-desktop://open" })
   ])
-  expect(calls).toEqual(["focus", "quit:-1", "restart:--restarted"])
+  expect(calls).toEqual([
+    "focus",
+    "activate",
+    "quit:-1",
+    "exit:7",
+    "restart:--restarted",
+    "relaunch:--relaunched"
+  ])
 })
 
 test("App bridge client sends typed host envelopes and decodes event streams", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const exchange = appExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const exchange = appExchange(requests, (request) => ({
+    kind: "success",
+    payload: request.method === "App.requestSingleInstanceLock" ? { acquired: true } : undefined
+  }))
 
   const result = await runScopedPromise(
     Effect.gen(function* () {
       const app = yield* App
+      yield* app.quit({ exitCode: 0 })
+      yield* app.exit({ exitCode: 7 })
+      yield* app.restart({ args: ["--restarted"] })
+      yield* app.relaunch({ args: ["--relaunched"] })
+      yield* app.focus()
+      yield* app.activate()
+      yield* app.requestSingleInstanceLock()
       const openFiles = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
 
       return { openFiles }
@@ -1130,7 +1153,15 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
   )
 
   expect(Array.from(result.openFiles)).toEqual([new AppOpenFileEvent({ path: "/tmp/README.md" })])
-  expect(requests).toEqual([])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["App.quit", { exitCode: 0 }],
+    ["App.exit", { exitCode: 7 }],
+    ["App.restart", { args: ["--restarted"] }],
+    ["App.relaunch", { args: ["--relaunched"] }],
+    ["App.focus", null],
+    ["App.activate", null],
+    ["App.requestSingleInstanceLock", null]
+  ])
 })
 
 test("App bridge client decodes event streams without host requests", async () => {
@@ -1601,7 +1632,9 @@ test("App bridge client rejects empty or NUL-bearing lifecycle args as InvalidAr
 
   const exits = await Promise.all([
     Effect.runPromiseExit(client.restart({ args: [""] })),
-    Effect.runPromiseExit(client.restart({ args: ["--flag", "value\u0000broken"] }))
+    Effect.runPromiseExit(client.restart({ args: ["--flag", "value\u0000broken"] })),
+    Effect.runPromiseExit(client.relaunch({ args: [""] })),
+    Effect.runPromiseExit(client.relaunch({ args: ["--flag", "value\u0000broken"] }))
   ])
 
   for (const exit of exits) {
@@ -1628,7 +1661,9 @@ test("App bridge client rejects non-portable quit exit codes as InvalidArgument"
   )
 
   const exit256 = await Effect.runPromiseExit(client.quit({ exitCode: 256 }))
+  const aliasExit256 = await Effect.runPromiseExit(client.exit({ exitCode: 256 }))
   expectExitFailure(exit256, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(aliasExit256, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
 })
 
@@ -11810,9 +11845,14 @@ const recordVoid = (calls: string[], call: string): Effect.Effect<void, never, n
 const appClient = (calls: string[]): AppClientApi => ({
   quit: (input: { readonly exitCode?: number }) =>
     recordVoid(calls, `quit:${input.exitCode ?? -1}`),
+  exit: (input: { readonly exitCode?: number }) =>
+    recordVoid(calls, `exit:${input.exitCode ?? -1}`),
   restart: (input: { readonly args?: readonly string[] }) =>
     recordVoid(calls, `restart:${input.args?.join(" ") ?? ""}`),
+  relaunch: (input: { readonly args?: readonly string[] }) =>
+    recordVoid(calls, `relaunch:${input.args?.join(" ") ?? ""}`),
   focus: () => recordVoid(calls, "focus"),
+  activate: () => recordVoid(calls, "activate"),
   requestSingleInstanceLock: () => Effect.succeed({ acquired: true }),
   onSecondInstance: () =>
     Stream.make(

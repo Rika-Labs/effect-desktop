@@ -213,12 +213,24 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(app::quit),
     ),
     route(
+        host_protocol::APP_EXIT_METHOD,
+        HostMethodDispatcher::Window(app::exit),
+    ),
+    route(
         host_protocol::APP_RESTART_METHOD,
         HostMethodDispatcher::Window(app::restart),
     ),
     route(
+        host_protocol::APP_RELAUNCH_METHOD,
+        HostMethodDispatcher::Window(app::relaunch),
+    ),
+    route(
         host_protocol::APP_FOCUS_METHOD,
         HostMethodDispatcher::Window(app::focus),
+    ),
+    route(
+        host_protocol::APP_ACTIVATE_METHOD,
+        HostMethodDispatcher::Window(app::activate),
     ),
     route(
         host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
@@ -3012,6 +3024,36 @@ mod tests {
     }
 
     #[test]
+    fn app_exit_routes_to_window_handler() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-exit",
+                    host_protocol::APP_EXIT_METHOD,
+                    serde_json::json!({ "exitCode": 7 }),
+                ),
+                1710000000125,
+            )
+            .expect("app exit should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-exit".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-exit".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(window.quit(), vec![7]);
+    }
+
+    #[test]
     fn app_restart_routes_to_window_handler() {
         let window = Arc::new(FakeWindowHandler::new(
             Ok(WindowCreateResponse::new("window-test")),
@@ -3045,6 +3087,39 @@ mod tests {
     }
 
     #[test]
+    fn app_relaunch_routes_to_window_handler() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-relaunch",
+                    host_protocol::APP_RELAUNCH_METHOD,
+                    serde_json::json!({ "args": ["--relaunched", "safe"] }),
+                ),
+                1710000000125,
+            )
+            .expect("app relaunch should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-relaunch".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-relaunch".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(
+            window.restarts(),
+            vec![vec!["--relaunched".to_string(), "safe".to_string()]]
+        );
+    }
+
+    #[test]
     fn app_focus_routes_to_current_window() {
         let window = Arc::new(FakeWindowHandler::new(
             Ok(WindowCreateResponse::new("window-test")),
@@ -3063,6 +3138,32 @@ mod tests {
                 id: "request-app-focus".to_string(),
                 timestamp: 1710000000125,
                 trace_id: "trace-request-app-focus".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(window.focused(), vec!["window-current".to_string()]);
+    }
+
+    #[test]
+    fn app_activate_routes_to_current_window() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request("request-app-activate", host_protocol::APP_ACTIVATE_METHOD),
+                1710000000125,
+            )
+            .expect("app activate should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-activate".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-activate".to_string(),
                 payload: None,
                 error: None,
             }

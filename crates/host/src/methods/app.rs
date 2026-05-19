@@ -64,8 +64,23 @@ pub(crate) fn quit(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
-    reject_null_field(payload.as_ref(), "exitCode", host_protocol::APP_QUIT_METHOD)?;
-    let input = decode_payload::<AppQuitPayload>(payload, host_protocol::APP_QUIT_METHOD)?;
+    quit_with_operation(handler, payload, host_protocol::APP_QUIT_METHOD)
+}
+
+pub(crate) fn exit(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    quit_with_operation(handler, payload, host_protocol::APP_EXIT_METHOD)
+}
+
+fn quit_with_operation(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+    operation: &'static str,
+) -> Result<Option<Value>, HostProtocolError> {
+    reject_null_field(payload.as_ref(), "exitCode", operation)?;
+    let input = decode_payload::<AppQuitPayload>(payload, operation)?;
     handler.quit(input.exit_code().unwrap_or(0))?;
     Ok(None)
 }
@@ -74,9 +89,24 @@ pub(crate) fn restart(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
-    reject_null_field(payload.as_ref(), "args", host_protocol::APP_RESTART_METHOD)?;
-    let input = decode_payload::<AppRestartPayload>(payload, host_protocol::APP_RESTART_METHOD)?;
-    validate_args(input.args(), host_protocol::APP_RESTART_METHOD)?;
+    restart_with_operation(handler, payload, host_protocol::APP_RESTART_METHOD)
+}
+
+pub(crate) fn relaunch(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    restart_with_operation(handler, payload, host_protocol::APP_RELAUNCH_METHOD)
+}
+
+fn restart_with_operation(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+    operation: &'static str,
+) -> Result<Option<Value>, HostProtocolError> {
+    reject_null_field(payload.as_ref(), "args", operation)?;
+    let input = decode_payload::<AppRestartPayload>(payload, operation)?;
+    validate_args(input.args(), operation)?;
     handler.restart(input.args().unwrap_or(&[]))?;
     Ok(None)
 }
@@ -85,7 +115,22 @@ pub(crate) fn focus(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
-    reject_unexpected_payload(payload, host_protocol::APP_FOCUS_METHOD)?;
+    focus_with_operation(handler, payload, host_protocol::APP_FOCUS_METHOD)
+}
+
+pub(crate) fn activate(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    focus_with_operation(handler, payload, host_protocol::APP_ACTIVATE_METHOD)
+}
+
+fn focus_with_operation(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+    operation: &'static str,
+) -> Result<Option<Value>, HostProtocolError> {
+    reject_unexpected_payload(payload, operation)?;
     let current = handler.get_current()?;
     handler.focus(current.window_id())?;
     Ok(None)

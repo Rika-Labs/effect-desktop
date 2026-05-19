@@ -6,7 +6,6 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -31,44 +30,70 @@ import {
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
-const UnsupportedReason = "host-adapter-unimplemented"
-
-const AppUnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
 const AppSupported = NativeSurface.support.supported
-export const AppQuit = appRpc(
-  "quit",
-  AppQuitInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["quit"] }),
-  AppSupported
-)
-export const AppRestart = appRpc(
-  "restart",
-  AppRestartInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["restart"] }),
-  AppSupported
-)
-export const AppFocus = appRpc(
-  "focus",
-  Schema.Void,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["focus"] }),
-  AppSupported
-)
-export const AppRequestSingleInstanceLock = appRpc(
-  "requestSingleInstanceLock",
-  Schema.Void,
-  AppSingleInstanceOutput,
-  P.nativeInvoke({ primitive: "App", methods: ["requestSingleInstanceLock"] }),
-  AppSupported
-)
+export const AppQuit = NativeSurface.rpc("App", "quit", {
+  payload: AppQuitInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "App", methods: ["quit"] })
+  ),
+  endpoint: "mutation",
+  support: AppSupported
+})
+export const AppExit = NativeSurface.rpc("App", "exit", {
+  payload: AppQuitInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "App", methods: ["exit"] })
+  ),
+  endpoint: "mutation",
+  support: AppSupported
+})
+export const AppRestart = NativeSurface.rpc("App", "restart", {
+  payload: AppRestartInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "App", methods: ["restart"] })
+  ),
+  endpoint: "mutation",
+  support: AppSupported
+})
+export const AppRelaunch = NativeSurface.rpc("App", "relaunch", {
+  payload: AppRestartInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "App", methods: ["relaunch"] })
+  ),
+  endpoint: "mutation",
+  support: AppSupported
+})
+export const AppFocus = NativeSurface.rpc("App", "focus", {
+  payload: Schema.Void,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "App", methods: ["focus"] })
+  ),
+  endpoint: "mutation",
+  support: AppSupported
+})
+export const AppActivate = NativeSurface.rpc("App", "activate", {
+  payload: Schema.Void,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "App", methods: ["activate"] })
+  ),
+  endpoint: "mutation",
+  support: AppSupported
+})
+export const AppRequestSingleInstanceLock = NativeSurface.rpc("App", "requestSingleInstanceLock", {
+  payload: Schema.Void,
+  success: AppSingleInstanceOutput,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "App", methods: ["requestSingleInstanceLock"] })
+  ),
+  endpoint: "mutation",
+  support: AppSupported
+})
 export const AppRpcEvents = Object.freeze({
   onSecondInstance: { payload: AppSecondInstanceEvent },
   onOpenFile: { payload: AppOpenFileEvent },
@@ -78,21 +103,35 @@ export const AppRpcEvents = Object.freeze({
 
 export type AppRpcEvents = typeof AppRpcEvents
 
-const AppRpcGroup = RpcGroup.make(AppQuit, AppRestart, AppFocus, AppRequestSingleInstanceLock)
+const AppRpcGroup = RpcGroup.make(
+  AppQuit,
+  AppExit,
+  AppRestart,
+  AppRelaunch,
+  AppFocus,
+  AppActivate,
+  AppRequestSingleInstanceLock
+)
 
 export const AppRpcs: RpcGroup.RpcGroup<AppRpc> = AppRpcGroup
 
 export const AppMethodNames = Object.freeze([
   "quit",
+  "exit",
   "restart",
+  "relaunch",
   "focus",
+  "activate",
   "requestSingleInstanceLock"
 ] as const)
 
 const AppCapabilityMethods = Object.freeze([
   "quit",
+  "exit",
   "restart",
+  "relaunch",
   "focus",
+  "activate",
   "requestSingleInstanceLock"
 ] as const satisfies readonly (typeof AppMethodNames)[number][])
 
@@ -100,8 +139,11 @@ export type AppError = HostProtocolError
 
 export interface AppClientApi {
   readonly quit: (input: AppQuitOptions) => Effect.Effect<void, AppError, never>
+  readonly exit: (input: AppQuitOptions) => Effect.Effect<void, AppError, never>
   readonly restart: (input: AppRestartOptions) => Effect.Effect<void, AppError, never>
+  readonly relaunch: (input: AppRestartOptions) => Effect.Effect<void, AppError, never>
   readonly focus: () => Effect.Effect<void, AppError, never>
+  readonly activate: () => Effect.Effect<void, AppError, never>
   readonly requestSingleInstanceLock: () => Effect.Effect<AppSingleInstanceResult, AppError, never>
   readonly onSecondInstance: () => Stream.Stream<AppSecondInstanceEvent, AppError, never>
   readonly onOpenFile: () => Stream.Stream<AppOpenFileEvent, AppError, never>
@@ -113,9 +155,14 @@ export class AppClient extends Context.Service<AppClient, AppClientApi>()(
   "@effect-desktop/native/AppClient"
 ) {}
 
-export interface AppServiceApi extends Omit<AppClientApi, "quit" | "restart"> {
+export interface AppServiceApi extends Omit<
+  AppClientApi,
+  "quit" | "exit" | "restart" | "relaunch"
+> {
   readonly quit: (input?: AppQuitOptions) => Effect.Effect<void, AppError, never>
+  readonly exit: (input?: AppQuitOptions) => Effect.Effect<void, AppError, never>
   readonly restart: (input?: AppRestartOptions) => Effect.Effect<void, AppError, never>
+  readonly relaunch: (input?: AppRestartOptions) => Effect.Effect<void, AppError, never>
 }
 
 export class App extends Context.Service<App, AppServiceApi>()("@effect-desktop/native/App") {
@@ -150,15 +197,30 @@ export const AppHandlersLive = AppRpcGroup.toLayer({
       const app = yield* App
       yield* app.quit(input)
     }),
+  "App.exit": (input) =>
+    Effect.gen(function* () {
+      const app = yield* App
+      yield* app.exit(input)
+    }),
   "App.restart": (input) =>
     Effect.gen(function* () {
       const app = yield* App
       yield* app.restart(input)
     }),
+  "App.relaunch": (input) =>
+    Effect.gen(function* () {
+      const app = yield* App
+      yield* app.relaunch(input)
+    }),
   "App.focus": () =>
     Effect.gen(function* () {
       const app = yield* App
       yield* app.focus()
+    }),
+  "App.activate": () =>
+    Effect.gen(function* () {
+      const app = yield* App
+      yield* app.activate()
     }),
   "App.requestSingleInstanceLock": () =>
     Effect.gen(function* () {
@@ -183,8 +245,11 @@ export const makeHostAppRpcRuntime = (
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {
     quit: (input) => client.quit(input ?? {}),
+    exit: (input) => client.exit(input ?? {}),
     restart: (input) => client.restart(input ?? {}),
+    relaunch: (input) => client.relaunch(input ?? {}),
     focus: () => client.focus(),
+    activate: () => client.activate(),
     requestSingleInstanceLock: () => client.requestSingleInstanceLock(),
     onSecondInstance: () => client.onSecondInstance(),
     onOpenFile: () => client.onOpenFile(),
@@ -204,11 +269,20 @@ const appClientFromRpcClient = (
       decodeAppQuitInput(input).pipe(
         Effect.flatMap((decoded) => runAppRpc(client["App.quit"](decoded), "App.quit"))
       ),
+    exit: (input) =>
+      decodeAppQuitInput(input).pipe(
+        Effect.flatMap((decoded) => runAppRpc(client["App.exit"](decoded), "App.exit"))
+      ),
     restart: (input) =>
       decodeAppRestartInput(input).pipe(
         Effect.flatMap((decoded) => runAppRpc(client["App.restart"](decoded), "App.restart"))
       ),
+    relaunch: (input) =>
+      decodeAppRestartInput(input).pipe(
+        Effect.flatMap((decoded) => runAppRpc(client["App.relaunch"](decoded), "App.relaunch"))
+      ),
     focus: () => runAppRpc(client["App.focus"](undefined), "App.focus"),
+    activate: () => runAppRpc(client["App.activate"](undefined), "App.activate"),
     requestSingleInstanceLock: () =>
       runAppRpc(
         client["App.requestSingleInstanceLock"](undefined),
@@ -248,26 +322,6 @@ const decodeInput = <A>(
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
   )
-
-function appRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(
-  method: Method,
-  payload: Payload,
-  success: Success,
-  capability: RpcCapabilityMetadata,
-  support = AppUnsupportedSupport
-) {
-  return NativeSurface.rpc("App", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support
-  })
-}
 
 const runAppRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

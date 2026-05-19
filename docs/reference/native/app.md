@@ -12,10 +12,11 @@ App-level lifecycle and host-operation service. `AppMetadata` owns app identity,
 paths, launch context, and environment-shape reads.
 
 The TypeScript surface is present for contract and bridge-client validation.
-The Rust host implements `App.quit` by requesting event-loop exit, `App.restart`
-by launching the current executable with validated restart args before
-requesting event-loop exit, and `App.focus` by focusing the current native
-window. The Rust host also implements `App.requestSingleInstanceLock` with a
+The Rust host implements `App.quit` and `App.exit` by requesting event-loop exit
+with a portable exit code, `App.restart` and `App.relaunch` by launching the
+current executable with validated restart args before requesting event-loop
+exit, and `App.focus` and `App.activate` by focusing the current native window.
+The Rust host also implements `App.requestSingleInstanceLock` with a
 process-held OS file lock and returns the primary process id when another
 process already owns the lock. When the primary process owns a runtime event
 stream, duplicate launch attempts forward `argv`, `cwd`, `activationReason`,
@@ -39,8 +40,11 @@ launch a smoke-only replacement process.
 | Method                      | Success                   | Runtime support |
 | --------------------------- | ------------------------- | --------------- |
 | `quit`                      | `void`                    | supported       |
+| `exit`                      | `void`                    | supported       |
 | `restart`                   | `void`                    | supported       |
+| `relaunch`                  | `void`                    | supported       |
 | `focus`                     | `void`                    | supported       |
+| `activate`                  | `void`                    | supported       |
 | `requestSingleInstanceLock` | `AppSingleInstanceResult` | supported       |
 
 ## Events

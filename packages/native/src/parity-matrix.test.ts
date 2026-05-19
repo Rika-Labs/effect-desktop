@@ -59,7 +59,15 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
     hostStatus: "routed",
     support: { status: "supported" }
   })
+  expect(result.rows.find((row) => row.tag === "App.activate")).toMatchObject({
+    hostStatus: "routed",
+    support: { status: "supported" }
+  })
   expect(result.rows.find((row) => row.tag === "App.quit")).toMatchObject({
+    hostStatus: "routed",
+    support: { status: "supported" }
+  })
+  expect(result.rows.find((row) => row.tag === "App.exit")).toMatchObject({
     hostStatus: "routed",
     support: { status: "supported" }
   })
@@ -68,6 +76,10 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
     support: { status: "supported" }
   })
   expect(result.rows.find((row) => row.tag === "App.restart")).toMatchObject({
+    hostStatus: "routed",
+    support: { status: "supported" }
+  })
+  expect(result.rows.find((row) => row.tag === "App.relaunch")).toMatchObject({
     hostStatus: "routed",
     support: { status: "supported" }
   })

@@ -41,6 +41,26 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "App.activate",
+      "surface": "App",
+      "method": "activate",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "App.exit",
+      "surface": "App",
+      "method": "exit",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "App.focus",
       "surface": "App",
       "method": "focus",
@@ -54,6 +74,16 @@
       "tag": "App.quit",
       "surface": "App",
       "method": "quit",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "App.relaunch",
+      "surface": "App",
+      "method": "relaunch",
       "capability": "native",
       "support": {
         "status": "supported"
@@ -4197,10 +4227,10 @@
     }
   ],
   "summary": {
-    "total": 239,
-    "routed": 239,
+    "total": 242,
+    "routed": 242,
     "missing": 0,
-    "supported": 136,
+    "supported": 139,
     "partial": 56,
     "unsupported": 47
   }
