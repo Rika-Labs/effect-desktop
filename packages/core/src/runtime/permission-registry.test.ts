@@ -14,157 +14,183 @@ import {
   PermissionRevokedError
 } from "./permission-registry.js"
 
-test("PermissionRegistry denies undeclared capabilities by default and audits the normalized request", async () => {
-  const rows: unknown[] = []
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ audit: memoryAudit(rows), traceId: () => "trace-1" })
-  )
-  const exit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app/file.txt"]), context("window-main"))
-  )
+test("PermissionRegistry denies undeclared capabilities by default and audits the normalized request", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: unknown[] = []
+      const registry = yield* makePermissionRegistry({
+        audit: memoryAudit(rows),
+        traceId: () => "trace-1"
+      })
+      const exit = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/app/file.txt"]), context("window-main"))
+      )
 
-  expectDenied(exit, (error) => {
-    expect(error.reason).toBe("default-deny")
-    expect(error.traceId).toBe("trace-1")
-  })
-  expect(rows).toHaveLength(1)
-  expect(rows[0]).toBeInstanceOf(AuditEvent)
-  expect((rows[0] as AuditEvent).kind).toBe("permission-denied")
-  expect((rows[0] as AuditEvent).source).toBe("default-deny")
-  expect((rows[0] as AuditEvent).traceId).toBe("trace-1")
-  expect((rows[0] as AuditEvent).outcome).toBe("denied")
-})
-
-test("PermissionRegistry allows filesystem writes inside declared roots and denies outside", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
-  )
-
-  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
-  const granted = await Effect.runPromise(
-    registry.check(filesystemWrite(["/tmp/app/config.json"]), context("window-main"))
-  )
-  const denied = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/other/config.json"]), context("window-main"))
-  )
-
-  expect(granted.token).toBe("grant-1")
-  expect(granted.source).toBe("manifest")
-  expectDenied(denied, (error) => {
-    expect(error.reason).toBe("default-deny")
-  })
-})
-
-test("PermissionRegistry uses the Effect Clock when no explicit clock is supplied", async () => {
-  const timestamp = 1_715_000_000_000
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" }).pipe(
-      Effect.provideService(Clock.Clock, fixedClock(timestamp))
-    )
-  )
-
-  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
-  const granted = await Effect.runPromise(
-    registry.check(filesystemWrite(["/tmp/app/config.json"]), context("window-main"))
-  )
-
-  expect(granted.grantedAt).toBe(timestamp)
-})
-
-test("PermissionRegistry allows sqlite opens inside declared database roots and denies outside", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
-  )
-
-  await Effect.runPromise(
-    registry.declare(sqliteOpen(["/tmp/app/databases"]), { source: "manifest" })
-  )
-  const granted = await Effect.runPromise(
-    registry.check(sqliteOpen(["/tmp/app/databases/main.sqlite"]), context("window-main"))
-  )
-  const denied = await Effect.runPromiseExit(
-    registry.check(sqliteOpen(["/tmp/other/main.sqlite"]), context("window-main"))
-  )
-
-  expect(granted.token).toBe("grant-1")
-  expect(granted.source).toBe("manifest")
-  expectDenied(denied, (error) => {
-    expect(error.reason).toBe("default-deny")
-  })
-})
-
-test("PermissionRegistry matches Windows-style roots by path segment", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
-  )
-
-  await Effect.runPromise(
-    registry.declare(sqliteOpen(["C:\\Temp\\app\\databases"]), { source: "manifest" })
-  )
-  const granted = await Effect.runPromise(
-    registry.check(sqliteOpen(["C:\\Temp\\app\\databases\\main.sqlite"]), context("window-main"))
-  )
-  const denied = await Effect.runPromiseExit(
-    registry.check(
-      sqliteOpen(["C:\\Temp\\app\\database-shadow\\main.sqlite"]),
-      context("window-main")
-    )
-  )
-
-  expect(granted.token).toBe("grant-1")
-  expectDenied(denied, (error) => {
-    expect(error.reason).toBe("default-deny")
-  })
-})
-
-test("PermissionRegistry does not let weaker native audit policy cover stronger requests", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
-  )
-
-  await Effect.runPromise(
-    registry.declare(nativeInvoke(["Dialog.openFile"], "never"), { source: "manifest" })
-  )
-  const denied = await Effect.runPromiseExit(
-    registry.check(nativeInvoke(["Dialog.openFile"], "always"), context("window-main"))
-  )
-  const granted = await Effect.runPromise(
-    registry.check(nativeInvoke(["Dialog.openFile"], "never"), context("window-main"))
-  )
-
-  expectDenied(denied, (error) => {
-    expect(error.reason).toBe("default-deny")
-  })
-  expect(granted.token).toBe("grant-1")
-})
-
-test("PermissionRegistry does not let weaker secret audit policy cover stronger requests", async () => {
-  for (const kind of [
-    "secrets.read",
-    "secrets.write",
-    "safeStorage.read",
-    "safeStorage.write"
-  ] as const) {
-    const registry = await Effect.runPromise(
-      makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
-    )
-
-    await Effect.runPromise(
-      registry.declare(secretCapability(kind, ["auth"], "on-deny"), { source: "manifest" })
-    )
-    const denied = await Effect.runPromiseExit(
-      registry.check(secretCapability(kind, ["auth"], "always"), context("window-main"))
-    )
-    const granted = await Effect.runPromise(
-      registry.check(secretCapability(kind, ["auth"], "on-deny"), context("window-main"))
-    )
-
-    expectDenied(denied, (error) => {
-      expect(error.reason).toBe("default-deny")
+      expectDenied(exit, (error) => {
+        expect(error.reason).toBe("default-deny")
+        expect(error.traceId).toBe("trace-1")
+      })
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toBeInstanceOf(AuditEvent)
+      expect((rows[0] as AuditEvent).kind).toBe("permission-denied")
+      expect((rows[0] as AuditEvent).source).toBe("default-deny")
+      expect((rows[0] as AuditEvent).traceId).toBe("trace-1")
+      expect((rows[0] as AuditEvent).outcome).toBe("denied")
     })
-    expect(granted.token).toBe("grant-1")
-  }
-})
+  ))
+
+test("PermissionRegistry allows filesystem writes inside declared roots and denies outside", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1"
+      })
+
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
+      const granted = yield* registry.check(
+        filesystemWrite(["/tmp/app/config.json"]),
+        context("window-main")
+      )
+      const denied = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/other/config.json"]), context("window-main"))
+      )
+
+      expect(granted.token).toBe("grant-1")
+      expect(granted.source).toBe("manifest")
+      expectDenied(denied, (error) => {
+        expect(error.reason).toBe("default-deny")
+      })
+    })
+  ))
+
+test("PermissionRegistry uses the Effect Clock when no explicit clock is supplied", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const timestamp = 1_715_000_000_000
+      const registry = yield* makePermissionRegistry({
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1"
+      }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
+      const granted = yield* registry.check(
+        filesystemWrite(["/tmp/app/config.json"]),
+        context("window-main")
+      )
+
+      expect(granted.grantedAt).toBe(timestamp)
+    })
+  ))
+
+test("PermissionRegistry allows sqlite opens inside declared database roots and denies outside", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1"
+      })
+
+      yield* registry.declare(sqliteOpen(["/tmp/app/databases"]), { source: "manifest" })
+      const granted = yield* registry.check(
+        sqliteOpen(["/tmp/app/databases/main.sqlite"]),
+        context("window-main")
+      )
+      const denied = yield* Effect.exit(
+        registry.check(sqliteOpen(["/tmp/other/main.sqlite"]), context("window-main"))
+      )
+
+      expect(granted.token).toBe("grant-1")
+      expect(granted.source).toBe("manifest")
+      expectDenied(denied, (error) => {
+        expect(error.reason).toBe("default-deny")
+      })
+    })
+  ))
+
+test("PermissionRegistry matches Windows-style roots by path segment", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1"
+      })
+
+      yield* registry.declare(sqliteOpen(["C:\\Temp\\app\\databases"]), { source: "manifest" })
+      const granted = yield* registry.check(
+        sqliteOpen(["C:\\Temp\\app\\databases\\main.sqlite"]),
+        context("window-main")
+      )
+      const denied = yield* Effect.exit(
+        registry.check(
+          sqliteOpen(["C:\\Temp\\app\\database-shadow\\main.sqlite"]),
+          context("window-main")
+        )
+      )
+
+      expect(granted.token).toBe("grant-1")
+      expectDenied(denied, (error) => {
+        expect(error.reason).toBe("default-deny")
+      })
+    })
+  ))
+
+test("PermissionRegistry does not let weaker native audit policy cover stronger requests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1"
+      })
+
+      yield* registry.declare(nativeInvoke(["Dialog.openFile"], "never"), { source: "manifest" })
+      const denied = yield* Effect.exit(
+        registry.check(nativeInvoke(["Dialog.openFile"], "always"), context("window-main"))
+      )
+      const granted = yield* registry.check(
+        nativeInvoke(["Dialog.openFile"], "never"),
+        context("window-main")
+      )
+
+      expectDenied(denied, (error) => {
+        expect(error.reason).toBe("default-deny")
+      })
+      expect(granted.token).toBe("grant-1")
+    })
+  ))
+
+test("PermissionRegistry does not let weaker secret audit policy cover stronger requests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const kind of [
+        "secrets.read",
+        "secrets.write",
+        "safeStorage.read",
+        "safeStorage.write"
+      ] as const) {
+        const registry = yield* makePermissionRegistry({
+          traceId: () => "trace-1",
+          nextToken: () => "grant-1"
+        })
+
+        yield* registry.declare(secretCapability(kind, ["auth"], "on-deny"), {
+          source: "manifest"
+        })
+        const denied = yield* Effect.exit(
+          registry.check(secretCapability(kind, ["auth"], "always"), context("window-main"))
+        )
+        const granted = yield* registry.check(
+          secretCapability(kind, ["auth"], "on-deny"),
+          context("window-main")
+        )
+
+        expectDenied(denied, (error) => {
+          expect(error.reason).toBe("default-deny")
+        })
+        expect(granted.token).toBe("grant-1")
+      }
+    })
+  ))
 
 test("PermissionRegistry does not let narrower network policy cover ask-unknown requests", async () => {
   const registry = await Effect.runPromise(
