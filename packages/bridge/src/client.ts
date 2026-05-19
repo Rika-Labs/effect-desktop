@@ -1,4 +1,4 @@
-import { Cause, Clock, Effect, Exit, Fiber, Queue, Result, Schema, Stream } from "effect"
+import { Cause, Clock, Effect, Exit, Fiber, Option, Queue, Result, Schema, Stream } from "effect"
 
 import {
   type BridgeContract,
@@ -796,11 +796,31 @@ const makeRequest = (
       traceId
     } as const
 
-    return new HostProtocolRequestEnvelope({
-      ...request,
-      ...(payload === undefined ? {} : { payload }),
-      ...(windowId === undefined ? {} : { windowId }),
-      ...(originToken === undefined ? {} : { originToken })
+    return makeHostRequestEnvelope(request, payload, windowId, originToken)
+  })
+
+const makeHostRequestEnvelope = (
+  request: {
+    readonly kind: "request"
+    readonly id: string
+    readonly method: string
+    readonly timestamp: number
+    readonly traceId: string
+  },
+  payload: unknown | undefined,
+  windowId: Option.Option<string>,
+  originToken: Option.Option<string>
+): HostProtocolRequestEnvelope =>
+  new HostProtocolRequestEnvelope({
+    ...request,
+    ...(payload === undefined ? {} : { payload }),
+    ...Option.match(windowId, {
+      onNone: () => ({}),
+      onSome: (value) => ({ windowId: value })
+    }),
+    ...Option.match(originToken, {
+      onNone: () => ({}),
+      onSome: (value) => ({ originToken: value })
     })
   })
 

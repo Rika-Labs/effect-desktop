@@ -855,10 +855,10 @@ export const validateOptionalHostProtocolNonEmptyString = (
   field: string,
   value: string | undefined,
   operation: string
-): Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never> =>
+): Effect.Effect<Option.Option<string>, HostProtocolInvalidArgumentError, never> =>
   value === undefined
-    ? Effect.succeed(undefined)
-    : validateHostProtocolNonEmptyString(field, value, operation)
+    ? Effect.succeed(Option.none())
+    : validateHostProtocolNonEmptyString(field, value, operation).pipe(Effect.map(Option.some))
 
 export const makeHostProtocolInvalidOutputError = (
   method: string,
