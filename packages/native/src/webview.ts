@@ -6,7 +6,6 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
-  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -50,78 +49,112 @@ const WebViewRpcSupport = NativeSurface.support.unsupported(WebViewUnsupportedRe
   ]
 })
 
-export const WebViewCreate = webviewRpc(
-  "create",
-  WebViewCreateInput,
-  WebViewResource,
-  P.nativeInvoke({ primitive: "WebView", methods: ["create"] })
-)
-export const WebViewLoadRoute = webviewRpc(
-  "loadRoute",
-  WebViewLoadRouteInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["loadRoute"] })
-)
-export const WebViewLoadUrl = webviewRpc(
-  "loadUrl",
-  WebViewLoadUrlInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["loadUrl"] })
-)
-export const WebViewReload = webviewRpc(
-  "reload",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["reload"] })
-)
-export const WebViewStop = webviewRpc(
-  "stop",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["stop"] })
-)
-export const WebViewGoBack = webviewRpc(
-  "goBack",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["goBack"] })
-)
-export const WebViewGoForward = webviewRpc(
-  "goForward",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["goForward"] })
-)
-export const WebViewGetNavigationState = webviewRpc(
-  "getNavigationState",
-  WebViewHandleInput,
-  WebViewNavigationState,
-  P.nativeInvoke({ primitive: "WebView", methods: ["getNavigationState"] })
-)
-export const WebViewCaptureScreenshot = webviewRpc(
-  "captureScreenshot",
-  WebViewHandleInput,
-  WebViewScreenshot,
-  P.nativeInvoke({ primitive: "WebView", methods: ["captureScreenshot"] })
-)
-export const WebViewSetNavigationPolicy = webviewRpc(
-  "setNavigationPolicy",
-  WebViewSetNavigationPolicyInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["setNavigationPolicy"] })
-)
-export const WebViewCapability = webviewRpc(
-  "capability",
-  WebViewCapabilityInput,
-  WebViewCapabilityResult,
-  { kind: "none" }
-)
-export const WebViewDestroy = webviewRpc(
-  "destroy",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["destroy"] })
-)
+export const WebViewCreate = NativeSurface.rpc("WebView", "create", {
+  payload: WebViewCreateInput,
+  success: WebViewResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["create"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewLoadRoute = NativeSurface.rpc("WebView", "loadRoute", {
+  payload: WebViewLoadRouteInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["loadRoute"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewLoadUrl = NativeSurface.rpc("WebView", "loadUrl", {
+  payload: WebViewLoadUrlInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["loadUrl"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewReload = NativeSurface.rpc("WebView", "reload", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["reload"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewStop = NativeSurface.rpc("WebView", "stop", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["stop"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewGoBack = NativeSurface.rpc("WebView", "goBack", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["goBack"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewGoForward = NativeSurface.rpc("WebView", "goForward", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["goForward"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewGetNavigationState = NativeSurface.rpc("WebView", "getNavigationState", {
+  payload: WebViewHandleInput,
+  success: WebViewNavigationState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["getNavigationState"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewCaptureScreenshot = NativeSurface.rpc("WebView", "captureScreenshot", {
+  payload: WebViewHandleInput,
+  success: WebViewScreenshot,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["captureScreenshot"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewSetNavigationPolicy = NativeSurface.rpc("WebView", "setNavigationPolicy", {
+  payload: WebViewSetNavigationPolicyInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["setNavigationPolicy"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewCapability = NativeSurface.rpc("WebView", "capability", {
+  payload: WebViewCapabilityInput,
+  success: WebViewCapabilityResult,
+  authority: NativeSurface.authority.custom({ kind: "none" }),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
+export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["destroy"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRpcSupport
+})
 
 export const WebViewRpcEvents = Object.freeze({
   NavigationBlocked: { payload: WebViewNavigationBlockedEvent }
@@ -569,20 +602,6 @@ const decodeInput = <A>(
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
   )
-
-function webviewRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc("WebView", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support: WebViewRpcSupport
-  })
-}
 
 const runWebViewRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
