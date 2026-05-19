@@ -18,6 +18,7 @@ use std::{
 
 const CRASH_REPORTER_DIR_ENV: &str = "EFFECT_DESKTOP_CRASH_REPORT_DIR";
 const CRASH_REPORTER_DIR_NAME: &str = "effect-desktop-crash-reports";
+const CRASH_REPORTER_MAX_REPORTS: usize = 20;
 
 static CRASH_REPORTER_STATE: LazyLock<Mutex<CrashReporterState>> =
     LazyLock::new(|| Mutex::new(CrashReporterState::default()));
@@ -310,6 +311,7 @@ fn write_breadcrumb_report(
         )
     })?;
     write_report_bytes(&artifact_path, &bytes)?;
+    prune_report_artifacts(host_protocol::CRASH_REPORTER_FLUSH_METHOD)?;
     state.breadcrumbs.clear();
     Ok(CrashReporterReportPayload::new(
         report_id,
@@ -421,6 +423,69 @@ fn discover_report_artifacts(
     Ok(reports)
 }
 
+fn prune_report_artifacts(operation: &'static str) -> Result<(), HostProtocolError> {
+    let dir = report_dir();
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(host_failure(
+                format!("failed to read crash reporter directory for retention: {error}"),
+                operation,
+            ));
+        }
+    };
+    let mut reports = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            host_failure(
+                format!("failed to read crash reporter retention entry: {error}"),
+                operation,
+            )
+        })?;
+        let path = entry.path();
+        if !is_breadcrumb_artifact_path(&path) {
+            continue;
+        }
+        let file_type = entry.file_type().map_err(|error| {
+            host_failure(
+                format!("failed to inspect crash reporter retention artifact: {error}"),
+                operation,
+            )
+        })?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let metadata = entry.metadata().map_err(|error| {
+            host_failure(
+                format!("failed to stat crash reporter retention artifact: {error}"),
+                operation,
+            )
+        })?;
+        let modified_at = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(0);
+        reports.push((modified_at, path));
+    }
+    if reports.len() <= CRASH_REPORTER_MAX_REPORTS {
+        return Ok(());
+    }
+    reports.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+    let remove_count = reports.len() - CRASH_REPORTER_MAX_REPORTS;
+    for (_, path) in reports.into_iter().take(remove_count) {
+        fs::remove_file(&path).map_err(|error| {
+            host_failure(
+                format!("failed to remove old crash reporter artifact: {error}"),
+                operation,
+            )
+        })?;
+    }
+    Ok(())
+}
+
 fn is_breadcrumb_artifact_path(path: &std::path::Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -513,7 +578,7 @@ fn host_failure(message: impl Into<String>, operation: &'static str) -> HostProt
 mod tests {
     use super::{
         diagnostics_reports, flush, get_reports, record_breadcrumb, start, CrashReporterTestEnv,
-        CRASH_REPORTER_STATE,
+        CRASH_REPORTER_MAX_REPORTS, CRASH_REPORTER_STATE,
     };
     use host_protocol::HostProtocolError;
     use serde_json::json;
@@ -575,6 +640,41 @@ mod tests {
             .expect("artifact path should be a string");
         assert!(report_path.starts_with(&env.dir.display().to_string()));
         assert_eq!(diagnostics_reports().expect("diagnostics reports").len(), 1);
+    }
+
+    #[test]
+    fn crash_reporter_prunes_old_breadcrumb_artifacts() {
+        let env = CrashReporterTestEnv::new("prunes-old-artifacts");
+        start(Some(json!({ "enabled": true }))).expect("start");
+        for index in 0..(CRASH_REPORTER_MAX_REPORTS + 3) {
+            record_breadcrumb(Some(json!({
+                "category": "retention",
+                "message": format!("breadcrumb {index}"),
+                "timestamp": 1710000000000.0 + index as f64
+            })))
+            .expect("breadcrumb");
+            flush(None).expect("flush");
+        }
+
+        let reports = get_reports(None)
+            .expect("get reports")
+            .expect("reports payload");
+        assert_eq!(
+            reports["reports"].as_array().expect("reports array").len(),
+            CRASH_REPORTER_MAX_REPORTS
+        );
+        let artifact_count = std::fs::read_dir(&env.dir)
+            .expect("report dir should be readable")
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .path()
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("breadcrumb-") && name.ends_with(".json"))
+            })
+            .count();
+        assert_eq!(artifact_count, CRASH_REPORTER_MAX_REPORTS);
     }
 
     #[test]

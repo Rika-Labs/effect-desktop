@@ -37,7 +37,8 @@ are still unavailable.
 `artifactPath`, `createdAt`, `sizeBytes`, and `uploaded`. The production host
 populates this for flushed breadcrumb artifacts. `uploaded` is currently always
 `false`. `getReports` is backed by host-owned artifact discovery, so breadcrumb
-artifacts remain visible after a host restart.
+artifacts remain visible after a host restart. The host retains the newest 20
+breadcrumb artifacts and prunes older local breadcrumb artifacts on flush.
 
 ## Errors
 
