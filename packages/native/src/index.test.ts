@@ -45,6 +45,9 @@ import {
   WINDOW_SET_VIBRANCY_METHOD,
   WINDOW_SHOW_METHOD,
   WINDOW_SUBSCRIBE_EVENTS_METHOD,
+  WEBVIEW_ATTACH_DEBUGGER_METHOD,
+  WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+  WEBVIEW_OPEN_DEVTOOLS_METHOD,
   makeHostProtocolHostUnavailableError,
   RpcCapability,
   rpcSupport,
@@ -814,6 +817,9 @@ const expectedWebViewMethods: Array<(typeof WebViewMethodNames)[number]> = [
   "goForward",
   "getNavigationState",
   "captureScreenshot",
+  "openDevTools",
+  "closeDevTools",
+  "attachDebugger",
   "setNavigationPolicy",
   "capability",
   "destroy"
@@ -2068,6 +2074,9 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       yield* webview.goForward(created)
       const navigationState = yield* webview.getNavigationState(created)
       const screenshot = yield* webview.captureScreenshot(created)
+      yield* webview.openDevTools(created)
+      yield* webview.closeDevTools(created)
+      yield* webview.attachDebugger(created)
       yield* webview.setNavigationPolicy(created, {
         allowedOrigins: ["app://localhost"],
         onDisallowed: "block"
@@ -2114,6 +2123,9 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
     "goForward",
     "getNavigationState",
     "captureScreenshot",
+    "openDevTools",
+    "closeDevTools",
+    "attachDebugger",
     "setNavigationPolicy:app://localhost:block",
     "destroy"
   ])
@@ -2153,6 +2165,122 @@ test("WebView service propagates unsupported platform and host failure", async (
   expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
+test("WebView devtools and debugger controls propagate success, unsupported, and host failures", async () => {
+  const calls: string[] = []
+  const successResult = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.openDevTools(webviewHandle)
+      yield* webview.closeDevTools(webviewHandle)
+      yield* webview.attachDebugger(webviewHandle)
+    }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
+  )
+  expect(successResult).toBeUndefined()
+  expect(calls).toEqual(["openDevTools", "closeDevTools", "attachDebugger"])
+
+  const devtoolsUnsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-devtools-debug-build-only",
+    message: "unsupported WebView.openDevTools",
+    operation: WEBVIEW_OPEN_DEVTOOLS_METHOD,
+    recoverable: false
+  })
+  const debuggerUnsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-debugger-protocol-unavailable",
+    message: "unsupported WebView.attachDebugger",
+    operation: WEBVIEW_ATTACH_DEBUGGER_METHOD,
+    recoverable: false
+  })
+  const unsupportedClient: WebViewClientApi = {
+    ...webViewClient([]),
+    openDevTools: () => Effect.fail(devtoolsUnsupported),
+    attachDebugger: () => Effect.fail(debuggerUnsupported)
+  }
+  const hostFailureClient: WebViewClientApi = {
+    ...webViewClient([]),
+    closeDevTools: () =>
+      Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_CLOSE_DEVTOOLS_METHOD))
+  }
+
+  const devtoolsExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.openDevTools(webviewHandle))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+  )
+  const debuggerExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.attachDebugger(webviewHandle))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.closeDevTools(webviewHandle))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(devtoolsExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(debuggerExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+})
+
+test("native host RPC runtime denies protected WebView devtools calls", async () => {
+  const deniedRows: AuditEvent[] = []
+  const runtime = makeNativeHostRpcRuntime(WebViewRpcs, WebViewHandlersLive, {
+    originAuth: RendererOriginAuth.unsafeDisabledForTests
+  })
+  const calls = [
+    {
+      method: WEBVIEW_OPEN_DEVTOOLS_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["openDevTools"] })
+    },
+    {
+      method: WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["closeDevTools"] })
+    },
+    {
+      method: WEBVIEW_ATTACH_DEBUGGER_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["attachDebugger"] })
+    }
+  ] as const
+  const permissions = await Effect.runPromise(
+    makePermissionRegistry({
+      audit: memoryAudit(deniedRows),
+      traceId: () => "trace-webview-denied"
+    })
+  )
+
+  for (const [index, call] of calls.entries()) {
+    const response = await Effect.runPromise(
+      runtime
+        .dispatch(
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: `webview-devtools-denied-${index}`,
+            method: call.method,
+            payload: { webview: webviewHandle },
+            timestamp: 1_710_000_002_600 + index,
+            traceId: `trace-webview-devtools-denied-${index}`
+          })
+        )
+        .pipe(Effect.provideService(PermissionRegistry, permissions))
+    )
+
+    expect(response.kind).toBe("failure")
+    if (response.kind === "failure") {
+      expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+    }
+  }
+
+  expect(deniedRows.map((row) => row.kind)).toEqual(calls.map(() => "permission-denied"))
+  expect(deniedRows.map((row) => row.normalizedCapability)).toEqual(
+    calls.map((call) => call.capability)
+  )
+})
+
 test("WebView bridge client sends typed host envelopes and decodes event streams", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = webViewExchange(requests, (request) => ({
@@ -2185,6 +2313,9 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
         onDisallowed: "openExternal"
       })
       const screenshot = yield* webview.captureScreenshot(created)
+      yield* webview.openDevTools(created)
+      yield* webview.closeDevTools(created)
+      yield* webview.attachDebugger(created)
       const canOpenDevtools = yield* webview.capability("devtools open", { platform: "windows" })
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
       const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
@@ -2240,6 +2371,9 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       }
     ],
     ["WebView.captureScreenshot", { webview: webviewHandle }],
+    ["WebView.openDevTools", { webview: webviewHandle }],
+    ["WebView.closeDevTools", { webview: webviewHandle }],
+    ["WebView.attachDebugger", { webview: webviewHandle }],
     ["WebView.capability", { name: "devtools open", platform: "windows" }]
   ])
 })
@@ -12275,6 +12409,9 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
       calls.push("captureScreenshot")
       return new WebViewScreenshot({ mime: "image/png", bytes: new Uint8Array([1, 2, 3]) })
     }),
+  openDevTools: () => recordVoid(calls, "openDevTools"),
+  closeDevTools: () => recordVoid(calls, "closeDevTools"),
+  attachDebugger: () => recordVoid(calls, "attachDebugger"),
   setNavigationPolicy: (_webview, policy) =>
     recordVoid(
       calls,

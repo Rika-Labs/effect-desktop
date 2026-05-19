@@ -3326,6 +3326,34 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "WebView.attachDebugger",
+      "surface": "WebView",
+      "method": "attachDebugger",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-debugger-protocol-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-debugger-protocol-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-debugger-protocol-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-debugger-protocol-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "WebView.capability",
       "surface": "WebView",
       "method": "capability",
@@ -3376,6 +3404,34 @@
             "platform": "linux",
             "status": "unsupported",
             "reason": "host-adapter-unimplemented"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WebView.closeDevTools",
+      "surface": "WebView",
+      "method": "closeDevTools",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-devtools-debug-build-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "partial",
+            "reason": "host-devtools-debug-build-only"
+          },
+          {
+            "platform": "windows",
+            "status": "partial",
+            "reason": "host-devtools-debug-build-only"
+          },
+          {
+            "platform": "linux",
+            "status": "partial",
+            "reason": "host-devtools-debug-build-only"
           }
         ]
       },
@@ -3572,6 +3628,34 @@
             "platform": "linux",
             "status": "partial",
             "reason": "host-navigation-state-tracked"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WebView.openDevTools",
+      "surface": "WebView",
+      "method": "openDevTools",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "host-devtools-debug-build-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "partial",
+            "reason": "host-devtools-debug-build-only"
+          },
+          {
+            "platform": "windows",
+            "status": "partial",
+            "reason": "host-devtools-debug-build-only"
+          },
+          {
+            "platform": "linux",
+            "status": "partial",
+            "reason": "host-devtools-debug-build-only"
           }
         ]
       },
@@ -4237,11 +4321,11 @@
     }
   ],
   "summary": {
-    "total": 243,
-    "routed": 243,
+    "total": 246,
+    "routed": 246,
     "missing": 0,
     "supported": 140,
-    "partial": 66,
-    "unsupported": 37
+    "partial": 68,
+    "unsupported": 38
   }
 }

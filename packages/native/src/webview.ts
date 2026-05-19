@@ -57,6 +57,22 @@ const WebViewNavigationSupport = NativeSurface.support.partial(WebViewNavigation
     { platform: "linux", status: "partial", reason: WebViewNavigationPartialReason }
   ]
 })
+const WebViewDevToolsPartialReason = "host-devtools-debug-build-only"
+const WebViewDebuggerUnsupportedReason = "host-debugger-protocol-unavailable"
+const WebViewDevToolsSupport = NativeSurface.support.partial(WebViewDevToolsPartialReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: WebViewDevToolsPartialReason },
+    { platform: "windows", status: "partial", reason: WebViewDevToolsPartialReason },
+    { platform: "linux", status: "partial", reason: WebViewDevToolsPartialReason }
+  ]
+})
+const WebViewDebuggerSupport = NativeSurface.support.unsupported(WebViewDebuggerUnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: WebViewDebuggerUnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: WebViewDebuggerUnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: WebViewDebuggerUnsupportedReason }
+  ]
+})
 
 export const WebViewCreate = NativeSurface.rpc("WebView", "create", {
   payload: WebViewCreateInput,
@@ -139,6 +155,33 @@ export const WebViewCaptureScreenshot = NativeSurface.rpc("WebView", "captureScr
   endpoint: "mutation",
   support: WebViewRpcSupport
 })
+export const WebViewOpenDevTools = NativeSurface.rpc("WebView", "openDevTools", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["openDevTools"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewDevToolsSupport
+})
+export const WebViewCloseDevTools = NativeSurface.rpc("WebView", "closeDevTools", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["closeDevTools"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewDevToolsSupport
+})
+export const WebViewAttachDebugger = NativeSurface.rpc("WebView", "attachDebugger", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["attachDebugger"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewDebuggerSupport
+})
 export const WebViewSetNavigationPolicy = NativeSurface.rpc("WebView", "setNavigationPolicy", {
   payload: WebViewSetNavigationPolicyInput,
   success: Schema.Void,
@@ -182,6 +225,9 @@ const WebViewRpcGroup = RpcGroup.make(
   WebViewGoForward,
   WebViewGetNavigationState,
   WebViewCaptureScreenshot,
+  WebViewOpenDevTools,
+  WebViewCloseDevTools,
+  WebViewAttachDebugger,
   WebViewSetNavigationPolicy,
   WebViewCapability,
   WebViewDestroy
@@ -199,6 +245,9 @@ export const WebViewMethodNames = Object.freeze([
   "goForward",
   "getNavigationState",
   "captureScreenshot",
+  "openDevTools",
+  "closeDevTools",
+  "attachDebugger",
   "setNavigationPolicy",
   "capability",
   "destroy"
@@ -214,6 +263,8 @@ const WebViewCapabilityMethods = Object.freeze([
   "goForward",
   "getNavigationState",
   "captureScreenshot",
+  "openDevTools",
+  "closeDevTools",
   "setNavigationPolicy",
   "destroy"
 ] as const satisfies readonly (typeof WebViewMethodNames)[number][])
@@ -240,6 +291,9 @@ export interface WebViewClientApi {
   readonly captureScreenshot: (
     webview: WebViewHandle
   ) => Effect.Effect<WebViewScreenshot, WebViewError, never>
+  readonly openDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
+  readonly closeDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
+  readonly attachDebugger: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly setNavigationPolicy: (
     webview: WebViewHandle,
     policy: WebViewNavigationPolicyOptions
@@ -349,6 +403,21 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
       const webview = yield* WebView
       return yield* webview.captureScreenshot(input.webview)
     }),
+  "WebView.openDevTools": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.openDevTools(input.webview)
+    }),
+  "WebView.closeDevTools": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.closeDevTools(input.webview)
+    }),
+  "WebView.attachDebugger": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.attachDebugger(input.webview)
+    }),
   "WebView.setNavigationPolicy": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
@@ -404,6 +473,9 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
     goForward: (webview) => client.goForward(webview),
     getNavigationState: (webview) => client.getNavigationState(webview),
     captureScreenshot: (webview) => client.captureScreenshot(webview),
+    openDevTools: (webview) => client.openDevTools(webview),
+    closeDevTools: (webview) => client.closeDevTools(webview),
+    attachDebugger: (webview) => client.attachDebugger(webview),
     setNavigationPolicy: (webview, policy) => client.setNavigationPolicy(webview, policy),
     capability: (name, options) =>
       client
@@ -479,6 +551,24 @@ const webViewClientFromRpcClient = (
           runWebViewRpc(client["WebView.captureScreenshot"](decoded), "WebView.captureScreenshot")
         ),
         Effect.flatMap(validateWebViewScreenshot)
+      ),
+    openDevTools: (webview) =>
+      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.openDevTools"](decoded), "WebView.openDevTools")
+        )
+      ),
+    closeDevTools: (webview) =>
+      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.closeDevTools"](decoded), "WebView.closeDevTools")
+        )
+      ),
+    attachDebugger: (webview) =>
+      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.attachDebugger"](decoded), "WebView.attachDebugger")
+        )
       ),
     setNavigationPolicy: (webview, policy) =>
       decodeWebViewSetNavigationPolicyInput({ webview: toWebViewHandle(webview), policy }).pipe(
@@ -671,7 +761,7 @@ const WEBVIEW_CAPABILITY_MATRIX: Readonly<
     print: true,
     "popup blocking": true,
     autofill: true,
-    "devtools open": true,
+    "devtools open": "dev-only",
     getUserMedia: true,
     "service workers in app:": true,
     "PDF embedded viewer": true

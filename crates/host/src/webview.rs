@@ -187,6 +187,40 @@ pub(crate) fn attach_child_webview(
     Ok(webview)
 }
 
+#[allow(clippy::result_large_err)]
+pub(crate) fn open_devtools(webview: &HostWebView) -> std::result::Result<(), HostProtocolError> {
+    #[cfg(debug_assertions)]
+    {
+        webview.open_devtools();
+        Ok(())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = webview;
+        Err(HostProtocolError::unsupported(
+            "host-devtools-debug-build-only",
+            host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+        ))
+    }
+}
+
+#[allow(clippy::result_large_err)]
+pub(crate) fn close_devtools(webview: &HostWebView) -> std::result::Result<(), HostProtocolError> {
+    #[cfg(debug_assertions)]
+    {
+        webview.close_devtools();
+        Ok(())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = webview;
+        Err(HostProtocolError::unsupported(
+            "host-devtools-debug-build-only",
+            host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+        ))
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct WebEngineSelection {
     kind: WebEngineKind,

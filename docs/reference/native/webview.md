@@ -65,10 +65,12 @@ routed payload before returning unsupported. Effect Desktop has no
 `WebViewDocument` service for capture-page, print-to-PDF, find-in-page, zoom,
 or user-agent controls.
 
-Inspection controls are not host-backed today. `devtools open` is capability
-metadata only; Effect Desktop has no `WebViewInspection` service,
-`openDevTools`, `closeDevTools`, debugger attach/detach contract, or audited
-host permission path for inspector access.
+Inspection controls are partially host-backed for child WebViews.
+`openDevTools` and `closeDevTools` route through the retained Wry WebView in
+debug builds. Production builds return typed unsupported unless the host is
+compiled with a devtools-enabled WebView provider. `attachDebugger` is a
+permission-gated, validation-first unsupported route because Wry exposes no
+portable debugger protocol attachment API.
 
 Preload isolation is create-time and host-backed for child WebViews.
 `WebView.create` accepts an optional `isolation.exposedApis` manifest. The host
@@ -118,6 +120,9 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 | `goForward`           | `{ webview }`                               | `void`                   |
 | `getNavigationState`  | `{ webview }`                               | navigation state         |
 | `captureScreenshot`   | `{ webview }`                               | screenshot data          |
+| `openDevTools`        | `{ webview }`                               | `void`                   |
+| `closeDevTools`       | `{ webview }`                               | `void`                   |
+| `attachDebugger`      | `{ webview }`                               | `void`                   |
 | `setNavigationPolicy` | `{ webview, policy }`                       | `void`                   |
 | `capability`          | `{ name, platform?, mode? }`                | `{ supported: boolean }` |
 | `destroy`             | `{ webview }`                               | `void`                   |
@@ -173,6 +178,10 @@ those resources and shares the same partial support reason because popup
 approval and external-open delegation are still intentionally conservative.
 Create-time preload isolation is host-backed through Wry initialization-script
 and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
+`openDevTools` and `closeDevTools` are host-backed in debug builds only.
+`attachDebugger` remains typed unsupported with
+`host-debugger-protocol-unavailable` because the current Wry provider does not
+offer a portable debugger attach contract.
 `captureScreenshot` and `capability` remain validation-first unsupported routes
 until their own host adapters land. `webViewCapability(...)` remains a local
 platform and runtime-mode feature helper; it does not grant permission.

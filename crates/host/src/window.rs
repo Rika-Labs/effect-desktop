@@ -429,6 +429,36 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         ))
     }
 
+    fn open_webview_devtools(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+        ))
+    }
+
+    fn close_webview_devtools(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+        ))
+    }
+
+    fn attach_webview_debugger(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-debugger-protocol-unavailable",
+            host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD,
+        ))
+    }
+
     fn set_webview_navigation_policy(
         &self,
         _request: WebViewSetNavigationPolicyRequest,
@@ -902,6 +932,18 @@ enum WindowCommand {
         reply: Sender<WindowCommandReply>,
     },
     GetWebViewNavigationState {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    OpenWebViewDevTools {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    CloseWebViewDevTools {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    AttachWebViewDebugger {
         handle: WebViewHandleRequest,
         reply: Sender<WindowCommandReply>,
     },
@@ -2497,6 +2539,63 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_webview_response(
                 response,
                 host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
+            )),
+        }
+    }
+
+    fn open_webview_devtools(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::OpenWebViewDevTools {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+            )),
+        }
+    }
+
+    fn close_webview_devtools(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::CloseWebViewDevTools {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+            )),
+        }
+    }
+
+    fn attach_webview_debugger(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::AttachWebViewDebugger {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD,
             )),
         }
     }
@@ -4156,6 +4255,36 @@ impl WindowRegistry {
         Ok(resources.navigation.borrow().to_payload())
     }
 
+    fn open_webview_devtools(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD)?;
+        webview::open_devtools(&resources._webview)
+    }
+
+    fn close_webview_devtools(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD)?;
+        webview::close_devtools(&resources._webview)
+    }
+
+    fn attach_webview_debugger(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let _resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD)?;
+        Err(HostProtocolError::unsupported(
+            "host-debugger-protocol-unavailable",
+            host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD,
+        ))
+    }
+
     fn set_webview_navigation_policy(
         &mut self,
         request: WebViewSetNavigationPolicyRequest,
@@ -4859,6 +4988,27 @@ impl WindowRegistry {
                 let result = self
                     .get_webview_navigation_state(&handle)
                     .map(WindowCommandResponse::WebViewNavigationState);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::OpenWebViewDevTools { handle, reply } => {
+                let result = self
+                    .open_webview_devtools(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::CloseWebViewDevTools { handle, reply } => {
+                let result = self
+                    .close_webview_devtools(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::AttachWebViewDebugger { handle, reply } => {
+                let result = self
+                    .attach_webview_debugger(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }

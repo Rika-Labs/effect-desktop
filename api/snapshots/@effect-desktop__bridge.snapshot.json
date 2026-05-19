@@ -1139,6 +1139,11 @@
       "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never>"
     },
     {
+      "name": "WEBVIEW_ATTACH_DEBUGGER_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_ATTACH_DEBUGGER_METHOD: \"WebView.attachDebugger\""
+    },
+    {
       "name": "WEBVIEW_CAPABILITY_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_CAPABILITY_METHOD: \"WebView.capability\""
@@ -1147,6 +1152,11 @@
       "name": "WEBVIEW_CAPTURE_SCREENSHOT_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_CAPTURE_SCREENSHOT_METHOD: \"WebView.captureScreenshot\""
+    },
+    {
+      "name": "WEBVIEW_CLOSE_DEVTOOLS_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_CLOSE_DEVTOOLS_METHOD: \"WebView.closeDevTools\""
     },
     {
       "name": "WEBVIEW_CREATE_METHOD",
@@ -1187,6 +1197,11 @@
       "name": "WEBVIEW_NAVIGATION_BLOCKED_EVENT_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_NAVIGATION_BLOCKED_EVENT_METHOD: \"WebView.NavigationBlocked\""
+    },
+    {
+      "name": "WEBVIEW_OPEN_DEVTOOLS_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_OPEN_DEVTOOLS_METHOD: \"WebView.openDevTools\""
     },
     {
       "name": "WEBVIEW_RELOAD_METHOD",

@@ -1166,6 +1166,18 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(webview::capture_screenshot),
     ),
     route(
+        host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+        HostMethodDispatcher::Window(webview::open_devtools),
+    ),
+    route(
+        host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+        HostMethodDispatcher::Window(webview::close_devtools),
+    ),
+    route(
+        host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD,
+        HostMethodDispatcher::Window(webview::attach_debugger),
+    ),
+    route(
         host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
         HostMethodDispatcher::Window(webview::set_navigation_policy),
     ),
@@ -5129,6 +5141,21 @@ mod tests {
                         "onDisallowed": "openExternal"
                     }
                 }),
+            ),
+            (
+                "request-webview-open-devtools",
+                host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+                serde_json::json!({ "webview": webview }),
+            ),
+            (
+                "request-webview-close-devtools",
+                host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+                serde_json::json!({ "webview": webview }),
+            ),
+            (
+                "request-webview-attach-debugger",
+                host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD,
+                serde_json::json!({ "webview": webview }),
             ),
             (
                 "request-webview-capability",

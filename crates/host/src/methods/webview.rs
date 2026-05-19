@@ -162,6 +162,45 @@ pub(crate) fn capture_screenshot(
     ))
 }
 
+pub(crate) fn open_devtools(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD)?;
+    handler.open_webview_devtools(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+    )?)?;
+
+    Ok(None)
+}
+
+pub(crate) fn close_devtools(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD)?;
+    handler.close_webview_devtools(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+    )?)?;
+
+    Ok(None)
+}
+
+pub(crate) fn attach_debugger(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD)?;
+    handler.attach_webview_debugger(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD,
+    )?)?;
+
+    Ok(None)
+}
+
 pub(crate) fn set_navigation_policy(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
