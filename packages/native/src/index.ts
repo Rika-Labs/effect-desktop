@@ -168,6 +168,34 @@ export {
   type NativeFileSystemServiceApi
 } from "./native-file-system.js"
 export {
+  makeHostNativeNetworkRpcRuntime,
+  makeNativeNetworkBridgeClientLayer,
+  makeNativeNetworkClientLayer,
+  makeNativeNetworkMemoryClient,
+  makeNativeNetworkServiceLayer,
+  makeNativeNetworkUnsupportedClient,
+  NativeNetwork,
+  NativeNetworkClient,
+  NativeNetworkCloseWebSocket,
+  NativeNetworkConnectWebSocket,
+  NativeNetworkFetch,
+  NativeNetworkHandlersLive,
+  NativeNetworkLive,
+  NativeNetworkLocalhostUrl,
+  NativeNetworkMethodNames,
+  NativeNetworkRpcEvents,
+  NativeNetworkRpcs,
+  NativeNetworkSurface,
+  NativeNetworkUpload,
+  type NativeNetworkClientApi,
+  type NativeNetworkError,
+  type NativeNetworkMemoryClientOptions,
+  type NativeNetworkRpc,
+  type NativeNetworkRpcHandlers,
+  type NativeNetworkServiceApi,
+  type NativeNetworkServiceOptions
+} from "./native-network.js"
+export {
   classifyNativeBoundaryError,
   decodeNativeBoundaryError,
   encodeNativeBoundaryError,

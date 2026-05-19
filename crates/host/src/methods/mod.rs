@@ -24,6 +24,7 @@ mod job;
 mod local_tool_runtime;
 mod menu;
 mod native_file_system;
+mod native_network;
 mod network_auth;
 mod notification;
 mod open_intent;
@@ -1351,6 +1352,30 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::WEB_REQUEST_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(web_request::is_supported),
+    ),
+    route(
+        host_protocol::NATIVE_NETWORK_FETCH_METHOD,
+        HostMethodDispatcher::Payload(native_network::fetch),
+    ),
+    route(
+        host_protocol::NATIVE_NETWORK_UPLOAD_METHOD,
+        HostMethodDispatcher::Payload(native_network::upload),
+    ),
+    route(
+        host_protocol::NATIVE_NETWORK_CONNECT_WEB_SOCKET_METHOD,
+        HostMethodDispatcher::Payload(native_network::connect_web_socket),
+    ),
+    route(
+        host_protocol::NATIVE_NETWORK_CLOSE_WEB_SOCKET_METHOD,
+        HostMethodDispatcher::Payload(native_network::close_web_socket),
+    ),
+    route(
+        host_protocol::NATIVE_NETWORK_LOCALHOST_URL_METHOD,
+        HostMethodDispatcher::Payload(native_network::localhost_url),
+    ),
+    route(
+        host_protocol::NATIVE_NETWORK_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(native_network::is_supported),
     ),
 ];
 

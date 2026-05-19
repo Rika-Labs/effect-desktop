@@ -374,6 +374,13 @@ pub const WEB_REQUEST_ON_HEADERS_RECEIVED_METHOD: &str = "WebRequest.onHeadersRe
 pub const WEB_REQUEST_REMOVE_LISTENER_METHOD: &str = "WebRequest.removeListener";
 pub const WEB_REQUEST_IS_SUPPORTED_METHOD: &str = "WebRequest.isSupported";
 pub const WEB_REQUEST_EVENT: &str = "WebRequest.Event";
+pub const NATIVE_NETWORK_FETCH_METHOD: &str = "NativeNetwork.fetch";
+pub const NATIVE_NETWORK_UPLOAD_METHOD: &str = "NativeNetwork.upload";
+pub const NATIVE_NETWORK_CONNECT_WEB_SOCKET_METHOD: &str = "NativeNetwork.connectWebSocket";
+pub const NATIVE_NETWORK_CLOSE_WEB_SOCKET_METHOD: &str = "NativeNetwork.closeWebSocket";
+pub const NATIVE_NETWORK_LOCALHOST_URL_METHOD: &str = "NativeNetwork.localhostUrl";
+pub const NATIVE_NETWORK_IS_SUPPORTED_METHOD: &str = "NativeNetwork.isSupported";
+pub const NATIVE_NETWORK_EVENT: &str = "NativeNetwork.Event";
 pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
@@ -10953,6 +10960,416 @@ impl WebRequestEventPayload {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkRequestResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl NativeNetworkRequestResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "native-network-request".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkWebSocketResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl NativeNetworkWebSocketResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "native-network-websocket".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE", rename_all_fields = "camelCase")]
+pub enum NativeNetworkHttpMethodPayload {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum NativeNetworkWebSocketStatePayload {
+    Open,
+    Closing,
+    Closed,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum NativeNetworkEventPhasePayload {
+    FetchStarted,
+    FetchCompleted,
+    UploadStarted,
+    UploadProgress,
+    UploadCompleted,
+    WebsocketOpened,
+    WebsocketClosed,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkHeaderPayload {
+    name: String,
+    value: String,
+}
+
+impl NativeNetworkHeaderPayload {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkFetchPayload {
+    url: String,
+    method: NativeNetworkHttpMethodPayload,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    headers: Vec<NativeNetworkHeaderPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkFetchPayload {
+    pub fn new(url: impl Into<String>, method: NativeNetworkHttpMethodPayload) -> Self {
+        Self {
+            url: url.into(),
+            method,
+            headers: Vec::new(),
+            body: None,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_body(mut self, body: impl Into<String>) -> Self {
+        self.body = Some(body.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkUploadPayload {
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    method: Option<NativeNetworkHttpMethodPayload>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    headers: Vec<NativeNetworkHeaderPayload>,
+    body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkUploadPayload {
+    pub fn new(url: impl Into<String>, body: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            method: None,
+            headers: Vec::new(),
+            body: body.into(),
+            file_name: None,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
+        self.file_name = Some(file_name.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkWebSocketConnectPayload {
+    url: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    protocols: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkWebSocketConnectPayload {
+    pub fn new(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            protocols: Vec::new(),
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_protocol(mut self, protocol: impl Into<String>) -> Self {
+        self.protocols.push(protocol.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkWebSocketHandlePayload {
+    socket: NativeNetworkWebSocketResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkWebSocketHandlePayload {
+    pub fn new(socket: NativeNetworkWebSocketResourcePayload) -> Self {
+        Self {
+            socket,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkLocalhostUrlPayload {
+    port: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    secure: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkLocalhostUrlPayload {
+    pub fn new(port: u16) -> Self {
+        Self {
+            port,
+            path: None,
+            secure: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(path.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkFetchResultPayload {
+    request: NativeNetworkRequestResourcePayload,
+    url: String,
+    method: NativeNetworkHttpMethodPayload,
+    status: u16,
+    response_headers: Vec<NativeNetworkHeaderPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<String>,
+}
+
+impl NativeNetworkFetchResultPayload {
+    pub fn new(
+        request: NativeNetworkRequestResourcePayload,
+        url: impl Into<String>,
+        method: NativeNetworkHttpMethodPayload,
+        status: u16,
+    ) -> Self {
+        Self {
+            request,
+            url: url.into(),
+            method,
+            status,
+            response_headers: Vec::new(),
+            body: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkUploadResultPayload {
+    request: NativeNetworkRequestResourcePayload,
+    url: String,
+    status: u16,
+    sent_bytes: u64,
+    response_headers: Vec<NativeNetworkHeaderPayload>,
+}
+
+impl NativeNetworkUploadResultPayload {
+    pub fn new(
+        request: NativeNetworkRequestResourcePayload,
+        url: impl Into<String>,
+        status: u16,
+        sent_bytes: u64,
+    ) -> Self {
+        Self {
+            request,
+            url: url.into(),
+            status,
+            sent_bytes,
+            response_headers: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkWebSocketSnapshotPayload {
+    socket: NativeNetworkWebSocketResourcePayload,
+    url: String,
+    state: NativeNetworkWebSocketStatePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    protocol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl NativeNetworkWebSocketSnapshotPayload {
+    pub fn new(
+        socket: NativeNetworkWebSocketResourcePayload,
+        url: impl Into<String>,
+        state: NativeNetworkWebSocketStatePayload,
+    ) -> Self {
+        Self {
+            socket,
+            url: url.into(),
+            state,
+            protocol: None,
+            message: None,
+        }
+    }
+
+    pub fn with_protocol(mut self, protocol: impl Into<String>) -> Self {
+        self.protocol = Some(protocol.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkLocalhostUrlResultPayload {
+    url: String,
+}
+
+impl NativeNetworkLocalhostUrlResultPayload {
+    pub fn new(url: impl Into<String>) -> Self {
+        Self { url: url.into() }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl NativeNetworkSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: NativeNetworkEventPhasePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request: Option<NativeNetworkRequestResourcePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    socket: Option<NativeNetworkWebSocketResourcePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sent_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl NativeNetworkEventPayload {
+    pub fn new(timestamp: u64, phase: NativeNetworkEventPhasePayload) -> Self {
+        Self {
+            r#type: "native-network-event".to_string(),
+            timestamp,
+            phase,
+            request: None,
+            socket: None,
+            url: None,
+            sent_bytes: None,
+            total_bytes: None,
+            message: None,
+        }
+    }
+
+    pub fn with_request(
+        mut self,
+        request: NativeNetworkRequestResourcePayload,
+        url: impl Into<String>,
+    ) -> Self {
+        self.request = Some(request);
+        self.url = Some(url.into());
+        self
+    }
+
+    pub fn with_socket(
+        mut self,
+        socket: NativeNetworkWebSocketResourcePayload,
+        url: impl Into<String>,
+    ) -> Self {
+        self.socket = Some(socket);
+        self.url = Some(url.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceIndexEventPayload {
     r#type: String,
     timestamp: u64,
@@ -13461,6 +13878,14 @@ mod tests {
         NativeFileSystemStatPayload, NativeFileSystemStopWatchingPayload,
         NativeFileSystemStopWatchingResultPayload, NativeFileSystemSupportedPayload,
         NativeFileSystemWatchPayload, NativeFileSystemWatchResultPayload,
+        NativeNetworkEventPayload, NativeNetworkEventPhasePayload, NativeNetworkFetchPayload,
+        NativeNetworkFetchResultPayload, NativeNetworkHeaderPayload,
+        NativeNetworkHttpMethodPayload, NativeNetworkLocalhostUrlPayload,
+        NativeNetworkLocalhostUrlResultPayload, NativeNetworkRequestResourcePayload,
+        NativeNetworkSupportedPayload, NativeNetworkUploadPayload,
+        NativeNetworkUploadResultPayload, NativeNetworkWebSocketConnectPayload,
+        NativeNetworkWebSocketHandlePayload, NativeNetworkWebSocketResourcePayload,
+        NativeNetworkWebSocketSnapshotPayload, NativeNetworkWebSocketStatePayload,
         NetworkAuthCertificatePayload, NetworkAuthDecisionKindPayload, NetworkAuthDecisionPayload,
         NetworkAuthDecisionRecordPayload, NetworkAuthEventPayload, NetworkAuthEventPhasePayload,
         NetworkAuthHttpAuthPayload, NetworkAuthProxyModePayload, NetworkAuthProxyResultPayload,
@@ -16911,6 +17336,115 @@ mod tests {
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-web-request-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn native_network_payloads_serialize_canonically() {
+        let request =
+            NativeNetworkRequestResourcePayload::new("native-network-request:1", 0, "workspace:1");
+        let socket = NativeNetworkWebSocketResourcePayload::new(
+            "native-network-websocket:1",
+            0,
+            "workspace:1",
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkFetchPayload::new(
+                "https://example.test/data.json",
+                NativeNetworkHttpMethodPayload::Get
+            ))
+            .expect("fetch payload should encode"),
+            r#"{"url":"https://example.test/data.json","method":"GET"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkUploadPayload::new("https://example.test/upload", "payload")
+                    .with_file_name("payload.txt")
+            )
+            .expect("upload payload should encode"),
+            r#"{"url":"https://example.test/upload","body":"payload","fileName":"payload.txt"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkWebSocketConnectPayload::new("wss://example.test/socket")
+                    .with_protocol("events")
+            )
+            .expect("websocket connect payload should encode"),
+            r#"{"url":"wss://example.test/socket","protocols":["events"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkWebSocketHandlePayload::new(socket.clone()))
+                .expect("websocket handle payload should encode"),
+            r#"{"socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkLocalhostUrlPayload::new(3010).with_path("/health")
+            )
+            .expect("localhost payload should encode"),
+            r#"{"port":3010,"path":"/health"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkFetchResultPayload::new(
+                request.clone(),
+                "https://example.test/data.json",
+                NativeNetworkHttpMethodPayload::Get,
+                200
+            ))
+            .expect("fetch result should encode"),
+            r#"{"request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/data.json","method":"GET","status":200,"responseHeaders":[]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkUploadResultPayload::new(
+                request.clone(),
+                "https://example.test/upload",
+                200,
+                7
+            ))
+            .expect("upload result should encode"),
+            r#"{"request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/upload","status":200,"sentBytes":7,"responseHeaders":[]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkWebSocketSnapshotPayload::new(
+                    socket.clone(),
+                    "wss://example.test/socket",
+                    NativeNetworkWebSocketStatePayload::Open
+                )
+                .with_protocol("events")
+            )
+            .expect("websocket snapshot should encode"),
+            r#"{"socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"wss://example.test/socket","state":"open","protocol":"events"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkLocalhostUrlResultPayload::new(
+                "http://127.0.0.1:3010/health"
+            ))
+            .expect("localhost result should encode"),
+            r#"{"url":"http://127.0.0.1:3010/health"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkEventPayload::new(
+                    1710000000003,
+                    NativeNetworkEventPhasePayload::WebsocketOpened
+                )
+                .with_socket(socket, "wss://example.test/socket")
+            )
+            .expect("event should encode"),
+            r#"{"type":"native-network-event","timestamp":1710000000003,"phase":"websocket-opened","socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"wss://example.test/socket"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkSupportedPayload::unsupported(
+                "host-native-network-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-native-network-unavailable"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkHeaderPayload::new("x-audit", "1"))
+                .expect("header should encode"),
+            r#"{"name":"x-audit","value":"1"}"#
         );
     }
 
