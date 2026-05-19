@@ -35,12 +35,15 @@ const Counter = Schema.Number
 const BunServicesRuntime = ManagedRuntime.make(BunServices.layer)
 
 const makeKvMemory = (): Effect.Effect<KeyValueStore.KeyValueStore> =>
-  KeyValueStore.KeyValueStore.asEffect().pipe(Effect.provide(KeyValueStore.layerMemory))
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(KeyValueStore.layerMemory)
+    return yield* Effect.promise(() => runtime.runPromise(KeyValueStore.KeyValueStore.asEffect()))
+  })
 
 const makePersistentSettingsLayer = (
   path: string,
   options: Omit<Parameters<typeof Settings.layer>[0], "path"> = { schemaVersion: 1 }
-): Effect.Effect<Layer.Layer<Settings, never, never>, never, FileSystem.FileSystem | Path.Path> =>
+) =>
   Effect.gen(function* () {
     const pathService = yield* Path.Path
     const fs = yield* FileSystem.FileSystem
@@ -138,7 +141,9 @@ describe("Settings", () => {
     Effect.runPromise(
       Effect.gen(function* () {
         const { store } = yield* makeFixture()
-        const fiber = Effect.runFork(store.changes().pipe(Stream.take(2), Stream.runCollect))
+        const fiber = yield* store
+          .changes()
+          .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
 
         yield* store.set("api.token", UserName, "secret", { source: "seed" })
         yield* store.delete("api.token", { source: "migration" })
@@ -208,7 +213,9 @@ describe("Settings", () => {
       Effect.gen(function* () {
         const { store } = yield* makeFixture()
 
-        const fiber = Effect.runFork(store.changes().pipe(Stream.take(2), Stream.runCollect))
+        const fiber = yield* store
+          .changes()
+          .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
         yield* store.set("user.name", UserName, "alice", { source: "test" })
         yield* store.set("user.name", UserName, "ada", { source: "test" })
         const changes = Array.from(yield* Fiber.join(fiber))
@@ -224,7 +231,9 @@ describe("Settings", () => {
     Effect.runPromise(
       Effect.gen(function* () {
         const { store } = yield* makeFixture()
-        const fiber = Effect.runFork(store.changes().pipe(Stream.runCollect))
+        const fiber = yield* store
+          .changes()
+          .pipe(Stream.runCollect, Effect.forkChild({ startImmediately: true }))
 
         yield* store.close()
         const result = yield* Fiber.join(fiber).pipe(Effect.timeoutOption("10 millis"))
@@ -240,7 +249,9 @@ describe("Settings", () => {
     Effect.runPromise(
       Effect.gen(function* () {
         const { store } = yield* makeFixture()
-        const fiber = Effect.runFork(store.migrated().pipe(Stream.runCollect))
+        const fiber = yield* store
+          .migrated()
+          .pipe(Stream.runCollect, Effect.forkChild({ startImmediately: true }))
 
         yield* store.close()
         const result = yield* Fiber.join(fiber).pipe(Effect.timeoutOption("10 millis"))
@@ -297,9 +308,13 @@ describe("Settings", () => {
               migrationRuntime.runPromise(
                 Effect.gen(function* () {
                   const store2 = yield* Settings
-                  const migratedFiber = Effect.runFork(
-                    store2.migrated().pipe(Stream.take(1), Stream.runCollect)
-                  )
+                  const migratedFiber = yield* store2
+                    .migrated()
+                    .pipe(
+                      Stream.take(1),
+                      Stream.runCollect,
+                      Effect.forkChild({ startImmediately: true })
+                    )
                   const value = yield* store2.get("user.name", UserName)
                   const migrated = yield* Fiber.join(migratedFiber).pipe(
                     Effect.timeoutOption("10 millis")
@@ -578,7 +593,7 @@ const makeFixture = (
   options: {
     readonly schemaVersion?: number
   } = {}
-): Effect.Effect<{ readonly store: SettingsStore }> =>
+) =>
   Effect.gen(function* () {
     const kv = yield* makeKvMemory()
     const store = yield* makeSettings(kv, { schemaVersion: options.schemaVersion ?? 1 })
@@ -601,10 +616,7 @@ function expectFailure<E>(
 const runFailingMigration = (
   migrate: (ctx: SettingsMigrationContext) => Effect.Effect<void, SettingsError, never>,
   seed?: (store: SettingsStore) => Effect.Effect<unknown, SettingsError, never>
-): Effect.Effect<{
-  readonly exit: Exit.Exit<SettingsStore, SettingsError>
-  readonly keys: readonly string[]
-}> =>
+) =>
   Effect.gen(function* () {
     const kv = yield* makeKvMemory()
     const initial = yield* makeSettings(kv, { schemaVersion: 1 })

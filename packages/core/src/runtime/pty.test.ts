@@ -94,10 +94,9 @@ ptyTest("PTY removes the resource when a child exits without awaiting onExit", (
         rows: 24,
         cols: 80
       })
-      yield* waitUntil(async () => {
-        const snapshot = await Effect.runPromise(fixture.registry.list())
-        return snapshot.entries.length === 0
-      })
+      yield* waitUntil(
+        fixture.registry.list().pipe(Effect.map((snapshot) => snapshot.entries.length === 0))
+      )
     })
   )
 )
@@ -121,10 +120,9 @@ ptyTest("PTY removes the resource and releases budget when child exit fails", ()
         rows: 24,
         cols: 80
       })
-      yield* waitUntil(async () => {
-        const snapshot = await Effect.runPromise(fixture.registry.list())
-        return snapshot.entries.length === 0
-      })
+      yield* waitUntil(
+        fixture.registry.list().pipe(Effect.map((snapshot) => snapshot.entries.length === 0))
+      )
       yield* fixture.service.open({
         argv: ["bash"],
         rows: 24,
@@ -885,7 +883,10 @@ interface PtyFixtureOptions {
 const makeFixture = (
   adapter?: PtyAdapter,
   options: PtyFixtureOptions = {}
-): Effect.Effect<{ readonly registry: ResourceRegistryApi; readonly service: PtyApi }> =>
+): Effect.Effect<
+  { readonly registry: ResourceRegistryApi; readonly service: PtyApi },
+  HostProtocolInvalidArgumentError
+> =>
   Effect.gen(function* () {
     const registry = yield* makeResourceRegistry()
     const service = yield* makeService(registry, adapter ?? makeFakeAdapter(), options)
@@ -896,7 +897,7 @@ const makeService = (
   registry: ResourceRegistryApi,
   adapter: PtyAdapter,
   options: PtyFixtureOptions = {}
-): Effect.Effect<PtyApi> =>
+): Effect.Effect<PtyApi, HostProtocolInvalidArgumentError> =>
   makePty(registry, TEST_OWNER, {
     adapter,
     ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
@@ -946,8 +947,10 @@ const makeFakeChild = (options: {
   let forceKillTreeCalls = 0
   let running = true
   let settled = false
-  const exitState = Effect.runSync(Deferred.make<PtyExitStatus, unknown>())
-  const exited = Effect.runPromise(Deferred.await(exitState))
+  const exitState = Effect.runSync(Deferred.make<PtyExitStatus, PtyFakeChildFailure>())
+  const exited = Effect.runPromise(
+    Deferred.await(exitState).pipe(Effect.catch((failure) => Effect.die(failure.cause ?? failure)))
+  )
   const finish = (signal?: string): void => {
     if (settled) {
       return
@@ -976,7 +979,9 @@ const makeFakeChild = (options: {
     settled = true
     clearTimeout(naturalExitTimer)
     running = false
-    Effect.runSync(Deferred.fail(exitState, error).pipe(Effect.asVoid))
+    Effect.runSync(
+      Deferred.fail(exitState, new PtyFakeChildFailure({ cause: error })).pipe(Effect.asVoid)
+    )
   }
   const naturalExitTimer = setTimeout(() => {
     if (options.exitError === undefined) {
@@ -1032,7 +1037,7 @@ const makeFakeChild = (options: {
   async function killFakeChild(signal: PtySignalInput): Promise<void> {
     killedWith = signal
     kills.push(killedWith)
-    if (options.ignoreKill !== true && !options.ignoredSignals?.includes(killedWith)) {
+    if (options.ignoreKill !== true && options.ignoredSignals?.includes(killedWith) !== true) {
       if (options.killExitDelayMs === undefined) {
         finish(String(killedWith))
       } else {
@@ -1074,14 +1079,20 @@ class PtyWaitUntilTimeout extends Schema.TaggedErrorClass<PtyWaitUntilTimeout>()
   { cause: Schema.optionalKey(Schema.Unknown) }
 ) {}
 
-const waitUntil = (
-  predicate: () => boolean | Promise<boolean>
+class PtyFakeChildFailure extends Schema.TaggedErrorClass<PtyFakeChildFailure>()(
+  "PtyFakeChildFailure",
+  { cause: Schema.optionalKey(Schema.Unknown) }
+) {}
+
+const waitUntil = <E>(
+  predicate: Effect.Effect<boolean, E>
 ): Effect.Effect<void, PtyWaitUntilTimeout> =>
-  Effect.tryPromise({
-    try: async () => await predicate(),
-    catch: (cause) => new PtyWaitUntilTimeout({ cause })
-  }).pipe(
-    Effect.flatMap((ready) => (ready ? Effect.void : Effect.fail(new PtyWaitUntilTimeout()))),
+  predicate.pipe(
+    Effect.mapError((cause) => new PtyWaitUntilTimeout({ cause })),
+    Effect.flatMap(
+      (ready): Effect.Effect<void, PtyWaitUntilTimeout> =>
+        ready ? Effect.void : Effect.fail(new PtyWaitUntilTimeout())
+    ),
     Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(200)))),
     Effect.mapError(() => new PtyWaitUntilTimeout())
   )

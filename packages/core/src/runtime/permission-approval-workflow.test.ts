@@ -1,5 +1,17 @@
 import { expect, test } from "bun:test"
-import { Cause, Clock, Effect, Exit, Fiber, Option, Schedule, Stream } from "effect"
+import {
+  Cause,
+  Clock,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Schema,
+  Schedule,
+  Stream
+} from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import { type AuditEventsApi, type AuditEvent } from "./audit-events.js"
@@ -17,103 +29,128 @@ import {
 
 const now = 1_715_000_000_000
 
-const provideEngine = <A, E, R>(
-  effect: Effect.Effect<A, E, R | WorkflowEngine.WorkflowEngine>
-): Effect.Effect<A, E, Exclude<R, WorkflowEngine.WorkflowEngine>> =>
-  effect.pipe(Effect.provide(WorkflowEngine.layerMemory))
+const encodeUnknownJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
-test("PermissionApproval workflow grants when user approves", async () => {
-  const registry = await Effect.runPromise(makePermissionRegistry())
+class WaitingForApprovalToken extends Schema.TaggedErrorClass<WaitingForApprovalToken>()(
+  "WaitingForApprovalToken",
+  {}
+) {}
 
-  const capability = {
-    kind: "filesystem.read" as const,
-    roots: ["/tmp"],
-    audit: "on-deny" as const
-  }
-  const actor = { kind: "app" as const, id: "test-app" }
-  const traceId = "trace-approve-1"
-  const auditRows: AuditEvent[] = []
-
-  let capturedToken: string | undefined
-
-  const layer = makePermissionApprovalWorkflowLayer({
-    registry,
-    audit: memoryAudit(auditRows),
-    notify: (token, _traceId) =>
-      Effect.sync(() => {
-        capturedToken = token
-      })
+const runScoped = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit
   })
 
-  const result = await Effect.runPromise(
+test("PermissionApproval workflow grants when user approves", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const fiber = yield* Effect.forkChild(
-        PermissionApprovalWorkflow.execute({ traceId, capability, actor }).pipe(
-          Effect.provide(layer)
-        )
+      const registry = yield* makePermissionRegistry()
+
+      const capability = {
+        kind: "filesystem.read" as const,
+        roots: ["/tmp"],
+        audit: "on-deny" as const
+      }
+      const actor = { kind: "app" as const, id: "test-app" }
+      const traceId = "trace-approve-1"
+      const auditRows: AuditEvent[] = []
+
+      let capturedToken: string | undefined
+
+      const layer = Layer.provideMerge(
+        makePermissionApprovalWorkflowLayer({
+          registry,
+          audit: memoryAudit(auditRows),
+          notify: (token, _traceId) =>
+            Effect.sync(() => {
+              capturedToken = token
+            })
+        }),
+        WorkflowEngine.layerMemory
       )
-      const token = yield* waitForToken(() => capturedToken)
-      yield* resolveApprovalDeferred(token, true)
-      return yield* Fiber.join(fiber)
-    }).pipe(provideEngine)
-  )
 
-  expect(result).toBeInstanceOf(Grant)
-  expect(result.traceId).toBe(traceId)
-  expect(result.token).toBeDefined()
-  expect(result.grantedAt).toBeGreaterThan(0)
-  expect(auditRows.map((row) => row.kind)).toContain("approval-requested")
-  expect(auditRows.map((row) => row.kind)).toContain("approval-granted")
-  expect(auditRows[0]?.actor).toMatchObject(actor)
-  expect(JSON.stringify(auditRows[0]?.actor)).toBe(JSON.stringify(actor))
-  expect(JSON.stringify(auditRows)).not.toContain(result.token)
-  expect(JSON.stringify(auditRows)).toContain("<redacted:PermissionGrantToken>")
-})
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(
+            PermissionApprovalWorkflow.execute({ traceId, capability, actor }),
+            { startImmediately: true }
+          )
+          const token = yield* waitForToken(() => capturedToken)
+          yield* resolveApprovalDeferred(token, true)
+          return yield* Fiber.join(fiber)
+        }),
+        layer
+      )
 
-test("PermissionApproval workflow fails with PermissionDenied when user denies", async () => {
-  const registry = await Effect.runPromise(makePermissionRegistry())
+      expect(result).toBeInstanceOf(Grant)
+      expect(result.traceId).toBe(traceId)
+      expect(result.token).toBeDefined()
+      expect(result.grantedAt).toBeGreaterThan(0)
+      expect(auditRows.map((row) => row.kind)).toContain("approval-requested")
+      expect(auditRows.map((row) => row.kind)).toContain("approval-granted")
+      expect(auditRows[0]?.actor).toMatchObject(actor)
+      expect(encodeUnknownJson(auditRows[0]?.actor)).toBe(encodeUnknownJson(actor))
+      expect(encodeUnknownJson(auditRows)).not.toContain(result.token)
+      expect(encodeUnknownJson(auditRows)).toContain("<redacted:PermissionGrantToken>")
+    })
+  ))
 
-  const capability = {
-    kind: "network.connect" as const,
-    hosts: ["example.com"],
-    askUnknownHosts: false,
-    audit: "on-deny" as const
-  }
-  const actor = { kind: "app" as const, id: "test-app" }
-  const traceId = "trace-deny-1"
-
-  let capturedToken: string | undefined
-
-  const layer = makePermissionApprovalWorkflowLayer({
-    registry,
-    notify: (token, _traceId) =>
-      Effect.sync(() => {
-        capturedToken = token
-      })
-  })
-
-  const exit = await Effect.runPromise(
+test("PermissionApproval workflow fails with PermissionDenied when user denies", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const fiber = yield* Effect.forkChild(
-        PermissionApprovalWorkflow.execute({ traceId, capability, actor }).pipe(
-          Effect.provide(layer)
-        )
-      )
-      const token = yield* waitForToken(() => capturedToken)
-      yield* resolveApprovalDeferred(token, false)
-      return yield* Effect.exit(Fiber.join(fiber))
-    }).pipe(provideEngine)
-  )
+      const registry = yield* makePermissionRegistry()
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failReason = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failReason).toBeDefined()
-    if (failReason !== undefined) {
-      expect((failReason.error as { _tag: string })._tag).toBe("PermissionDenied")
-    }
-  }
-})
+      const capability = {
+        kind: "network.connect" as const,
+        hosts: ["example.com"],
+        askUnknownHosts: false,
+        audit: "on-deny" as const
+      }
+      const actor = { kind: "app" as const, id: "test-app" }
+      const traceId = "trace-deny-1"
+
+      let capturedToken: string | undefined
+
+      const layer = Layer.provideMerge(
+        makePermissionApprovalWorkflowLayer({
+          registry,
+          notify: (token, _traceId) =>
+            Effect.sync(() => {
+              capturedToken = token
+            })
+        }),
+        WorkflowEngine.layerMemory
+      )
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(
+            PermissionApprovalWorkflow.execute({ traceId, capability, actor }),
+            { startImmediately: true }
+          )
+          const token = yield* waitForToken(() => capturedToken)
+          yield* resolveApprovalDeferred(token, false)
+          return yield* Effect.exit(Fiber.join(fiber))
+        }),
+        layer
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failReason = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failReason).toBeDefined()
+        if (failReason !== undefined) {
+          expect((failReason.error as { _tag: string })._tag).toBe("PermissionDenied")
+        }
+      }
+    })
+  ))
 
 const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
@@ -124,11 +161,12 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
 })
 
 const waitForToken = (read: () => string | undefined): Effect.Effect<string, never, never> =>
-  Effect.suspend(() => {
+  Effect.gen(function* () {
     const token = read()
-    return token === undefined
-      ? Effect.fail(new Error("waiting for approval token"))
-      : Effect.succeed(token)
+    if (token === undefined) {
+      return yield* new WaitingForApprovalToken()
+    }
+    return token
   }).pipe(
     Effect.retry(Schedule.spaced("1 millis").pipe(Schedule.both(Schedule.recurs(100)))),
     Effect.orDie
@@ -147,81 +185,95 @@ test("resolveApprovalDeferred constructs an Effect for the branded token", () =>
   expect(effect).toBeDefined()
 })
 
-test("PermissionApproval workflow records a grant with ttl when ttlMs provided", async () => {
-  const registry = await Effect.runPromise(makePermissionRegistry())
-
-  const capability = {
-    kind: "secrets.read" as const,
-    namespaces: ["vault"],
-    audit: "always" as const
-  }
-  const actor = { kind: "app" as const, id: "test-app" }
-  const traceId = "trace-ttl-1"
-  const ttlMs = 50
-
-  let capturedToken: string | undefined
-
-  const layer = makePermissionApprovalWorkflowLayer({
-    registry,
-    notify: (token, _traceId) =>
-      Effect.sync(() => {
-        capturedToken = token
-      })
-  })
-
-  const result = await Effect.runPromise(
+test("PermissionApproval workflow records a grant with ttl when ttlMs provided", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const fiber = yield* Effect.forkChild(
-        PermissionApprovalWorkflow.execute({ traceId, capability, actor, ttlMs }).pipe(
-          Effect.provide(layer)
-        )
+      const registry = yield* makePermissionRegistry()
+
+      const capability = {
+        kind: "secrets.read" as const,
+        namespaces: ["vault"],
+        audit: "always" as const
+      }
+      const actor = { kind: "app" as const, id: "test-app" }
+      const traceId = "trace-ttl-1"
+      const ttlMs = 50
+
+      let capturedToken: string | undefined
+
+      const layer = Layer.provideMerge(
+        makePermissionApprovalWorkflowLayer({
+          registry,
+          notify: (token, _traceId) =>
+            Effect.sync(() => {
+              capturedToken = token
+            })
+        }),
+        WorkflowEngine.layerMemory
       )
-      const token = yield* waitForToken(() => capturedToken)
-      yield* resolveApprovalDeferred(token, true)
-      return yield* Fiber.join(fiber)
-    }).pipe(provideEngine, Effect.provideService(Clock.Clock, fixedClock(now)))
-  )
 
-  expect(result).toBeInstanceOf(Grant)
-  expect(result.grantedAt).toBe(now)
-  expect(result.expiresAt).toBeDefined()
-  expect(result.expiresAt! - result.grantedAt).toBe(ttlMs)
-})
-
-test("PermissionApproval workflow reports registry declaration failures as typed workflow errors", async () => {
-  const baseRegistry = await Effect.runPromise(makePermissionRegistry())
-  const registry: PermissionRegistryApi = {
-    ...baseRegistry,
-    declare: (_capability, _options) =>
-      Effect.fail(
-        new PermissionInvalidArgumentError({
-          operation: "PermissionRegistry.declare",
-          field: "capability",
-          message: "invalid",
-          cause: Option.none()
-        })
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(
+            PermissionApprovalWorkflow.execute({ traceId, capability, actor, ttlMs }),
+            { startImmediately: true }
+          )
+          const token = yield* waitForToken(() => capturedToken)
+          yield* resolveApprovalDeferred(token, true)
+          return yield* Fiber.join(fiber)
+        }).pipe(Effect.provideService(Clock.Clock, fixedClock(now))),
+        layer
       )
-  }
-  const actor = { kind: "app" as const, id: "test-app" }
 
-  const exit = await Effect.runPromise(
-    Effect.exit(
-      PermissionApprovalWorkflow.execute({
-        traceId: "trace-invalid-capability",
-        capability: { kind: "filesystem.read", roots: [], audit: "on-deny" },
-        actor
-      }).pipe(Effect.provide(makePermissionApprovalWorkflowLayer({ registry })), provideEngine)
-    )
-  )
+      expect(result).toBeInstanceOf(Grant)
+      expect(result.grantedAt).toBe(now)
+      expect(result.expiresAt).toBeDefined()
+      expect(result.expiresAt! - result.grantedAt).toBe(ttlMs)
+    })
+  ))
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failReason = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failReason).toBeDefined()
-    if (failReason !== undefined) {
-      const error = failReason.error as { readonly _tag: string; readonly phase?: string }
-      expect(error._tag).toBe("PermissionApprovalFailed")
-      expect(error.phase).toBe("declare")
-    }
-  }
-})
+test("PermissionApproval workflow reports registry declaration failures as typed workflow errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const baseRegistry = yield* makePermissionRegistry()
+      const registry: PermissionRegistryApi = {
+        ...baseRegistry,
+        declare: (_capability, _options) =>
+          Effect.fail(
+            new PermissionInvalidArgumentError({
+              operation: "PermissionRegistry.declare",
+              field: "capability",
+              message: "invalid",
+              cause: Option.none()
+            })
+          )
+      }
+      const actor = { kind: "app" as const, id: "test-app" }
+      const layer = Layer.provideMerge(
+        makePermissionApprovalWorkflowLayer({ registry }),
+        WorkflowEngine.layerMemory
+      )
+
+      const exit = yield* runScoped(
+        Effect.exit(
+          PermissionApprovalWorkflow.execute({
+            traceId: "trace-invalid-capability",
+            capability: { kind: "filesystem.read", roots: [], audit: "on-deny" },
+            actor
+          })
+        ),
+        layer
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failReason = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failReason).toBeDefined()
+        if (failReason !== undefined) {
+          const error = failReason.error as { readonly _tag: string; readonly phase?: string }
+          expect(error._tag).toBe("PermissionApprovalFailed")
+          expect(error.phase).toBe("declare")
+        }
+      }
+    })
+  ))

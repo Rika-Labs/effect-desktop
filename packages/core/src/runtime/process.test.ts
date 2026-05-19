@@ -19,6 +19,8 @@ import {
   Effect,
   Exit,
   Fiber,
+  Layer,
+  ManagedRuntime,
   Option,
   PlatformError,
   Schedule,
@@ -102,7 +104,10 @@ processTest("Process publishes typed execution inspector events", () =>
         makeFakeSpawner(() => makeFakeChild({ exit: { code: 0 }, stdout: [] })),
         { inspector, now: incrementingClock(100) }
       )
-      const observed = Effect.runFork(inspector.events.pipe(Stream.take(2), Stream.runCollect))
+      const observed = yield* Effect.forkChild(
+        inspector.events.pipe(Stream.take(2), Stream.runCollect),
+        { startImmediately: true }
+      )
       yield* Effect.yieldNow
 
       const handle = yield* fixture.service.spawn("echo", ["hi"])
@@ -125,8 +130,9 @@ processTest("Process exposes live devtools snapshots with pid, command, and exit
       const fixture = yield* makeFixture(
         makeFakeSpawner(() => makeFakeChild({ exit: { code: 7 }, stdout: [] }))
       )
-      const observed = Effect.runFork(
-        fixture.service.observe().pipe(Stream.take(3), Stream.runCollect)
+      const observed = yield* Effect.forkChild(
+        fixture.service.observe().pipe(Stream.take(3), Stream.runCollect),
+        { startImmediately: true }
       )
 
       const handle = yield* fixture.service.spawn("echo", ["hi"])
@@ -158,10 +164,9 @@ processTest("Process removes the resource when a child exits without awaiting ha
       )
 
       yield* fixture.service.spawn("echo", ["hi"])
-      yield* waitUntil(async () => {
-        const snapshot = await Effect.runPromise(fixture.registry.list())
-        return snapshot.entries.length === 0
-      })
+      yield* waitUntil(
+        fixture.registry.list().pipe(Effect.map((snapshot) => snapshot.entries.length === 0))
+      )
     })
   )
 )
@@ -294,7 +299,10 @@ processTest("Process spawn failure timestamps fall back to the Effect Clock", ()
         }),
         { inspector, now: () => Number.NaN }
       )
-      const observed = Effect.runFork(inspector.events.pipe(Stream.take(1), Stream.runCollect))
+      const observed = yield* Effect.forkChild(
+        inspector.events.pipe(Stream.take(1), Stream.runCollect),
+        { startImmediately: true }
+      )
       yield* Effect.yieldNow
 
       const exit = yield* Effect.exit(
@@ -591,10 +599,9 @@ processTest("Process spawn releases budget after child exit", () =>
       )
 
       yield* fixture.service.spawn("echo", ["hi"])
-      yield* waitUntil(async () => {
-        const snapshot = await Effect.runPromise(fixture.registry.list())
-        return snapshot.entries.length === 0
-      })
+      yield* waitUntil(
+        fixture.registry.list().pipe(Effect.map((snapshot) => snapshot.entries.length === 0))
+      )
       yield* fixture.service.spawn("echo", ["hi"])
 
       expect(spawnCalls).toBe(2)
@@ -842,17 +849,24 @@ processTest("Process kill rejects control bytes in signal names", () =>
   )
 )
 
-processTest("Process kill rejects handles after process exit", async () => {
-  const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
-  const fixture = await Effect.runPromise(makeFixture(makeFakeSpawner(() => child)))
-  const handle = await Effect.runPromise(fixture.service.spawn("sleep", ["10"]))
-  await Effect.runPromise(handle.exit)
+processTest("Process kill rejects handles after process exit", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const child = makeFakeChild({ exit: { code: 0 }, stdout: [] })
+      const fixture = yield* makeFixture(makeFakeSpawner(() => child))
+      const handle = yield* fixture.service.spawn("sleep", ["10"])
+      yield* handle.exit
+      yield* waitUntil(
+        fixture.registry.list().pipe(Effect.map((snapshot) => snapshot.entries.length === 0))
+      )
 
-  const exit = await Effect.runPromiseExit(handle.kill("SIGTERM"))
+      const exit = yield* Effect.exit(handle.kill("SIGTERM"))
 
-  expect(child.kills).toEqual([])
-  expectFailure(exit, HostProtocolStaleHandleError)
-})
+      expect(child.kills).toEqual([])
+      expectFailure(exit, HostProtocolStaleHandleError)
+    })
+  )
+)
 
 processTest("Process exit rejects invalid snapshot timestamps before publishing exit state", () =>
   Effect.runPromise(
@@ -869,8 +883,9 @@ processTest("Process exit rejects invalid snapshot timestamps before publishing 
           ),
           { now: () => currentTime }
         )
-        const observed = Effect.runFork(
-          fixture.service.observe().pipe(Stream.take(2), Stream.runCollect)
+        const observed = yield* Effect.forkChild(
+          fixture.service.observe().pipe(Stream.take(2), Stream.runCollect),
+          { startImmediately: true }
         )
         const handle = yield* fixture.service.spawn("echo", ["hi"])
         currentTime = now
@@ -1012,56 +1027,62 @@ if (process.platform !== "win32") {
 
   processTest("Process spawn works against Bun for stdout and exit code", () =>
     Effect.runPromise(
-      Effect.gen(function* () {
-        const fixture = yield* makeFixture()
-        const handle = yield* fixture.service.spawn(process.execPath, [
-          "--eval",
-          "process.stdout.write('hi\\n')"
-        ])
+      runScoped(
+        Effect.gen(function* () {
+          const fixture = yield* makeFixture()
+          const handle = yield* fixture.service.spawn(process.execPath, [
+            "--eval",
+            "process.stdout.write('hi\\n')"
+          ])
 
-        try {
-          yield* Stream.empty.pipe(Stream.run(handle.stdin))
-          const output = yield* handle.stdout.pipe(Stream.runCollect)
-          const status = yield* handle.exit
+          try {
+            yield* Stream.empty.pipe(Stream.run(handle.stdin))
+            const output = yield* handle.stdout.pipe(Stream.runCollect)
+            const status = yield* handle.exit
 
-          expect(decodeChunks([...output])).toBe("hi\n")
-          expect(status.code).toBe(0)
-        } finally {
-          yield* fixture.registry.closeScope("scope-main")
-        }
-      })
+            expect(decodeChunks([...output])).toBe("hi\n")
+            expect(status.code).toBe(0)
+          } finally {
+            yield* fixture.registry.closeScope("scope-main")
+          }
+        }),
+        BunServices.layer
+      )
     )
   )
 
   processTest("Process scope close terminates descendants in the spawned process group", () =>
     Effect.runPromise(
-      Effect.gen(function* () {
-        const directory = yield* Effect.promise(() =>
-          mkdtemp(join(tmpdir(), "effect-desktop-process-"))
-        )
-        const pidFile = join(directory, "children.txt")
-        const fixture = yield* makeFixture(undefined, { gracefulShutdownMs: 50 })
-        try {
-          yield* fixture.service.spawn(
-            "/bin/sh",
-            [
-              "-c",
-              `sleep 30 & echo $! > ${shellQuote(pidFile)}; sleep 30 & echo $! >> ${shellQuote(
-                pidFile
-              )}; wait`
-            ],
-            {}
+      runScoped(
+        Effect.gen(function* () {
+          const directory = yield* Effect.promise(() =>
+            mkdtemp(join(tmpdir(), "effect-desktop-process-"))
           )
-          const childPids = yield* waitForChildPids(pidFile)
+          const pidFile = join(directory, "children.txt")
+          const fixture = yield* makeFixture(undefined, { gracefulShutdownMs: 50 })
+          try {
+            yield* fixture.service.spawn(
+              "/bin/sh",
+              [
+                "-c",
+                `sleep 30 & echo $! > ${shellQuote(pidFile)}; sleep 30 & echo $! >> ${shellQuote(
+                  pidFile
+                )}; wait`
+              ],
+              {}
+            )
+            const childPids = yield* waitForChildPids(pidFile)
 
-          yield* fixture.registry.closeScope("scope-main")
-          yield* waitUntil(() => childPids.every((pid) => !isProcessAlive(pid)))
+            yield* fixture.registry.closeScope("scope-main")
+            yield* waitUntil(Effect.sync(() => childPids.every((pid) => !isProcessAlive(pid))))
 
-          expect(childPids).toHaveLength(2)
-        } finally {
-          yield* Effect.promise(() => rm(directory, { force: true, recursive: true }))
-        }
-      })
+            expect(childPids).toHaveLength(2)
+          } finally {
+            yield* Effect.promise(() => rm(directory, { force: true, recursive: true }))
+          }
+        }),
+        BunServices.layer
+      )
     )
   )
 }
@@ -1075,24 +1096,44 @@ interface ProcessFixtureOptions {
   readonly permissions?: ProcessPermissionPolicy
 }
 
-const makeFixture = (
-  spawner?: ChildProcessSpawner.ChildProcessSpawner["Service"],
-  options: ProcessFixtureOptions = {}
-): Effect.Effect<{
+type ProcessFixture = {
   readonly registry: ResourceRegistryApi
   readonly service: ProcessApi
-}> =>
-  Effect.gen(function* () {
+}
+
+function makeFixture(
+  spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
+  options?: ProcessFixtureOptions
+): Effect.Effect<ProcessFixture, HostProtocolInvalidArgumentError>
+function makeFixture(
+  spawner?: undefined,
+  options?: ProcessFixtureOptions
+): Effect.Effect<
+  ProcessFixture,
+  HostProtocolInvalidArgumentError,
+  ChildProcessSpawner.ChildProcessSpawner
+>
+function makeFixture(
+  spawner?: ChildProcessSpawner.ChildProcessSpawner["Service"],
+  options: ProcessFixtureOptions = {}
+): Effect.Effect<
+  ProcessFixture,
+  HostProtocolInvalidArgumentError,
+  ChildProcessSpawner.ChildProcessSpawner
+> {
+  return Effect.gen(function* () {
     const registry = yield* makeResourceRegistry()
-    const service = yield* makeService(registry, spawner, options)
+    const resolvedSpawner = spawner ?? (yield* ChildProcessSpawner.ChildProcessSpawner.asEffect())
+    const service = yield* makeService(registry, resolvedSpawner, options)
     return { registry, service }
   })
+}
 
 const makeService = (
   registry: ResourceRegistryApi,
-  spawner?: ChildProcessSpawner.ChildProcessSpawner["Service"],
+  spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
   options: ProcessFixtureOptions = {}
-): Effect.Effect<ProcessApi> =>
+): Effect.Effect<ProcessApi, HostProtocolInvalidArgumentError> =>
   makeProcess(registry, TEST_OWNER, {
     ...(options.budgets === undefined ? {} : { budgets: options.budgets }),
     permissions: options.permissions ?? ALLOW_TEST_PROCESS_PERMISSIONS,
@@ -1102,11 +1143,7 @@ const makeService = (
     ...(options.inspector === undefined ? {} : { inspector: options.inspector }),
     ...(options.maxSnapshots === undefined ? {} : { maxSnapshots: options.maxSnapshots }),
     ...(options.now === undefined ? {} : { now: options.now })
-  }).pipe(
-    spawner === undefined
-      ? Effect.provide(BunServices.layer)
-      : Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
-  )
+  }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner))
 
 const ALLOW_TEST_PROCESS_PERMISSIONS: ProcessPermissionPolicy = {
   spawn: ["echo", "sleep", "cat", "definitely-missing", process.execPath, "/bin/sh"]
@@ -1246,14 +1283,12 @@ const makeFakeChild = (options: {
     stdin: Sink.forEach((chunk: Uint8Array) =>
       Effect.gen(function* writeStdinChunk() {
         if (stdinClosed) {
-          return yield* Effect.fail(
-            PlatformError.systemError({
-              _tag: "Unknown",
-              description: "stdin was written after close",
-              method: "stdin",
-              module: "ChildProcessSpawner"
-            })
-          )
+          return yield* PlatformError.systemError({
+            _tag: "Unknown",
+            description: "stdin was written after close",
+            method: "stdin",
+            module: "ChildProcessSpawner"
+          })
         }
         stdinWrites.push(chunk)
       })
@@ -1307,14 +1342,15 @@ class ProcessWaitUntilTimeout extends Schema.TaggedErrorClass<ProcessWaitUntilTi
   { cause: Schema.optionalKey(Schema.Unknown) }
 ) {}
 
-const waitUntil = (
-  predicate: () => boolean | Promise<boolean>
+const waitUntil = <E>(
+  predicate: Effect.Effect<boolean, E>
 ): Effect.Effect<void, ProcessWaitUntilTimeout> =>
-  Effect.tryPromise({
-    try: async () => await predicate(),
-    catch: (cause) => new ProcessWaitUntilTimeout({ cause })
-  }).pipe(
-    Effect.flatMap((ready) => (ready ? Effect.void : Effect.fail(new ProcessWaitUntilTimeout()))),
+  predicate.pipe(
+    Effect.mapError((cause) => new ProcessWaitUntilTimeout({ cause })),
+    Effect.flatMap(
+      (ready): Effect.Effect<void, ProcessWaitUntilTimeout> =>
+        ready ? Effect.void : Effect.fail(new ProcessWaitUntilTimeout())
+    ),
     Effect.retry(Schedule.spaced("10 millis").pipe(Schedule.both(Schedule.recurs(50)))),
     Effect.mapError(() => new ProcessWaitUntilTimeout())
   )
@@ -1340,22 +1376,22 @@ const waitForChildPids = (
 ): Effect.Effect<readonly number[], ProcessWaitUntilTimeout> =>
   Effect.gen(function* () {
     let pids: readonly number[] = []
-    yield* waitUntil(async () => {
-      try {
-        const contents = await readFile(path, "utf-8")
+    const readPids = Effect.tryPromise(() => readFile(path, "utf-8")).pipe(
+      Effect.map((contents) => {
         pids = contents
           .trim()
           .split("\n")
           .filter((line) => line.length > 0)
           .map((line) => Number.parseInt(line, 10))
         return pids.length === 2 && pids.every(Number.isSafeInteger)
-      } catch (error) {
-        if (isNodeErrorCode(error, "ENOENT")) {
-          return false
-        }
-        throw error
-      }
-    })
+      }),
+      Effect.catch((error) =>
+        isNodeErrorCode((error as { cause?: unknown }).cause, "ENOENT")
+          ? Effect.succeed(false)
+          : Effect.die(error)
+      )
+    )
+    yield* waitUntil(readPids)
     return pids
   })
 
@@ -1375,6 +1411,17 @@ const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")
 
 const isNodeErrorCode = (error: unknown, code: string): boolean =>
   typeof error === "object" && error !== null && "code" in error && error.code === code
+
+const runScoped = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit as Exit.Exit<A, E | LE>
+  })
 
 const expectFailure = <E>(
   exit: Exit.Exit<unknown, E>,

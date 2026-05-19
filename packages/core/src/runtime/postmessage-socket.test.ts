@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Deferred, Effect } from "effect"
+import { Deferred, Effect, Exit, Layer, ManagedRuntime } from "effect"
 import { Socket } from "effect/unstable/socket"
 import { layerPostMessageSocket } from "./postmessage-socket.js"
 
@@ -30,78 +30,113 @@ class FakeWindow {
   }
 }
 
-const withFakeWindow = async <A>(window: FakeWindow, run: () => Promise<A>): Promise<A> => {
-  const hadWindow = Reflect.has(globalThis, "window")
-  const previousWindow = Reflect.get(globalThis, "window")
-  Reflect.set(globalThis, "window", window)
-  try {
-    return await run()
-  } finally {
-    if (hadWindow) {
-      Reflect.set(globalThis, "window", previousWindow)
-    } else {
-      Reflect.deleteProperty(globalThis, "window")
-    }
-  }
-}
-
-test("layerPostMessageSocket provides a Socket.Socket service", async () => {
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const socket = yield* Socket.Socket.asEffect()
-      return typeof socket.run
-    }).pipe(Effect.provide(layerPostMessageSocket))
+const withFakeWindow = <A, E, R>(
+  window: FakeWindow,
+  run: Effect.Effect<A, E, R>
+): Effect.Effect<A, E, R> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const hadWindow = Reflect.has(globalThis, "window")
+      const previousWindow = Reflect.get(globalThis, "window")
+      Reflect.set(globalThis, "window", window)
+      return { hadWindow, previousWindow }
+    }),
+    () => run,
+    ({ hadWindow, previousWindow }) =>
+      Effect.sync(() => {
+        if (hadWindow) {
+          Reflect.set(globalThis, "window", previousWindow)
+        } else {
+          Reflect.deleteProperty(globalThis, "window")
+        }
+      })
   )
 
-  expect(result).toBe("function")
-})
-
-test("layerPostMessageSocket socket writer is scoped", async () => {
-  const result = await Effect.runPromise(
+test("layerPostMessageSocket provides a Socket.Socket service", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const socket = yield* Socket.Socket.asEffect()
-      const write = yield* socket.writer
-      return typeof write
-    }).pipe(Effect.scoped, Effect.provide(layerPostMessageSocket))
-  )
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const socket = yield* Socket.Socket.asEffect()
+          return typeof socket.run
+        }),
+        layerPostMessageSocket
+      )
 
-  expect(result).toBe("function")
-})
+      expect(result).toBe("function")
+    })
+  ))
 
-test("layerPostMessageSocket write emits nothing when window is absent", async () => {
-  const result = await Effect.runPromise(
+test("layerPostMessageSocket socket writer is scoped", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const socket = yield* Socket.Socket.asEffect()
-      const write = yield* socket.writer
-      yield* write(new Uint8Array([0x68, 0x69]))
-      return "ok"
-    }).pipe(Effect.scoped, Effect.provide(layerPostMessageSocket))
-  )
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const socket = yield* Socket.Socket.asEffect()
+          const write = yield* socket.writer
+          return typeof write
+        }).pipe(Effect.scoped),
+        layerPostMessageSocket
+      )
 
-  expect(result).toBe("ok")
-})
+      expect(result).toBe("function")
+    })
+  ))
 
-test("layerPostMessageSocket delivers window messages and unregisters listener", async () => {
-  const window = new FakeWindow()
-  const received = await withFakeWindow(window, () =>
-    Effect.runPromise(
-      Effect.gen(function* () {
-        const socket = yield* Socket.Socket.asEffect()
-        const opened = yield* Deferred.make<void>()
-        const receivedChunk = yield* Deferred.make<Uint8Array>()
-        yield* Effect.forkScoped(
-          socket.run((chunk) => Deferred.succeed(receivedChunk, chunk).pipe(Effect.asVoid), {
-            onOpen: Deferred.succeed(opened, undefined).pipe(Effect.asVoid)
-          })
+test("layerPostMessageSocket write emits nothing when window is absent", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const socket = yield* Socket.Socket.asEffect()
+          const write = yield* socket.writer
+          yield* write(new Uint8Array([0x68, 0x69]))
+          return "ok"
+        }).pipe(Effect.scoped),
+        layerPostMessageSocket
+      )
+
+      expect(result).toBe("ok")
+    })
+  ))
+
+test("layerPostMessageSocket delivers window messages and unregisters listener", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const window = new FakeWindow()
+      const received = yield* withFakeWindow(
+        window,
+        runScoped(
+          Effect.gen(function* () {
+            const socket = yield* Socket.Socket.asEffect()
+            const opened = yield* Deferred.make<void>()
+            const receivedChunk = yield* Deferred.make<Uint8Array>()
+            yield* Effect.forkScoped(
+              socket.run((chunk) => Deferred.succeed(receivedChunk, chunk).pipe(Effect.asVoid), {
+                onOpen: Deferred.succeed(opened, undefined).pipe(Effect.asVoid)
+              })
+            )
+            yield* Deferred.await(opened)
+            expect(window.listenerCount).toBe(1)
+            window.dispatch(new Uint8Array([0x68, 0x69]))
+            return yield* Deferred.await(receivedChunk)
+          }).pipe(Effect.scoped),
+          layerPostMessageSocket
         )
-        yield* Deferred.await(opened)
-        expect(window.listenerCount).toBe(1)
-        window.dispatch(new Uint8Array([0x68, 0x69]))
-        return yield* Deferred.await(receivedChunk)
-      }).pipe(Effect.scoped, Effect.provide(layerPostMessageSocket))
-    )
-  )
+      )
 
-  expect([...received]).toEqual([0x68, 0x69])
-  expect(window.listenerCount).toBe(0)
-})
+      expect([...received]).toEqual([0x68, 0x69])
+      expect(window.listenerCount).toBe(0)
+    })
+  ))
+
+const runScoped = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit as Exit.Exit<A, E | LE>
+  })

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Fiber, Layer, Stream } from "effect"
+import { Effect, Exit, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
 import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
 
 import {
@@ -33,237 +33,261 @@ const auditLayer = Layer.mergeAll(
 
 const eventLogLayer = Layer.provide(EL.layerEventLog, auditLayer)
 
-const makeAuditFixture = (): Effect.Effect<AuditEventsApi> =>
+const encodeUnknownJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
+const runScoped = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit
+  })
+
+const makeAuditFixture = (): Effect.Effect<AuditEventsApi, never, EL.EventLog> =>
   Effect.gen(function* () {
     const log = yield* EL.EventLog
     return makeAuditEvents(log)
-  }).pipe(Effect.provide(eventLogLayer))
+  })
 
-test("AuditEvents writes audit events with redacted secret-shaped details", async () => {
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const audit = yield* makeAuditFixture()
+test("AuditEvents writes audit events with redacted secret-shaped details", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const audit = yield* makeAuditFixture()
 
-      yield* audit.emit(
-        permissionAuditEvent({
-          kind: "permission-denied",
-          source: "test",
-          traceId: "trace-1",
-          outcome: "denied",
-          normalizedCapability: filesystemWrite(["/tmp/app"]),
-          actor: new PermissionActor({ kind: "window", id: "window-main" }),
-          resource: "/tmp/app/secret.json",
-          details: {
-            reason: "default-deny",
-            apiKey: "secret-value"
-          }
-        })
-      )
-
-      expect(true).toBe(true)
-    })
-  )
-})
-
-test("AuditEvents applies configured redaction policy before writing events", async () => {
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const log = yield* EL.EventLog
-      const audit = makeAuditEvents(log, {
-        redaction: {
-          additionalPatterns: ["customerSsn"],
-          allowlist: ["details.sessionLabel"]
-        }
-      })
-
-      yield* audit.emit(
-        permissionAuditEvent({
-          kind: "permission-denied",
-          source: "test",
-          traceId: "trace-1",
-          outcome: "denied",
-          normalizedCapability: filesystemWrite(["/tmp/app"]),
-          actor: new PermissionActor({ kind: "window", id: "window-main" }),
-          details: {
-            customerSsn: "123-45-6789",
-            sessionLabel: "safe-session"
-          }
-        })
-      )
-
-      const entries = yield* log.entries
-      const payload = entries[0]?.payload
-      const encodedPayload =
-        payload instanceof Uint8Array ? Buffer.from(payload).toString("utf8") : ""
-      expect(encodedPayload).toContain("<redacted:redacted>")
-      expect(encodedPayload).toContain("safe-session")
-      expect(encodedPayload).not.toContain("123-45-6789")
-    }).pipe(Effect.provide(eventLogLayer))
-  )
-})
-
-test("AuditEvents streams sanitized typed audit events", async () => {
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const audit = yield* makeAuditFixture()
-      const fiber = yield* audit
-        .observe()
-        .pipe(
-          Stream.take(1),
-          (stream) => Stream.runCollect(stream),
-          Effect.forkChild({ startImmediately: true })
-        )
-
-      yield* audit.emit(
-        secretsAuditEvent({
-          source: "test",
-          traceId: "trace-secret",
-          outcome: "ok",
-          operation: "read",
-          namespace: "default",
-          key: "api-token"
-        })
-      )
-
-      const events = yield* Fiber.join(fiber)
-      const event = events[0]
-      expect(event?.kind).toBe("secrets-accessed")
-      expect(JSON.stringify(event)).toContain("api-token")
-      expect(JSON.stringify(event)).not.toContain("secret-value")
-    })
-  )
-})
-
-test("AuditEvents emits without error for all AuditEventKind values", async () => {
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const audit = yield* makeAuditFixture()
-
-      const permissionKinds: AuditEvent["kind"][] = [
-        "permission-granted",
-        "permission-denied",
-        "permission-revoked",
-        "permission-expired",
-        "permission-consumed",
-        "permission-used"
-      ]
-
-      for (const kind of permissionKinds) {
         yield* audit.emit(
           permissionAuditEvent({
-            kind: kind as Parameters<typeof permissionAuditEvent>[0]["kind"],
-            source: "test",
-            traceId: `trace-${kind}`,
-            outcome: "ok",
-            normalizedCapability: filesystemWrite(["/tmp/app"]),
-            actor: new PermissionActor({ kind: "window", id: "window-main" })
-          })
-        )
-      }
-
-      for (const kind of ["approval-requested", "approval-granted", "approval-denied"] as const) {
-        yield* audit.emit(
-          approvalAuditEvent({
-            kind,
-            source: "test",
-            traceId: `trace-${kind}`,
-            outcome: "ok",
-            actor: "window-main"
-          })
-        )
-      }
-
-      for (const kind of [
-        "command-registered",
-        "command-unregistered",
-        "command-invoked"
-      ] as const) {
-        yield* audit.emit(
-          new AuditEvent({
-            kind,
-            source: "test",
-            traceId: `trace-${kind}`,
-            outcome: "ok",
-            details: { commandId: "command:test" }
-          })
-        )
-      }
-
-      yield* audit.emit(
-        new AuditEvent({
-          kind: "job-retrying",
-          source: "test",
-          traceId: "trace-job-retrying",
-          outcome: "retrying",
-          details: { attempt: 1 }
-        })
-      )
-      yield* audit.emit(
-        secretsAuditEvent({
-          source: "test",
-          traceId: "trace-secrets-accessed",
-          outcome: "ok",
-          operation: "read",
-          namespace: "default"
-        })
-      )
-      yield* audit.emit(
-        new AuditEvent({
-          kind: "trace-id-missing",
-          source: "test",
-          traceId: "trace-missing",
-          outcome: "auto-minted",
-          details: {
-            boundary: "host-runtime",
-            envelopeKind: "request",
-            requestId: "1",
-            method: "Native.ping"
-          }
-        })
-      )
-
-      expect(true).toBe(true)
-    })
-  )
-})
-
-test("AuditEvents rejects malformed typed eventlog payloads before append", async () => {
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const audit = yield* makeAuditFixture()
-      return yield* Effect.exit(
-        audit.emit(
-          new AuditEvent({
             kind: "permission-denied",
             source: "test",
-            traceId: "trace-malformed",
-            outcome: "denied"
+            traceId: "trace-1",
+            outcome: "denied",
+            normalizedCapability: filesystemWrite(["/tmp/app"]),
+            actor: new PermissionActor({ kind: "window", id: "window-main" }),
+            resource: "/tmp/app/secret.json",
+            details: {
+              reason: "default-deny",
+              apiKey: "secret-value"
+            }
           })
         )
-      )
-    })
-  )
 
-  expect(Exit.isFailure(exit)).toBe(true)
-})
-
-test("AuditEvents emit is a no-op when audit is undefined", async () => {
-  const { emitAuditEvent } = await import("./audit-events.js")
-  const result = await Effect.runPromise(
-    emitAuditEvent(
-      undefined,
-      new AuditEvent({
-        kind: "permission-granted",
-        source: "test",
-        traceId: "t1",
-        outcome: "granted"
-      })
+        expect(true).toBe(true)
+      }),
+      eventLogLayer
     )
-  )
-  expect(result).toBeUndefined()
-})
+  ))
 
-test("AuditEvent constructors reject invalid payload timestamps before append", async () => {
+test("AuditEvents applies configured redaction policy before writing events", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const log = yield* EL.EventLog
+        const audit = makeAuditEvents(log, {
+          redaction: {
+            additionalPatterns: ["customerSsn"],
+            allowlist: ["details.sessionLabel"]
+          }
+        })
+
+        yield* audit.emit(
+          permissionAuditEvent({
+            kind: "permission-denied",
+            source: "test",
+            traceId: "trace-1",
+            outcome: "denied",
+            normalizedCapability: filesystemWrite(["/tmp/app"]),
+            actor: new PermissionActor({ kind: "window", id: "window-main" }),
+            details: {
+              customerSsn: "123-45-6789",
+              sessionLabel: "safe-session"
+            }
+          })
+        )
+
+        const entries = yield* log.entries
+        const payload = entries[0]?.payload
+        const encodedPayload =
+          payload instanceof Uint8Array ? Buffer.from(payload).toString("utf8") : ""
+        expect(encodedPayload).toContain("<redacted:redacted>")
+        expect(encodedPayload).toContain("safe-session")
+        expect(encodedPayload).not.toContain("123-45-6789")
+      }),
+      eventLogLayer
+    )
+  ))
+
+test("AuditEvents streams sanitized typed audit events", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const audit = yield* makeAuditFixture()
+        const fiber = yield* audit
+          .observe()
+          .pipe(
+            Stream.take(1),
+            (stream) => Stream.runCollect(stream),
+            Effect.forkChild({ startImmediately: true })
+          )
+
+        yield* audit.emit(
+          secretsAuditEvent({
+            source: "test",
+            traceId: "trace-secret",
+            outcome: "ok",
+            operation: "read",
+            namespace: "default",
+            key: "api-token"
+          })
+        )
+
+        const events = yield* Fiber.join(fiber)
+        const event = events[0]
+        expect(event?.kind).toBe("secrets-accessed")
+        expect(encodeUnknownJson(event)).toContain("api-token")
+        expect(encodeUnknownJson(event)).not.toContain("secret-value")
+      }),
+      eventLogLayer
+    )
+  ))
+
+test("AuditEvents emits without error for all AuditEventKind values", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const audit = yield* makeAuditFixture()
+
+        const permissionKinds: AuditEvent["kind"][] = [
+          "permission-granted",
+          "permission-denied",
+          "permission-revoked",
+          "permission-expired",
+          "permission-consumed",
+          "permission-used"
+        ]
+
+        for (const kind of permissionKinds) {
+          yield* audit.emit(
+            permissionAuditEvent({
+              kind: kind as Parameters<typeof permissionAuditEvent>[0]["kind"],
+              source: "test",
+              traceId: `trace-${kind}`,
+              outcome: "ok",
+              normalizedCapability: filesystemWrite(["/tmp/app"]),
+              actor: new PermissionActor({ kind: "window", id: "window-main" })
+            })
+          )
+        }
+
+        for (const kind of ["approval-requested", "approval-granted", "approval-denied"] as const) {
+          yield* audit.emit(
+            approvalAuditEvent({
+              kind,
+              source: "test",
+              traceId: `trace-${kind}`,
+              outcome: "ok",
+              actor: "window-main"
+            })
+          )
+        }
+
+        for (const kind of [
+          "command-registered",
+          "command-unregistered",
+          "command-invoked"
+        ] as const) {
+          yield* audit.emit(
+            new AuditEvent({
+              kind,
+              source: "test",
+              traceId: `trace-${kind}`,
+              outcome: "ok",
+              details: { commandId: "command:test" }
+            })
+          )
+        }
+
+        yield* audit.emit(
+          new AuditEvent({
+            kind: "job-retrying",
+            source: "test",
+            traceId: "trace-job-retrying",
+            outcome: "retrying",
+            details: { attempt: 1 }
+          })
+        )
+        yield* audit.emit(
+          secretsAuditEvent({
+            source: "test",
+            traceId: "trace-secrets-accessed",
+            outcome: "ok",
+            operation: "read",
+            namespace: "default"
+          })
+        )
+        yield* audit.emit(
+          new AuditEvent({
+            kind: "trace-id-missing",
+            source: "test",
+            traceId: "trace-missing",
+            outcome: "auto-minted",
+            details: {
+              boundary: "host-runtime",
+              envelopeKind: "request",
+              requestId: "1",
+              method: "Native.ping"
+            }
+          })
+        )
+
+        expect(true).toBe(true)
+      }),
+      eventLogLayer
+    )
+  ))
+
+test("AuditEvents rejects malformed typed eventlog payloads before append", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const audit = yield* makeAuditFixture()
+        const exit = yield* Effect.exit(
+          audit.emit(
+            new AuditEvent({
+              kind: "permission-denied",
+              source: "test",
+              traceId: "trace-malformed",
+              outcome: "denied"
+            })
+          )
+        )
+
+        expect(Exit.isFailure(exit)).toBe(true)
+      }),
+      eventLogLayer
+    )
+  ))
+
+test("AuditEvents emit is a no-op when audit is undefined", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const { emitAuditEvent } = yield* Effect.promise(() => import("./audit-events.js"))
+      const result = yield* emitAuditEvent(
+        undefined,
+        new AuditEvent({
+          kind: "permission-granted",
+          source: "test",
+          traceId: "t1",
+          outcome: "granted"
+        })
+      )
+      expect(result).toBeUndefined()
+    })
+  ))
+
+test("AuditEvent constructors reject invalid payload timestamps before append", () => {
   const invalidTimestamps = [
     Number.NaN,
     Number.POSITIVE_INFINITY,
