@@ -43,6 +43,7 @@ That path reports focused application metadata only; focused window/display meta
 | `stopWatching` | `unsupported`                                  | `unsupported` | `unsupported` |
 
 `isSupported` still returns `{ supported: false, reason: "host-adapter-unimplemented" }` until the host provides snapshot, watch lifecycle, and event delivery for the surface. Unsupported host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
+The bridge-backed `FocusedApplicationContext.Event` stream also fails as typed `Unsupported` before opening a host subscription until the native watch adapter can publish focus lifecycle events.
 
 ## Testing
 

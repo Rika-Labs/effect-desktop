@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInternalError } from "@effect-desktop/bridge"
+import { type BridgeClientExchange, makeHostProtocolInternalError } from "@effect-desktop/bridge"
 import {
   type AuditEvent,
   makePermissionRegistry,
@@ -12,6 +12,8 @@ import { Cause, Effect, Exit, Option, Stream } from "effect"
 
 import {
   FocusedApplicationContext,
+  FocusedApplicationContextClient,
+  makeFocusedApplicationContextBridgeClientLayer,
   makeFocusedApplicationContextMemoryClient,
   makeFocusedApplicationContextServiceLayer,
   makeFocusedApplicationContextUnsupportedClient,
@@ -356,6 +358,33 @@ test("FocusedApplicationContext disposes registered watch when host watch fails"
       operation: "FocusedApplicationContext.watch"
     })
   })
+})
+
+test("FocusedApplicationContext bridge client fails event stream as unsupported before subscribing", async () => {
+  const subscriptions: string[] = []
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.die("unexpected request"),
+    subscribe: (method) => {
+      subscriptions.push(method)
+      return Stream.empty
+    }
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* FocusedApplicationContextClient
+      return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(Effect.provide(makeFocusedApplicationContextBridgeClientLayer(exchange)))
+  )
+
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({
+      tag: "Unsupported",
+      reason: "host-adapter-unimplemented",
+      operation: "FocusedApplicationContext.Event"
+    })
+  })
+  expect(subscriptions).toEqual([])
 })
 
 const configuredPermissions = async (rows: AuditEvent[]) => {

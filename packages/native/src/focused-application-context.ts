@@ -47,7 +47,6 @@ import {
   FocusedDisplayMetadata,
   FocusedWindowMetadata
 } from "./contracts/focused-application-context.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
@@ -361,7 +360,7 @@ export const makeFocusedApplicationContextUnsupportedClient =
             reason: UnsupportedReason
           })
         ),
-      events: () => Stream.fail(unsupportedError("FocusedApplicationContext.events"))
+      events: () => Stream.fail(unsupportedError(FocusedApplicationContextEventMethod))
     } satisfies FocusedApplicationContextClientApi)
 
 const makeFocusedApplicationContextService = (
@@ -479,7 +478,7 @@ const makeFocusedApplicationContextService = (
 
 const focusedApplicationContextClientFromRpcClient = (
   client: DesktopRpcClient<FocusedApplicationContextRpc>,
-  exchange: BridgeClientExchange | undefined
+  _exchange: BridgeClientExchange | undefined
 ): FocusedApplicationContextClientApi =>
   Object.freeze({
     snapshot: (input) =>
@@ -514,12 +513,7 @@ const focusedApplicationContextClientFromRpcClient = (
         client["FocusedApplicationContext.isSupported"](undefined),
         "FocusedApplicationContext.isSupported"
       ),
-    events: () =>
-      subscribeNativeEvent(
-        exchange,
-        FocusedApplicationContextEventMethod,
-        FocusedApplicationContextEvent
-      )
+    events: () => Stream.fail(unsupportedError(FocusedApplicationContextEventMethod))
   } satisfies FocusedApplicationContextClientApi)
 
 function focusedApplicationContextRpc<
