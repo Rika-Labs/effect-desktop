@@ -28,6 +28,7 @@ export type UpdaterError = HostProtocolError
 
 const UnsupportedReason = "host-adapter-unimplemented"
 const CheckPartialSupportReason = "signed-manifest-check-only"
+const StatusPartialSupportReason = "signed-manifest-status-only"
 
 const UpdaterSupport = NativeSurface.support.unsupported(UnsupportedReason, {
   platforms: [
@@ -42,6 +43,14 @@ const UpdaterCheckSupport = NativeSurface.support.partial(CheckPartialSupportRea
     { platform: "macos", status: "partial", reason: CheckPartialSupportReason },
     { platform: "windows", status: "partial", reason: CheckPartialSupportReason },
     { platform: "linux", status: "partial", reason: CheckPartialSupportReason }
+  ]
+})
+
+const UpdaterStatusSupport = NativeSurface.support.partial(StatusPartialSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: StatusPartialSupportReason },
+    { platform: "windows", status: "partial", reason: StatusPartialSupportReason },
+    { platform: "linux", status: "partial", reason: StatusPartialSupportReason }
   ]
 })
 
@@ -80,7 +89,8 @@ export const UpdaterGetStatus = updaterRpc(
   "getStatus",
   Schema.Void,
   UpdaterStatusResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["getStatus"] })
+  P.nativeInvoke({ primitive: "Updater", methods: ["getStatus"] }),
+  UpdaterStatusSupport
 )
 export const UpdaterReadyForRestart = updaterRpc(
   "readyForRestart",

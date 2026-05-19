@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Updater`
 
-Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable. The native host currently supports only a local signed-manifest check: `Updater.check` can verify a caller-supplied manifest JSON string against caller-supplied Ed25519 trust anchors, then report whether that manifest version differs from `currentVersion`.
+Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable. The native host currently supports only a local signed-manifest check plus status for that check: `Updater.check` can verify a caller-supplied manifest JSON string against caller-supplied Ed25519 trust anchors, then report whether that manifest version differs from `currentVersion`. `Updater.getStatus` reports the host-owned result of the latest signed-manifest check as `idle`, `update-available`, or `error`.
 
 The host does not fetch feeds, download artifacts, stage installs, enforce update policy, or restart into an installed update yet. Those methods still fail closed as `host-adapter-unimplemented`.
 
@@ -22,7 +22,7 @@ The host does not fetch feeds, download artifacts, stage installs, enforce updat
 | `download`          | `{ version? }`                                      | updater status result                                      | unsupported     |
 | `install`           | `{ version? }`                                      | updater status result                                      | unsupported     |
 | `installAndRestart` | `{ version? }`                                      | updater status result                                      | unsupported     |
-| `getStatus`         | `void`                                              | updater status result                                      | unsupported     |
+| `getStatus`         | `void`                                              | updater status result                                      | partial         |
 | `readyForRestart`   | `void`                                              | `void`                                                     | unsupported     |
 
 ## Types
@@ -36,6 +36,8 @@ The host does not fetch feeds, download artifacts, stage installs, enforce updat
 `UpdaterError` is the host protocol error union. Unsupported update lifecycle calls fail as typed `Unsupported` host operations rather than claiming update security.
 
 `Updater.check` emits `UpdateSignatureInvalid` for missing, invalid, tampered, or untrusted manifest signatures. Malformed manifests and malformed trust anchors are `InvalidArgument`.
+
+`Updater.getStatus` is limited to signed-manifest check state. It does not report feed polling, artifact download, staging, install, restart, or rollback state yet.
 
 ## Production checks
 

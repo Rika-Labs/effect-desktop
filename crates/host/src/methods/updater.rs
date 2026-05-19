@@ -4,10 +4,15 @@
 
 use host_protocol::{
     HostProtocolError, UpdaterCheckPayload, UpdaterDownloadPayload, UpdaterInstallPayload,
+    UpdaterStatusPayload, UpdaterStatusState,
 };
 use native_updater::{verify_manifest, TrustAnchor, UpdateManifestError};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+use std::sync::{LazyLock, Mutex};
+
+static UPDATER_STATUS: LazyLock<Mutex<UpdaterStatusPayload>> =
+    LazyLock::new(|| Mutex::new(idle_status(None)));
 
 pub(crate) fn check(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     let input =
@@ -64,7 +69,18 @@ pub(crate) fn install_and_restart(
 
 pub(crate) fn get_status(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     reject_unexpected_payload(payload, host_protocol::UPDATER_GET_STATUS_METHOD)?;
-    Err(unsupported(host_protocol::UPDATER_GET_STATUS_METHOD))
+    let status = UPDATER_STATUS
+        .lock()
+        .map_err(|_| {
+            HostProtocolError::internal(
+                "updater status state lock was poisoned",
+                host_protocol::UPDATER_GET_STATUS_METHOD,
+            )
+        })?
+        .clone();
+    serde_json::to_value(status).map(Some).map_err(|error| {
+        HostProtocolError::internal(error.to_string(), host_protocol::UPDATER_GET_STATUS_METHOD)
+    })
 }
 
 pub(crate) fn ready_for_restart(
@@ -171,15 +187,36 @@ fn check_signed_manifest(input: &UpdaterCheckPayload) -> Result<Option<Value>, H
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let verified = verify_manifest(manifest_json, &trust_anchors)
-        .map_err(|error| map_manifest_error(error, manifest_json))?;
+    let verified = match verify_manifest(manifest_json, &trust_anchors) {
+        Ok(verified) => verified,
+        Err(error) => {
+            let status_message = manifest_status_message(&error);
+            let mapped = map_manifest_error(error, manifest_json);
+            record_status(UpdaterStatusPayload::new(
+                UpdaterStatusState::Error,
+                None,
+                None,
+                Some(status_message),
+            ))?;
+            return Err(mapped);
+        }
+    };
     let current_version = input.current_version();
     let payload = if current_version == Some(verified.version.as_str()) {
+        record_status(idle_status(Some(
+            "signed manifest verified for current version".to_string(),
+        )))?;
         host_protocol::UpdaterCheckResultPayload::unavailable(
             Some(verified.version),
             Some("signed manifest verified for current version".to_string()),
         )
     } else {
+        record_status(UpdaterStatusPayload::new(
+            UpdaterStatusState::UpdateAvailable,
+            Some(verified.version.clone()),
+            None,
+            Some("signed manifest verified".to_string()),
+        ))?;
         host_protocol::UpdaterCheckResultPayload::available(
             verified.version,
             Some("signed manifest verified".to_string()),
@@ -189,6 +226,37 @@ fn check_signed_manifest(input: &UpdaterCheckPayload) -> Result<Option<Value>, H
     serde_json::to_value(payload).map(Some).map_err(|error| {
         HostProtocolError::internal(error.to_string(), host_protocol::UPDATER_CHECK_METHOD)
     })
+}
+
+fn record_status(status: UpdaterStatusPayload) -> Result<(), HostProtocolError> {
+    *UPDATER_STATUS.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "updater status state lock was poisoned",
+            host_protocol::UPDATER_CHECK_METHOD,
+        )
+    })? = status;
+    Ok(())
+}
+
+fn idle_status(message: Option<String>) -> UpdaterStatusPayload {
+    UpdaterStatusPayload::new(UpdaterStatusState::Idle, None, None, message)
+}
+
+fn manifest_status_message(error: &UpdateManifestError) -> String {
+    match error {
+        UpdateManifestError::SignatureMissing | UpdateManifestError::SignatureInvalid => {
+            "update manifest signature is invalid".to_string()
+        }
+        UpdateManifestError::NoTrustedKey { .. } => {
+            "update manifest key is not trusted".to_string()
+        }
+        UpdateManifestError::JsonInvalid { message }
+        | UpdateManifestError::ManifestShapeInvalid { message } => message.clone(),
+        UpdateManifestError::PublicKeyInvalid {
+            key_version,
+            message,
+        } => format!("keyVersion {key_version}: {message}"),
+    }
 }
 
 fn map_manifest_error(error: UpdateManifestError, manifest_json: &str) -> HostProtocolError {
@@ -247,9 +315,14 @@ mod tests {
     use ed25519_dalek::{Signer, SigningKey};
     use host_protocol::HostProtocolError;
     use serde_json::{json, Value};
+    use std::sync::{LazyLock, Mutex, MutexGuard};
+
+    static UPDATER_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
     fn updater_requests_decode_before_unsupported() {
+        let _guard = updater_test_guard();
+        reset_status();
         assert_eq!(
             check(Some(json!({ "currentVersion": "1.0.0" }))).expect_err("check"),
             HostProtocolError::unsupported(
@@ -280,11 +353,10 @@ mod tests {
             )
         );
         assert_eq!(
-            get_status(None).expect_err("get status"),
-            HostProtocolError::unsupported(
-                host_protocol::UPDATER_UNSUPPORTED_REASON,
-                host_protocol::UPDATER_GET_STATUS_METHOD,
-            )
+            get_status(None).expect("get status"),
+            Some(json!({
+                "state": "idle"
+            }))
         );
         assert_eq!(
             ready_for_restart(None).expect_err("ready for restart"),
@@ -297,6 +369,8 @@ mod tests {
 
     #[test]
     fn updater_rejects_malformed_payloads_before_unsupported() {
+        let _guard = updater_test_guard();
+        reset_status();
         assert_eq!(
             check(Some(json!({ "currentVersion": "bad\nversion" }))).expect_err("version"),
             HostProtocolError::invalid_argument(
@@ -325,6 +399,8 @@ mod tests {
 
     #[test]
     fn updater_check_verifies_signed_manifest_when_trust_anchor_is_provided() {
+        let _guard = updater_test_guard();
+        reset_status();
         let signed = signed_manifest(7, "1.2.3");
         let payload = json!({
             "currentVersion": "1.0.0",
@@ -345,10 +421,20 @@ mod tests {
                 "notes": "signed manifest verified"
             }))
         );
+        assert_eq!(
+            get_status(None).expect("status should reflect available update"),
+            Some(json!({
+                "state": "update-available",
+                "version": "1.2.3",
+                "message": "signed manifest verified"
+            }))
+        );
     }
 
     #[test]
     fn updater_check_maps_bad_manifest_signature_to_terminal_error() {
+        let _guard = updater_test_guard();
+        reset_status();
         let signed = signed_manifest(7, "1.2.3");
         let payload = json!({
             "currentVersion": "1.0.0",
@@ -368,10 +454,52 @@ mod tests {
                 host_protocol::UPDATER_CHECK_METHOD,
             )
         );
+        assert_eq!(
+            get_status(None).expect("status should record terminal signature failure"),
+            Some(json!({
+                "state": "error",
+                "message": "update manifest signature is invalid"
+            }))
+        );
+    }
+
+    #[test]
+    fn updater_check_records_current_version_as_idle_status() {
+        let _guard = updater_test_guard();
+        reset_status();
+        let signed = signed_manifest(7, "1.2.3");
+        let payload = json!({
+            "currentVersion": "1.2.3",
+            "manifestJson": signed.json,
+            "trustAnchors": [{
+                "keyVersion": 7,
+                "publicKey": signed.public_key
+            }]
+        });
+
+        let response = check(Some(payload)).expect("signed current manifest check should succeed");
+
+        assert_eq!(
+            response,
+            Some(json!({
+                "available": false,
+                "version": "1.2.3",
+                "notes": "signed manifest verified for current version"
+            }))
+        );
+        assert_eq!(
+            get_status(None).expect("status should remain idle for current version"),
+            Some(json!({
+                "state": "idle",
+                "message": "signed manifest verified for current version"
+            }))
+        );
     }
 
     #[test]
     fn updater_check_requires_manifest_and_trust_anchor_together() {
+        let _guard = updater_test_guard();
+        reset_status();
         assert_eq!(
             check(Some(json!({ "manifestJson": "{}" }))).expect_err("missing trust anchors"),
             HostProtocolError::invalid_argument(
@@ -432,5 +560,15 @@ mod tests {
             json: unsigned.to_string(),
             public_key,
         }
+    }
+
+    fn reset_status() {
+        super::record_status(super::idle_status(None)).expect("status reset should succeed");
+    }
+
+    fn updater_test_guard() -> MutexGuard<'static, ()> {
+        UPDATER_TEST_LOCK
+            .lock()
+            .expect("updater test lock should not be poisoned")
     }
 }
