@@ -7554,6 +7554,36 @@ test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", 
   }
 })
 
+test("PowerMonitor bridge client fails unsupported event streams before subscription", async () => {
+  const requests: string[] = []
+  const subscriptions: string[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request.method)
+      return request.method === "PowerMonitor.isSupported"
+        ? Effect.succeed({ kind: "success", payload: { supported: false } })
+        : Effect.die(`unexpected PowerMonitor request: ${request.method}`)
+    },
+    subscribe: (method) => {
+      subscriptions.push(method)
+      return Stream.empty
+    }
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const power = yield* PowerMonitor
+      return yield* Effect.exit(power.onSuspend().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(
+      Effect.provide(Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange)))
+    )
+  )
+
+  expectExitFailure(exit, (error) => error instanceof HostProtocolUnsupportedError)
+  expect(requests).toEqual(["PowerMonitor.isSupported"])
+  expect(subscriptions).toEqual([])
+})
+
 test("DockRpcs declares the Phase 8 Dock method surface", () => {
   expect([...DockMethodNames]).toEqual(expectedDockMethods)
   expect(rpcMethodNames("Dock", DockRpcs)).toEqual(expectedDockMethods)
