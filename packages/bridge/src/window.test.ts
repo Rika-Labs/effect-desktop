@@ -29,6 +29,7 @@ import {
   WINDOW_REQUEST_ATTENTION_METHOD,
   WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
@@ -285,28 +286,38 @@ test("host window client fails Window.Event subscriptions when exchange cannot s
   )
 })
 
-test("host window client requests Window.getBounds, Window.setBounds, Window.center, and Window.centerOnDisplay", async () => {
+test("host window client requests Window.getBounds, Window.setBounds, display bounds, Window.center, and Window.centerOnDisplay", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const client = makeHostWindowClient(windowExchange(requests), {
     nextRequestId: nextId([
       "request-window-get-bounds",
       "request-window-set-bounds",
+      "request-window-set-bounds-on-display",
       "request-window-center",
       "request-window-center-on-display"
     ]),
     nextTraceId: nextId([
       "trace-window-get-bounds",
       "trace-window-set-bounds",
+      "trace-window-set-bounds-on-display",
       "trace-window-center",
       "trace-window-center-on-display"
     ]),
-    now: nextNumber([1710000000013, 1710000000014, 1710000000015, 1710000000016])
+    now: nextNumber([
+      1_710_000_000_013, 1_710_000_000_014, 1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017
+    ])
   })
 
   const bounds = await Effect.runPromise(
     Effect.gen(function* () {
       const current = yield* client.getBounds("window-1")
       yield* client.setBounds("window-1", { x: 30, y: 40, width: 800, height: 600 })
+      yield* client.setBoundsOnDisplay("window-1", "display-1", {
+        x: 15,
+        y: 25,
+        width: 700,
+        height: 500
+      })
       yield* client.center("window-1")
       yield* client.centerOnDisplay("window-1", "display-1")
       return current
@@ -319,6 +330,14 @@ test("host window client requests Window.getBounds, Window.setBounds, Window.cen
     [
       WINDOW_SET_BOUNDS_METHOD,
       { windowId: "window-1", bounds: { x: 30, y: 40, width: 800, height: 600 } }
+    ],
+    [
+      WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+      {
+        windowId: "window-1",
+        displayId: "display-1",
+        bounds: { x: 15, y: 25, width: 700, height: 500 }
+      }
     ],
     [WINDOW_CENTER_METHOD, { windowId: "window-1" }],
     [WINDOW_CENTER_ON_DISPLAY_METHOD, { windowId: "window-1", displayId: "display-1" }]

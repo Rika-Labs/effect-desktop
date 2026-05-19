@@ -40,6 +40,7 @@ import {
   WindowBounds,
   WindowBoundsEvent,
   WindowBoundsInput,
+  WindowDisplayBoundsInput,
   WindowAlwaysOnTopInput,
   type WindowAttentionType,
   type WindowBoundsType,
@@ -263,6 +264,12 @@ export const WindowSetBounds = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
 )
+export const WindowSetBoundsOnDisplay = windowRpc(
+  "setBoundsOnDisplay",
+  WindowDisplayBoundsInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setBoundsOnDisplay"] })
+)
 export const WindowCenter = windowRpc(
   "center",
   WindowHandleInput,
@@ -432,6 +439,7 @@ const makeWindowRpcGroup = () =>
     WindowSubscribeEvents,
     WindowGetBounds,
     WindowSetBounds,
+    WindowSetBoundsOnDisplay,
     WindowCenter,
     WindowCenterOnDisplay,
     WindowSetTitle,
@@ -491,6 +499,7 @@ export const WindowMethodNames = Object.freeze([
   "getChildren",
   "getBounds",
   "setBounds",
+  "setBoundsOnDisplay",
   "center",
   "centerOnDisplay",
   "setTitle",
@@ -540,6 +549,11 @@ export interface WindowClientApi {
   readonly getBounds: (window: WindowHandle) => Effect.Effect<WindowBounds, WindowError, never>
   readonly setBounds: (
     window: WindowHandle,
+    bounds: WindowBoundsType
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setBoundsOnDisplay: (
+    window: WindowHandle,
+    displayId: string,
     bounds: WindowBoundsType
   ) => Effect.Effect<void, WindowError, never>
   readonly center: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
@@ -732,6 +746,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       yield* window.setBounds(input.window, input.bounds)
     }),
+  "Window.setBoundsOnDisplay": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setBoundsOnDisplay(input.window, input.displayId, input.bounds)
+    }),
   "Window.center": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -897,6 +916,8 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     getChildren: (window) => client.getChildren(window),
     getBounds: (window) => client.getBounds(window),
     setBounds: (window, bounds) => client.setBounds(window, bounds),
+    setBoundsOnDisplay: (window, displayId, bounds) =>
+      client.setBoundsOnDisplay(window, displayId, bounds),
     center: (window) => client.center(window),
     centerOnDisplay: (window, displayId) => client.centerOnDisplay(window, displayId),
     setTitle: (window, title) => client.setTitle(window, title),
@@ -1037,6 +1058,19 @@ function windowClientFromRpcClient(
       Effect.gen(function* () {
         const decoded = yield* decodeWindowBoundsInput(window, bounds, "Window.setBounds")
         yield* runWindowRpc(client["Window.setBounds"](decoded), "Window.setBounds")
+      }),
+    setBoundsOnDisplay: (window, displayId, bounds) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowDisplayBoundsInput(
+          window,
+          displayId,
+          bounds,
+          "Window.setBoundsOnDisplay"
+        )
+        yield* runWindowRpc(
+          client["Window.setBoundsOnDisplay"](decoded),
+          "Window.setBoundsOnDisplay"
+        )
       }),
     center: (window) => runWindowHandleRpc(client, "Window.center", window),
     centerOnDisplay: (window, displayId) =>
@@ -1225,6 +1259,21 @@ const decodeWindowBoundsInput = (
   operation: string
 ): Effect.Effect<WindowBoundsInput, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowBoundsInput)({ window, bounds }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowDisplayBoundsInput = (
+  window: WindowHandle,
+  displayId: string,
+  bounds: WindowBoundsType,
+  operation: string
+): Effect.Effect<WindowDisplayBoundsInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowDisplayBoundsInput)(
+    { window, displayId, bounds },
+    StrictParseOptions
+  ).pipe(
     Effect.mapError((error) =>
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
@@ -1885,6 +1934,19 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           "Window.setBounds"
         )
         yield* host.setBounds(window.id, toHostWindowBoundsInput(input.bounds))
+      }),
+    "Window.setBoundsOnDisplay": (input: WindowDisplayBoundsInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setBoundsOnDisplay"
+        )
+        yield* host.setBoundsOnDisplay(
+          window.id,
+          input.displayId,
+          toHostWindowBoundsInput(input.bounds)
+        )
       }),
     "Window.center": (input: WindowHandleInput) =>
       Effect.gen(function* () {

@@ -7,12 +7,12 @@ use host_protocol::{
     HostProtocolError, WindowBoundsPayload, WindowCenterOnDisplayPayload,
     WindowClearVibrancyPayload, WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload,
     WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowRequestAttentionPayload,
-    WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
-    WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
-    WindowSetShadowPayload, WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
-    WindowSetTitleBarStylePayload, WindowSetTitleBarTransparentPayload, WindowSetTitlePayload,
-    WindowSetTrafficLightsPayload, WindowSetTransparentPayload, WindowSetVibrancyPayload,
-    WindowStatePayload,
+    WindowSetAlwaysOnTopPayload, WindowSetBoundsOnDisplayPayload, WindowSetBoundsPayload,
+    WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
+    WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSimpleFullscreenPayload,
+    WindowSetSkipTaskbarPayload, WindowSetTitleBarStylePayload,
+    WindowSetTitleBarTransparentPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
+    WindowSetTransparentPayload, WindowSetVibrancyPayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -145,6 +145,16 @@ pub(crate) fn set_bounds(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_bounds_payload(payload)?;
     handler.set_bounds(payload.window_id(), payload.bounds())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_bounds_on_display(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_bounds_on_display_payload(payload)?;
+    handler.set_bounds_on_display(payload.window_id(), payload.display_id(), payload.bounds())?;
 
     Ok(None)
 }
@@ -482,12 +492,67 @@ fn decode_set_bounds_payload(payload: Value) -> Result<WindowSetBoundsPayload, H
             host_protocol::WINDOW_SET_BOUNDS_METHOD,
         ));
     }
-    let bounds = payload.bounds();
+    validate_bounds_payload(payload.bounds(), host_protocol::WINDOW_SET_BOUNDS_METHOD)?;
+    Ok(payload)
+}
+
+fn decode_required_set_bounds_on_display_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetBoundsOnDisplayPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_bounds_on_display_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD
+            ),
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        )),
+    }
+}
+
+fn decode_set_bounds_on_display_payload(
+    payload: Value,
+) -> Result<WindowSetBoundsOnDisplayPayload, HostProtocolError> {
+    let payload: WindowSetBoundsOnDisplayPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        ));
+    }
+    if payload.display_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "displayId must be non-empty",
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        ));
+    }
+    validate_bounds_payload(
+        payload.bounds(),
+        host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+    )?;
+    Ok(payload)
+}
+
+fn validate_bounds_payload(
+    bounds: &WindowBoundsPayload,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
     if !bounds.x().is_finite() || !bounds.y().is_finite() {
         return Err(HostProtocolError::invalid_argument(
             "payload",
             "bounds coordinates must be finite",
-            host_protocol::WINDOW_SET_BOUNDS_METHOD,
+            operation,
         ));
     }
     if !bounds.width().is_finite()
@@ -498,10 +563,10 @@ fn decode_set_bounds_payload(payload: Value) -> Result<WindowSetBoundsPayload, H
         return Err(HostProtocolError::invalid_argument(
             "payload",
             "bounds size must be finite and positive",
-            host_protocol::WINDOW_SET_BOUNDS_METHOD,
+            operation,
         ));
     }
-    Ok(payload)
+    Ok(())
 }
 
 fn decode_required_center_on_display_payload(

@@ -26,6 +26,7 @@ import {
   WINDOW_REQUEST_ATTENTION_METHOD,
   WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
@@ -185,6 +186,14 @@ export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>
   "WindowSetBoundsPayload"
 )({
   windowId: Schema.NonEmptyString,
+  bounds: WindowBoundsPayload
+}) {}
+
+export class WindowSetBoundsOnDisplayPayload extends Schema.Class<WindowSetBoundsOnDisplayPayload>(
+  "WindowSetBoundsOnDisplayPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  displayId: Schema.NonEmptyString,
   bounds: WindowBoundsPayload
 }) {}
 
@@ -371,6 +380,11 @@ export interface HostWindowClient {
     windowId: string,
     bounds: WindowBoundsInput
   ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setBoundsOnDisplay: (
+    windowId: string,
+    displayId: string,
+    bounds: WindowBoundsInput
+  ) => Effect.Effect<void, HostProtocolError, never>
   readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly centerOnDisplay: (
     windowId: string,
@@ -539,6 +553,14 @@ export const makeHostWindowClient = (
       Effect.gen(function* () {
         const payload = yield* encodeSetBoundsPayload(windowId, bounds)
         const request = yield* makeRequest(WINDOW_SET_BOUNDS_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    setBoundsOnDisplay: (windowId, displayId, bounds) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetBoundsOnDisplayPayload(windowId, displayId, bounds)
+        const request = yield* makeRequest(WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD, resolved, payload)
         yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
@@ -769,6 +791,9 @@ const decodeUnknownWindowChildrenResponse = Schema.decodeUnknownSync(WindowChild
 const decodeUnknownWindowEventPayload = Schema.decodeUnknownSync(WindowEventPayload)
 const decodeUnknownWindowBoundsPayload = Schema.decodeUnknownSync(WindowBoundsPayload)
 const decodeUnknownWindowSetBoundsPayload = Schema.decodeUnknownSync(WindowSetBoundsPayload)
+const decodeUnknownWindowSetBoundsOnDisplayPayload = Schema.decodeUnknownSync(
+  WindowSetBoundsOnDisplayPayload
+)
 const decodeUnknownWindowCenterOnDisplayPayload = Schema.decodeUnknownSync(
   WindowCenterOnDisplayPayload
 )
@@ -840,6 +865,20 @@ const encodeSetBoundsPayload = (
   Effect.try({
     try: () => decodeUnknownWindowSetBoundsPayload({ windowId, bounds }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_BOUNDS_METHOD)
+  })
+
+const encodeSetBoundsOnDisplayPayload = (
+  windowId: string,
+  displayId: string,
+  bounds: WindowBoundsInput
+): Effect.Effect<WindowSetBoundsOnDisplayPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetBoundsOnDisplayPayload(
+        { windowId, displayId, bounds },
+        StrictParseOptions
+      ),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD)
   })
 
 const encodeCenterOnDisplayPayload = (

@@ -3209,23 +3209,23 @@
       "method": "download",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "signed-manifest-file-artifact-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-file-artifact-only"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-file-artifact-only"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-file-artifact-only"
           }
         ]
       },
@@ -3990,6 +3990,16 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setBoundsOnDisplay",
+      "surface": "Window",
+      "method": "setBoundsOnDisplay",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.setDecorations",
       "surface": "Window",
       "method": "setDecorations",
@@ -4335,11 +4345,11 @@
     }
   ],
   "summary": {
-    "total": 238,
-    "routed": 238,
+    "total": 239,
+    "routed": 239,
     "missing": 0,
-    "supported": 127,
-    "partial": 53,
-    "unsupported": 58
+    "supported": 128,
+    "partial": 54,
+    "unsupported": 57
   }
 }

@@ -34,6 +34,7 @@ const windowClient: WindowClientApi = {
   getChildren: () => Effect.succeed([]),
   getBounds: () => Effect.succeed({ x: 0, y: 0, width: 640, height: 480 }),
   setBounds: () => Effect.void,
+  setBoundsOnDisplay: () => Effect.void,
   center: () => Effect.void,
   centerOnDisplay: () => Effect.void,
   setTitle: () => Effect.void,

@@ -57,6 +57,7 @@ pub const WINDOW_GET_PARENT_METHOD: &str = "Window.getParent";
 pub const WINDOW_GET_CHILDREN_METHOD: &str = "Window.getChildren";
 pub const WINDOW_GET_BOUNDS_METHOD: &str = "Window.getBounds";
 pub const WINDOW_SET_BOUNDS_METHOD: &str = "Window.setBounds";
+pub const WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD: &str = "Window.setBoundsOnDisplay";
 pub const WINDOW_CENTER_METHOD: &str = "Window.center";
 pub const WINDOW_CENTER_ON_DISPLAY_METHOD: &str = "Window.centerOnDisplay";
 pub const WINDOW_SET_TITLE_METHOD: &str = "Window.setTitle";
@@ -3512,6 +3513,40 @@ impl WindowSetBoundsPayload {
 
     pub fn window_id(&self) -> &str {
         &self.window_id
+    }
+
+    pub fn bounds(&self) -> &WindowBoundsPayload {
+        &self.bounds
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetBoundsOnDisplayPayload {
+    window_id: String,
+    display_id: String,
+    bounds: WindowBoundsPayload,
+}
+
+impl WindowSetBoundsOnDisplayPayload {
+    pub fn new(
+        window_id: impl Into<String>,
+        display_id: impl Into<String>,
+        bounds: WindowBoundsPayload,
+    ) -> Self {
+        Self {
+            window_id: window_id.into(),
+            display_id: display_id.into(),
+            bounds,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn display_id(&self) -> &str {
+        &self.display_id
     }
 
     pub fn bounds(&self) -> &WindowBoundsPayload {
@@ -12019,16 +12054,17 @@ mod tests {
         WindowClearVibrancyPayload, WindowCreatePayload, WindowCreateResponse,
         WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowParentResponse,
         WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
-        WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
-        WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
-        WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSimpleFullscreenPayload,
-        WindowSetSkipTaskbarPayload, WindowSetTitleBarStylePayload,
-        WindowSetTitleBarTransparentPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
-        WindowSetTransparentPayload, WindowSetVibrancyPayload, WindowStateEventPayload,
-        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
-        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
-        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
-        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
+        WindowSetBoundsOnDisplayPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
+        WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
+        WindowSetShadowPayload, WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
+        WindowSetTitleBarStylePayload, WindowSetTitleBarTransparentPayload, WindowSetTitlePayload,
+        WindowSetTrafficLightsPayload, WindowSetTransparentPayload, WindowSetVibrancyPayload,
+        WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
+        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
+        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
         CRASH_REPORTER_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS,
@@ -13373,6 +13409,18 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&set_bounds).expect("window set bounds payload should encode"),
             r#"{"windowId":"window-1","bounds":{"x":10.0,"y":20.0,"width":640.0,"height":480.0}}"#
+        );
+
+        let display_bounds = WindowBoundsPayload::new(5.0, 15.0, 320.0, 240.0);
+        let set_bounds_on_display =
+            WindowSetBoundsOnDisplayPayload::new("window-1", "display-1", display_bounds);
+        assert_eq!(set_bounds_on_display.window_id(), "window-1");
+        assert_eq!(set_bounds_on_display.display_id(), "display-1");
+        assert_eq!(set_bounds_on_display.bounds().height(), 240.0);
+        assert_eq!(
+            serde_json::to_string(&set_bounds_on_display)
+                .expect("window display bounds payload should encode"),
+            r#"{"windowId":"window-1","displayId":"display-1","bounds":{"x":5.0,"y":15.0,"width":320.0,"height":240.0}}"#
         );
 
         let center_on_display = WindowCenterOnDisplayPayload::new("window-1", "display-1");

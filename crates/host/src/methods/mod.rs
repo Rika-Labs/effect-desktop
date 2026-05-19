@@ -317,6 +317,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::set_bounds),
     ),
     route(
+        host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        HostMethodDispatcher::Window(window::set_bounds_on_display),
+    ),
+    route(
         host_protocol::WINDOW_CENTER_METHOD,
         HostMethodDispatcher::Window(window::center),
     ),
@@ -3827,6 +3831,20 @@ mod tests {
                         "y": 40.0,
                         "width": 800.0,
                         "height": 600.0
+                    }
+                }),
+            ),
+            (
+                "request-window-set-bounds-on-display",
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+                serde_json::json!({
+                    "windowId": "window-1",
+                    "displayId": "display-1",
+                    "bounds": {
+                        "x": 15.0,
+                        "y": 25.0,
+                        "width": 700.0,
+                        "height": 500.0
                     }
                 }),
             ),
@@ -7503,6 +7521,15 @@ mod tests {
         fn set_bounds(
             &self,
             _window_id: &str,
+            _bounds: &WindowBoundsPayload,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_bounds_on_display(
+            &self,
+            _window_id: &str,
+            _display_id: &str,
             _bounds: &WindowBoundsPayload,
         ) -> Result<(), HostProtocolError> {
             Ok(())

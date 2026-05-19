@@ -847,6 +847,8 @@ export const runHeadless = <A, E, R>(
         getChildren: (windowId) => rawWindow.getChildren(windowId),
         getBounds: (windowId) => rawWindow.getBounds(windowId),
         setBounds: (windowId, bounds) => rawWindow.setBounds(windowId, bounds),
+        setBoundsOnDisplay: (windowId, displayId, bounds) =>
+          rawWindow.setBoundsOnDisplay(windowId, displayId, bounds),
         center: (windowId) => rawWindow.center(windowId),
         centerOnDisplay: (windowId, displayId) => rawWindow.centerOnDisplay(windowId, displayId),
         setTitle: (windowId, title) => rawWindow.setTitle(windowId, title),

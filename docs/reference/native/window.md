@@ -44,6 +44,7 @@ import {
 | `getChildren`            | `WindowHandle`                   | `WindowListResult`   | Read tracked child windows for a parent window.                     |
 | `getBounds`              | `WindowHandle`                   | `WindowBounds`       | Read logical window bounds.                                         |
 | `setBounds`              | `WindowBoundsInput`              | `void`               | Move and resize a window.                                           |
+| `setBoundsOnDisplay`     | `WindowDisplayBoundsInput`       | `void`               | Move and resize relative to a display work area.                    |
 | `center`                 | `WindowHandle`                   | `void`               | Center in the current display.                                      |
 | `centerOnDisplay`        | `WindowDisplayInput`             | `void`               | Center in a specific display's work area.                           |
 | `setTitle`               | `WindowTitleInput`               | `void`               | Set the window title.                                               |
@@ -70,7 +71,7 @@ import {
 | `close`                  | `WindowHandle`                   | `void`               | Compatibility name for `destroy`.                                   |
 | `destroy`                | `WindowHandle`                   | `void`               | Destroy a native window and close its scope.                        |
 
-`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getParent", "getChildren", "getBounds", "setBounds", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setVibrancy", "clearVibrancy", "setShadow", "setTitleBarStyle", "setTitleBarTransparent", "setTransparent", "setAlwaysOnTop", "setSkipTaskbar", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "setSimpleFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights`, `setVibrancy`, `clearVibrancy`, `setShadow`, `setTitleBarStyle`, `setTitleBarTransparent`, `setTransparent`, and `setSimpleFullscreen` are macOS-only and return typed `Unsupported` on other hosts. `setSkipTaskbar` is supported on Windows and Linux and returns typed `Unsupported` on macOS. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
+`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getParent", "getChildren", "getBounds", "setBounds", "setBoundsOnDisplay", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setVibrancy", "clearVibrancy", "setShadow", "setTitleBarStyle", "setTitleBarTransparent", "setTransparent", "setAlwaysOnTop", "setSkipTaskbar", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "setSimpleFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights`, `setVibrancy`, `clearVibrancy`, `setShadow`, `setTitleBarStyle`, `setTitleBarTransparent`, `setTransparent`, and `setSimpleFullscreen` are macOS-only and return typed `Unsupported` on other hosts. `setSkipTaskbar` is supported on Windows and Linux and returns typed `Unsupported` on macOS. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
 The placement surface is not complete. `getBounds`, `setBounds`, and `center`
 are host-routed logical-coordinate operations. `centerOnDisplay` uses the host's
@@ -79,10 +80,12 @@ inside that display's work area. On macOS, the host derives `workArea` from
 AppKit `NSScreen.visibleFrame`; on Windows, it derives `workArea` from Win32
 `rcWork`; on Linux, it derives `workArea` from GDK monitor work areas.
 `setBounds` clips requested logical bounds to the current display work area
-before applying the native move and resize commands. Effect Desktop does not
-yet expose general display-relative placement or refusal-aware placement
-confirmation. Native move and resize notifications are exposed as
-`window-bounds-event` events with the current logical bounds.
+before applying the native move and resize commands. `setBoundsOnDisplay`
+treats `bounds.x` and `bounds.y` as offsets inside the target display work
+area, clips size and position to that work area, and applies the target
+display's scale factor for native placement. Effect Desktop does not yet expose
+refusal-aware placement confirmation. Native move and resize notifications are
+exposed as `window-bounds-event` events with the current logical bounds.
 
 The chrome surface is not complete. `Window.create` accepts macOS creation-time
 `titleBarStyle`, `vibrancy`, and `trafficLights` options, `setDecorations` is

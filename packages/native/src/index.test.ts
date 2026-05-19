@@ -29,6 +29,7 @@ import {
   WINDOW_REQUEST_ATTENTION_METHOD,
   WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
@@ -747,6 +748,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "getChildren",
   "getBounds",
   "setBounds",
+  "setBoundsOnDisplay",
   "center",
   "centerOnDisplay",
   "setTitle",
@@ -8456,6 +8458,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     WINDOW_SUBSCRIBE_EVENTS_METHOD,
     "Window.getBounds",
     "Window.setBounds",
+    "Window.setBoundsOnDisplay",
     "Window.center",
     "Window.centerOnDisplay",
     "Window.setTitle",
@@ -8498,6 +8501,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client[WINDOW_SUBSCRIBE_EVENTS_METHOD]
     void client["Window.getBounds"]
     void client["Window.setBounds"]
+    void client["Window.setBoundsOnDisplay"]
     void client["Window.center"]
     void client["Window.centerOnDisplay"]
     void client["Window.setTitle"]
@@ -8538,6 +8542,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     WINDOW_SUBSCRIBE_EVENTS_METHOD,
     "Window.getBounds",
     "Window.setBounds",
+    "Window.setBoundsOnDisplay",
     "Window.center",
     "Window.centerOnDisplay",
     "Window.setTitle",
@@ -8605,6 +8610,11 @@ test("WindowPersistence dependency RPCs declare native capabilities", () => {
   )
   expectCapability(
     windowDocs,
+    WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+    P.nativeInvoke({ primitive: "Window", methods: ["setBoundsOnDisplay"] })
+  )
+  expectCapability(
+    windowDocs,
     WINDOW_SET_FULLSCREEN_METHOD,
     P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
   )
@@ -8664,6 +8674,8 @@ test("Window service delegates through a substitutable WindowClient port", async
         return new WindowBounds({ x: 10, y: 20, width: 640, height: 480 })
       }),
     setBounds: (_window, bounds) => recordVoid(calls, `setBounds:${bounds.width}x${bounds.height}`),
+    setBoundsOnDisplay: (_window, displayId, bounds) =>
+      recordVoid(calls, `setBoundsOnDisplay:${displayId}:${bounds.width}x${bounds.height}`),
     center: () => recordVoid(calls, "center"),
     centerOnDisplay: (_window, displayId) => recordVoid(calls, `centerOnDisplay:${displayId}`),
     setTitle: (_window, title) => recordVoid(calls, `setTitle:${title}`),
@@ -8730,6 +8742,11 @@ test("Window service delegates through a substitutable WindowClient port", async
         created,
         new WindowBounds({ x: bounds.x, y: bounds.y, width: 800, height: 600 })
       )
+      yield* window.setBoundsOnDisplay(
+        created,
+        "display-1",
+        new WindowBounds({ x: 15, y: 25, width: 700, height: 500 })
+      )
       yield* window.center(created)
       yield* window.centerOnDisplay(created, "display-1")
       yield* window.setTitle(created, "Renamed")
@@ -8794,6 +8811,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "getChildren",
     "getBounds",
     "setBounds:800x600",
+    "setBoundsOnDisplay:display-1:700x500",
     "center",
     "centerOnDisplay:display-1",
     "setTitle:Renamed",
@@ -8855,6 +8873,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "focus-request",
       "get-bounds-request",
       "set-bounds-request",
+      "set-bounds-on-display-request",
       "center-request",
       "center-on-display-request",
       "set-title-request",
@@ -8887,6 +8906,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "focus-trace",
       "get-bounds-trace",
       "set-bounds-trace",
+      "set-bounds-on-display-trace",
       "center-trace",
       "center-on-display-trace",
       "set-title-trace",
@@ -8918,7 +8938,8 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
       1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019,
       1_710_000_000_020, 1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024,
-      1_710_000_000_025, 1_710_000_000_026, 1_710_000_000_027, 1_710_000_000_028, 1_710_000_000_029
+      1_710_000_000_025, 1_710_000_000_026, 1_710_000_000_027, 1_710_000_000_028, 1_710_000_000_029,
+      1_710_000_000_030
     ])
   })
   const program = Effect.gen(function* () {
@@ -8939,6 +8960,11 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     yield* window.setBounds(
       created,
       new WindowBounds({ x: 30, y: 40, width: bounds.width, height: bounds.height })
+    )
+    yield* window.setBoundsOnDisplay(
+      created,
+      "display-1",
+      new WindowBounds({ x: 15, y: 25, width: 320, height: 240 })
     )
     yield* window.center(created)
     yield* window.centerOnDisplay(created, "display-1")
@@ -9043,6 +9069,19 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
           y: 40,
           width: 640,
           height: 480
+        }
+      }
+    ],
+    [
+      WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+      {
+        windowId: "host-window-1",
+        displayId: "display-1",
+        bounds: {
+          x: 15,
+          y: 25,
+          width: 320,
+          height: 240
         }
       }
     ],
@@ -10959,6 +10998,9 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
       )
       const unknownExit = yield* Effect.exit(client.focus(windowHandle))
       const created = yield* client.create({})
+      const invalidDisplayBoundsExit = yield* Effect.exit(
+        client.setBoundsOnDisplay(created, "", { x: 0, y: 0, width: 100, height: 100 })
+      )
       const invalidDisplayExit = yield* Effect.exit(client.centerOnDisplay(created, ""))
       const staleExit = yield* Effect.exit(
         client.hide({
@@ -10968,7 +11010,14 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
       )
       yield* client.close(created)
       const repeatedCloseExit = yield* Effect.exit(client.close(created))
-      return { invalidDisplayExit, malformedInputExit, repeatedCloseExit, staleExit, unknownExit }
+      return {
+        invalidDisplayBoundsExit,
+        invalidDisplayExit,
+        malformedInputExit,
+        repeatedCloseExit,
+        staleExit,
+        unknownExit
+      }
     }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(rpcExchange, registry)))
   )
 
@@ -10990,6 +11039,12 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
     (error) =>
       error instanceof HostProtocolInvalidArgumentError &&
       error.operation === "Window.centerOnDisplay"
+  )
+  expectExitFailure(
+    result.invalidDisplayBoundsExit,
+    (error) =>
+      error instanceof HostProtocolInvalidArgumentError &&
+      error.operation === "Window.setBoundsOnDisplay"
   )
   expectExitFailure(
     result.repeatedCloseExit,
@@ -11048,6 +11103,7 @@ test("host WindowClient adapter exposes only supported callable methods", async 
   expect("focus" in client).toBe(true)
   expect("getBounds" in client).toBe(true)
   expect("setBounds" in client).toBe(true)
+  expect("setBoundsOnDisplay" in client).toBe(true)
   expect("center" in client).toBe(true)
   expect("centerOnDisplay" in client).toBe(true)
   expect("setVibrancy" in client).toBe(true)
@@ -12274,6 +12330,7 @@ const noopWindowClient: WindowClientApi = {
   getChildren: () => Effect.succeed([]),
   getBounds: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
   setBounds: () => Effect.void,
+  setBoundsOnDisplay: () => Effect.void,
   center: () => Effect.void,
   centerOnDisplay: () => Effect.void,
   setTitle: () => Effect.void,

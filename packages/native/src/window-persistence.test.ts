@@ -555,6 +555,7 @@ const makeWindowClient = (
     Effect.sync(() => {
       calls.setBounds.push(bounds)
     }),
+  setBoundsOnDisplay: () => Effect.void,
   center: () => Effect.void,
   centerOnDisplay: () => Effect.void,
   setTitle: () => Effect.void,

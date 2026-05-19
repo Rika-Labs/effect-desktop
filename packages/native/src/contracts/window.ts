@@ -142,6 +142,14 @@ export class WindowBoundsInput extends Schema.Class<WindowBoundsInput>("WindowBo
   bounds: WindowBounds
 }) {}
 
+export class WindowDisplayBoundsInput extends Schema.Class<WindowDisplayBoundsInput>(
+  "WindowDisplayBoundsInput"
+)({
+  window: WindowResource,
+  displayId: Schema.NonEmptyString,
+  bounds: WindowBounds
+}) {}
+
 export class WindowDisplayInput extends Schema.Class<WindowDisplayInput>("WindowDisplayInput")({
   window: WindowResource,
   displayId: Schema.NonEmptyString

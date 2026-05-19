@@ -136,6 +136,13 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         bounds: &WindowBoundsPayload,
     ) -> std::result::Result<(), HostProtocolError>;
 
+    fn set_bounds_on_display(
+        &self,
+        window_id: &str,
+        display_id: &str,
+        bounds: &WindowBoundsPayload,
+    ) -> std::result::Result<(), HostProtocolError>;
+
     fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
     fn center_on_display(
@@ -402,6 +409,12 @@ enum WindowCommand {
     },
     SetBounds {
         window_id: String,
+        bounds: WindowBoundsPayload,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetBoundsOnDisplay {
+        window_id: String,
+        display_id: String,
         bounds: WindowBoundsPayload,
         reply: Sender<WindowCommandReply>,
     },
@@ -1075,6 +1088,26 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_BOUNDS_METHOD)
+    }
+
+    fn set_bounds_on_display(
+        &self,
+        window_id: &str,
+        display_id: &str,
+        bounds: &WindowBoundsPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetBoundsOnDisplay {
+            window_id: window_id.to_string(),
+            display_id: display_id.to_string(),
+            bounds: bounds.clone(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(
+            reply_rx,
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        )
     }
 
     fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
@@ -2391,6 +2424,40 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn set_bounds_on_display(
+        &self,
+        window_id: &str,
+        display_id: &str,
+        bounds: &WindowBoundsPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+            ));
+        };
+        let Some(monitor) = resources
+            ._window
+            .available_monitors()
+            .find(|monitor| screen_display_id(monitor) == display_id)
+        else {
+            return Err(HostProtocolError::not_found(
+                format!("ScreenDisplay:{display_id}"),
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+            ));
+        };
+        let bounds = display_relative_bounds_to_physical_position(
+            bounds,
+            &monitor,
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        )?;
+        resources._window.set_outer_position(bounds.position);
+        resources
+            ._window
+            .set_inner_size(LogicalSize::new(bounds.size.width, bounds.size.height));
+        Ok(())
+    }
+
     fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
@@ -3458,6 +3525,18 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::SetBoundsOnDisplay {
+                window_id,
+                display_id,
+                bounds,
+                reply,
+            } => {
+                let result = self
+                    .set_bounds_on_display(&window_id, &display_id, &bounds)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::Center { window_id, reply } => {
                 let result = self
                     .center(&window_id)
@@ -4347,6 +4426,59 @@ fn clip_window_bounds_to_logical_area(
         width,
         height,
     )
+}
+
+fn display_relative_bounds_to_physical_position(
+    bounds: &WindowBoundsPayload,
+    monitor: &MonitorHandle,
+    operation: &'static str,
+) -> std::result::Result<DisplayRelativeWindowBounds, HostProtocolError> {
+    let scale = monitor.scale_factor();
+    if !scale.is_finite() || scale <= 0.0 {
+        return Err(HostProtocolError::internal(
+            "target display scale factor is invalid",
+            operation,
+        ));
+    }
+
+    let work_area = monitor_work_area(monitor);
+    let logical_work_area = LogicalScreenArea {
+        x: 0.0,
+        y: 0.0,
+        width: f64::from(work_area.width) / scale,
+        height: f64::from(work_area.height) / scale,
+    };
+    let clipped = clip_window_bounds_to_logical_area(bounds, logical_work_area);
+    let position = PhysicalPosition::new(
+        display_relative_physical_axis(work_area.x, clipped.x(), scale, "x", operation)?,
+        display_relative_physical_axis(work_area.y, clipped.y(), scale, "y", operation)?,
+    );
+
+    Ok(DisplayRelativeWindowBounds {
+        position,
+        size: LogicalSize::new(clipped.width(), clipped.height()),
+    })
+}
+
+fn display_relative_physical_axis(
+    origin: i32,
+    relative: f64,
+    scale: f64,
+    axis: &str,
+    operation: &'static str,
+) -> std::result::Result<i32, HostProtocolError> {
+    rounded_i32(f64::from(origin) + (relative * scale)).ok_or_else(|| {
+        HostProtocolError::internal(
+            format!("computed display-relative {axis} position is outside host coordinate range"),
+            operation,
+        )
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct DisplayRelativeWindowBounds {
+    position: PhysicalPosition<i32>,
+    size: LogicalSize<f64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -5429,7 +5561,7 @@ mod tests {
     use super::{
         centered_physical_axis, clear_window_runtime_event_state,
         clip_window_bounds_to_logical_area, control_flow_for_lifecycle_event,
-        control_flow_for_window_state, emit_window_registry_event,
+        control_flow_for_window_state, display_relative_physical_axis, emit_window_registry_event,
         handle_native_window_close_requested, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
         lifecycle_for_create_result, resident_lifecycle, rounded_i32, rounded_u32,
@@ -5798,6 +5930,30 @@ mod tests {
                 work_area
             ),
             WindowBoundsPayload::new(300.0, 200.0, 400.0, 300.0)
+        );
+    }
+
+    #[test]
+    fn display_relative_bounds_use_physical_work_area_origin() {
+        assert_eq!(
+            display_relative_physical_axis(
+                3840,
+                25.0,
+                2.0,
+                "x",
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD
+            ),
+            Ok(3890)
+        );
+        assert_eq!(
+            display_relative_physical_axis(
+                -1920,
+                100.0,
+                1.5,
+                "x",
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD
+            ),
+            Ok(-1770)
         );
     }
 
