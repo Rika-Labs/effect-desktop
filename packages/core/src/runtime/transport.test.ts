@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { Cause, Clock, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect"
+import { Cause, Clock, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 import { Socket } from "effect/unstable/socket"
 import { makeBridgeInspector } from "@effect-desktop/bridge"
 
@@ -21,6 +21,8 @@ import {
   makeInMemoryTransportPair,
   makeTransport
 } from "./transport.js"
+
+const encodeUnknownJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 test("encodeFrame emits a big-endian length prefix", () => {
   const frame = encodeFrame(new Uint8Array([0x68, 0x69]))
@@ -302,18 +304,15 @@ test("Transport service frames and unframes JSON-RPC Content-Length payloads", (
   Effect.runPromise(
     Effect.gen(function* () {
       const transport = yield* makeTransport()
-      const payload = new TextEncoder().encode(
-        JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" })
-      )
+      const encoded = encodeUnknownJson({ jsonrpc: "2.0", id: 1, method: "ping" })
+      const payload = new TextEncoder().encode(encoded)
       const framed = yield* transport.frame({ scheme: "json-rpc", payload })
       const decoded = yield* transport.unframe({ scheme: "json-rpc", bytes: framed })
 
       expect(
         new TextDecoder().decode(framed).startsWith(`Content-Length: ${payload.byteLength}\r\n\r\n`)
       ).toBe(true)
-      expect(decoded.map((frame) => new TextDecoder().decode(frame))).toEqual([
-        JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" })
-      ])
+      expect(decoded.map((frame) => new TextDecoder().decode(frame))).toEqual([encoded])
     })
   ))
 
@@ -321,9 +320,8 @@ test("Transport service unframes split stream chunks incrementally", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const transport = yield* makeTransport()
-      const payload = new TextEncoder().encode(
-        JSON.stringify({ jsonrpc: "2.0", id: 1, result: true })
-      )
+      const encoded = encodeUnknownJson({ jsonrpc: "2.0", id: 1, result: true })
+      const payload = new TextEncoder().encode(encoded)
       const framed = yield* transport.frame({ scheme: "json-rpc", payload })
       const frames = yield* transport
         .unframeStream({
@@ -332,9 +330,7 @@ test("Transport service unframes split stream chunks incrementally", () =>
         })
         .pipe(Stream.runCollect)
 
-      expect(Array.from(frames).map((frame) => new TextDecoder().decode(frame))).toEqual([
-        JSON.stringify({ jsonrpc: "2.0", id: 1, result: true })
-      ])
+      expect(Array.from(frames).map((frame) => new TextDecoder().decode(frame))).toEqual([encoded])
     })
   ))
 
@@ -494,7 +490,9 @@ test("in-memory transport pair accepts bounded queue capacity", () =>
       const [left, right] = yield* makeInMemoryTransportPair({ queueCapacity: 1 })
 
       yield* left.send(new Uint8Array([0x68, 0x69]))
-      const blockedSecond = Effect.runFork(left.send(new Uint8Array([0x6f, 0x6b])))
+      const blockedSecond = yield* Effect.forkChild(left.send(new Uint8Array([0x6f, 0x6b])), {
+        startImmediately: true
+      })
       const blockedExit = yield* Fiber.join(blockedSecond).pipe(Effect.timeoutOption("25 millis"))
 
       expect(Option.isNone(blockedExit)).toBe(true)
@@ -516,7 +514,9 @@ test("in-memory transport pair substitutes a scoped host protocol transport", ()
   Effect.runPromise(
     Effect.gen(function* () {
       const [left, right] = yield* makeInMemoryTransportPair()
-      const fiber = Effect.runFork(right.receive.pipe(Stream.take(1), Stream.runCollect))
+      const fiber = yield* Effect.forkChild(right.receive.pipe(Stream.take(1), Stream.runCollect), {
+        startImmediately: true
+      })
 
       yield* left.send(new Uint8Array([0x68, 0x69]))
       const received = Array.from(yield* Fiber.join(fiber)).map((chunk) => Array.from(chunk))

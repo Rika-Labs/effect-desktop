@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
 import { pathToFileURL } from "node:url"
+import { BunServices } from "@effect/platform-bun"
 import {
   WindowBoundsPayload,
   type HostWindowClient,
   type WindowCreateInput
 } from "@effect-desktop/bridge"
-import { Cause, ConfigProvider, Effect, Exit, Layer, Schema, Stream } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import * as FileSystem from "effect/FileSystem"
+import * as Path from "effect/Path"
 
 import { ResourceOwner } from "./resource-owner.js"
 import { WindowContext } from "./window-context.js"
@@ -24,6 +25,33 @@ import {
   requireStartupWindows,
   toStartupModuleSpecifier
 } from "./window-supervisor.js"
+
+const encodeUnknownJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
+const runScoped = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit
+  })
+
+const withTempDirectory = <A, E, R>(
+  prefix: string,
+  body: (dir: string) => Effect.Effect<A, E, R>
+) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const directory = yield* fs
+      .makeTempDirectory({ prefix, directory: tmpdir() })
+      .pipe(Effect.orDie)
+    const exit = yield* Effect.exit(body(directory))
+    yield* fs.remove(directory, { recursive: true, force: true }).pipe(Effect.orDie)
+    return yield* exit
+  })
 
 test("openDeclaredWindows opens declared windows and smoke-test destroys them", () =>
   Effect.runPromise(
@@ -224,7 +252,7 @@ test("startup environment decodes declared window specs through Effect Config an
       const config = yield* readStartupEnvironment(
         provider({
           [WINDOW_SMOKE_TEST_ENV]: "yes",
-          [STARTUP_WINDOWS_ENV]: JSON.stringify({
+          [STARTUP_WINDOWS_ENV]: encodeUnknownJson({
             main: {
               title: "Terminal",
               width: 1024,
@@ -285,7 +313,7 @@ test("startup environment rejects invalid declared window specs with a typed err
       const exit = yield* Effect.exit(
         readStartupEnvironment(
           provider({
-            [STARTUP_WINDOWS_ENV]: JSON.stringify({
+            [STARTUP_WINDOWS_ENV]: encodeUnknownJson({
               main: {
                 title: "",
                 width: -1
@@ -336,7 +364,7 @@ test("startup environment rejects empty window names", () =>
       const exit = yield* Effect.exit(
         readStartupEnvironment(
           provider({
-            [STARTUP_WINDOWS_ENV]: JSON.stringify({
+            [STARTUP_WINDOWS_ENV]: encodeUnknownJson({
               "": {
                 title: "Untitled"
               }
@@ -353,28 +381,26 @@ test("startup environment rejects empty window names", () =>
 
 test("startup environment decodes module exports and gives app modules precedence", () =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-startup-"))
-      )
-      const modulePath = join(directory, "app.ts")
-      yield* Effect.promise(() =>
-        writeFile(
-          modulePath,
-          [
-            "export const named = {",
-            '  _tag: "DesktopAppDescriptor",',
-            "  windowRegistrations: [",
-            '    { id: "module", spec: { title: "Module", width: 800 } }',
-            "  ]",
-            "}"
-          ].join("\n"),
-          "utf8"
-        )
-      )
-
-      const exit = yield* Effect.exit(
+    runScoped(
+      withTempDirectory("effect-desktop-startup-", (directory) =>
         Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const path = yield* Path.Path
+          const modulePath = path.join(directory, "app.ts")
+          yield* fs
+            .writeFileString(
+              modulePath,
+              [
+                "export const named = {",
+                '  _tag: "DesktopAppDescriptor",',
+                "  windowRegistrations: [",
+                '    { id: "module", spec: { title: "Module", width: 800 } }',
+                "  ]",
+                "}"
+              ].join("\n")
+            )
+            .pipe(Effect.orDie)
+
           const config = yield* readStartupEnvironment(
             provider({
               [APP_MODULE_ENV]: pathToFileURL(modulePath).href,
@@ -393,36 +419,33 @@ test("startup environment decodes module exports and gives app modules precedenc
             }
           ])
         })
-      )
-      yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      yield* exit
-    })
+      ),
+      BunServices.layer
+    )
   ))
 
 test("startup environment defaults blank module export to default", () =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-startup-default-"))
-      )
-      const modulePath = join(directory, "app.ts")
-      yield* Effect.promise(() =>
-        writeFile(
-          modulePath,
-          [
-            "export default {",
-            '  _tag: "DesktopAppDescriptor",',
-            "  windowRegistrations: [",
-            '    { id: "main", spec: { title: "Default Export" } }',
-            "  ]",
-            "}"
-          ].join("\n"),
-          "utf8"
-        )
-      )
-
-      const exit = yield* Effect.exit(
+    runScoped(
+      withTempDirectory("effect-desktop-startup-default-", (directory) =>
         Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const path = yield* Path.Path
+          const modulePath = path.join(directory, "app.ts")
+          yield* fs
+            .writeFileString(
+              modulePath,
+              [
+                "export default {",
+                '  _tag: "DesktopAppDescriptor",',
+                "  windowRegistrations: [",
+                '    { id: "main", spec: { title: "Default Export" } }',
+                "  ]",
+                "}"
+              ].join("\n")
+            )
+            .pipe(Effect.orDie)
+
           const config = yield* readStartupEnvironment(
             provider({
               [APP_MODULE_ENV]: pathToFileURL(modulePath).href,
@@ -440,10 +463,9 @@ test("startup environment defaults blank module export to default", () =>
             }
           ])
         })
-      )
-      yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      yield* exit
-    })
+      ),
+      BunServices.layer
+    )
   ))
 
 test("startup environment rejects non-file URL app modules with a typed error", () =>
@@ -462,15 +484,14 @@ test("startup environment rejects non-file URL app modules with a typed error", 
 
 test("startup environment rejects missing or invalid app exports with a typed error", () =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-startup-invalid-"))
-      )
-      const modulePath = join(directory, "app.ts")
-      yield* Effect.promise(() => writeFile(modulePath, "export const wrong = {}", "utf8"))
-
-      const exit = yield* Effect.exit(
+    runScoped(
+      withTempDirectory("effect-desktop-startup-invalid-", (directory) =>
         Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const path = yield* Path.Path
+          const modulePath = path.join(directory, "app.ts")
+          yield* fs.writeFileString(modulePath, "export const wrong = {}").pipe(Effect.orDie)
+
           const config = yield* readStartupEnvironment(
             provider({ [APP_MODULE_ENV]: pathToFileURL(modulePath).href })
           )
@@ -480,10 +501,9 @@ test("startup environment rejects missing or invalid app exports with a typed er
           expect(error).toBeInstanceOf(StartupWindowConfigError)
           expect(error?.message).toContain(APP_MODULE_ENV)
         })
-      )
-      yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      yield* exit
-    })
+      ),
+      BunServices.layer
+    )
   ))
 
 test("startup environment uses Effect Config boolean parsing for smoke-test mode", () =>
@@ -497,7 +517,7 @@ test("startup environment uses Effect Config boolean parsing for smoke-test mode
 
       expect(enabled.smokeTest).toBe(true)
       expect(disabled.smokeTest).toBe(false)
-      expect(getFailure(invalid)).toBeInstanceOf(StartupWindowConfigError)
+      expect(invalid.pipe(getFailure)).toBeInstanceOf(StartupWindowConfigError)
     })
   ))
 
