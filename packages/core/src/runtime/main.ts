@@ -5,7 +5,7 @@ import {
   makeHostWindowClient,
   negotiateHostVersion
 } from "@effect-desktop/bridge"
-import { Effect } from "effect"
+import { Effect, ManagedRuntime, Schema } from "effect"
 
 import packageJson from "../../package.json" with { type: "json" }
 import { createHostProtocolExchange } from "./host-client.js"
@@ -18,14 +18,23 @@ import {
   readStartupWindows
 } from "./window-supervisor.js"
 
-const readyEvent = {
+const ReadyEvent = Schema.Struct({
+  event: Schema.Literal("runtime.ready"),
+  version: Schema.String
+})
+
+const encodeReadyEvent = Schema.encodeSync(Schema.fromJsonString(ReadyEvent))
+
+const readyEvent = encodeReadyEvent({
   event: "runtime.ready",
   version: packageJson.version
-} as const
+})
 
-await Effect.runPromise(
+const runtime = ManagedRuntime.make(layerStdioSocket)
+
+await runtime.runPromise(
   Effect.gen(function* () {
-    yield* writeStdout(`${JSON.stringify(readyEvent)}\n`)
+    yield* writeStdout(`${readyEvent}\n`)
 
     const transport = yield* makeTransport()
     const connection = yield* transport.connect({ target: "stdio" })
@@ -40,7 +49,7 @@ await Effect.runPromise(
     yield* openDeclaredWindows(windows, declaredRegistrations, {
       smokeTest: startupEnvironment.smokeTest
     })
-  }).pipe(Effect.scoped, Effect.provide(layerStdioSocket))
+  }).pipe(Effect.scoped)
 )
 
 process.exit(0)

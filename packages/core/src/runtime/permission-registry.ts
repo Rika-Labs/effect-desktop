@@ -160,28 +160,34 @@ export const makePermissionRegistry = (
     const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
 
     return Object.freeze({
-      declare: (capability, declarationOptions = {}) =>
-        Effect.gen(function* () {
-          const decoded = yield* decodeDeclaration(
-            {
-              capability,
-              effect: declarationOptions.effect ?? "allow",
-              ...(declarationOptions.actor === undefined
-                ? {}
-                : { actor: declarationOptions.actor }),
-              source: declarationOptions.source ?? "declaration"
-            },
-            "PermissionRegistry.declare"
-          )
-          const rule = new PermissionRule({
-            capability: decoded.capability,
-            effect: decoded.effect,
-            ...(decoded.actor === undefined ? {} : { actor: decoded.actor }),
-            source: decoded.source ?? "declaration"
-          })
-          yield* Ref.update(rules, (current) => [...current, rule])
-          return rule
-        }).pipe(Effect.withSpan("PermissionRegistry.declare")),
+      declare: Effect.fn("PermissionRegistry.declare")(function* (
+        capability: NormalizedCapability,
+        declarationOptions: {
+          readonly effect?: PermissionEffect
+          readonly actor?: PermissionActor
+          readonly source?: string
+        } = {}
+      ) {
+        const decoded = yield* decodeDeclaration(
+          {
+            capability,
+            effect: declarationOptions.effect ?? "allow",
+            ...(declarationOptions.actor === undefined
+              ? {}
+              : { actor: declarationOptions.actor }),
+            source: declarationOptions.source ?? "declaration"
+          },
+          "PermissionRegistry.declare"
+        )
+        const rule = new PermissionRule({
+          capability: decoded.capability,
+          effect: decoded.effect,
+          ...(decoded.actor === undefined ? {} : { actor: decoded.actor }),
+          source: decoded.source ?? "declaration"
+        })
+        yield* Ref.update(rules, (current) => [...current, rule])
+        return rule
+      }),
       query: (kind, actor) =>
         Effect.gen(function* () {
           const decoded = yield* decodeQuery({ kind, actor }, "PermissionRegistry.query")
@@ -301,16 +307,14 @@ export const makePermissionRegistry = (
             attributes: { kind: capability.kind }
           })
         ),
-      revoke: (token) =>
-        Effect.gen(function* () {
-          const updatedAt = yield* resolveClockTimestamp("PermissionRegistry.revoke", now())
-          return yield* transitionGrant(grants, options.audit, token, "revoked", updatedAt)
-        }).pipe(Effect.withSpan("PermissionRegistry.revoke")),
-      inspect: (token) =>
-        Effect.gen(function* () {
-          const inspectedAt = yield* resolveClockTimestamp("PermissionRegistry.inspect", now())
-          return yield* inspectGrant(grants, options.audit, token, inspectedAt)
-        }).pipe(Effect.withSpan("PermissionRegistry.inspect")),
+      revoke: Effect.fn("PermissionRegistry.revoke")(function* (token: string) {
+        const updatedAt = yield* resolveClockTimestamp("PermissionRegistry.revoke", now())
+        return yield* transitionGrant(grants, options.audit, token, "revoked", updatedAt)
+      }),
+      inspect: Effect.fn("PermissionRegistry.inspect")(function* (token: string) {
+        const inspectedAt = yield* resolveClockTimestamp("PermissionRegistry.inspect", now())
+        return yield* inspectGrant(grants, options.audit, token, inspectedAt)
+      }),
       use: (grant, effect) =>
         Effect.gen(function* () {
           const usedAt = yield* resolveClockTimestamp("PermissionRegistry.use", now())
