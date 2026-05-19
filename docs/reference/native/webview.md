@@ -38,12 +38,14 @@ dispatch to the retained Wry WebView. `getNavigationState` returns host-tracked
 navigation lifecycle event stream, and browser-internal same-document history is
 not exposed as a portable native primitive.
 
-Navigation and popup policy is not host-backed today. `setNavigationPolicy` is
-declared in the TypeScript bridge contract, but the Rust host only validates
-the routed payload before returning unsupported. It does not install a native
-navigation handler, install a new-window handler, or connect WebView-originated
-external opens to
-`Shell.openExternal` policy before a popup is created.
+Navigation and popup policy is host-backed for child WebViews. `create` stores
+an initial origin policy, `setNavigationPolicy` replaces that policy on the
+retained host resource, and the Wry navigation handler blocks disallowed
+navigations before they load. The host emits `WebView.NavigationBlocked` for
+denied navigations. A Wry new-window handler denies `window.open` requests
+before a native popup is created and emits the same event with a popup-policy
+reason. `openExternal` approval is still modeled as policy denial rather than
+automatic delegation to `Shell.openExternal`.
 
 Subframe identity is not exposed today. Effect Desktop has no `WebViewFrames`
 service, frame handle schema, frame lifecycle stream, `listFrames`, or
@@ -138,10 +140,12 @@ Desktop.make({
 The contract is declared through `WebViewRpcs`. App runtime WebView attachment
 is owned by `Window.create`; direct child WebView navigation methods are routed
 through host-backed resources and report `partial` support with
-`host-navigation-state-tracked`. `captureScreenshot`, `setNavigationPolicy`, and
-`capability` remain validation-first unsupported routes until their own host
-adapters land. `webViewCapability(...)` remains a local platform and
-runtime-mode feature helper; it does not grant permission.
+`host-navigation-state-tracked`. `setNavigationPolicy` is also host-backed for
+those resources and shares the same partial support reason because popup
+approval and external-open delegation are still intentionally conservative.
+`captureScreenshot` and `capability` remain validation-first unsupported routes
+until their own host adapters land. `webViewCapability(...)` remains a local
+platform and runtime-mode feature helper; it does not grant permission.
 Request/response interception is also not part of this surface yet; it requires
 a separate native host adapter.
 Proxy/auth/certificate hooks are likewise absent from the current host-backed

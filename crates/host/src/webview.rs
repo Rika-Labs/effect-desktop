@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::path::Path;
 use tao::window::Window;
 use tracing::info;
-use wry::{PageLoadEvent, WebView, WebViewBuilder};
+use wry::{NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebView, WebViewBuilder};
 
 const WEBVIEW_OPENED_EVENT: &str = "host.webview.opened";
 const WEBVIEW_CHILD_OPENED_EVENT: &str = "host.webview.child_opened";
@@ -45,6 +45,7 @@ struct WebViewRequest {
 pub(crate) struct ChildWebViewRequest {
     pub(crate) url: String,
     pub(crate) navigation_handler: Box<dyn Fn(String) -> bool>,
+    pub(crate) new_window_handler: Box<dyn Fn(String, NewWindowFeatures) -> NewWindowResponse>,
     pub(crate) page_load_handler: Box<dyn Fn(PageLoadEvent, String)>,
 }
 
@@ -154,6 +155,7 @@ pub(crate) fn attach_child_webview(
     let builder = scheme::register_app_scheme(WebViewBuilder::new())
         .with_url(request.url)
         .with_navigation_handler(request.navigation_handler)
+        .with_new_window_req_handler(request.new_window_handler)
         .with_on_page_load_handler(request.page_load_handler);
     let webview = build_webview(builder, window).map_err(|error| {
         Box::new(HostProtocolError::internal(

@@ -3611,23 +3611,23 @@
       "method": "setNavigationPolicy",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -4241,7 +4241,7 @@
     "routed": 243,
     "missing": 0,
     "supported": 140,
-    "partial": 65,
-    "unsupported": 38
+    "partial": 66,
+    "unsupported": 37
   }
 }

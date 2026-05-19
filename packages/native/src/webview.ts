@@ -145,7 +145,7 @@ export const WebViewSetNavigationPolicy = NativeSurface.rpc("WebView", "setNavig
     P.nativeInvoke({ primitive: "WebView", methods: ["setNavigationPolicy"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 export const WebViewCapability = NativeSurface.rpc("WebView", "capability", {
   payload: WebViewCapabilityInput,

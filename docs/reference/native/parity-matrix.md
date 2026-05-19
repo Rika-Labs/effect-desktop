@@ -217,7 +217,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `WebView`                   | `loadRoute`                 | `partial`     | `WebView.loadRoute`                       | `routed`    |
 | `WebView`                   | `loadUrl`                   | `partial`     | `WebView.loadUrl`                         | `routed`    |
 | `WebView`                   | `reload`                    | `partial`     | `WebView.reload`                          | `routed`    |
-| `WebView`                   | `setNavigationPolicy`       | `unsupported` | `WebView.setNavigationPolicy`             | `routed`    |
+| `WebView`                   | `setNavigationPolicy`       | `partial`     | `WebView.setNavigationPolicy`             | `routed`    |
 | `WebView`                   | `stop`                      | `partial`     | `WebView.stop`                            | `routed`    |
 | `Window`                    | `cancelAttention`           | `supported`   | `Window.cancelAttention`                  | `routed`    |
 | `Window`                    | `center`                    | `supported`   | `Window.center`                           | `routed`    |

@@ -429,6 +429,16 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         ))
     }
 
+    fn set_webview_navigation_policy(
+        &self,
+        _request: WebViewSetNavigationPolicyRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+        ))
+    }
+
     fn destroy_webview(
         &self,
         _handle: WebViewHandleRequest,
@@ -523,6 +533,18 @@ impl WebViewLoadRouteRequest {
 pub(crate) struct WebViewLoadUrlRequest {
     handle: WebViewHandleRequest,
     url: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewSetNavigationPolicyRequest {
+    handle: WebViewHandleRequest,
+    policy: WebViewNavigationPolicy,
+}
+
+impl WebViewSetNavigationPolicyRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, policy: WebViewNavigationPolicy) -> Self {
+        Self { handle, policy }
+    }
 }
 
 impl WebViewLoadUrlRequest {
@@ -853,6 +875,10 @@ enum WindowCommand {
         handle: WebViewHandleRequest,
         reply: Sender<WindowCommandReply>,
     },
+    SetWebViewNavigationPolicy {
+        request: WebViewSetNavigationPolicyRequest,
+        reply: Sender<WindowCommandReply>,
+    },
     DestroyWebView {
         handle: WebViewHandleRequest,
         reply: Sender<WindowCommandReply>,
@@ -918,10 +944,11 @@ struct NativeWebViewResources {
     _webview: webview::HostWebView,
     generation: u64,
     owner_scope: String,
-    policy: WebViewNavigationPolicy,
+    policy: SharedWebViewNavigationPolicy,
     navigation: SharedWebViewNavigationState,
 }
 
+type SharedWebViewNavigationPolicy = Rc<RefCell<WebViewNavigationPolicy>>;
 type SharedWebViewNavigationState = Rc<RefCell<WebViewNavigationState>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1041,6 +1068,8 @@ static TRAY_EVENT_HANDLES: LazyLock<Mutex<HashMap<String, TrayResourcePayload>>>
 static SCREEN_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
     LazyLock::new(|| Mutex::new(None));
 static WINDOW_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
+    LazyLock::new(|| Mutex::new(None));
+static WEBVIEW_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
     LazyLock::new(|| Mutex::new(None));
 
 impl WindowMethodPort {
@@ -2438,6 +2467,25 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_webview_response(
                 response,
                 host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
+            )),
+        }
+    }
+
+    fn set_webview_navigation_policy(
+        &self,
+        request: WebViewSetNavigationPolicyRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetWebViewNavigationPolicy {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
             )),
         }
     }
@@ -3922,19 +3970,42 @@ impl WindowRegistry {
         let navigation = Rc::new(RefCell::new(WebViewNavigationState::new(
             request.url.clone(),
         )));
+        let policy = Rc::new(RefCell::new(request.policy));
         let navigation_for_policy = Rc::clone(&navigation);
         let navigation_for_load = Rc::clone(&navigation);
-        let policy_for_handler = request.policy.clone();
+        let policy_for_handler = Rc::clone(&policy);
+        let policy_for_new_window = Rc::clone(&policy);
+        let webview_id_for_navigation = webview_id.clone();
+        let webview_id_for_new_window = webview_id.clone();
+        let owner_scope_for_event = owner_scope.clone();
+        let owner_scope_for_new_window = owner_scope.clone();
         let webview = webview::attach_child_webview(
             &window._window,
             webview::ChildWebViewRequest {
                 url: request.url,
                 navigation_handler: Box::new(move |url| {
-                    if !origin_allowed(&url, &policy_for_handler) {
+                    if !origin_allowed(&url, &policy_for_handler.borrow()) {
+                        emit_webview_navigation_blocked_event(
+                            &webview_id_for_navigation,
+                            &owner_scope_for_event,
+                            &url,
+                            "origin-policy",
+                        );
                         return false;
                     }
                     navigation_for_policy.borrow_mut().mark_loading(&url);
                     true
+                }),
+                new_window_handler: Box::new(move |url, _features| {
+                    if !origin_allowed(&url, &policy_for_new_window.borrow()) {
+                        emit_webview_navigation_blocked_event(
+                            &webview_id_for_new_window,
+                            &owner_scope_for_new_window,
+                            &url,
+                            "popup-policy",
+                        );
+                    }
+                    wry::NewWindowResponse::Deny
                 }),
                 page_load_handler: Box::new(move |event, url| match event {
                     wry::PageLoadEvent::Started => {
@@ -3954,7 +4025,7 @@ impl WindowRegistry {
                 _webview: webview,
                 generation: 0,
                 owner_scope: owner_scope.clone(),
-                policy: request.policy,
+                policy,
                 navigation,
             },
         );
@@ -3976,7 +4047,7 @@ impl WindowRegistry {
     ) -> std::result::Result<(), HostProtocolError> {
         let resources =
             self.webview_resources(&request.handle, host_protocol::WEBVIEW_LOAD_URL_METHOD)?;
-        if !origin_allowed(&request.url, &resources.policy) {
+        if !origin_allowed(&request.url, &resources.policy.borrow()) {
             return Err(webview_permission_denied(
                 "WebView.loadUrl denied by origin policy",
                 host_protocol::WEBVIEW_LOAD_URL_METHOD,
@@ -4049,6 +4120,18 @@ impl WindowRegistry {
         let resources =
             self.webview_resources(handle, host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD)?;
         Ok(resources.navigation.borrow().to_payload())
+    }
+
+    fn set_webview_navigation_policy(
+        &mut self,
+        request: WebViewSetNavigationPolicyRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(
+            &request.handle,
+            host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+        )?;
+        *resources.policy.borrow_mut() = request.policy;
+        Ok(())
     }
 
     fn destroy_webview(
@@ -4742,6 +4825,13 @@ impl WindowRegistry {
                 let result = self
                     .get_webview_navigation_state(&handle)
                     .map(WindowCommandResponse::WebViewNavigationState);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetWebViewNavigationPolicy { request, reply } => {
+                let result = self
+                    .set_webview_navigation_policy(request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -5777,6 +5867,19 @@ pub(crate) fn install_window_event_sender(
     Ok(())
 }
 
+pub(crate) fn install_webview_event_sender(
+    sender: Sender<HostProtocolEnvelope>,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut current = WEBVIEW_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "webview event sender mutex poisoned",
+            "host.runtime.webview.connect",
+        )
+    })?;
+    *current = Some(sender);
+    Ok(())
+}
+
 pub(crate) fn clear_screen_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
     let mut sender = SCREEN_EVENT_SENDER.lock().map_err(|_| {
         HostProtocolError::internal(
@@ -5793,6 +5896,17 @@ pub(crate) fn clear_window_runtime_event_state() -> std::result::Result<(), Host
         HostProtocolError::internal(
             "window event sender mutex poisoned",
             "host.runtime.window.disconnect",
+        )
+    })?;
+    *sender = None;
+    Ok(())
+}
+
+pub(crate) fn clear_webview_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
+    let mut sender = WEBVIEW_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "webview event sender mutex poisoned",
+            "host.runtime.webview.disconnect",
         )
     })?;
     *sender = None;
@@ -5825,6 +5939,19 @@ fn window_event_sender(
         })
 }
 
+fn webview_event_sender(
+) -> std::result::Result<Option<Sender<HostProtocolEnvelope>>, HostProtocolError> {
+    WEBVIEW_EVENT_SENDER
+        .lock()
+        .map(|sender| sender.clone())
+        .map_err(|_| {
+            HostProtocolError::internal(
+                "webview event sender mutex poisoned",
+                "host.runtime.webview.event",
+            )
+        })
+}
+
 fn emit_window_registry_event(
     window_id: &str,
     phase: WindowRegistryEventPhase,
@@ -5844,6 +5971,45 @@ fn emit_window_registry_event(
             payload: Some(payload),
         })
         .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
+}
+
+fn emit_webview_navigation_blocked_event(
+    webview_id: &str,
+    owner_scope: &str,
+    url: &str,
+    reason: &str,
+) {
+    let sender = match webview_event_sender() {
+        Ok(Some(sender)) => sender,
+        Ok(None) => return,
+        Err(error) => {
+            warn!(
+                event = "host.webview.navigation_blocked_event_sender_failed",
+                error = ?error,
+                "failed to read webview event sender"
+            );
+            return;
+        }
+    };
+    let payload = serde_json::json!({
+        "webview": {
+            "kind": "webview",
+            "id": webview_id,
+            "generation": 0,
+            "ownerScope": owner_scope,
+            "state": "open"
+        },
+        "url": url,
+        "reason": reason
+    });
+    let timestamp = timestamp_millis();
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::WEBVIEW_NAVIGATION_BLOCKED_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("webview-navigation-blocked-{webview_id}-{timestamp}"),
+        window_id: None,
+        payload: Some(payload),
+    });
 }
 
 fn emit_window_state_event(
@@ -6552,10 +6718,12 @@ mod tests {
     #[cfg(target_os = "linux")]
     use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
-        centered_physical_axis, clear_window_runtime_event_state,
-        clip_window_bounds_to_logical_area, control_flow_for_lifecycle_event,
-        control_flow_for_window_state, display_relative_physical_axis, emit_window_registry_event,
-        handle_native_window_close_requested, install_window_event_sender,
+        centered_physical_axis, clear_webview_runtime_event_state,
+        clear_window_runtime_event_state, clip_window_bounds_to_logical_area,
+        control_flow_for_lifecycle_event, control_flow_for_window_state,
+        display_relative_physical_axis, emit_webview_navigation_blocked_event,
+        emit_window_registry_event, handle_native_window_close_requested,
+        install_webview_event_sender, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
         lifecycle_for_create_result, resident_lifecycle, rounded_i32, rounded_u32,
         screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
@@ -6628,6 +6796,45 @@ mod tests {
             "https://evil.example.com/path",
             &policy
         ));
+    }
+
+    #[test]
+    fn webview_navigation_blocked_event_uses_typed_payload() {
+        let (sender, receiver) = mpsc::channel();
+        install_webview_event_sender(sender).expect("webview event sender should install");
+
+        emit_webview_navigation_blocked_event(
+            "webview-1",
+            "window:window-1",
+            "https://evil.example.com/path",
+            "origin-policy",
+        );
+
+        let event = receiver
+            .recv()
+            .expect("navigation blocked event should be emitted");
+        clear_webview_runtime_event_state().expect("webview event sender should clear");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = event
+        else {
+            panic!("expected event envelope");
+        };
+        assert_eq!(method, host_protocol::WEBVIEW_NAVIGATION_BLOCKED_EVENT);
+        assert_eq!(
+            payload.expect("event should include payload"),
+            serde_json::json!({
+                "webview": {
+                    "kind": "webview",
+                    "id": "webview-1",
+                    "generation": 0,
+                    "ownerScope": "window:window-1",
+                    "state": "open"
+                },
+                "url": "https://evil.example.com/path",
+                "reason": "origin-policy"
+            })
+        );
     }
 
     fn install_test_window_event_sender(

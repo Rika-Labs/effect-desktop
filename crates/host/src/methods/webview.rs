@@ -4,7 +4,8 @@
 
 use crate::window::{
     WebViewCreateRequest, WebViewHandleRequest, WebViewLoadRouteRequest, WebViewLoadUrlRequest,
-    WebViewNavigationDecision, WebViewNavigationPolicy, WindowMethodHandler,
+    WebViewNavigationDecision, WebViewNavigationPolicy, WebViewSetNavigationPolicyRequest,
+    WindowMethodHandler,
 };
 use host_protocol::HostProtocolError;
 use serde_json::{Map, Value};
@@ -159,6 +160,7 @@ pub(crate) fn capture_screenshot(
 }
 
 pub(crate) fn set_navigation_policy(
+    handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = required_object(payload, host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD)?;
@@ -176,10 +178,19 @@ pub(crate) fn set_navigation_policy(
         "policy",
         host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
     )?;
+    handler.set_webview_navigation_policy(WebViewSetNavigationPolicyRequest::new(
+        decode_webview_handle(
+            &payload,
+            host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+        )?,
+        decode_policy(
+            &payload,
+            "policy",
+            host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+        )?,
+    ))?;
 
-    Err(unsupported(
-        host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
-    ))
+    Ok(None)
 }
 
 pub(crate) fn capability(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -742,33 +753,9 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{capability, set_navigation_policy};
+    use super::capability;
     use host_protocol::HostProtocolError;
     use serde_json::json;
-
-    fn webview_handle() -> serde_json::Value {
-        json!({
-            "kind": "webview",
-            "id": "webview-1",
-            "generation": 0,
-            "ownerScope": "window:window-1",
-            "state": "open"
-        })
-    }
-
-    #[test]
-    fn set_navigation_policy_validates_policy_then_fails_closed() {
-        let error = set_navigation_policy(Some(json!({
-            "webview": webview_handle(),
-            "policy": {
-                "allowedOrigins": ["app://localhost", "https://example.com"],
-                "onDisallowed": "openExternal"
-            }
-        })))
-        .expect_err("set navigation policy should be unsupported");
-
-        assert!(matches!(error, HostProtocolError::Unsupported { .. }));
-    }
 
     #[test]
     fn capability_rejects_unknown_names_before_unsupported() {
