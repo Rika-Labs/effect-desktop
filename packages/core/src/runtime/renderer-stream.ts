@@ -96,7 +96,7 @@ export const makeFrameworkScopedOperation = <R, ER>(
     interruptLatest = undefined
   }
 
-  const runLatestPromiseExit = async <A, E>(
+  const runLatestPromiseExit = <A, E>(
     effect: Effect.Effect<A, E, R>
   ): Promise<readonly [Exit.Exit<A, E | ER>, boolean]> => {
     interrupt()
@@ -106,11 +106,12 @@ export const makeFrameworkScopedOperation = <R, ER>(
     interruptLatest = () => {
       interruptFrameworkFiber(fiber)
     }
-    const exit = await awaitFrameworkFiber(fiber)
-    if (generation === currentGeneration) {
-      interruptLatest = undefined
-    }
-    return [exit, !disposed && generation === currentGeneration]
+    return awaitFrameworkFiber(fiber).then((exit) => {
+      if (generation === currentGeneration) {
+        interruptLatest = undefined
+      }
+      return [exit, !disposed && generation === currentGeneration] as const
+    })
   }
 
   return {
