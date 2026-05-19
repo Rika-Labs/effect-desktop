@@ -20,6 +20,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       const create = yield* capabilities.support("Window.create")
       const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
       const dockProgress = yield* capabilities.support("Dock.setProgress")
+      const updaterCheck = yield* capabilities.support("Updater.check")
       const updaterInstall = yield* capabilities.support("Updater.install")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
@@ -42,6 +43,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
         contextMenuShow,
         safeStorageSet,
         safeStorageIsAvailable,
+        updaterCheck,
         updaterInstall,
         crashReporterStart,
         powerMonitorIsSupported,
@@ -117,6 +119,15 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     ]
   })
   expect(result.safeStorageIsAvailable).toEqual({ status: "supported" })
+  expect(result.updaterCheck).toEqual({
+    status: "partial",
+    reason: "signed-manifest-check-only",
+    platforms: [
+      { platform: "macos", status: "partial", reason: "signed-manifest-check-only" },
+      { platform: "windows", status: "partial", reason: "signed-manifest-check-only" },
+      { platform: "linux", status: "partial", reason: "signed-manifest-check-only" }
+    ]
+  })
   expect(result.updaterInstall).toEqual({
     status: "unsupported",
     reason: "host-adapter-unimplemented",

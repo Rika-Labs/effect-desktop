@@ -2430,15 +2430,67 @@ impl ClipboardSupportedPayload {
 pub struct UpdaterCheckPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     current_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    manifest_json: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust_anchors: Option<Vec<UpdaterTrustAnchorPayload>>,
 }
 
 impl UpdaterCheckPayload {
     pub fn new(current_version: Option<String>) -> Self {
-        Self { current_version }
+        Self {
+            current_version,
+            manifest_json: None,
+            trust_anchors: None,
+        }
+    }
+
+    pub fn with_signed_manifest(
+        current_version: Option<String>,
+        manifest_json: String,
+        trust_anchors: Vec<UpdaterTrustAnchorPayload>,
+    ) -> Self {
+        Self {
+            current_version,
+            manifest_json: Some(manifest_json),
+            trust_anchors: Some(trust_anchors),
+        }
     }
 
     pub fn current_version(&self) -> Option<&str> {
         self.current_version.as_deref()
+    }
+
+    pub fn manifest_json(&self) -> Option<&str> {
+        self.manifest_json.as_deref()
+    }
+
+    pub fn trust_anchors(&self) -> Option<&[UpdaterTrustAnchorPayload]> {
+        self.trust_anchors.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdaterTrustAnchorPayload {
+    key_version: u32,
+    public_key: String,
+}
+
+impl UpdaterTrustAnchorPayload {
+    pub fn new(key_version: u32, public_key: String) -> Self {
+        Self {
+            key_version,
+            public_key,
+        }
+    }
+
+    pub fn key_version(&self) -> u32 {
+        self.key_version
+    }
+
+    pub fn public_key(&self) -> &str {
+        &self.public_key
     }
 }
 
@@ -11755,19 +11807,19 @@ mod tests {
         TransientWindowZOrderPolicy, TrayActivatedEventPayload, TrayCreatePayload,
         TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
-        UpdaterStatusPayload, UpdaterStatusState, WindowAttentionType, WindowBoundsPayload,
-        WindowCenterOnDisplayPayload, WindowCreatePayload, WindowCreateResponse,
-        WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowParentResponse,
-        WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
-        WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
-        WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
-        WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSimpleFullscreenPayload,
-        WindowSetSkipTaskbarPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
-        WindowSetVibrancyPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
-        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
-        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
-        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
-        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        UpdaterStatusPayload, UpdaterStatusState, UpdaterTrustAnchorPayload, WindowAttentionType,
+        WindowBoundsPayload, WindowCenterOnDisplayPayload, WindowCreatePayload,
+        WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
+        WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
+        WindowRegistryEventPhase, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
+        WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
+        WindowSetProgressPayload, WindowSetResizablePayload, WindowSetShadowPayload,
+        WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload, WindowSetTitlePayload,
+        WindowSetTrafficLightsPayload, WindowSetVibrancyPayload, WindowStateEventPayload,
+        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
+        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
+        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
+        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
         CRASH_REPORTER_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS,
@@ -12550,6 +12602,18 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&check).expect("updater check should encode"),
             r#"{"currentVersion":"1.0.0"}"#
+        );
+        let signed_check = UpdaterCheckPayload::with_signed_manifest(
+            Some("1.0.0".to_string()),
+            r#"{"schemaVersion":1}"#.to_string(),
+            vec![UpdaterTrustAnchorPayload::new(
+                7,
+                "ed25519:public-key".to_string(),
+            )],
+        );
+        assert_eq!(
+            serde_json::to_string(&signed_check).expect("signed updater check should encode"),
+            r#"{"currentVersion":"1.0.0","manifestJson":"{\"schemaVersion\":1}","trustAnchors":[{"keyVersion":7,"publicKey":"ed25519:public-key"}]}"#
         );
 
         let download = UpdaterDownloadPayload::new(Some("1.1.0".to_string()));

@@ -3185,23 +3185,23 @@
       "method": "check",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "signed-manifest-check-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-check-only"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-check-only"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-check-only"
           }
         ]
       },
@@ -4145,7 +4145,7 @@
     "routed": 234,
     "missing": 0,
     "supported": 132,
-    "partial": 42,
-    "unsupported": 60
+    "partial": 43,
+    "unsupported": 59
   }
 }

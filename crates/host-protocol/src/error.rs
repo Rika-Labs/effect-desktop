@@ -976,6 +976,26 @@ impl HostProtocolError {
         }
     }
 
+    pub fn update_signature_invalid(
+        artifact: impl Into<String>,
+        key_version: u32,
+        message: impl Into<String>,
+        operation: impl Into<String>,
+    ) -> Self {
+        Self::UpdateSignatureInvalid {
+            artifact: artifact.into(),
+            key_version,
+            message: message.into(),
+            operation: operation.into(),
+            platform: None,
+            code: None,
+            cause: None,
+            recoverable: Self::recoverable_default("UpdateSignatureInvalid").expect("known tag"),
+            remediation: None,
+            docs_url: None,
+        }
+    }
+
     pub fn internal(message: impl Into<String>, operation: impl Into<String>) -> Self {
         Self::Internal {
             message: message.into(),

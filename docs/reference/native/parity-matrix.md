@@ -197,7 +197,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Tray`                      | `setMenu`                   | `partial`     | `Tray.setMenu`                            | `routed`    |
 | `Tray`                      | `setTitle`                  | `partial`     | `Tray.setTitle`                           | `routed`    |
 | `Tray`                      | `setTooltip`                | `partial`     | `Tray.setTooltip`                         | `routed`    |
-| `Updater`                   | `check`                     | `unsupported` | `Updater.check`                           | `routed`    |
+| `Updater`                   | `check`                     | `partial`     | `Updater.check`                           | `routed`    |
 | `Updater`                   | `download`                  | `unsupported` | `Updater.download`                        | `routed`    |
 | `Updater`                   | `getStatus`                 | `unsupported` | `Updater.getStatus`                       | `routed`    |
 | `Updater`                   | `install`                   | `unsupported` | `Updater.install`                         | `routed`    |

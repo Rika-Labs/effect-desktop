@@ -5927,6 +5927,69 @@ test("Updater bridge client sends typed host envelopes and decodes status values
   ])
 })
 
+test("Updater bridge client sends signed manifest check inputs", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = updaterExchange(requests, () => ({
+    kind: "success",
+    payload: { available: true, version: "1.1.0", notes: "signed manifest verified" }
+  }))
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const updater = yield* Updater
+      return yield* updater.check({
+        currentVersion: "1.0.0",
+        manifestJson: '{"schemaVersion":1}',
+        trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }]
+      })
+    }).pipe(Effect.provide(Layer.provide(UpdaterLive, makeUpdaterBridgeClientLayer(exchange))))
+  )
+
+  expect(requests).toEqual([
+    expect.objectContaining({
+      method: "Updater.check",
+      payload: {
+        currentVersion: "1.0.0",
+        manifestJson: '{"schemaVersion":1}',
+        trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }]
+      }
+    })
+  ])
+})
+
+test("Updater bridge client rejects incomplete signed manifest check inputs", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
+        )
+      )
+    )
+  )
+
+  const missingAnchorsExit = await Effect.runPromiseExit(
+    client.check({ manifestJson: '{"schemaVersion":1}' })
+  )
+  const emptyAnchorsExit = await Effect.runPromiseExit(
+    client.check({ manifestJson: '{"schemaVersion":1}', trustAnchors: [] })
+  )
+  const missingManifestExit = await Effect.runPromiseExit(
+    client.check({ trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }] })
+  )
+
+  expectExitFailure(missingAnchorsExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(emptyAnchorsExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(missingManifestExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
+
 test("Updater service exposes the restart readiness handshake", async () => {
   const calls: string[] = []
   const result = await Effect.runPromise(

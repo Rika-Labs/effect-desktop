@@ -27,12 +27,21 @@ import {
 export type UpdaterError = HostProtocolError
 
 const UnsupportedReason = "host-adapter-unimplemented"
+const CheckPartialSupportReason = "signed-manifest-check-only"
 
 const UpdaterSupport = NativeSurface.support.unsupported(UnsupportedReason, {
   platforms: [
     { platform: "macos", status: "unsupported", reason: UnsupportedReason },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
+
+const UpdaterCheckSupport = NativeSurface.support.partial(CheckPartialSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: CheckPartialSupportReason },
+    { platform: "windows", status: "partial", reason: CheckPartialSupportReason },
+    { platform: "linux", status: "partial", reason: CheckPartialSupportReason }
   ]
 })
 
@@ -46,7 +55,8 @@ export const UpdaterCheck = updaterRpc(
   "check",
   UpdaterCheckInput,
   UpdaterCheckResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["check"] })
+  P.nativeInvoke({ primitive: "Updater", methods: ["check"] }),
+  UpdaterCheckSupport
 )
 export const UpdaterDownload = updaterRpc(
   "download",
@@ -273,7 +283,9 @@ const decodeUpdaterCheckInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterCheckInput, UpdaterError, never> =>
-  decodeInput(UpdaterCheckInput, input, operation)
+  decodeInput(UpdaterCheckInput, input, operation).pipe(
+    Effect.flatMap((decoded) => validateUpdaterCheckInput(decoded, operation))
+  )
 
 const decodeUpdaterDownloadInput = (
   input: unknown,
@@ -298,17 +310,39 @@ const decodeInput = <A>(
     )
   )
 
+const validateUpdaterCheckInput = (
+  input: UpdaterCheckInput,
+  operation: string
+): Effect.Effect<UpdaterCheckInput, UpdaterError, never> => {
+  const hasManifest = input.manifestJson !== undefined
+  const hasTrustAnchors = input.trustAnchors !== undefined
+  if (hasManifest === hasTrustAnchors) {
+    return Effect.succeed(input)
+  }
+  const field = hasManifest ? "trustAnchors" : "manifestJson"
+  const reason = hasManifest
+    ? "is required when manifestJson is provided"
+    : "is required when trustAnchors is provided"
+  return Effect.fail(makeHostProtocolInvalidArgumentError(field, reason, operation))
+}
+
 function updaterRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  capability: RpcCapabilityMetadata,
+  support = UpdaterSupport
+) {
   return NativeSurface.rpc("Updater", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: UpdaterSupport
+    support
   })
 }
 
