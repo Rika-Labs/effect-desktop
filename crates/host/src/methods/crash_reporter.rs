@@ -7,7 +7,7 @@ use host_protocol::{
     CrashReporterReportPayload, CrashReporterStartPayload, HostProtocolError,
 };
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, to_value, Value};
 use std::{
     fs,
@@ -24,6 +24,51 @@ static CRASH_REPORTER_STATE: LazyLock<Mutex<CrashReporterState>> =
 #[cfg(test)]
 static CRASH_REPORTER_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+#[cfg(test)]
+pub(crate) struct CrashReporterTestEnv {
+    previous_dir: Option<std::ffi::OsString>,
+    pub(crate) dir: PathBuf,
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl CrashReporterTestEnv {
+    pub(crate) fn new(name: &str) -> Self {
+        let guard = CRASH_REPORTER_TEST_LOCK
+            .lock()
+            .expect("crash reporter test lock should lock");
+        let previous_dir = std::env::var_os(CRASH_REPORTER_DIR_ENV);
+        let dir = std::env::temp_dir().join(format!(
+            "effect-desktop-crash-reporter-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::env::set_var(CRASH_REPORTER_DIR_ENV, &dir);
+        *CRASH_REPORTER_STATE
+            .lock()
+            .expect("crash reporter state should lock") = Default::default();
+        Self {
+            previous_dir,
+            dir,
+            _guard: guard,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Drop for CrashReporterTestEnv {
+    fn drop(&mut self) {
+        *CRASH_REPORTER_STATE
+            .lock()
+            .expect("crash reporter state should lock") = Default::default();
+        match &self.previous_dir {
+            Some(value) => std::env::set_var(CRASH_REPORTER_DIR_ENV, value),
+            None => std::env::remove_var(CRASH_REPORTER_DIR_ENV),
+        }
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
 #[derive(Default)]
 struct CrashReporterState {
     started: bool,
@@ -32,14 +77,24 @@ struct CrashReporterState {
     next_report_index: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct BreadcrumbRecord {
     category: String,
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     details: Option<Value>,
     timestamp: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BreadcrumbReportArtifact {
+    kind: String,
+    report_id: String,
+    created_at: u64,
+    uploaded: bool,
+    breadcrumbs: Vec<BreadcrumbRecord>,
 }
 
 pub(crate) fn start(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -254,12 +309,7 @@ fn write_breadcrumb_report(
             host_protocol::CRASH_REPORTER_FLUSH_METHOD,
         )
     })?;
-    fs::write(&artifact_path, &bytes).map_err(|error| {
-        host_failure(
-            format!("failed to write crash reporter artifact: {error}"),
-            host_protocol::CRASH_REPORTER_FLUSH_METHOD,
-        )
-    })?;
+    write_report_bytes(&artifact_path, &bytes)?;
     state.breadcrumbs.clear();
     Ok(CrashReporterReportPayload::new(
         report_id,
@@ -273,10 +323,141 @@ fn write_breadcrumb_report(
 fn reports_snapshot(
     operation: &'static str,
 ) -> Result<Vec<CrashReporterReportPayload>, HostProtocolError> {
+    let reports = discover_report_artifacts(operation)?;
     CRASH_REPORTER_STATE
         .lock()
         .map_err(|_| host_failure("crash reporter state lock poisoned", operation))
-        .map(|state| state.reports.clone())
+        .map(|mut state| {
+            state.reports = reports;
+            state.reports.clone()
+        })
+}
+
+fn write_report_bytes(path: &PathBuf, bytes: &[u8]) -> Result<(), HostProtocolError> {
+    let temp_path = path.with_extension("json.tmp");
+    fs::write(&temp_path, bytes).map_err(|error| {
+        host_failure(
+            format!("failed to write crash reporter artifact: {error}"),
+            host_protocol::CRASH_REPORTER_FLUSH_METHOD,
+        )
+    })?;
+    fs::rename(&temp_path, path).map_err(|error| {
+        let _ = fs::remove_file(&temp_path);
+        host_failure(
+            format!("failed to publish crash reporter artifact: {error}"),
+            host_protocol::CRASH_REPORTER_FLUSH_METHOD,
+        )
+    })
+}
+
+fn discover_report_artifacts(
+    operation: &'static str,
+) -> Result<Vec<CrashReporterReportPayload>, HostProtocolError> {
+    let dir = report_dir();
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(host_failure(
+                format!("failed to read crash reporter directory: {error}"),
+                operation,
+            ));
+        }
+    };
+    let mut reports = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            host_failure(
+                format!("failed to read crash reporter directory entry: {error}"),
+                operation,
+            )
+        })?;
+        let path = entry.path();
+        if !is_breadcrumb_artifact_path(&path) {
+            continue;
+        }
+        let file_type = entry.file_type().map_err(|error| {
+            host_failure(
+                format!("failed to inspect crash reporter artifact: {error}"),
+                operation,
+            )
+        })?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let metadata = entry.metadata().map_err(|error| {
+            host_failure(
+                format!("failed to stat crash reporter artifact: {error}"),
+                operation,
+            )
+        })?;
+        let bytes = fs::read(&path).map_err(|error| {
+            host_failure(
+                format!("failed to read crash reporter artifact: {error}"),
+                operation,
+            )
+        })?;
+        let artifact =
+            serde_json::from_slice::<BreadcrumbReportArtifact>(&bytes).map_err(|error| {
+                host_failure(
+                    format!("failed to decode crash reporter artifact: {error}"),
+                    operation,
+                )
+            })?;
+        validate_artifact(&artifact, operation)?;
+        reports.push(CrashReporterReportPayload::new(
+            artifact.report_id,
+            path.display().to_string(),
+            artifact.created_at,
+            metadata.len(),
+            artifact.uploaded,
+        ));
+    }
+    reports.sort_by(|left, right| {
+        left.created_at()
+            .cmp(&right.created_at())
+            .then_with(|| left.report_id().cmp(right.report_id()))
+    });
+    Ok(reports)
+}
+
+fn is_breadcrumb_artifact_path(path: &std::path::Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            name.starts_with("breadcrumb-") && name.ends_with(".json") && !name.ends_with(".tmp")
+        })
+}
+
+fn validate_artifact(
+    artifact: &BreadcrumbReportArtifact,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    if artifact.kind != "breadcrumb-report" {
+        return Err(host_failure(
+            "crash reporter artifact has unexpected kind",
+            operation,
+        ));
+    }
+    if artifact.report_id.is_empty() {
+        return Err(host_failure(
+            "crash reporter artifact reportId is empty",
+            operation,
+        ));
+    }
+    if artifact.report_id.chars().any(is_ascii_control_or_del) {
+        return Err(host_failure(
+            "crash reporter artifact reportId contains control characters",
+            operation,
+        ));
+    }
+    if artifact.breadcrumbs.is_empty() {
+        return Err(host_failure(
+            "crash reporter artifact has no breadcrumbs",
+            operation,
+        ));
+    }
+    Ok(())
 }
 
 fn ensure_report_dir(operation: &'static str) -> Result<PathBuf, HostProtocolError> {
@@ -331,55 +512,11 @@ fn host_failure(message: impl Into<String>, operation: &'static str) -> HostProt
 #[cfg(test)]
 mod tests {
     use super::{
-        diagnostics_reports, flush, get_reports, record_breadcrumb, start, CRASH_REPORTER_DIR_ENV,
-        CRASH_REPORTER_STATE, CRASH_REPORTER_TEST_LOCK,
+        diagnostics_reports, flush, get_reports, record_breadcrumb, start, CrashReporterTestEnv,
+        CRASH_REPORTER_STATE,
     };
     use host_protocol::HostProtocolError;
     use serde_json::json;
-    use std::path::PathBuf;
-    use std::sync::MutexGuard;
-
-    struct CrashReporterTestEnv {
-        previous_dir: Option<std::ffi::OsString>,
-        dir: PathBuf,
-        _guard: MutexGuard<'static, ()>,
-    }
-
-    impl CrashReporterTestEnv {
-        fn new(name: &str) -> Self {
-            let guard = CRASH_REPORTER_TEST_LOCK
-                .lock()
-                .expect("crash reporter test lock should lock");
-            let previous_dir = std::env::var_os(CRASH_REPORTER_DIR_ENV);
-            let dir = std::env::temp_dir().join(format!(
-                "effect-desktop-crash-reporter-{name}-{}",
-                std::process::id()
-            ));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::env::set_var(CRASH_REPORTER_DIR_ENV, &dir);
-            *CRASH_REPORTER_STATE
-                .lock()
-                .expect("crash reporter state should lock") = Default::default();
-            Self {
-                previous_dir,
-                dir,
-                _guard: guard,
-            }
-        }
-    }
-
-    impl Drop for CrashReporterTestEnv {
-        fn drop(&mut self) {
-            *CRASH_REPORTER_STATE
-                .lock()
-                .expect("crash reporter state should lock") = Default::default();
-            match &self.previous_dir {
-                Some(value) => std::env::set_var(CRASH_REPORTER_DIR_ENV, value),
-                None => std::env::remove_var(CRASH_REPORTER_DIR_ENV),
-            }
-            let _ = std::fs::remove_dir_all(&self.dir);
-        }
-    }
 
     #[test]
     fn crash_reporter_flushes_breadcrumb_artifacts() {
@@ -411,6 +548,51 @@ mod tests {
     }
 
     #[test]
+    fn crash_reporter_discovers_breadcrumb_artifacts_after_state_reset() {
+        let env = CrashReporterTestEnv::new("discovers-breadcrumbs");
+        start(Some(json!({ "enabled": true }))).expect("start");
+        record_breadcrumb(Some(json!({
+            "category": "startup",
+            "message": "renderer ready",
+            "timestamp": 1710000000000.0
+        })))
+        .expect("breadcrumb");
+        flush(None).expect("flush");
+
+        *CRASH_REPORTER_STATE
+            .lock()
+            .expect("crash reporter state should lock") = Default::default();
+
+        let reports = get_reports(None)
+            .expect("get reports")
+            .expect("reports payload");
+        assert_eq!(
+            reports["reports"].as_array().expect("reports array").len(),
+            1
+        );
+        let report_path = reports["reports"][0]["artifactPath"]
+            .as_str()
+            .expect("artifact path should be a string");
+        assert!(report_path.starts_with(&env.dir.display().to_string()));
+        assert_eq!(diagnostics_reports().expect("diagnostics reports").len(), 1);
+    }
+
+    #[test]
+    fn crash_reporter_rejects_malformed_host_artifacts() {
+        let env = CrashReporterTestEnv::new("rejects-malformed-artifact");
+        std::fs::create_dir_all(&env.dir).expect("report dir");
+        std::fs::write(env.dir.join("breadcrumb-1710000000000-1.json"), b"{")
+            .expect("malformed artifact");
+
+        assert_eq!(
+            get_reports(None)
+                .expect_err("malformed artifact should fail discovery")
+                .tag(),
+            "Internal"
+        );
+    }
+
+    #[test]
     fn crash_reporter_rejects_record_and_flush_before_start() {
         let _env = CrashReporterTestEnv::new("not-started");
         assert_eq!(
@@ -437,6 +619,7 @@ mod tests {
 
     #[test]
     fn crash_reporter_rejects_malformed_payloads_before_state_changes() {
+        let _env = CrashReporterTestEnv::new("malformed-payloads");
         assert_eq!(
             record_breadcrumb(Some(
                 json!({ "category": "bad\ncategory", "message": "bad" })
@@ -468,6 +651,7 @@ mod tests {
 
     #[test]
     fn crash_reporter_matches_typescript_optional_and_category_shape() {
+        let _env = CrashReporterTestEnv::new("typescript-shape");
         assert_eq!(
             start(Some(json!({ "enabled": null }))).expect_err("enabled"),
             HostProtocolError::invalid_argument(

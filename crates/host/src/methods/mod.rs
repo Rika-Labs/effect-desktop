@@ -5046,6 +5046,7 @@ mod tests {
 
     #[test]
     fn crash_reporter_start_routes_to_host_state() {
+        let _env = super::crash_reporter::CrashReporterTestEnv::new("route-start");
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -5071,6 +5072,7 @@ mod tests {
 
     #[test]
     fn crash_reporter_get_reports_routes_to_host_state() {
+        let _env = super::crash_reporter::CrashReporterTestEnv::new("route-get-reports");
         let response = test_router()
             .dispatch_at(
                 request(
@@ -5095,6 +5097,7 @@ mod tests {
 
     #[test]
     fn crash_reporter_invalid_payload_rejects_before_unsupported() {
+        let _env = super::crash_reporter::CrashReporterTestEnv::new("route-invalid");
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
