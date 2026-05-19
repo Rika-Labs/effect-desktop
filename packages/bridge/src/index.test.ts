@@ -1,9 +1,8 @@
+/** @effect-diagnostics strictEffectProvide:off */
 import { expect, test } from "bun:test"
-import { readdirSync } from "node:fs"
-import { readFile } from "node:fs/promises"
-import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { Effect, Exit, Option, Schema } from "effect"
+import { BunServices } from "@effect/platform-bun"
+import { Effect, Exit, FileSystem, Option, Path, Schema } from "effect"
 import { Rpc } from "effect/unstable/rpc"
 
 import packageJson from "../package.json" with { type: "json" }
@@ -53,7 +52,9 @@ test("host protocol version matches the bridge package version", () => {
 test("shared host-protocol fixtures decode and encode canonically", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const fixtureNames = readdirSync(FIXTURE_DIR)
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const fixtureNames = (yield* fs.readDirectory(FIXTURE_DIR))
         .filter((name) => name.endsWith(".json") && name !== "errors.json")
         .sort()
 
@@ -71,42 +72,34 @@ test("shared host-protocol fixtures decode and encode canonically", () =>
       ])
 
       for (const fixtureName of fixtureNames) {
-        const source = (yield* Effect.promise(() =>
-          readFile(join(FIXTURE_DIR, fixtureName), "utf8")
-        )).trim()
-        const decoded = yield* decodeHostProtocolFrame(
-          TextEncoderUtf8.encode(source),
-          fixtureName
-        )
+        const source = (yield* fs.readFileString(path.join(FIXTURE_DIR, fixtureName))).trim()
+        const decoded = yield* decodeHostProtocolFrame(TextEncoderUtf8.encode(source), fixtureName)
 
         expect(encodeHostProtocolEnvelopeJson(decoded), fixtureName).toBe(source)
       }
-    })
+    }).pipe(Effect.provide(BunServices.layer))
   ))
 
 test("host protocol codec round-trips shared fixtures as canonical JSON bytes", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const fixtureNames = readdirSync(FIXTURE_DIR)
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const fixtureNames = (yield* fs.readDirectory(FIXTURE_DIR))
         .filter((name) => name.endsWith(".json") && name !== "errors.json")
         .sort()
       const decoder = new TextDecoder("utf-8", { fatal: true })
 
       for (const fixtureName of fixtureNames) {
-        const source = (yield* Effect.promise(() =>
-          readFile(join(FIXTURE_DIR, fixtureName), "utf8")
-        )).trim()
-        const decoded = yield* decodeHostProtocolFrame(
-          TextEncoderUtf8.encode(source),
-          fixtureName
-        )
+        const source = (yield* fs.readFileString(path.join(FIXTURE_DIR, fixtureName))).trim()
+        const decoded = yield* decodeHostProtocolFrame(TextEncoderUtf8.encode(source), fixtureName)
         const frame = yield* encodeHostProtocolFrame(decoded, fixtureName)
         const fromFrame = yield* decodeHostProtocolFrame(frame, fixtureName)
 
         expect(decoder.decode(frame), fixtureName).toBe(source)
         expect(encodeHostProtocolEnvelopeJson(fromFrame), fixtureName).toBe(source)
       }
-    })
+    }).pipe(Effect.provide(BunServices.layer))
   ))
 
 test("host protocol codec reports malformed JSON as BinaryDecodeError", () =>
@@ -312,9 +305,9 @@ test("host protocol codec encodes schema class payload instances", () =>
 test("shared host-protocol error fixtures decode and encode canonically", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const source = (yield* Effect.promise(() =>
-        readFile(join(FIXTURE_DIR, "errors.json"), "utf8")
-      )).trim()
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const source = (yield* fs.readFileString(path.join(FIXTURE_DIR, "errors.json"))).trim()
       const decoded = decodeHostProtocolErrorsJson(source, StrictParseOptions)
 
       expect(encodeHostProtocolErrorsJson(decoded, StrictParseOptions)).toBe(source)
@@ -325,7 +318,7 @@ test("shared host-protocol error fixtures decode and encode canonically", () =>
       for (const error of decoded) {
         expect(error.recoverable, error.tag).toBe(hostProtocolErrorRecoverableDefault(error.tag))
       }
-    })
+    }).pipe(Effect.provide(BunServices.layer))
   ))
 
 test("host protocol error recoverable defaults come from specs", () => {
@@ -938,12 +931,14 @@ test("u32 error fields reject values above Rust u32 max", () => {
 test("host protocol envelope type accepts decoded fixture values", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const source = yield* Effect.promise(() => readFile(join(FIXTURE_DIR, "request.json"), "utf8"))
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const source = yield* fs.readFileString(path.join(FIXTURE_DIR, "request.json"))
       const envelope: HostProtocolEnvelope = yield* decodeHostProtocolFrame(
         TextEncoderUtf8.encode(source.trim()),
         "request.json"
       )
 
       expect(envelope.kind).toBe("request")
-    })
+    }).pipe(Effect.provide(BunServices.layer))
   ))

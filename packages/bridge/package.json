@@ -31,5 +31,8 @@
   },
   "dependencies": {
     "effect": "4.0.0-beta.60"
+  },
+  "devDependencies": {
+    "@effect/platform-bun": "4.0.0-beta.60"
   }
 }
