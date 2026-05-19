@@ -2025,13 +2025,25 @@ mod tests {
                 id: "request-display-capture-supported".to_string(),
                 timestamp: 1710000000104,
                 trace_id: "trace-request-display-capture-supported".to_string(),
-                payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::DISPLAY_CAPTURE_UNSUPPORTED_REASON
-                })),
+                payload: Some(display_capture_support_payload()),
                 error: None,
             }
         );
+    }
+
+    fn display_capture_support_payload() -> serde_json::Value {
+        #[cfg(target_os = "macos")]
+        {
+            serde_json::json!({ "supported": true })
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            serde_json::json!({
+                "supported": false,
+                "reason": host_protocol::DISPLAY_CAPTURE_UNSUPPORTED_REASON
+            })
+        }
     }
 
     #[test]

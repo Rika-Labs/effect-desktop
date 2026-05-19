@@ -5325,6 +5325,21 @@ impl DisplayCaptureMetadataPayload {
             observed_at,
         }
     }
+
+    pub fn with_display_id(mut self, display_id: impl Into<String>) -> Self {
+        self.display_id = Some(display_id.into());
+        self
+    }
+
+    pub fn with_window_id(mut self, window_id: impl Into<String>) -> Self {
+        self.window_id = Some(window_id.into());
+        self
+    }
+
+    pub fn with_region(mut self, region: DisplayCaptureRegionPayload) -> Self {
+        self.region = Some(region);
+        self
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -5349,6 +5364,13 @@ pub struct DisplayCaptureSupportedPayload {
 }
 
 impl DisplayCaptureSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,

@@ -974,13 +974,12 @@
       "method": "captureDisplay",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-screencapture-adapter",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -1002,13 +1001,12 @@
       "method": "captureRegion",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-screencapture-adapter",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -1030,13 +1028,12 @@
       "method": "captureWindow",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-screencapture-adapter",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -4413,7 +4410,7 @@
     "routed": 207,
     "missing": 24,
     "supported": 113,
-    "partial": 27,
-    "unsupported": 91
+    "partial": 30,
+    "unsupported": 88
   }
 }

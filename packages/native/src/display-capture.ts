@@ -55,10 +55,11 @@ export * from "./contracts/display-capture.js"
 
 const Surface = "DisplayCapture"
 const UnsupportedReason = "host-adapter-unimplemented"
+const MacOsScreencaptureReason = "macos-screencapture-adapter"
 const DisplayCaptureEventMethod = "DisplayCapture.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const HostCaptureSupport = NativeSurface.support.partial(MacOsScreencaptureReason, {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "macos", status: "supported" },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
@@ -421,7 +422,7 @@ function displayCaptureRpc<
     success,
     authority: NativeSurface.authority.custom(cap),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: HostCaptureSupport
   })
 }
 

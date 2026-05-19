@@ -63,9 +63,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Dialog`                    | `openDirectory`             | `partial`     | `Dialog.openDirectory`                    | `routed`    |
 | `Dialog`                    | `openFile`                  | `partial`     | `Dialog.openFile`                         | `routed`    |
 | `Dialog`                    | `saveFile`                  | `supported`   | `Dialog.saveFile`                         | `routed`    |
-| `DisplayCapture`            | `captureDisplay`            | `unsupported` | `DisplayCapture.captureDisplay`           | `routed`    |
-| `DisplayCapture`            | `captureRegion`             | `unsupported` | `DisplayCapture.captureRegion`            | `routed`    |
-| `DisplayCapture`            | `captureWindow`             | `unsupported` | `DisplayCapture.captureWindow`            | `routed`    |
+| `DisplayCapture`            | `captureDisplay`            | `partial`     | `DisplayCapture.captureDisplay`           | `routed`    |
+| `DisplayCapture`            | `captureRegion`             | `partial`     | `DisplayCapture.captureRegion`            | `routed`    |
+| `DisplayCapture`            | `captureWindow`             | `partial`     | `DisplayCapture.captureWindow`            | `routed`    |
 | `DisplayCapture`            | `isSupported`               | `supported`   | `DisplayCapture.isSupported`              | `routed`    |
 | `DistributionParity`        | `isSupported`               | `supported`   | `DistributionParity.isSupported`          | `routed`    |
 | `DistributionParity`        | `verify`                    | `supported`   | `DistributionParity.verify`               | `routed`    |
