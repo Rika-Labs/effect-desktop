@@ -257,6 +257,7 @@ export {
   type CrashReporterRpc,
   type CrashReporterRpcHandlers,
   type CrashReporterServiceApi,
+  type CrashReporterServiceOptions,
   type CrashReporterStartOptions
 } from "./crash-reporter.js"
 export {

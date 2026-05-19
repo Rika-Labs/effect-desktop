@@ -3,6 +3,7 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
+  HostProtocolPermissionDeniedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -12,7 +13,19 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+import {
+  type AuditEventsApi,
+  PermissionRegistry,
+  type PermissionRegistryApi,
+  type PermissionRegistryError,
+  emitAuditEvent,
+  P,
+  PermissionActor,
+  PermissionContext,
+  PermissionDeniedError,
+  permissionAuditEvent,
+  type DesktopRpcClient
+} from "@effect-desktop/core"
 import { Clock, Context, Effect, Layer, Ref, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -32,7 +45,9 @@ export type CrashReporterBreadcrumb = Schema.Schema.Type<typeof CrashReporterBre
 
 export type CrashReporterReport = Schema.Schema.Type<typeof CrashReporterReportSchema>
 
+const Surface = "CrashReporter"
 const PartialSupportReason = "native-crash-capture-unavailable"
+const CrashReporterActor = new PermissionActor({ kind: "app", id: "crash-reporter" })
 
 const CrashReporterSupport = NativeSurface.support.partial(PartialSupportReason, {
   platforms: [
@@ -104,18 +119,19 @@ export class CrashReporterClient extends Context.Service<
 
 export type CrashReporterServiceApi = CrashReporterClientApi
 
+export interface CrashReporterServiceOptions {
+  readonly permissions: PermissionRegistryApi
+  readonly audit?: AuditEventsApi
+}
+
 export class CrashReporter extends Context.Service<CrashReporter, CrashReporterServiceApi>()(
   "@effect-desktop/native/CrashReporter"
 ) {
   static readonly layer = Layer.effect(CrashReporter)(
     Effect.gen(function* () {
       const client = yield* CrashReporterClient
-      return CrashReporter.of({
-        start: (options) => client.start(options),
-        recordBreadcrumb: (breadcrumb) => client.recordBreadcrumb(breadcrumb),
-        flush: () => client.flush(),
-        getReports: () => client.getReports()
-      } satisfies CrashReporterServiceApi)
+      const permissions = yield* PermissionRegistry
+      return makeCrashReporterService(client, { permissions })
     })
   )
 }
@@ -127,9 +143,10 @@ export const makeCrashReporterClientLayer = (
 ): Layer.Layer<CrashReporterClient> => Layer.succeed(CrashReporterClient)(client)
 
 export const makeCrashReporterServiceLayer = (
-  client: CrashReporterClientApi
+  client: CrashReporterClientApi,
+  options: CrashReporterServiceOptions
 ): Layer.Layer<CrashReporter> =>
-  Layer.provide(CrashReporterLive, makeCrashReporterClientLayer(client))
+  Layer.effect(CrashReporter)(Effect.succeed(makeCrashReporterService(client, options)))
 
 export const makeCrashReporterBridgeClientLayer = (
   exchange: BridgeClientExchange,
@@ -163,7 +180,7 @@ export const CrashReporterHandlersLive = CrashReporterRpcGroup.toLayer({
     })
 })
 
-export const CrashReporterSurface = NativeSurface.make("CrashReporter", CrashReporterRpcGroup, {
+export const CrashReporterSurface = NativeSurface.make(Surface, CrashReporterRpcGroup, {
   service: CrashReporterClient,
   capabilities: CrashReporterMethodNames,
   handlers: CrashReporterHandlersLive,
@@ -231,17 +248,21 @@ const crashReporterClientFromRpcClient = (
 ): CrashReporterClientApi =>
   Object.freeze({
     start: (input = {}) =>
-      input.enabled === undefined
-        ? runCrashReporterRpc(
-            client["CrashReporter.start"](new CrashReporterStartInput({})),
-            "CrashReporter.start"
-          )
-        : runCrashReporterRpc(
-            client["CrashReporter.start"](
-              new CrashReporterStartInput({ enabled: Boolean(input.enabled) })
-            ),
-            "CrashReporter.start"
-          ),
+      validateStartOptions(input).pipe(
+        Effect.flatMap((valid) =>
+          valid.enabled === undefined
+            ? runCrashReporterRpc(
+                client["CrashReporter.start"](new CrashReporterStartInput({})),
+                "CrashReporter.start"
+              )
+            : runCrashReporterRpc(
+                client["CrashReporter.start"](
+                  new CrashReporterStartInput({ enabled: valid.enabled })
+                ),
+                "CrashReporter.start"
+              )
+        )
+      ),
     recordBreadcrumb: (input) =>
       validateBreadcrumb(input).pipe(
         Effect.flatMap(normalizeBreadcrumb),
@@ -258,6 +279,48 @@ const crashReporterClientFromRpcClient = (
       runCrashReporterRpc(client["CrashReporter.getReports"](undefined), "CrashReporter.getReports")
   } satisfies CrashReporterClientApi)
 
+const makeCrashReporterService = (
+  client: CrashReporterClientApi,
+  options: CrashReporterServiceOptions
+): CrashReporterServiceApi =>
+  Object.freeze({
+    start: (input) =>
+      validateStartOptions(input).pipe(
+        Effect.flatMap((valid) =>
+          authorize(options, "start").pipe(
+            Effect.andThen(client.start(valid)),
+            Effect.tap(() => emitUseAudit(options, "start")),
+            Effect.tapError((error) => emitFailureAudit(options, "start", error))
+          )
+        )
+      ),
+    recordBreadcrumb: (input) =>
+      validateBreadcrumb(input).pipe(
+        Effect.flatMap(normalizeBreadcrumb),
+        Effect.flatMap((valid) =>
+          authorize(options, "recordBreadcrumb").pipe(
+            Effect.andThen(client.recordBreadcrumb(valid)),
+            Effect.tap(() => emitUseAudit(options, "recordBreadcrumb")),
+            Effect.tapError((error) => emitFailureAudit(options, "recordBreadcrumb", error))
+          )
+        )
+      ),
+    flush: () =>
+      authorize(options, "flush").pipe(
+        Effect.andThen(client.flush()),
+        Effect.tap((result) => emitUseAudit(options, "flush", { flushed: result.flushed })),
+        Effect.tapError((error) => emitFailureAudit(options, "flush", error))
+      ),
+    getReports: () =>
+      authorize(options, "getReports").pipe(
+        Effect.andThen(client.getReports()),
+        Effect.tap((result) =>
+          emitUseAudit(options, "getReports", { reports: result.reports.length })
+        ),
+        Effect.tapError((error) => emitFailureAudit(options, "getReports", error))
+      )
+  } satisfies CrashReporterServiceApi)
+
 interface CrashReporterState {
   readonly breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>
   readonly started: boolean
@@ -268,7 +331,7 @@ function crashReporterRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc("CrashReporter", method, {
+  return NativeSurface.rpc(Surface, method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
@@ -299,6 +362,19 @@ const isCrashReporterError = (error: unknown): error is CrashReporterError =>
   "tag" in error &&
   "operation" in error &&
   "recoverable" in error
+
+const validateStartOptions = (
+  options: CrashReporterStartOptions | undefined
+): Effect.Effect<CrashReporterStartInput, CrashReporterError, never> =>
+  Schema.decodeUnknownEffect(CrashReporterStartInput)(options ?? {}).pipe(
+    Effect.mapError((cause) =>
+      makeHostProtocolInvalidArgumentError(
+        "enabled",
+        cause instanceof Error ? cause.message : String(cause),
+        "CrashReporter.start"
+      )
+    )
+  )
 
 const validateBreadcrumb = (
   breadcrumb: CrashReporterBreadcrumb
@@ -373,6 +449,111 @@ const normalizeBreadcrumbDetails = (
 
 const notStartedError = (operation: string): CrashReporterError =>
   makeHostProtocolInvalidStateError("not-started", operation, operation)
+
+const authorize = (
+  options: CrashReporterServiceOptions,
+  method: (typeof CrashReporterMethodNames)[number]
+): Effect.Effect<void, CrashReporterError, never> =>
+  options.permissions
+    .check(
+      P.nativeInvoke({ primitive: Surface, methods: [method] }),
+      new PermissionContext({
+        actor: CrashReporterActor,
+        resource: "crash-reporter",
+        traceId: operation(method)
+      })
+    )
+    .pipe(
+      Effect.asVoid,
+      Effect.tapError((error) =>
+        error instanceof PermissionDeniedError
+          ? emitDeniedAudit(options, method, error)
+          : Effect.void
+      ),
+      Effect.mapError((error: PermissionRegistryError): CrashReporterError => {
+        if (error instanceof PermissionDeniedError) {
+          return new HostProtocolPermissionDeniedError({
+            tag: "PermissionDenied",
+            message: "permission denied for native.invoke",
+            operation: operation(method),
+            capability: P.nativeInvoke({ primitive: Surface, methods: [method] }).kind,
+            resource: error.traceId,
+            recoverable: false
+          })
+        }
+        return makeHostProtocolInternalError(
+          `crash reporter permission failure: ${error._tag}`,
+          operation(method)
+        )
+      })
+    )
+
+const emitDeniedAudit = (
+  options: CrashReporterServiceOptions,
+  method: (typeof CrashReporterMethodNames)[number],
+  error: PermissionDeniedError
+): Effect.Effect<void, never, never> =>
+  emitAuditEvent(
+    options.audit,
+    permissionAuditEvent({
+      kind: "permission-denied",
+      source: operation(method),
+      traceId: error.traceId,
+      outcome: "denied",
+      normalizedCapability: P.nativeInvoke({ primitive: Surface, methods: [method] }),
+      actor: CrashReporterActor,
+      resource: "crash-reporter",
+      details: { reason: error.reason }
+    })
+  ).pipe(Effect.ignore)
+
+const emitUseAudit = (
+  options: CrashReporterServiceOptions,
+  method: (typeof CrashReporterMethodNames)[number],
+  details: Record<string, unknown> = {}
+): Effect.Effect<void, CrashReporterError, never> =>
+  emitAuditEvent(
+    options.audit,
+    permissionAuditEvent({
+      kind: "permission-used",
+      source: operation(method),
+      traceId: operation(method),
+      outcome: "used",
+      normalizedCapability: P.nativeInvoke({ primitive: Surface, methods: [method] }),
+      actor: CrashReporterActor,
+      resource: "crash-reporter",
+      details
+    })
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInternalError(
+        `failed to write crash reporter audit event: ${error.message}`,
+        operation(method)
+      )
+    )
+  )
+
+const emitFailureAudit = (
+  options: CrashReporterServiceOptions,
+  method: (typeof CrashReporterMethodNames)[number],
+  error: CrashReporterError
+): Effect.Effect<void, never, never> =>
+  emitAuditEvent(
+    options.audit,
+    permissionAuditEvent({
+      kind: "permission-used",
+      source: operation(method),
+      traceId: operation(method),
+      outcome: "failed",
+      normalizedCapability: P.nativeInvoke({ primitive: Surface, methods: [method] }),
+      actor: CrashReporterActor,
+      resource: "crash-reporter",
+      details: { reason: error.tag, operation: error.operation }
+    })
+  ).pipe(Effect.ignore)
+
+const operation = (method: (typeof CrashReporterMethodNames)[number]): string =>
+  `${Surface}.${method}`
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) return error.message

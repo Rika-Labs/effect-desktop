@@ -917,6 +917,19 @@ const expectedCrashReporterMethods: Array<(typeof CrashReporterMethodNames)[numb
   "getReports"
 ]
 
+const makeCrashReporterPermissions = async (effect: "allow" | "deny" = "allow") => {
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  for (const method of expectedCrashReporterMethods) {
+    await Effect.runPromise(
+      permissions.declare(P.nativeInvoke({ primitive: "CrashReporter", methods: [method] }), {
+        effect,
+        source: "test"
+      })
+    )
+  }
+  return permissions
+}
+
 const expectedPowerMonitorMethods: Array<(typeof PowerMonitorMethodNames)[number]> = ["isSupported"]
 
 const expectedScreenMethods: Array<(typeof ScreenMethodNames)[number]> = [
@@ -6017,6 +6030,7 @@ test("CrashReporterRpcs declares the Phase 8 CrashReporter method surface", () =
 
 test("CrashReporter memory client requires start and flushes recorded breadcrumbs", async () => {
   const client = await Effect.runPromise(makeCrashReporterMemoryClient())
+  const permissions = await makeCrashReporterPermissions()
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const reporter = yield* CrashReporter
@@ -6028,12 +6042,36 @@ test("CrashReporter memory client requires start and flushes recorded breadcrumb
       const flush = yield* reporter.flush()
       const reports = yield* reporter.getReports()
       return { flush, notStartedExit, reports }
-    }).pipe(Effect.provide(makeCrashReporterServiceLayer(client)))
+    }).pipe(Effect.provide(makeCrashReporterServiceLayer(client, { permissions })))
   )
 
   expectExitFailure(result.notStartedExit, (error) => hasErrorTag(error, "InvalidState"))
   expect(result.flush.flushed).toBe(1)
   expect(result.reports.reports).toEqual([])
+})
+
+test("CrashReporter service denies native invoke before host transport", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const permissions = await makeCrashReporterPermissions("deny")
+  const exchange = crashReporterExchange(requests, () => ({
+    kind: "success",
+    payload: undefined
+  }))
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const reporter = yield* CrashReporter
+      return yield* Effect.exit(reporter.start())
+    }).pipe(
+      Effect.provide(
+        Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
+      ),
+      Effect.provideService(PermissionRegistry, permissions)
+    )
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "PermissionDenied"))
+  expect(requests).toEqual([])
 })
 
 test("CrashReporter memory client drains breadcrumbs after flush", async () => {
@@ -6109,6 +6147,7 @@ test("CrashReporter rejects cyclic breadcrumb details", async () => {
 
 test("CrashReporter bridge client records breadcrumbs", async () => {
   const timestamp = 1_710_000_555_000
+  const permissions = await makeCrashReporterPermissions()
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = crashReporterExchange(requests, (request) => ({
     kind: "success",
@@ -6135,6 +6174,7 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
       Effect.provide(
         Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
       ),
+      Effect.provideService(PermissionRegistry, permissions),
       Effect.provideService(Clock.Clock, fixedClock(timestamp))
     )
   )
@@ -6159,6 +6199,7 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
 
 test("CrashReporter bridge client rejects cyclic breadcrumb details before host transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
+  const permissions = await makeCrashReporterPermissions()
   const exchange = crashReporterExchange(requests, (request) => ({
     kind: "success",
     payload: request.method === "CrashReporter.flush" ? { flushed: 0 } : undefined
@@ -6178,7 +6219,10 @@ test("CrashReporter bridge client rejects cyclic breadcrumb details before host 
         })
       )
     }).pipe(
-      Effect.provide(Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)))
+      Effect.provide(
+        Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
+      ),
+      Effect.provideService(PermissionRegistry, permissions)
     )
   )
 
@@ -6191,6 +6235,7 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
 
   for (const flushed of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
+    const permissions = await makeCrashReporterPermissions()
     const exchange = crashReporterExchange(requests, (request) => ({
       kind: "success",
       payload: request.method === "CrashReporter.flush" ? { flushed } : undefined
@@ -6202,7 +6247,8 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
       }).pipe(
         Effect.provide(
           Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
-        )
+        ),
+        Effect.provideService(PermissionRegistry, permissions)
       )
     )
 
@@ -6213,6 +6259,7 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
 
 test("CrashReporter bridge client rejects invalid report timestamps as InvalidOutput", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
+  const permissions = await makeCrashReporterPermissions()
   const exchange = crashReporterExchange(requests, (request) => ({
     kind: "success",
     payload:
@@ -6235,7 +6282,10 @@ test("CrashReporter bridge client rejects invalid report timestamps as InvalidOu
       const reporter = yield* CrashReporter
       return yield* Effect.exit(reporter.getReports())
     }).pipe(
-      Effect.provide(Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)))
+      Effect.provide(
+        Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
+      ),
+      Effect.provideService(PermissionRegistry, permissions)
     )
   )
 
@@ -6251,6 +6301,7 @@ test("CrashReporter bridge client rejects control bytes in report metadata as In
 
   for (const report of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
+    const permissions = await makeCrashReporterPermissions()
     const exchange = crashReporterExchange(requests, (request) => ({
       kind: "success",
       payload:
@@ -6274,7 +6325,8 @@ test("CrashReporter bridge client rejects control bytes in report metadata as In
       }).pipe(
         Effect.provide(
           Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange))
-        )
+        ),
+        Effect.provideService(PermissionRegistry, permissions)
       )
     )
 

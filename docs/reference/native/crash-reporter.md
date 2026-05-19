@@ -43,6 +43,9 @@ artifacts remain visible after a host restart.
 
 `CrashReporterError` is the host protocol error union. `recordBreadcrumb` and
 `flush` fail as `InvalidState` until `start({ enabled: true })` is called.
+The public service checks the declared `native.invoke` permission before host
+transport; denied calls fail as `PermissionDenied` and do not reach the native
+host.
 
 ## Redaction
 
