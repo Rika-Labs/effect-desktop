@@ -474,9 +474,8 @@ mod tests {
 
     #[test]
     fn menu_clear_rejects_unexpected_payload_before_macos_clear() {
-        let (result, calls) = with_menu_clear_recording(|| {
-            clear(Some(json!({ "window": { "id": "" } })))
-        });
+        let (result, calls) =
+            with_menu_clear_recording(|| clear(Some(json!({ "window": { "id": "" } }))));
 
         assert!(matches!(
             result,
@@ -491,7 +490,10 @@ mod tests {
         let (result, calls) = with_menu_clear_recording(|| clear(None));
 
         assert!(matches!(result, Ok(None)), "clear should succeed on macOS");
-        assert_eq!(calls, 1, "clear must invoke the macOS application-menu path");
+        assert_eq!(
+            calls, 1,
+            "clear must invoke the macOS application-menu path"
+        );
     }
 
     #[test]
