@@ -1139,6 +1139,71 @@
       "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never>"
     },
     {
+      "name": "WEBVIEW_CAPABILITY_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_CAPABILITY_METHOD: \"WebView.capability\""
+    },
+    {
+      "name": "WEBVIEW_CAPTURE_SCREENSHOT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_CAPTURE_SCREENSHOT_METHOD: \"WebView.captureScreenshot\""
+    },
+    {
+      "name": "WEBVIEW_CREATE_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_CREATE_METHOD: \"WebView.create\""
+    },
+    {
+      "name": "WEBVIEW_DESTROY_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_DESTROY_METHOD: \"WebView.destroy\""
+    },
+    {
+      "name": "WEBVIEW_GET_NAVIGATION_STATE_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_GET_NAVIGATION_STATE_METHOD: \"WebView.getNavigationState\""
+    },
+    {
+      "name": "WEBVIEW_GO_BACK_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_GO_BACK_METHOD: \"WebView.goBack\""
+    },
+    {
+      "name": "WEBVIEW_GO_FORWARD_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_GO_FORWARD_METHOD: \"WebView.goForward\""
+    },
+    {
+      "name": "WEBVIEW_LOAD_ROUTE_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_LOAD_ROUTE_METHOD: \"WebView.loadRoute\""
+    },
+    {
+      "name": "WEBVIEW_LOAD_URL_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_LOAD_URL_METHOD: \"WebView.loadUrl\""
+    },
+    {
+      "name": "WEBVIEW_NAVIGATION_BLOCKED_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_NAVIGATION_BLOCKED_EVENT_METHOD: \"WebView.NavigationBlocked\""
+    },
+    {
+      "name": "WEBVIEW_RELOAD_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_RELOAD_METHOD: \"WebView.reload\""
+    },
+    {
+      "name": "WEBVIEW_SET_NAVIGATION_POLICY_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_SET_NAVIGATION_POLICY_METHOD: \"WebView.setNavigationPolicy\""
+    },
+    {
+      "name": "WEBVIEW_STOP_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_STOP_METHOD: \"WebView.stop\""
+    },
+    {
       "name": "WINDOW_CANCEL_ATTENTION_METHOD",
       "kind": "value",
       "signature": "const WINDOW_CANCEL_ATTENTION_METHOD: \"Window.cancelAttention\""

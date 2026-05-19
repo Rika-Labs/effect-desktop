@@ -49,7 +49,7 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
   expect(Schema.decodeUnknownSync(NativeParityMatrixResult)(result)).toEqual(result)
   expect(result.summary.total).toBeGreaterThan(0)
   expect(result.summary.routed).toBeGreaterThan(0)
-  expect(result.summary.missing).toBeGreaterThan(0)
+  expect(result.summary.missing).toBe(0)
 
   expect(result.rows.find((row) => row.tag === "Window.create")).toMatchObject({
     hostStatus: "routed",
@@ -66,7 +66,7 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
     support: { status: "unsupported", reason: "host-adapter-unimplemented" }
   })
   expect(result.rows.find((row) => row.tag === "WebView.create")).toMatchObject({
-    hostStatus: "missing",
+    hostStatus: "routed",
     support: { status: "unsupported", reason: "host-adapter-unimplemented" }
   })
   expect(result.rows.find((row) => row.tag === "Menu.setApplicationMenu")).toMatchObject({

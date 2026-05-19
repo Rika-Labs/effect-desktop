@@ -3643,7 +3643,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.captureScreenshot",
@@ -3671,7 +3671,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.create",
@@ -3699,7 +3699,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.destroy",
@@ -3727,7 +3727,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.getNavigationState",
@@ -3755,7 +3755,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.goBack",
@@ -3783,7 +3783,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.goForward",
@@ -3811,7 +3811,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.loadRoute",
@@ -3839,7 +3839,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.loadUrl",
@@ -3867,7 +3867,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.reload",
@@ -3895,7 +3895,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.setNavigationPolicy",
@@ -3923,7 +3923,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "WebView.stop",
@@ -3951,7 +3951,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Window.cancelAttention",
@@ -4358,8 +4358,8 @@
   ],
   "summary": {
     "total": 232,
-    "routed": 220,
-    "missing": 12,
+    "routed": 232,
+    "missing": 0,
     "supported": 117,
     "partial": 36,
     "unsupported": 79

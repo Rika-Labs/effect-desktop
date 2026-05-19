@@ -38,6 +38,7 @@ mod transactional_file_mutation;
 mod transient_window_role;
 mod tray;
 mod updater;
+mod webview;
 mod window;
 mod workspace_index;
 
@@ -1077,6 +1078,54 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::CONTEXT_MENU_BIND_COMMAND_METHOD,
         HostMethodDispatcher::Payload(menu::bind_context_menu_command),
+    ),
+    route(
+        host_protocol::WEBVIEW_CREATE_METHOD,
+        HostMethodDispatcher::Payload(webview::create),
+    ),
+    route(
+        host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
+        HostMethodDispatcher::Payload(webview::load_route),
+    ),
+    route(
+        host_protocol::WEBVIEW_LOAD_URL_METHOD,
+        HostMethodDispatcher::Payload(webview::load_url),
+    ),
+    route(
+        host_protocol::WEBVIEW_RELOAD_METHOD,
+        HostMethodDispatcher::Payload(webview::reload),
+    ),
+    route(
+        host_protocol::WEBVIEW_STOP_METHOD,
+        HostMethodDispatcher::Payload(webview::stop),
+    ),
+    route(
+        host_protocol::WEBVIEW_GO_BACK_METHOD,
+        HostMethodDispatcher::Payload(webview::go_back),
+    ),
+    route(
+        host_protocol::WEBVIEW_GO_FORWARD_METHOD,
+        HostMethodDispatcher::Payload(webview::go_forward),
+    ),
+    route(
+        host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
+        HostMethodDispatcher::Payload(webview::get_navigation_state),
+    ),
+    route(
+        host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD,
+        HostMethodDispatcher::Payload(webview::capture_screenshot),
+    ),
+    route(
+        host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+        HostMethodDispatcher::Payload(webview::set_navigation_policy),
+    ),
+    route(
+        host_protocol::WEBVIEW_CAPABILITY_METHOD,
+        HostMethodDispatcher::Payload(webview::capability),
+    ),
+    route(
+        host_protocol::WEBVIEW_DESTROY_METHOD,
+        HostMethodDispatcher::Payload(webview::destroy),
     ),
 ];
 
@@ -4601,6 +4650,137 @@ mod tests {
             let response = router
                 .dispatch_at(request_with_payload(id, method, payload), 1710000000113)
                 .expect("safe storage invalid request should return response");
+
+            assert!(matches!(
+                response,
+                HostProtocolEnvelope::Response {
+                    error: Some(HostProtocolError::InvalidArgument { .. }),
+                    ..
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn webview_methods_fail_closed_after_validation() {
+        let router = test_router();
+        let webview = serde_json::json!({
+            "kind": "webview",
+            "id": "webview-1",
+            "generation": 0,
+            "ownerScope": "window:window-1",
+            "state": "open"
+        });
+        for (id, method, payload) in [
+            (
+                "request-webview-create",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+                serde_json::json!({
+                    "url": "app://localhost/settings",
+                    "originPolicy": {
+                        "allowedOrigins": ["app://localhost"],
+                        "onDisallowed": "block"
+                    }
+                }),
+            ),
+            (
+                "request-webview-load-url",
+                host_protocol::WEBVIEW_LOAD_URL_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "url": "https://example.com/settings"
+                }),
+            ),
+            (
+                "request-webview-set-navigation-policy",
+                host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+                serde_json::json!({
+                    "webview": serde_json::json!({
+                        "kind": "webview",
+                        "id": "webview-1",
+                        "generation": 0,
+                        "ownerScope": "window:window-1",
+                        "state": "open"
+                    }),
+                    "policy": {
+                        "allowedOrigins": ["app://localhost", "https://example.com"],
+                        "onDisallowed": "openExternal"
+                    }
+                }),
+            ),
+            (
+                "request-webview-capability",
+                host_protocol::WEBVIEW_CAPABILITY_METHOD,
+                serde_json::json!({ "name": "devtools open", "platform": "windows" }),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000114)
+                .expect("webview request should return response");
+
+            assert!(matches!(
+                response,
+                HostProtocolEnvelope::Response {
+                    payload: None,
+                    error: Some(HostProtocolError::Unsupported { .. }),
+                    ..
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn webview_methods_reject_invalid_payloads_before_unsupported() {
+        let router = test_router();
+        let webview = serde_json::json!({
+            "kind": "webview",
+            "id": "webview-1",
+            "generation": 0,
+            "ownerScope": "window:window-1",
+            "state": "open"
+        });
+        for (id, method, payload) in [
+            (
+                "request-webview-create-invalid-url",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+                serde_json::json!({
+                    "url": "file://localhost/secret",
+                    "originPolicy": {
+                        "allowedOrigins": ["app://localhost"],
+                        "onDisallowed": "block"
+                    }
+                }),
+            ),
+            (
+                "request-webview-load-route-traversal",
+                host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "route": "/../settings"
+                }),
+            ),
+            (
+                "request-webview-stop-wrong-handle",
+                host_protocol::WEBVIEW_STOP_METHOD,
+                serde_json::json!({
+                    "webview": {
+                        "kind": "window",
+                        "id": "webview-1",
+                        "generation": 0,
+                        "ownerScope": "window:window-1",
+                        "state": "open"
+                    }
+                }),
+            ),
+            (
+                "request-webview-capability-unknown",
+                host_protocol::WEBVIEW_CAPABILITY_METHOD,
+                serde_json::json!({ "name": "unknown" }),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000115)
+                .expect("webview invalid request should return response");
 
             assert!(matches!(
                 response,
