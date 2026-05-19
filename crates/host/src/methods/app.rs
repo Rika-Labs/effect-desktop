@@ -2,11 +2,12 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
+use crate::methods::open_intent;
 use crate::window::WindowMethodHandler;
 use host_protocol::HostProtocolError;
 use host_protocol::{
-    AppActivationReasonPayload, AppQuitPayload, AppRestartPayload, AppSecondInstanceEventPayload,
-    AppSingleInstancePayload, HostProtocolEnvelope,
+    AppQuitPayload, AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
+    HostProtocolEnvelope,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{to_value, Value};
@@ -716,7 +717,7 @@ fn current_second_instance_event(
         )
     })?;
     Ok(AppSecondInstanceEventPayload::new(
-        AppActivationReasonPayload::Launch,
+        open_intent::app_activation_reason(&argv),
         argv,
         cwd.to_string_lossy(),
         format!("app-second-instance-{}", Uuid::now_v7()),

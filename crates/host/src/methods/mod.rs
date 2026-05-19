@@ -22,6 +22,7 @@ mod local_tool_runtime;
 mod menu;
 mod native_file_system;
 mod notification;
+mod open_intent;
 mod path;
 mod power_monitor;
 pub(crate) mod protocol;

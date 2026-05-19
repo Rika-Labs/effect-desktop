@@ -2,10 +2,11 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
+use crate::methods::open_intent;
 use host_protocol::HostProtocolError;
 use host_protocol::{
     AppMetadataEnvironmentShapePayload, AppMetadataInfoPayload, AppMetadataLaunchContextPayload,
-    AppMetadataLaunchReasonPayload, AppMetadataPathsPayload, CanonicalPathPayload,
+    AppMetadataPathsPayload, CanonicalPathPayload,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -55,7 +56,8 @@ pub(crate) fn get_launch_context(
     let cwd = canonical_current_dir(host_protocol::APP_METADATA_GET_LAUNCH_CONTEXT_METHOD)?;
     let argv = env::args()
         .filter(|value| !value.is_empty() && !value.contains('\0'))
-        .collect();
+        .collect::<Vec<_>>();
+    let launch_reason = open_intent::app_metadata_launch_reason(&argv);
     let mut variable_names = env::vars()
         .map(|(key, _value)| key)
         .filter(|key| !key.is_empty() && !key.contains('=') && !key.contains('\0'))
@@ -67,7 +69,7 @@ pub(crate) fn get_launch_context(
         AppMetadataLaunchContextPayload::new(
             argv,
             CanonicalPathPayload::new(path_to_string(&cwd)),
-            AppMetadataLaunchReasonPayload::Launch,
+            launch_reason,
             AppMetadataEnvironmentShapePayload::new(variable_names),
         ),
         host_protocol::APP_METADATA_GET_LAUNCH_CONTEXT_METHOD,

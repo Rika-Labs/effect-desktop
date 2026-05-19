@@ -18,10 +18,13 @@ requesting event-loop exit, and `App.focus` by focusing the current native
 window. The Rust host also implements `App.requestSingleInstanceLock` with a
 process-held OS file lock and returns the primary process id when another
 process already owns the lock. When the primary process owns a runtime event
-stream, duplicate launch attempts forward `argv`, `cwd`,
-`activationReason: "launch"`, and `traceId` to the primary process as
-`App.onSecondInstance`. `--single-instance-lock-smoke-test` verifies this lock
-across host processes.
+stream, duplicate launch attempts forward `argv`, `cwd`, `activationReason`,
+and `traceId` to the primary process as `App.onSecondInstance`.
+`activationReason` is classified from argv as `"open-file"` when exactly one
+safe absolute file path is present, `"open-url"` when exactly one safe
+non-dangerous URL is present, `"unknown"` when intent-like argv is unsafe or
+ambiguous, and `"launch"` otherwise. `--single-instance-lock-smoke-test`
+verifies this lock across host processes.
 The host binary includes `--app-quit-smoke-test`, `--app-focus-smoke-test`, and
 `--app-restart-smoke-test` to verify live startup windows can exit through the
 app-quit lifecycle path, focus through the native window-manager path, and
@@ -47,8 +50,9 @@ The current TypeScript event streams are `onSecondInstance`, `onOpenFile`,
 `"open-file"`, `"open-url"`, or `"unknown"`. `onBeforeQuit` is emitted by the
 Rust host before the current `App.quit` path exits the event loop and before a
 native close request exits the app. Native `onSecondInstance` is emitted by the
-single-instance handoff path for duplicate launches. Native `onOpenFile` and
-`onOpenUrl` delivery remains unsupported until their source adapters exist.
+single-instance handoff path for duplicate launches, including argv-derived
+open-file/open-url activation reasons. Native `onOpenFile` and `onOpenUrl`
+delivery remains unsupported until their source adapters exist.
 
 `onOpenUrl` requires a syntactically valid URL with no ASCII control characters
 and rejects dangerous schemes before application code receives the event:
