@@ -125,6 +125,15 @@ const WindowSimpleFullscreenSupport = NativeSurface.support.partial(
     ]
   }
 ) satisfies RpcSupportMetadata
+const WindowStateHostTrackedOnlyReason = "host-tracked-state-only"
+
+const WindowStateSupport = NativeSurface.support.partial(WindowStateHostTrackedOnlyReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: WindowStateHostTrackedOnlyReason },
+    { platform: "windows", status: "partial", reason: WindowStateHostTrackedOnlyReason },
+    { platform: "linux", status: "partial", reason: WindowStateHostTrackedOnlyReason }
+  ]
+}) satisfies RpcSupportMetadata
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type WindowError = HostProtocolError
 
@@ -298,25 +307,29 @@ export const WindowMinimize = windowRpc(
   "minimize",
   WindowHandleInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["minimize"] })
+  P.nativeInvoke({ primitive: "Window", methods: ["minimize"] }),
+  WindowStateSupport
 )
 export const WindowMaximize = windowRpc(
   "maximize",
   WindowHandleInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["maximize"] })
+  P.nativeInvoke({ primitive: "Window", methods: ["maximize"] }),
+  WindowStateSupport
 )
 export const WindowRestore = windowRpc(
   "restore",
   WindowHandleInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["restore"] })
+  P.nativeInvoke({ primitive: "Window", methods: ["restore"] }),
+  WindowStateSupport
 )
 export const WindowSetFullscreen = windowRpc(
   "setFullscreen",
   WindowFullscreenInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
+  P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] }),
+  WindowStateSupport
 )
 export const WindowSetSimpleFullscreen = windowRpc(
   "setSimpleFullscreen",
@@ -329,7 +342,8 @@ export const WindowGetState = windowRpc(
   "getState",
   WindowHandleInput,
   WindowState,
-  P.nativeInvoke({ primitive: "Window", methods: ["getState"] })
+  P.nativeInvoke({ primitive: "Window", methods: ["getState"] }),
+  WindowStateSupport
 )
 
 const makeWindowRpcGroup = () =>

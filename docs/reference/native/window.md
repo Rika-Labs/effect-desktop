@@ -98,6 +98,10 @@ typed `Unsupported` with reason `simple-fullscreen-macos-only` on Windows and
 Linux. After a successful state command, the Rust host updates its state source
 and publishes a `Window.Event` state snapshot with the same shape as `getState`,
 so renderer subscribers can compare the event payload with a follow-up read.
+This is `partial` support with reason `host-tracked-state-only`: the event/read
+agreement covers host-commanded state, but the adapter does not yet confirm
+that an OS or compositor accepted the requested transition when the platform can
+silently refuse it.
 
 The z-order and attention surface is not complete Electron-style window chrome.
 Effect Desktop exposes `setSkipTaskbar` on Windows and Linux, but does not yet

@@ -54,10 +54,23 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   expect(rpcSupport(request("Window.setProgress"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.requestAttention"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.cancelAttention"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.minimize"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.maximize"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.restore"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.setFullscreen"))).toEqual({ status: "supported" })
+  for (const method of [
+    "Window.minimize",
+    "Window.maximize",
+    "Window.restore",
+    "Window.setFullscreen",
+    "Window.getState"
+  ]) {
+    expect(rpcSupport(request(method))).toMatchObject({
+      status: "partial",
+      reason: "host-tracked-state-only",
+      platforms: [
+        { platform: "macos", status: "partial", reason: "host-tracked-state-only" },
+        { platform: "windows", status: "partial", reason: "host-tracked-state-only" },
+        { platform: "linux", status: "partial", reason: "host-tracked-state-only" }
+      ]
+    })
+  }
   expect(rpcSupport(request("Window.setSimpleFullscreen"))).toMatchObject({
     status: "partial",
     platforms: [
@@ -66,7 +79,6 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
       { platform: "linux", status: "unsupported" }
     ]
   })
-  expect(rpcSupport(request("Window.getState"))).toEqual({ status: "supported" })
 })
 
 const request = (tag: string): Rpc.Any => {
