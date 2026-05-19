@@ -13,10 +13,10 @@ export interface DesktopEndpointSupport {
 }
 
 export interface RendererEndpointBinders<Endpoint extends object> {
-  readonly query: (run: (input: unknown) => Effect.Effect<unknown, unknown, never>) => Endpoint
-  readonly mutation: (run: (input: unknown) => Effect.Effect<unknown, unknown, never>) => Endpoint
-  readonly stream: (
-    run: (input: unknown) => Stream.Stream<unknown, unknown, never>,
+  readonly query: <E>(run: (input: unknown) => Effect.Effect<unknown, E, never>) => Endpoint
+  readonly mutation: <E>(run: (input: unknown) => Effect.Effect<unknown, E, never>) => Endpoint
+  readonly stream: <E>(
+    run: (input: unknown) => Stream.Stream<unknown, E, never>,
     descriptor: RpcEndpointDescriptor
   ) => Endpoint
 }

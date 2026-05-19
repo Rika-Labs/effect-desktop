@@ -7,6 +7,7 @@ import {
   Exit,
   Fiber,
   Layer,
+  ManagedRuntime,
   Option,
   Schedule,
   Schema
@@ -93,7 +94,8 @@ test("makeUnaryDesktopTransportFromBridgeClientExchange adapts unary bridge exch
     expect(requests[0]?.traceId).toBeString()
   })
 
-  return Effect.runPromise(Effect.provide(Effect.scoped(program), TransportLayer))
+  const runtime = ManagedRuntime.make(TransportLayer)
+  return runtime.runPromise(Effect.scoped(program))
 })
 
 test("makeUnaryDesktopTransportFromBridgeClientExchange uses the Effect Clock by default", () =>

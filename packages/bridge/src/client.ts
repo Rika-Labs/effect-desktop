@@ -805,7 +805,7 @@ const makeHostRequestEnvelope = (
     readonly timestamp: number
     readonly traceId: string
   },
-  payload: unknown | undefined,
+  payload: unknown,
   windowId: Option.Option<string>,
   originToken: Option.Option<string>
 ): HostProtocolRequestEnvelope =>

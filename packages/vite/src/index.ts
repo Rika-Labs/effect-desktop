@@ -1,4 +1,5 @@
-import { resolve } from "node:path"
+import { NodeServices } from "@effect/platform-node"
+import { Effect, ManagedRuntime, Path } from "effect"
 import type { Plugin, ViteDevServer } from "vite"
 import { makeHmrController, type HmrController } from "./hmr-controller.js"
 import {
@@ -6,6 +7,8 @@ import {
   RESOLVED_VIRTUAL_MODULE_ID,
   buildVirtualModuleSource
 } from "./virtual-module.js"
+
+const pathRuntime = ManagedRuntime.make(NodeServices.layer)
 
 export interface DesktopPluginOptions {
   readonly entry: string
@@ -53,9 +56,15 @@ export default function desktop(options: DesktopPluginOptions): Plugin {
 
     buildStart() {
       if (this.environment?.name === "client") {
+        const id = pathRuntime.runSync(
+          Effect.gen(function* () {
+            const path = yield* Path.Path
+            return path.resolve(cwd, entry)
+          })
+        )
         this.emitFile({
           type: "chunk",
-          id: resolve(cwd, entry),
+          id,
           name: "runtime"
         })
       }

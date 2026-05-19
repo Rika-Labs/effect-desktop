@@ -99,11 +99,7 @@ export const useSubscribable = <A>(ref: SubscriptionRef.SubscriptionRef<A>): A |
     }
   }, [operation, ref])
 
-  useEffect(() => {
-    return () => {
-      operation.dispose()
-    }
-  }, [operation])
+  useEffect(() => () => operation.dispose(), [operation])
 
   return value
 }
@@ -120,11 +116,7 @@ export const useEffectResult = <A, E, R = never, ER = never>(
   const operation = useMemo(() => makeFrameworkScopedOperation(runtime), [runtime])
   effectRef.current = effect
 
-  useEffect(() => {
-    return () => {
-      operation.dispose()
-    }
-  }, [operation])
+  useEffect(() => () => operation.dispose(), [operation])
 
   useEffect(
     () => {

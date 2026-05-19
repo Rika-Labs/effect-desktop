@@ -28,7 +28,7 @@ const noopState = (
   resolutions,
   push: () => undefined,
   resolve: () => undefined,
-  resolvePromise: async () => Exit.void,
+  resolvePromise: () => Promise.resolve(Exit.void),
   clearResolution: () => undefined
 })
 
@@ -172,34 +172,37 @@ test("permission approval state transitions mark resolving tokens as waiting", (
   expect(resolution?.waiting).toBe(true)
 })
 
-test("resolveApprovalDecision captures failed resolver effects as Exit data", async () => {
-  const failure = { _tag: "ApprovalFailed", message: "denied" } as const
-  const exit = await resolveApprovalDecision(() => Effect.fail(failure), approval, false)
+test("resolveApprovalDecision captures failed resolver effects as Exit data", () =>
+  resolveApprovalDecision(
+    () => Effect.fail({ _tag: "ApprovalFailed", message: "denied" } as const),
+    approval,
+    false
+  ).then((exit) => {
+    const failure = { _tag: "ApprovalFailed", message: "denied" } as const
+    expect(Exit.isFailure(exit)).toBe(true)
+    const result = AsyncResult.fromExit(exit)
+    expect(AsyncResult.isFailure(result)).toBe(true)
+    if (AsyncResult.isFailure(result)) {
+      const fail = result.cause.reasons.find((reason) => reason._tag === "Fail")
+      expect(fail?.error).toEqual(failure)
+    }
+  }))
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  const result = AsyncResult.fromExit(exit)
-  expect(AsyncResult.isFailure(result)).toBe(true)
-  if (AsyncResult.isFailure(result)) {
-    const fail = result.cause.reasons.find((reason) => reason._tag === "Fail")
-    expect(fail?.error).toEqual(failure)
-  }
-})
-
-test("resolveApprovalDecision captures synchronous resolver throws as Exit defects", async () => {
+test("resolveApprovalDecision captures synchronous resolver throws as Exit defects", () => {
   const defect = new Error("resolver exploded")
-  const exit = await resolveApprovalDecision(
+  return resolveApprovalDecision(
     () => {
       throw defect
     },
     approval,
     true
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const die = exit.cause.reasons.find((reason) => reason._tag === "Die")
-    expect(die?.defect).toBe(defect)
-  }
+  ).then((exit) => {
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      const die = exit.cause.reasons.find((reason) => reason._tag === "Die")
+      expect(die?.defect).toBe(defect)
+    }
+  })
 })
 
 test("PermissionApprovalQueue passes resolution state to custom prompts", () => {

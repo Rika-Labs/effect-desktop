@@ -147,6 +147,7 @@
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
         "@types/react": "^19.2.7",
         "@types/react-dom": "^19.2.3",
         "react": "^19.2.3",
@@ -166,6 +167,7 @@
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
         "solid-js": "^1.9.0",
       },
       "peerDependencies": {
@@ -208,6 +210,7 @@
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
         "vue": "^3.5.0",
       },
       "peerDependencies": {

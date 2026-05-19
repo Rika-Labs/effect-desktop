@@ -126,7 +126,7 @@ export const usePermissionApproval = <E = unknown>(
   }, [])
 
   const resolvePromise = useCallback(
-    async (token: string, approved: boolean): Promise<Exit.Exit<void, E>> => {
+    (token: string, approved: boolean): Promise<Exit.Exit<void, E>> => {
       const existing = inFlightRef.current.get(token)
       if (existing !== undefined) {
         return existing
@@ -134,25 +134,23 @@ export const usePermissionApproval = <E = unknown>(
 
       const approval = snapshot.pending.find((p) => p.token === token)
       if (approval === undefined) {
-        return Exit.void
+        return Promise.resolve(Exit.void)
       }
 
-      const run = (async () => {
-        try {
-          setSnapshot((current) => markApprovalResolving(current, token))
+      setSnapshot((current) => markApprovalResolving(current, token))
 
-          const exit = await resolveApprovalDecision(resolverRef.current, approval, approved)
+      const run = resolveApprovalDecision(resolverRef.current, approval, approved)
+        .then((exit) => {
           if (!mountedRef.current) {
             return exit
           }
-
           setSnapshot((current) => completeApprovalResolution(current, token, exit))
-
           return exit
-        } finally {
+        })
+        .finally(() => {
           inFlightRef.current.delete(token)
-        }
-      })()
+        })
+
       inFlightRef.current.set(token, run)
       return run
     },

@@ -45,27 +45,22 @@ export const useMutation = <I, A, E, R = never, ER = never>(
   const operation = useMemo(() => makeFrameworkScopedOperation(runtime), [runtime])
   makeEffectRef.current = makeEffect
 
-  useEffect(() => {
-    return () => {
-      operation.dispose()
-    }
-  }, [operation])
+  useEffect(() => () => operation.dispose(), [operation])
 
   const runPromiseImpl = useCallback(
-    async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
+    (input?: I): Promise<Exit.Exit<A, E | ER>> => {
       setState(AsyncResult.initial<A, E | ER>(true))
 
-      const [resultExit, isLatest] = await operation.runLatestPromiseExit(
-        runAsyncResult(makeEffectRef.current(input as I))
-      )
-      const stateResult = asyncResultFromExit(resultExit)
-      if (!isLatest) {
-        return exitFromAsyncResult(stateResult)
-      }
-
-      setState(stateResult)
-
-      return exitFromAsyncResult(stateResult)
+      return operation
+        .runLatestPromiseExit(runAsyncResult(makeEffectRef.current(input as I)))
+        .then(([resultExit, isLatest]) => {
+          const stateResult = asyncResultFromExit(resultExit)
+          if (!isLatest) {
+            return exitFromAsyncResult(stateResult)
+          }
+          setState(stateResult)
+          return exitFromAsyncResult(stateResult)
+        })
     },
     [operation]
   )

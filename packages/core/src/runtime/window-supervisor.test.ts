@@ -3,7 +3,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import type { HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
+import {
+  WindowBoundsPayload,
+  type HostWindowClient,
+  type WindowCreateInput
+} from "@effect-desktop/bridge"
 import { Cause, ConfigProvider, Effect, Exit, Layer, Stream } from "effect"
 
 import { ResourceOwner } from "./resource-owner.js"
@@ -483,10 +487,13 @@ const makeHostWindowClient = (overrides: Partial<HostWindowClient> = {}): HostWi
   list: () => Effect.succeed({ windows: [{ windowId: "window-1" }] }),
   getParent: () => Effect.succeed({}),
   getChildren: () => Effect.succeed({ windows: [] }),
-  getBounds: () => Effect.succeed({ x: 0, y: 0, width: 800, height: 600 }),
-  setBounds: () => Effect.void,
-  center: () => Effect.void,
-  centerOnDisplay: () => Effect.void,
+  getBounds: () => Effect.succeed(new WindowBoundsPayload({ x: 0, y: 0, width: 800, height: 600 })),
+  setBounds: () => Effect.succeed(new WindowBoundsPayload({ x: 0, y: 0, width: 800, height: 600 })),
+  setBoundsOnDisplay: () =>
+    Effect.succeed(new WindowBoundsPayload({ x: 0, y: 0, width: 800, height: 600 })),
+  center: () => Effect.succeed(new WindowBoundsPayload({ x: 0, y: 0, width: 800, height: 600 })),
+  centerOnDisplay: () =>
+    Effect.succeed(new WindowBoundsPayload({ x: 0, y: 0, width: 800, height: 600 })),
   setTitle: () => Effect.void,
   setResizable: () => Effect.void,
   setDecorations: () => Effect.void,
