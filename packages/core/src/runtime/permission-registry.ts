@@ -222,19 +222,17 @@ export const makePermissionRegistry = (
             })
             yield* auditDecision(options.audit, decision)
             yield* recordPermissionDecision(decisionRows, decisions, decision)
-            return yield* Effect.fail(
-              new PermissionDeniedError({
-                operation: "PermissionRegistry.check",
-                reason: resolved.reason,
-                capability: decodedCapability,
-                actor: decodedContext.actor,
-                resource:
-                  decodedContext.resource === undefined
-                    ? Option.none<string>()
-                    : Option.some(decodedContext.resource),
-                traceId: id
-              })
-            )
+            return yield* new PermissionDeniedError({
+              operation: "PermissionRegistry.check",
+              reason: resolved.reason,
+              capability: decodedCapability,
+              actor: decodedContext.actor,
+              resource:
+                decodedContext.resource === undefined
+                  ? Option.none<string>()
+                  : Option.some(decodedContext.resource),
+              traceId: id
+            })
           }
 
           const grantSource = yield* decodeOptionalAttribution(
@@ -592,7 +590,7 @@ const prepareGrantUse = (
       return { grant: active.grant, track: true }
     }
 
-    return yield* Effect.fail(revokedError("PermissionRegistry.use", snapshot(active)))
+    return yield* revokedError("PermissionRegistry.use", snapshot(active))
   })
 
 const expireIfNeeded = (
@@ -605,9 +603,10 @@ const expireIfNeeded = (
     const current = yield* Ref.get(grants)
     const tracked = current.get(token)
     if (tracked === undefined) {
-      return yield* Effect.fail(
-        new PermissionGrantNotFoundError({ operation: "PermissionRegistry.inspect", token })
-      )
+      return yield* new PermissionGrantNotFoundError({
+        operation: "PermissionRegistry.inspect",
+        token
+      })
     }
     if (tracked.status !== "active") {
       return tracked
@@ -619,9 +618,10 @@ const expireIfNeeded = (
     const updated = yield* Ref.get(grants)
     const expired = updated.get(token)
     if (expired === undefined) {
-      return yield* Effect.fail(
-        new PermissionGrantNotFoundError({ operation: "PermissionRegistry.inspect", token })
-      )
+      return yield* new PermissionGrantNotFoundError({
+        operation: "PermissionRegistry.inspect",
+        token
+      })
     }
     return expired
   })
@@ -647,12 +647,10 @@ const transitionGrant = (
     const current = yield* Ref.get(grants)
     const found = current.get(token)
     if (found === undefined) {
-      return yield* Effect.fail(
-        new PermissionGrantNotFoundError({
-          operation: "PermissionRegistry.revoke",
-          token
-        })
-      )
+      return yield* new PermissionGrantNotFoundError({
+        operation: "PermissionRegistry.revoke",
+        token
+      })
     }
     if (found.status !== "active") {
       return snapshot(found)
@@ -898,7 +896,7 @@ const decodeOptionalAttribution = (
   field: string
 ): Effect.Effect<string | undefined, PermissionInvalidArgumentError, never> =>
   value === undefined
-    ? Effect.succeed(undefined)
+    ? Effect.succeed(undefined as string | undefined)
     : Schema.decodeUnknownEffect(PermissionMetadataText)(value).pipe(
         Effect.mapError((cause) => invalidArgument(operation, field, cause))
       )

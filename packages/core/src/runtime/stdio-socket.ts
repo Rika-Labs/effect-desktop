@@ -1,23 +1,27 @@
 import process from "node:process"
 import { Readable } from "node:stream"
-import { Effect, Layer } from "effect"
+import { Data, Effect, Layer } from "effect"
 import { Socket } from "effect/unstable/socket"
 
-export const writeStdout = (chunk: string | Uint8Array): Effect.Effect<void, unknown, never> =>
+export class StdoutWriteError extends Data.TaggedError("StdoutWriteError")<{
+  readonly cause: unknown
+}> {}
+
+export const writeStdout = (
+  chunk: string | Uint8Array
+): Effect.Effect<void, StdoutWriteError, never> =>
   Effect.callback((resume) => {
     process.stdout.write(chunk, (error) => {
-      if (error) {
-        resume(Effect.fail(error))
-      } else {
+      if (error == null) {
         resume(Effect.void)
+      } else {
+        resume(Effect.fail(new StdoutWriteError({ cause: error })))
       }
     })
   })
 
 const acquire = Effect.acquireRelease(
   Effect.sync(() => {
-    // `process.stdin` is a byte stream in this runtime entry; Node's type only
-    // exposes a generic web stream at the external stdio boundary.
     const readable = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>
 
     const writable = new WritableStream<Uint8Array>({

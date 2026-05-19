@@ -209,23 +209,20 @@ export const makeCommandRegistry = (
           now,
           registration
         ).pipe(Effect.withSpan("CommandRegistry.registerGroup")),
-      unregister: (id) =>
-        Effect.gen(function* () {
-          const decodedId = yield* decodeCommandId(id, "CommandRegistry.unregister")
-          const command = yield* remove(decodedId)
+      unregister: Effect.fn("CommandRegistry.unregister")(function* (id: string) {
+        const decodedId = yield* decodeCommandId(id, "CommandRegistry.unregister")
+        const command = yield* remove(decodedId)
 
-          if (command === undefined) {
-            return yield* Effect.fail(
-              new CommandRegistryCommandNotFoundError({
-                operation: "CommandRegistry.unregister",
-                commandId: decodedId
-              })
-            )
-          }
+        if (command === undefined) {
+          return yield* new CommandRegistryCommandNotFoundError({
+            operation: "CommandRegistry.unregister",
+            commandId: decodedId
+          })
+        }
 
-          yield* resources.dispose(command.resourceId)
-          yield* auditCommand(options.audit, "command-unregistered", decodedId, "unregistered", now)
-        }).pipe(Effect.withSpan("CommandRegistry.unregister")),
+        yield* resources.dispose(command.resourceId)
+        yield* auditCommand(options.audit, "command-unregistered", decodedId, "unregistered", now)
+      }),
       invoke: (id, input, context) =>
         invokeCommand(commands, invocations, options.audit, now, id, input, context),
       list: () =>
@@ -504,9 +501,11 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
     const client = yield* RpcTest.makeClient(
       registration.group.middleware(PermissionInterceptor)
     ).pipe(
-      Effect.provide(registration.handlers),
-      Effect.provide(makePermissionInterceptorLayer()),
-      Effect.provideService(PermissionRegistry, permissions),
+      Effect.provide(
+        Layer.mergeAll(registration.handlers, makePermissionInterceptorLayer()).pipe(
+          Layer.provideMerge(Layer.succeed(PermissionRegistry, permissions))
+        )
+      ),
       Scope.provide(scope)
     )
     const prepared = yield* prepareCommandGroup(registration, client, registrationToken)
@@ -533,12 +532,10 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
 
     if (!reserved) {
       completed = true
-      return yield* Effect.fail(
-        new CommandRegistryCommandAlreadyRegisteredError({
-          operation: "CommandRegistry.registerGroup",
-          commandId: reservedIds.find((id) => id.length > 0) ?? "unknown"
-        })
-      )
+      return yield* new CommandRegistryCommandAlreadyRegisteredError({
+        operation: "CommandRegistry.registerGroup",
+        commandId: reservedIds.find((id) => id.length > 0) ?? "unknown"
+      })
     }
 
     const registeredHandle = yield* resources
@@ -574,13 +571,11 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
       return [true, next] as const
     })
     if (!committed) {
-      return yield* Effect.fail(
-        new CommandRegistryRegistrationLostError({
-          operation: "CommandRegistry.registerGroup",
-          commandId: reservedIds[0] ?? "unknown",
-          resourceId: registeredHandle.id
-        })
-      )
+      return yield* new CommandRegistryRegistrationLostError({
+        operation: "CommandRegistry.registerGroup",
+        commandId: reservedIds[0] ?? "unknown",
+        resourceId: registeredHandle.id
+      })
     }
 
     yield* Effect.forEach(reservedIds, (id) =>
@@ -604,9 +599,7 @@ const getCommand = (
     const current = yield* Ref.get(commands)
     const command = current.get(id)
     if (command === undefined || !command.committed) {
-      return yield* Effect.fail(
-        new CommandRegistryCommandNotFoundError({ operation, commandId: id })
-      )
+      return yield* new CommandRegistryCommandNotFoundError({ operation, commandId: id })
     }
 
     return command
@@ -636,15 +629,13 @@ const prepareCommandGroup = <Rpcs extends Rpc.Any, E, R>(
       const capability = yield* decodeCommandCapability(rpc)
       const invoke = dynamicClient[rpc._tag]
       if (invoke === undefined) {
-        return yield* Effect.fail(
-          new CommandRegistryInvalidInputError({
-            operation: "CommandRegistry.registerGroup",
-            commandId: Option.some(id),
-            field: "handler",
-            message: "command RPC client is missing a generated endpoint",
-            cause: Option.some(rpc._tag)
-          })
-        )
+        return yield* new CommandRegistryInvalidInputError({
+          operation: "CommandRegistry.registerGroup",
+          commandId: Option.some(id),
+          field: "handler",
+          message: "command RPC client is missing a generated endpoint",
+          cause: Option.some(rpc._tag)
+        })
       }
 
       commands.push({

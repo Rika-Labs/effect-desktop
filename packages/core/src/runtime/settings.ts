@@ -485,14 +485,12 @@ const makeStore = (
         if (resolved.defaultValue !== undefined) {
           return resolved.defaultValue
         }
-        return yield* Effect.fail(
-          new SettingsInvalidArgumentError({
-            operation: "Settings.getOrDefault",
-            field: resolved.name,
-            message: "setting key has no default value",
-            cause: Option.none()
-          })
-        )
+        return yield* new SettingsInvalidArgumentError({
+          operation: "Settings.getOrDefault",
+          field: resolved.name,
+          message: "setting key has no default value",
+          cause: Option.none()
+        })
       }),
     set: <A>(
       key: string | SettingKey<A>,
@@ -651,13 +649,11 @@ const runMigrations = (
           nonAdvancing === undefined
             ? `missing migration from ${version} to ${to}`
             : `non-advancing migration from ${version} to ${nonAdvancing.to}`
-        return yield* Effect.fail(
-          new SettingsMigrationFailedError({
-            schemaVersion: to,
-            operation: "Settings.migrate",
-            cause: Option.some(cause)
-          })
-        )
+        return yield* new SettingsMigrationFailedError({
+          schemaVersion: to,
+          operation: "Settings.migrate",
+          cause: Option.some(cause)
+        })
       }
 
       yield* migration.migrate(migrationContext(kv, namespace)).pipe(
@@ -764,14 +760,12 @@ const resolveSettingKey = <A>(
       return { ...key, name }
     }
     if (schema === undefined) {
-      return yield* Effect.fail(
-        new SettingsInvalidArgumentError({
-          operation,
-          field: key,
-          message: "schema is required when using a raw setting key",
-          cause: Option.none()
-        })
-      )
+      return yield* new SettingsInvalidArgumentError({
+        operation,
+        field: key,
+        message: "schema is required when using a raw setting key",
+        cause: Option.none()
+      })
     }
     return {
       name: yield* decodeKey(key, operation),
@@ -817,7 +811,7 @@ const decodeMutationOptions = (
   operation: string
 ): Effect.Effect<SettingsMutationOptions | undefined, SettingsInvalidArgumentError, never> => {
   if (options === undefined) {
-    return Effect.succeed(undefined)
+    return Effect.succeed(undefined as SettingsMutationOptions | undefined)
   }
 
   return Schema.decodeUnknownEffect(SettingsMutationOptionsSchema)(options).pipe(
