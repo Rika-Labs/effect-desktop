@@ -27,11 +27,11 @@ import {
 
 export type PowerMonitorError = HostProtocolError
 
-const UnsupportedReason = "host-adapter-unimplemented"
+const UnsupportedReason = "platform-power-monitor-unavailable"
 
-const PowerMonitorSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const PowerMonitorSupport = NativeSurface.support.partial(UnsupportedReason, {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "macos", status: "supported" },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
@@ -40,7 +40,7 @@ const PowerMonitorSupport = NativeSurface.support.unsupported(UnsupportedReason,
 export const PowerMonitorIsSupported = NativeSurface.rpc("PowerMonitor", "isSupported", {
   payload: PowerMonitorIsSupportedInput,
   success: PowerMonitorSupportedResult,
-  authority: NativeSurface.authority.none,
+  authority: NativeSurface.authority.native(),
   endpoint: "query",
   support: PowerMonitorSupport
 })
@@ -143,6 +143,7 @@ export const PowerMonitorHandlersLive = PowerMonitorRpcGroup.toLayer({
 
 export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonitorRpcGroup, {
   service: PowerMonitorClient,
+  capabilities: PowerMonitorMethodNames,
   handlers: PowerMonitorHandlersLive,
   client: (client) => powerMonitorClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => powerMonitorClientFromRpcClient(client, exchange)

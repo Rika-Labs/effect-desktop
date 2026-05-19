@@ -1962,25 +1962,24 @@
       "tag": "PowerMonitor.isSupported",
       "surface": "PowerMonitor",
       "method": "isSupported",
-      "capability": "none",
+      "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "platform-power-monitor-unavailable",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
             "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "reason": "platform-power-monitor-unavailable"
           },
           {
             "platform": "linux",
             "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "reason": "platform-power-monitor-unavailable"
           }
         ]
       },
@@ -4202,7 +4201,7 @@
     "routed": 239,
     "missing": 0,
     "supported": 136,
-    "partial": 55,
-    "unsupported": 48
+    "partial": 56,
+    "unsupported": 47
   }
 }

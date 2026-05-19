@@ -1487,6 +1487,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "base64",
+ "block2",
  "core-foundation",
  "cpal",
  "ed25519-dalek",

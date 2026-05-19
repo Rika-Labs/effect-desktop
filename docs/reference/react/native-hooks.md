@@ -74,7 +74,7 @@ Calls `Screen.getDisplays`.
 ```
 
 Consumes the TypeScript `PowerMonitor` event streams. Native OS event delivery is
-currently unsupported until the PowerMonitor host adapter is implemented.
+available on macOS and reports typed unsupported failures on Windows and Linux.
 
 ## Related
 

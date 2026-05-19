@@ -46,4 +46,15 @@ features = [
 [workspace.dependencies.objc2-foundation]
 version = "0.3.2"
 default-features = false
-features = ["NSArray", "NSString", "NSURL"]
+features = [
+  "NSArray",
+  "NSObject",
+  "NSNotification",
+  "NSOperation",
+  "NSString",
+  "NSURL",
+  "block2"
+]
+
+[workspace.dependencies.block2]
+version = "0.6.2"

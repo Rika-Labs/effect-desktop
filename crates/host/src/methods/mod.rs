@@ -1484,6 +1484,7 @@ impl HostMethodRouter {
     }
 
     pub(crate) fn clear_runtime_resources(&self) -> Result<(), String> {
+        power_monitor::clear_runtime_event_sender().map_err(|error| format!("{error:?}"))?;
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_tray_runtime_event_state().map_err(|error| format!("{error:?}"))?;
@@ -1505,6 +1506,8 @@ impl HostMethodRouter {
         &self,
         sender: Sender<HostProtocolEnvelope>,
     ) -> Result<(), String> {
+        power_monitor::install_runtime_event_sender(sender.clone())
+            .map_err(|error| format!("{error:?}"))?;
         install_screen_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         install_window_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         *self
@@ -1515,6 +1518,7 @@ impl HostMethodRouter {
     }
 
     pub(crate) fn clear_runtime_event_sender(&self) -> Result<(), String> {
+        power_monitor::clear_runtime_event_sender().map_err(|error| format!("{error:?}"))?;
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         *self
@@ -5283,7 +5287,7 @@ mod tests {
                 id: "request-power-monitor-support".to_string(),
                 timestamp: 1710000000112,
                 trace_id: "trace-request-power-monitor-support".to_string(),
-                payload: Some(serde_json::json!({ "supported": false })),
+                payload: Some(serde_json::json!({ "supported": cfg!(target_os = "macos") })),
                 error: None,
             }
         );

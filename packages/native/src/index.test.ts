@@ -345,7 +345,10 @@ import {
   makeNotificationBridgeClientLayer
 } from "./notification.js"
 import { makeHostPathRpcRuntime, makePathBridgeClientLayer } from "./path.js"
-import { makePowerMonitorBridgeClientLayer } from "./power-monitor.js"
+import {
+  makeHostPowerMonitorRpcRuntime,
+  makePowerMonitorBridgeClientLayer
+} from "./power-monitor.js"
 import { makeHostProtocolRpcRuntime, makeProtocolBridgeClientLayer } from "./protocol.js"
 import {
   makeHostRecentDocumentsRpcRuntime,
@@ -406,6 +409,7 @@ import {
   PowerMonitorResumeEvent,
   PowerMonitorShutdownEvent,
   PowerMonitorSourceChangedEvent,
+  PowerMonitorSupportedResult,
   PowerMonitorSuspendEvent,
   PowerMonitorUnlockScreenEvent,
   RecentDocument,
@@ -7684,6 +7688,41 @@ test("PowerMonitor bridge client fails unsupported event streams before subscrip
   expectExitFailure(exit, (error) => hasErrorTag(error, "Unsupported"))
   expect(requests).toEqual(["PowerMonitor.isSupported"])
   expect(subscriptions).toEqual([])
+})
+
+test("native host RPC runtime denies protected PowerMonitor support queries before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostPowerMonitorRpcRuntime(
+    {
+      "PowerMonitor.isSupported": () =>
+        Effect.sync(() => {
+          calls.push("isSupported")
+          return new PowerMonitorSupportedResult({ supported: true })
+        })
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "power-monitor-denied",
+          method: "PowerMonitor.isSupported",
+          timestamp: 1710000000000,
+          traceId: "trace-power-monitor-denied",
+          payload: { method: "onSuspend" }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
 })
 
 test("DockRpcs declares the Phase 8 Dock method surface", () => {

@@ -10,17 +10,16 @@ effect_version: 4
 
 System power and sleep events.
 
-The TypeScript surface is present for contract and bridge-event decoding work,
-but the Rust host power monitor adapter is not implemented. The native surface
-reports `unsupported` on macOS, Windows, and Linux until host power watchers,
-permission enforcement, platform support mapping, and event delivery are
-implemented.
+The Rust host publishes power monitor events on macOS. Windows and Linux return
+typed unsupported results until platform watchers are implemented. The macOS
+adapter uses `NSWorkspace` notifications for suspend, resume, shutdown, lock,
+and unlock events, and polls `pmset -g ps` for power-source changes.
 
 ## Methods
 
 | Method        | Payload      | Success                  | Runtime support |
 | ------------- | ------------ | ------------------------ | --------------- |
-| `isSupported` | `{ method }` | `{ supported: boolean }` | unsupported     |
+| `isSupported` | `{ method }` | `{ supported: boolean }` | partial         |
 
 `method` is one of `onSuspend`, `onResume`, `onShutdown`, `onLockScreen`,
 `onUnlockScreen`, or `onPowerSourceChanged`.
@@ -38,23 +37,27 @@ The TypeScript event streams and Rust host-protocol event payload structs are:
 
 ## Errors
 
-`PowerMonitorError` is the host protocol error union. Until the host adapter is
-implemented, `isSupported` decodes through a Rust `PowerMonitor.isSupported`
-route and returns `{ supported: false }`. Each event stream checks
-`isSupported` before subscribing; unsupported streams fail as typed `Unsupported`
-and do not open a native event subscription.
+`PowerMonitorError` is the host protocol error union. `isSupported` is protected
+by the `native.invoke:PowerMonitor.isSupported` permission. Denied calls fail as
+`PermissionDenied` before the handler runs. Each event stream checks
+`isSupported` before subscribing; unsupported streams fail as typed
+`Unsupported` and do not open a native event subscription.
 
 ## Stream semantics
 
-Once a platform adapter exists, streams must preserve host event order per
-subscription, fail the stream on invalid host payloads, and release the native
-subscription when the stream is interrupted or its scope closes. The current
-unsupported host path has no replay/backfill buffer and no terminal event.
+Events preserve host publication order per method. The host protocol client keeps
+the newest 64 events per method for reconnect/replay after the transport reader
+has seen them. Subscription queues are unbounded inside the current host client;
+future high-volume sources should use a bounded policy instead. Streams fail on
+invalid host payloads or host transport failure and have no terminal event. The
+Rust macOS notification observers and power-source poller are scoped to the
+runtime connection and are removed when the runtime disconnects.
 
 ## React hook
 
-`usePower()` from `@effect-desktop/react` consumes the TypeScript streams, but it
-does not provide native OS events until the host adapter exists.
+`usePower()` from `@effect-desktop/react` consumes the TypeScript streams. It
+receives native OS events on macOS and typed unsupported failures on Windows and
+Linux.
 
 ## Related
 
