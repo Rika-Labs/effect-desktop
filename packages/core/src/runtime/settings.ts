@@ -213,32 +213,22 @@ const kvSet = (
     )
   )
 
+const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
+
 const encodeJsonText = (
   value: unknown,
   field: string,
   operation: string
 ): Effect.Effect<string, SettingsInvalidArgumentError, never> =>
-  Effect.try({
-    try: () => JSON.stringify(value),
-    catch: (error) =>
-      new SettingsInvalidArgumentError({
-        operation,
-        field,
-        message: formatUnknownError(error),
-        cause: Option.some(error)
-      })
-  }).pipe(
-    Effect.flatMap((json) =>
-      typeof json === "string"
-        ? Effect.succeed(json)
-        : Effect.fail(
-            new SettingsInvalidArgumentError({
-              operation,
-              field,
-              message: "value is not JSON-serializable",
-              cause: Option.none()
-            })
-          )
+  encodeUnknownJson(value).pipe(
+    Effect.mapError(
+      (error) =>
+        new SettingsInvalidArgumentError({
+          operation,
+          field,
+          message: formatUnknownError(error),
+          cause: Option.some(error)
+        })
     )
   )
 
