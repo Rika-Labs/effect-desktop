@@ -52,15 +52,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
   )
 
   expect(result.create).toEqual({ status: "supported" })
-  expect(result.appQuit).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
+  expect(result.appQuit).toEqual({ status: "supported" })
   expect(result.dockBadge).toEqual({
     status: "partial",
     reason: "dock behavior is platform-specific",

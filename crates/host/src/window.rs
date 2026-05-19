@@ -65,6 +65,8 @@ struct WindowMethodPortState {
 }
 
 pub(crate) trait WindowMethodHandler: Send + Sync {
+    fn quit(&self, exit_code: u8) -> std::result::Result<(), HostProtocolError>;
+
     fn create(
         &self,
         request: WindowCreateRequest,
@@ -296,6 +298,10 @@ pub(crate) struct TrayCreateRequest {
 enum HostEvent {}
 
 enum WindowCommand {
+    Quit {
+        exit_code: u8,
+        reply: Sender<WindowCommandReply>,
+    },
     Create {
         request: WindowCreateRequest,
         reply: Sender<WindowCommandReply>,
@@ -527,6 +533,7 @@ enum WindowCommandResponse {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WindowLifecycleEvent {
     CloseRequested,
+    AppQuitRequested(u8),
     WindowCreateFailed,
     SmokeTimedOut,
     SmokeExitRequested,
@@ -662,6 +669,16 @@ impl WindowMethodPort {
 }
 
 impl WindowMethodHandler for WindowMethodPort {
+    fn quit(&self, exit_code: u8) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Quit {
+            exit_code,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::APP_QUIT_METHOD)
+    }
+
     fn create(
         &self,
         request: WindowCreateRequest,
@@ -2965,16 +2982,28 @@ impl WindowRegistry {
                 WindowLifecycleEvent::SmokeTimedOut => {
                     lifecycle = WindowLifecycleEvent::SmokeTimedOut
                 }
-                WindowLifecycleEvent::SmokeExitRequested
+                WindowLifecycleEvent::AppQuitRequested(exit_code)
                     if !matches!(
                         lifecycle,
                         WindowLifecycleEvent::WindowCreateFailed
                             | WindowLifecycleEvent::SmokeTimedOut
                     ) =>
                 {
+                    lifecycle = WindowLifecycleEvent::AppQuitRequested(exit_code);
+                }
+                WindowLifecycleEvent::SmokeExitRequested
+                    if !matches!(
+                        lifecycle,
+                        WindowLifecycleEvent::WindowCreateFailed
+                            | WindowLifecycleEvent::SmokeTimedOut
+                            | WindowLifecycleEvent::AppQuitRequested(_)
+                    ) =>
+                {
                     lifecycle = WindowLifecycleEvent::SmokeExitRequested;
                 }
-                WindowLifecycleEvent::CloseRequested | WindowLifecycleEvent::Other => {}
+                WindowLifecycleEvent::CloseRequested
+                | WindowLifecycleEvent::AppQuitRequested(_)
+                | WindowLifecycleEvent::Other => {}
                 WindowLifecycleEvent::SmokeExitRequested => {}
             }
         }
@@ -2989,6 +3018,10 @@ impl WindowRegistry {
         command: WindowCommand,
     ) -> WindowLifecycleEvent {
         match command {
+            WindowCommand::Quit { exit_code, reply } => {
+                send_window_command_reply(reply, Ok(WindowCommandResponse::WindowUpdated));
+                WindowLifecycleEvent::AppQuitRequested(exit_code)
+            }
             WindowCommand::Create { request, reply } => {
                 let result = self
                     .create(target, request, mode)
@@ -4449,6 +4482,24 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
             );
             ControlFlow::Exit
         }
+        WindowLifecycleEvent::AppQuitRequested(0) => {
+            info!(
+                event = WINDOW_EXIT_REQUESTED_EVENT,
+                source = "app-quit",
+                exit_code = 0,
+                "host app quit requested"
+            );
+            ControlFlow::Exit
+        }
+        WindowLifecycleEvent::AppQuitRequested(exit_code) => {
+            info!(
+                event = WINDOW_EXIT_REQUESTED_EVENT,
+                source = "app-quit",
+                exit_code,
+                "host app quit requested"
+            );
+            ControlFlow::ExitWithCode(i32::from(exit_code))
+        }
         WindowLifecycleEvent::WindowCreateFailed => {
             warn!(
                 event = WINDOW_EXIT_REQUESTED_EVENT,
@@ -4580,6 +4631,18 @@ mod tests {
         assert_eq!(
             control_flow_for_lifecycle_event(WindowLifecycleEvent::CloseRequested),
             ControlFlow::Exit
+        );
+    }
+
+    #[test]
+    fn app_quit_requested_exits_with_requested_status() {
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::AppQuitRequested(0)),
+            ControlFlow::Exit
+        );
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::AppQuitRequested(7)),
+            ControlFlow::ExitWithCode(7)
         );
     }
 

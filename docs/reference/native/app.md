@@ -12,9 +12,10 @@ App-level lifecycle and host-operation service. `AppMetadata` owns app identity,
 paths, launch context, and environment-shape reads.
 
 The TypeScript surface is present for contract and bridge-client validation.
-The Rust host implements `App.focus` by focusing the current native window.
-Process quit, restart, single instance coordination, and native lifecycle event
-sources are still unsupported until the host owns those lifecycle controls.
+The Rust host implements `App.quit` by requesting event-loop exit and
+`App.focus` by focusing the current native window. Process restart, single
+instance coordination, and native lifecycle event sources are still unsupported
+until the host owns those lifecycle controls.
 `Association` owns OS-level protocol and file association contracts.
 `Autostart` owns open-at-login and login-item operations.
 
@@ -22,7 +23,7 @@ sources are still unsupported until the host owns those lifecycle controls.
 
 | Method                      | Success                   | Runtime support |
 | --------------------------- | ------------------------- | --------------- |
-| `quit`                      | `void`                    | unsupported     |
+| `quit`                      | `void`                    | supported       |
 | `restart`                   | `void`                    | unsupported     |
 | `focus`                     | `void`                    | supported       |
 | `requestSingleInstanceLock` | `AppSingleInstanceResult` | unsupported     |

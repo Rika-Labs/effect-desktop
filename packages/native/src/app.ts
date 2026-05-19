@@ -40,12 +40,13 @@ const AppUnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReaso
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
 })
-const AppFocusSupport = NativeSurface.support.supported
+const AppSupported = NativeSurface.support.supported
 export const AppQuit = appRpc(
   "quit",
   AppQuitInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["quit"] })
+  P.nativeInvoke({ primitive: "App", methods: ["quit"] }),
+  AppSupported
 )
 export const AppRestart = appRpc(
   "restart",
@@ -58,7 +59,7 @@ export const AppFocus = appRpc(
   Schema.Void,
   Schema.Void,
   P.nativeInvoke({ primitive: "App", methods: ["focus"] }),
-  AppFocusSupport
+  AppSupported
 )
 export const AppRequestSingleInstanceLock = appRpc(
   "requestSingleInstanceLock",

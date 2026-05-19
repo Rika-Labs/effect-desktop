@@ -8,10 +8,14 @@ use host_protocol::{AppQuitPayload, AppRestartPayload};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-pub(crate) fn quit(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+pub(crate) fn quit(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
     reject_null_field(payload.as_ref(), "exitCode", host_protocol::APP_QUIT_METHOD)?;
-    let _input = decode_payload::<AppQuitPayload>(payload, host_protocol::APP_QUIT_METHOD)?;
-    Err(unsupported(host_protocol::APP_QUIT_METHOD))
+    let input = decode_payload::<AppQuitPayload>(payload, host_protocol::APP_QUIT_METHOD)?;
+    handler.quit(input.exit_code().unwrap_or(0))?;
+    Ok(None)
 }
 
 pub(crate) fn restart(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -120,7 +124,7 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{quit, request_single_instance_lock, restart};
+    use super::{request_single_instance_lock, restart};
     use host_protocol::HostProtocolError;
     use serde_json::{json, Value};
 
@@ -161,13 +165,6 @@ mod tests {
     #[test]
     fn app_payload_requests_decode_before_unsupported() {
         assert_eq!(
-            quit(Some(json!({ "exitCode": 0 }))).expect_err("quit"),
-            HostProtocolError::unsupported(
-                host_protocol::APP_UNSUPPORTED_REASON,
-                host_protocol::APP_QUIT_METHOD,
-            )
-        );
-        assert_eq!(
             restart(Some(json!({ "args": ["--restarted"] }))).expect_err("restart"),
             HostProtocolError::unsupported(
                 host_protocol::APP_UNSUPPORTED_REASON,
@@ -178,20 +175,6 @@ mod tests {
 
     #[test]
     fn app_payload_requests_reject_malformed_inputs_before_unsupported() {
-        assert_eq!(
-            quit(Some(json!({ "exitCode": null }))).expect_err("exit code"),
-            HostProtocolError::invalid_argument(
-                "exitCode",
-                "must be omitted instead of null",
-                host_protocol::APP_QUIT_METHOD,
-            )
-        );
-        assert_eq!(
-            quit(Some(json!({ "exitCode": 256 })))
-                .expect_err("exit code range")
-                .tag(),
-            "InvalidArgument"
-        );
         assert_eq!(
             restart(Some(json!({ "args": null }))).expect_err("args null"),
             HostProtocolError::invalid_argument(

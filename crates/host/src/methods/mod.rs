@@ -209,7 +209,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::APP_QUIT_METHOD,
-        HostMethodDispatcher::Payload(app::quit),
+        HostMethodDispatcher::Window(app::quit),
     ),
     route(
         host_protocol::APP_RESTART_METHOD,
@@ -2945,8 +2945,12 @@ mod tests {
     }
 
     #[test]
-    fn app_lifecycle_routes_to_typed_unsupported() {
-        let response = test_router()
+    fn app_quit_routes_to_window_handler() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
             .dispatch_at(
                 request_with_payload(
                     "request-app-quit",
@@ -2964,12 +2968,10 @@ mod tests {
                 timestamp: 1710000000125,
                 trace_id: "trace-request-app-quit".to_string(),
                 payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::APP_UNSUPPORTED_REASON,
-                    host_protocol::APP_QUIT_METHOD,
-                )),
+                error: None,
             }
         );
+        assert_eq!(window.quit(), vec![0]);
     }
 
     #[test]
@@ -3022,6 +3024,25 @@ mod tests {
 
     #[test]
     fn app_lifecycle_routes_reject_malformed_payloads() {
+        let quit_response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-quit-invalid",
+                    host_protocol::APP_QUIT_METHOD,
+                    serde_json::json!({ "exitCode": 256 }),
+                ),
+                1710000000125,
+            )
+            .expect("app quit should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = quit_response
+        else {
+            panic!("app quit should reject malformed exit code");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
+
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -7042,6 +7063,7 @@ mod tests {
     struct FakeWindowHandler {
         create_result: Result<WindowCreateResponse, HostProtocolError>,
         destroy_result: Result<(), HostProtocolError>,
+        quit: Mutex<Vec<u8>>,
         created: Mutex<Vec<WindowCreateRequest>>,
         shown: Mutex<Vec<String>>,
         hidden: Mutex<Vec<String>>,
@@ -7072,6 +7094,7 @@ mod tests {
             Self {
                 create_result,
                 destroy_result,
+                quit: Mutex::new(Vec::new()),
                 created: Mutex::new(Vec::new()),
                 shown: Mutex::new(Vec::new()),
                 hidden: Mutex::new(Vec::new()),
@@ -7099,6 +7122,13 @@ mod tests {
             self.created
                 .lock()
                 .expect("fake created requests should lock")
+                .clone()
+        }
+
+        fn quit(&self) -> Vec<u8> {
+            self.quit
+                .lock()
+                .expect("fake quit requests should lock")
                 .clone()
         }
 
@@ -7237,6 +7267,14 @@ mod tests {
     }
 
     impl WindowMethodHandler for FakeWindowHandler {
+        fn quit(&self, exit_code: u8) -> Result<(), HostProtocolError> {
+            self.quit
+                .lock()
+                .expect("fake quit requests should lock")
+                .push(exit_code);
+            Ok(())
+        }
+
         fn create(
             &self,
             request: WindowCreateRequest,
