@@ -597,7 +597,13 @@ const decodeStreamEnvelope = <Spec extends BridgeStreamSpec>(
       }
       if (Schema.is(BridgeStreamErrorFrame)(frame)) {
         onTerminal()
-        return Stream.fromEffect(decodeStreamError(operation, spec.error, frame.error))
+        return Stream.fromEffect(
+          decodeStreamError<BridgeContractCodecType<Spec["error"]>, unknown>(
+            operation,
+            spec.error as BridgeContractCodec<BridgeContractCodecType<Spec["error"]>, unknown>,
+            frame.error
+          )
+        )
       }
       if (Schema.is(BridgeStreamCompleteFrame)(frame)) {
         onTerminal()
