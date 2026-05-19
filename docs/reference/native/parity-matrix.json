@@ -1948,25 +1948,7 @@
       "method": "capability",
       "capability": "none",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -5277,8 +5259,8 @@
     "total": 291,
     "routed": 291,
     "missing": 0,
-    "supported": 157,
+    "supported": 158,
     "partial": 71,
-    "unsupported": 63
+    "unsupported": 62
   }
 }

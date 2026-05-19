@@ -437,7 +437,7 @@ function menuRpc<
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   const support =
-    method === "setApplicationMenu" || method === "setWindowMenu"
+    method === "setApplicationMenu" || method === "setWindowMenu" || method === "capability"
       ? NativeSurface.support.supported
       : method === "clear"
         ? MenuClearSupport

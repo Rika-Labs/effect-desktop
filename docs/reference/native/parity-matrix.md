@@ -136,7 +136,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `LocalToolRuntime`          | `run`                       | `supported`   | `LocalToolRuntime.run`                    | `routed`    |
 | `LocalToolRuntime`          | `stop`                      | `supported`   | `LocalToolRuntime.stop`                   | `routed`    |
 | `Menu`                      | `bindCommand`               | `unsupported` | `Menu.bindCommand`                        | `routed`    |
-| `Menu`                      | `capability`                | `unsupported` | `Menu.capability`                         | `routed`    |
+| `Menu`                      | `capability`                | `supported`   | `Menu.capability`                         | `routed`    |
 | `Menu`                      | `clear`                     | `partial`     | `Menu.clear`                              | `routed`    |
 | `Menu`                      | `setApplicationMenu`        | `supported`   | `Menu.setApplicationMenu`                 | `routed`    |
 | `Menu`                      | `setWindowMenu`             | `supported`   | `Menu.setWindowMenu`                      | `routed`    |

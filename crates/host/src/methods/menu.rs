@@ -94,7 +94,33 @@ pub(crate) fn capability(payload: Option<Value>) -> Result<Option<Value>, HostPr
     let payload = required_payload(payload, host_protocol::MENU_CAPABILITY_METHOD)?;
     validate_capability_payload(&payload)?;
 
-    Err(unsupported(host_protocol::MENU_CAPABILITY_METHOD))
+    let name = payload
+        .get("name")
+        .and_then(Value::as_str)
+        .expect("capability name is validated above");
+    let platform = payload
+        .get("platform")
+        .and_then(Value::as_str)
+        .unwrap_or(CURRENT_PLATFORM);
+    let supported = capability_supported(name, platform);
+    Ok(Some(serde_json::json!({ "supported": supported })))
+}
+
+#[cfg(target_os = "macos")]
+const CURRENT_PLATFORM: &str = "macos";
+#[cfg(target_os = "windows")]
+const CURRENT_PLATFORM: &str = "windows";
+#[cfg(target_os = "linux")]
+const CURRENT_PLATFORM: &str = "linux";
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+const CURRENT_PLATFORM: &str = "unknown";
+
+fn capability_supported(name: &str, platform: &str) -> bool {
+    match (name, platform) {
+        ("application menu" | "window menu", "macos" | "windows" | "linux") => true,
+        ("command binding", _) => false,
+        _ => false,
+    }
 }
 
 pub(crate) fn show_context_menu(
@@ -398,11 +424,51 @@ mod tests {
             )),
             Err(HostProtocolError::Unsupported { .. })
         ));
+    }
+
+    #[test]
+    fn menu_capability_reports_supported_menu_kinds() {
+        let app_menu = capability(Some(json!({
+            "name": "application menu",
+            "platform": "macos"
+        })))
+        .expect("application menu capability should report support");
+        assert_eq!(app_menu, Some(json!({ "supported": true })));
+
+        let window_menu = capability(Some(json!({
+            "name": "window menu",
+            "platform": "macos"
+        })))
+        .expect("window menu capability should report support");
+        assert_eq!(window_menu, Some(json!({ "supported": true })));
+    }
+
+    #[test]
+    fn menu_capability_reports_command_binding_unsupported() {
+        let binding = capability(Some(json!({
+            "name": "command binding",
+            "platform": "macos"
+        })))
+        .expect("command binding capability should report unsupported");
+        assert_eq!(binding, Some(json!({ "supported": false })));
+    }
+
+    #[test]
+    fn menu_capability_rejects_unknown_capability_name() {
         assert!(matches!(
-            capability(Some(
-                json!({ "name": "command binding", "platform": "macos" })
-            )),
-            Err(HostProtocolError::Unsupported { .. })
+            capability(Some(json!({ "name": "no-such-capability" }))),
+            Err(HostProtocolError::InvalidArgument { .. })
+        ));
+    }
+
+    #[test]
+    fn menu_capability_rejects_unknown_platform() {
+        assert!(matches!(
+            capability(Some(json!({
+                "name": "application menu",
+                "platform": "wasm"
+            }))),
+            Err(HostProtocolError::InvalidArgument { .. })
         ));
     }
 
