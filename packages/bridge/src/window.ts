@@ -1208,9 +1208,12 @@ const makeRequest = (
     )
   )
 
+let windowClientRequestSeq = 0
+let windowClientTraceSeq = 0
+
 const resolveOptions = (options: HostWindowClientOptions): ResolvedHostWindowClientOptions => ({
-  nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
+  nextRequestId: options.nextRequestId ?? (() => `request-window-${++windowClientRequestSeq}`),
+  nextTraceId: options.nextTraceId ?? (() => `trace-window-${++windowClientTraceSeq}`),
   now: options.now
 })
 

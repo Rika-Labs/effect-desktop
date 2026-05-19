@@ -101,7 +101,8 @@ export const makeUnaryDesktopTransportFromBridgeClientExchange = (
     const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
     const clock = yield* Clock.Clock
     const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
-    const nextTraceId = options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
+    const nextTraceId =
+      options.nextTraceId ?? (() => `trace-bridge-${++bridgeClientTraceSeq}`)
     const normalizeRequest = options.normalizeRequest ?? ((request) => request)
 
     return Object.freeze({
@@ -804,9 +805,12 @@ const makeRequest = (
     })
   })
 
+let bridgeClientRequestSeq = 0
+let bridgeClientTraceSeq = 0
+
 const resolveOptions = (options: BridgeClientOptions): ResolvedBridgeClientOptions => ({
-  nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
+  nextRequestId: options.nextRequestId ?? (() => `request-bridge-${++bridgeClientRequestSeq}`),
+  nextTraceId: options.nextTraceId ?? (() => `trace-bridge-${++bridgeClientTraceSeq}`),
   now: options.now,
   windowId: options.windowId,
   originToken: options.originToken,

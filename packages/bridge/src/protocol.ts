@@ -1155,6 +1155,8 @@ interface ResolvedDesktopProtocolOptions {
   readonly nextTraceId: () => string
 }
 
+let protocolTraceSeq = 0
+
 const resolveProtocolOptions = (
   options: DesktopProtocolOptions,
   defaultNow: () => number
@@ -1166,7 +1168,7 @@ const resolveProtocolOptions = (
     options.nextRequestId === undefined
       ? (clientId, requestId) => clientRequestId(clientId, requestId)
       : () => options.nextRequestId!(),
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
+  nextTraceId: options.nextTraceId ?? (() => `trace-protocol-${++protocolTraceSeq}`)
 })
 
 type ClientWriteFn = (
@@ -1279,8 +1281,7 @@ const RpcPermissionDeniedActor = Schema.Struct({
   id: HostIdentityString
 })
 
-const RpcPermissionDeniedError = Schema.Struct({
-  _tag: Schema.Literal("PermissionDenied"),
+const RpcPermissionDeniedError = Schema.TaggedStruct("PermissionDenied", {
   reason: HostIdentityString,
   capability: RpcPermissionDeniedCapability,
   actor: RpcPermissionDeniedActor,

@@ -149,9 +149,9 @@ export interface BridgeRuntimeMetadata {
   readonly backpressure?: BackpressureSpec
 }
 
-const BridgeRuntimeAnnotation = Context.Service<BridgeRuntimeMetadata>(
-  "@effect-desktop/bridge/BridgeRuntime"
-)
+class BridgeRuntimeAnnotation extends Context.Service<BridgeRuntimeAnnotation, BridgeRuntimeMetadata>()(
+  "@effect-desktop/bridge/contracts/BridgeRuntimeAnnotation"
+) {}
 
 export const BridgeRuntime =
   (metadata: BridgeRuntimeMetadata) =>
