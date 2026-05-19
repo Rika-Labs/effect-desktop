@@ -47,7 +47,12 @@ import {
   WINDOW_SUBSCRIBE_EVENTS_METHOD,
   WEBVIEW_ATTACH_DEBUGGER_METHOD,
   WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+  WEBVIEW_FIND_IN_PAGE_METHOD,
   WEBVIEW_OPEN_DEVTOOLS_METHOD,
+  WEBVIEW_PRINT_METHOD,
+  WEBVIEW_PRINT_TO_PDF_METHOD,
+  WEBVIEW_SET_USER_AGENT_METHOD,
+  WEBVIEW_SET_ZOOM_METHOD,
   makeHostProtocolHostUnavailableError,
   RpcCapability,
   rpcSupport,
@@ -441,7 +446,9 @@ import {
   UpdaterStatusResult,
   UpdaterStatusState,
   WebViewApiCallEvent,
+  WebViewFindInPageResult,
   WebViewNavigationBlockedEvent,
+  WebViewPdf,
   WebViewScreenshot,
   WindowBounds,
   WindowBoundsEvent,
@@ -817,6 +824,11 @@ const expectedWebViewMethods: Array<(typeof WebViewMethodNames)[number]> = [
   "goForward",
   "getNavigationState",
   "captureScreenshot",
+  "print",
+  "printToPdf",
+  "findInPage",
+  "setZoom",
+  "setUserAgent",
   "openDevTools",
   "closeDevTools",
   "attachDebugger",
@@ -2074,6 +2086,11 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       yield* webview.goForward(created)
       const navigationState = yield* webview.getNavigationState(created)
       const screenshot = yield* webview.captureScreenshot(created)
+      const pdf = yield* webview.printToPdf(created)
+      const findResult = yield* webview.findInPage(created, "needle")
+      yield* webview.print(created)
+      yield* webview.setZoom(created, 1.25)
+      yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
       yield* webview.openDevTools(created)
       yield* webview.closeDevTools(created)
       yield* webview.attachDebugger(created)
@@ -2086,7 +2103,16 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
       yield* webview.destroy(created)
 
-      return { apiCalls, blocked, created, linuxAutofill, navigationState, screenshot }
+      return {
+        apiCalls,
+        blocked,
+        created,
+        findResult,
+        linuxAutofill,
+        navigationState,
+        pdf,
+        screenshot
+      }
     }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
   )
 
@@ -2097,6 +2123,10 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
     loading: false
   })
   expect(result.screenshot.bytes).toEqual(new Uint8Array([1, 2, 3]))
+  expect(result.pdf.bytes).toEqual(new Uint8Array([0x25, 0x50, 0x44, 0x46]))
+  expect(result.findResult).toEqual(
+    new WebViewFindInPageResult({ matches: 2, activeMatchOrdinal: 1 })
+  )
   expect(result.linuxAutofill).toBe(false)
   expect(Array.from(result.blocked)).toEqual([
     new WebViewNavigationBlockedEvent({
@@ -2123,6 +2153,11 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
     "goForward",
     "getNavigationState",
     "captureScreenshot",
+    "printToPdf",
+    "findInPage:needle",
+    "print",
+    "setZoom:1.25",
+    "setUserAgent:EffectDesktopTest/1.0",
     "openDevTools",
     "closeDevTools",
     "attachDebugger",
@@ -2158,6 +2193,65 @@ test("WebView service propagates unsupported platform and host failure", async (
     Effect.gen(function* () {
       const webview = yield* WebView
       return yield* Effect.exit(webview.create(windowHandle))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+})
+
+test("WebView document controls propagate success, unsupported, and host failures", async () => {
+  const calls: string[] = []
+  const success = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.print(webviewHandle)
+      yield* webview.setZoom(webviewHandle, 1.25)
+      const pdf = yield* webview.printToPdf(webviewHandle)
+      const findResult = yield* webview.findInPage(webviewHandle, "needle")
+      yield* webview.setUserAgent(webviewHandle, "EffectDesktopTest/1.0")
+      return { findResult, pdf }
+    }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
+  )
+
+  expect(success.pdf.bytes).toEqual(new Uint8Array([0x25, 0x50, 0x44, 0x46]))
+  expect(success.findResult).toEqual(
+    new WebViewFindInPageResult({ matches: 2, activeMatchOrdinal: 1 })
+  )
+  expect(calls).toEqual([
+    "print",
+    "setZoom:1.25",
+    "printToPdf",
+    "findInPage:needle",
+    "setUserAgent:EffectDesktopTest/1.0"
+  ])
+
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-document-output-unavailable",
+    message: "unsupported WebView.printToPdf",
+    operation: WEBVIEW_PRINT_TO_PDF_METHOD,
+    recoverable: false
+  })
+  const unsupportedClient: WebViewClientApi = {
+    ...webViewClient([]),
+    printToPdf: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: WebViewClientApi = {
+    ...webViewClient([]),
+    print: () => Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_PRINT_METHOD))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.printToPdf(webviewHandle))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.print(webviewHandle))
     }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
   )
 
@@ -2227,12 +2321,32 @@ test("WebView devtools and debugger controls propagate success, unsupported, and
   expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
-test("native host RPC runtime denies protected WebView devtools calls", async () => {
+test("native host RPC runtime denies protected WebView document and devtools calls", async () => {
   const deniedRows: AuditEvent[] = []
   const runtime = makeNativeHostRpcRuntime(WebViewRpcs, WebViewHandlersLive, {
     originAuth: RendererOriginAuth.unsafeDisabledForTests
   })
   const calls = [
+    {
+      method: WEBVIEW_PRINT_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["print"] })
+    },
+    {
+      method: WEBVIEW_PRINT_TO_PDF_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["printToPdf"] })
+    },
+    {
+      method: WEBVIEW_FIND_IN_PAGE_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["findInPage"] })
+    },
+    {
+      method: WEBVIEW_SET_ZOOM_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["setZoom"] })
+    },
+    {
+      method: WEBVIEW_SET_USER_AGENT_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["setUserAgent"] })
+    },
     {
       method: WEBVIEW_OPEN_DEVTOOLS_METHOD,
       capability: P.nativeInvoke({ primitive: "WebView", methods: ["openDevTools"] })
@@ -2261,7 +2375,7 @@ test("native host RPC runtime denies protected WebView devtools calls", async ()
             kind: "request",
             id: `webview-devtools-denied-${index}`,
             method: call.method,
-            payload: { webview: webviewHandle },
+            payload: webviewDeniedPayload(call.method),
             timestamp: 1_710_000_002_600 + index,
             traceId: `trace-webview-devtools-denied-${index}`
           })
@@ -2281,6 +2395,19 @@ test("native host RPC runtime denies protected WebView devtools calls", async ()
   )
 })
 
+const webviewDeniedPayload = (method: string): unknown => {
+  if (method === WEBVIEW_FIND_IN_PAGE_METHOD) {
+    return { webview: webviewHandle, query: "needle" }
+  }
+  if (method === WEBVIEW_SET_ZOOM_METHOD) {
+    return { webview: webviewHandle, zoom: 1.25 }
+  }
+  if (method === WEBVIEW_SET_USER_AGENT_METHOD) {
+    return { webview: webviewHandle, userAgent: "EffectDesktopTest/1.0" }
+  }
+  return { webview: webviewHandle }
+}
+
 test("WebView bridge client sends typed host envelopes and decodes event streams", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = webViewExchange(requests, (request) => ({
@@ -2292,9 +2419,13 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
           ? { canGoBack: true, canGoForward: false, loading: false }
           : request.method === "WebView.captureScreenshot"
             ? { mime: "image/png", bytes: pngBytesJson }
-            : request.method === "WebView.capability"
-              ? { supported: true }
-              : undefined
+            : request.method === "WebView.printToPdf"
+              ? { mime: "application/pdf", bytes: "JVBERg==" }
+              : request.method === "WebView.findInPage"
+                ? { matches: 2, activeMatchOrdinal: 1 }
+                : request.method === "WebView.capability"
+                  ? { supported: true }
+                  : undefined
   }))
 
   const result = await Effect.runPromise(
@@ -2313,6 +2444,11 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
         onDisallowed: "openExternal"
       })
       const screenshot = yield* webview.captureScreenshot(created)
+      yield* webview.print(created)
+      const pdf = yield* webview.printToPdf(created)
+      const findResult = yield* webview.findInPage(created, "needle")
+      yield* webview.setZoom(created, 1.25)
+      yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
       yield* webview.openDevTools(created)
       yield* webview.closeDevTools(created)
       yield* webview.attachDebugger(created)
@@ -2320,7 +2456,16 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
       const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
 
-      return { apiCalls, blocked, canOpenDevtools, created, navigationState, screenshot }
+      return {
+        apiCalls,
+        blocked,
+        canOpenDevtools,
+        created,
+        findResult,
+        navigationState,
+        pdf,
+        screenshot
+      }
     }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
   )
 
@@ -2331,6 +2476,12 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
     loading: false
   })
   expect(result.screenshot).toEqual(new WebViewScreenshot({ mime: "image/png", bytes: pngBytes }))
+  expect(result.pdf).toEqual(
+    new WebViewPdf({ mime: "application/pdf", bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]) })
+  )
+  expect(result.findResult).toEqual(
+    new WebViewFindInPageResult({ matches: 2, activeMatchOrdinal: 1 })
+  )
   expect(result.canOpenDevtools).toBe(true)
   expect(Array.from(result.blocked)).toEqual([
     new WebViewNavigationBlockedEvent({
@@ -2371,6 +2522,11 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       }
     ],
     ["WebView.captureScreenshot", { webview: webviewHandle }],
+    ["WebView.print", { webview: webviewHandle }],
+    ["WebView.printToPdf", { webview: webviewHandle }],
+    ["WebView.findInPage", { webview: webviewHandle, query: "needle" }],
+    ["WebView.setZoom", { webview: webviewHandle, zoom: 1.25 }],
+    ["WebView.setUserAgent", { webview: webviewHandle, userAgent: "EffectDesktopTest/1.0" }],
     ["WebView.openDevTools", { webview: webviewHandle }],
     ["WebView.closeDevTools", { webview: webviewHandle }],
     ["WebView.attachDebugger", { webview: webviewHandle }],
@@ -2723,7 +2879,7 @@ test("WebView capability matrix reports spec-partial features as unsupported", a
     )
   )
 
-  expect(result.linuxPrint).toBe(false)
+  expect(result.linuxPrint).toBe(true)
   expect(result.linuxPopupBlocking).toBe(false)
   expect(result.linuxGetUserMedia).toBe(false)
   expect(result.linuxServiceWorkers).toBe(false)
@@ -12409,6 +12565,22 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
       calls.push("captureScreenshot")
       return new WebViewScreenshot({ mime: "image/png", bytes: new Uint8Array([1, 2, 3]) })
     }),
+  print: () => recordVoid(calls, "print"),
+  printToPdf: () =>
+    Effect.sync(() => {
+      calls.push("printToPdf")
+      return new WebViewPdf({
+        mime: "application/pdf",
+        bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46])
+      })
+    }),
+  findInPage: (_webview, query) =>
+    Effect.sync(() => {
+      calls.push(`findInPage:${query}`)
+      return new WebViewFindInPageResult({ matches: 2, activeMatchOrdinal: 1 })
+    }),
+  setZoom: (_webview, zoom) => recordVoid(calls, `setZoom:${zoom}`),
+  setUserAgent: (_webview, userAgent) => recordVoid(calls, `setUserAgent:${userAgent}`),
   openDevTools: () => recordVoid(calls, "openDevTools"),
   closeDevTools: () => recordVoid(calls, "closeDevTools"),
   attachDebugger: () => recordVoid(calls, "attachDebugger"),

@@ -3,9 +3,10 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use crate::window::{
-    WebViewCreateRequest, WebViewExposedApi, WebViewHandleRequest, WebViewIsolationPolicy,
-    WebViewLoadRouteRequest, WebViewLoadUrlRequest, WebViewNavigationDecision,
-    WebViewNavigationPolicy, WebViewSetNavigationPolicyRequest, WindowMethodHandler,
+    WebViewCreateRequest, WebViewExposedApi, WebViewFindInPageRequest, WebViewHandleRequest,
+    WebViewIsolationPolicy, WebViewLoadRouteRequest, WebViewLoadUrlRequest,
+    WebViewNavigationDecision, WebViewNavigationPolicy, WebViewSetNavigationPolicyRequest,
+    WebViewSetUserAgentRequest, WebViewSetZoomRequest, WindowMethodHandler,
 };
 use host_protocol::HostProtocolError;
 use serde_json::{Map, Value};
@@ -14,7 +15,10 @@ const ALLOWED_CREATE_FIELDS: &[&str] = &["window", "url", "originPolicy", "isola
 const ALLOWED_HANDLE_FIELDS: &[&str] = &["webview"];
 const ALLOWED_LOAD_ROUTE_FIELDS: &[&str] = &["webview", "route"];
 const ALLOWED_LOAD_URL_FIELDS: &[&str] = &["webview", "url"];
+const ALLOWED_FIND_FIELDS: &[&str] = &["webview", "query"];
 const ALLOWED_POLICY_FIELDS: &[&str] = &["webview", "policy"];
+const ALLOWED_SET_ZOOM_FIELDS: &[&str] = &["webview", "zoom"];
+const ALLOWED_SET_USER_AGENT_FIELDS: &[&str] = &["webview", "userAgent"];
 const ALLOWED_CAPABILITY_FIELDS: &[&str] = &["name", "platform", "mode"];
 const ALLOWED_ORIGIN_POLICY_FIELDS: &[&str] = &["allowedOrigins", "onDisallowed"];
 const ALLOWED_ISOLATION_FIELDS: &[&str] = &["exposedApis"];
@@ -153,13 +157,121 @@ pub(crate) fn get_navigation_state(
 }
 
 pub(crate) fn capture_screenshot(
+    handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
-    validate_handle_payload(payload, host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD)?;
-
-    Err(unsupported(
+    let payload =
+        validate_handle_payload(payload, host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD)?;
+    let response = handler.capture_webview_screenshot(decode_webview_handle(
+        &payload,
         host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD,
-    ))
+    )?)?;
+
+    Ok(Some(response))
+}
+
+pub(crate) fn print(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_PRINT_METHOD)?;
+    handler.print_webview(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_PRINT_METHOD,
+    )?)?;
+
+    Ok(None)
+}
+
+pub(crate) fn print_to_pdf(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD)?;
+    let response = handler.print_webview_to_pdf(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD,
+    )?)?;
+
+    Ok(Some(response))
+}
+
+pub(crate) fn find_in_page(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_object(payload, host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD)?;
+    validate_allowed_fields(
+        &payload,
+        ALLOWED_FIND_FIELDS,
+        host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
+    )?;
+    validate_webview_handle_field(&payload, host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD)?;
+    validate_printable_string_field(
+        &payload,
+        "query",
+        host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
+    )?;
+    let response = handler.find_in_webview_page(WebViewFindInPageRequest::new(
+        decode_webview_handle(&payload, host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD)?,
+        required_string(
+            &payload,
+            "query",
+            host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
+        )?
+        .to_string(),
+    ))?;
+
+    Ok(Some(response))
+}
+
+pub(crate) fn set_zoom(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_object(payload, host_protocol::WEBVIEW_SET_ZOOM_METHOD)?;
+    validate_allowed_fields(
+        &payload,
+        ALLOWED_SET_ZOOM_FIELDS,
+        host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+    )?;
+    validate_webview_handle_field(&payload, host_protocol::WEBVIEW_SET_ZOOM_METHOD)?;
+    let zoom = validate_zoom_field(&payload, host_protocol::WEBVIEW_SET_ZOOM_METHOD)?;
+    handler.set_webview_zoom(WebViewSetZoomRequest::new(
+        decode_webview_handle(&payload, host_protocol::WEBVIEW_SET_ZOOM_METHOD)?,
+        zoom,
+    ))?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_user_agent(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_object(payload, host_protocol::WEBVIEW_SET_USER_AGENT_METHOD)?;
+    validate_allowed_fields(
+        &payload,
+        ALLOWED_SET_USER_AGENT_FIELDS,
+        host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
+    )?;
+    validate_webview_handle_field(&payload, host_protocol::WEBVIEW_SET_USER_AGENT_METHOD)?;
+    validate_printable_string_field(
+        &payload,
+        "userAgent",
+        host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
+    )?;
+    handler.set_webview_user_agent(WebViewSetUserAgentRequest::new(
+        decode_webview_handle(&payload, host_protocol::WEBVIEW_SET_USER_AGENT_METHOD)?,
+        required_string(
+            &payload,
+            "userAgent",
+            host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
+        )?
+        .to_string(),
+    ))?;
+
+    Ok(None)
 }
 
 pub(crate) fn open_devtools(
@@ -436,6 +548,43 @@ fn required_string<'a>(
         .get(field)
         .and_then(Value::as_str)
         .ok_or_else(|| HostProtocolError::invalid_argument(field, "must be a string", operation))
+}
+
+fn validate_printable_string_field(
+    payload: &Map<String, Value>,
+    field: &'static str,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    let value = required_string(payload, field, operation)?;
+    if value.is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must not be empty",
+            operation,
+        ));
+    }
+    validate_printable_value(field, value, operation)
+}
+
+fn validate_zoom_field(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<f64, HostProtocolError> {
+    let Some(zoom) = payload.get("zoom").and_then(Value::as_f64) else {
+        return Err(HostProtocolError::invalid_argument(
+            "zoom",
+            "must be a number",
+            operation,
+        ));
+    };
+    if !zoom.is_finite() || zoom <= 0.0 {
+        return Err(HostProtocolError::invalid_argument(
+            "zoom",
+            "must be a finite number greater than 0",
+            operation,
+        ));
+    }
+    Ok(zoom)
 }
 
 fn validate_window_handle_field(

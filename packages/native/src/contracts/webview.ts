@@ -35,6 +35,10 @@ const WebViewRoute = BridgeSafeNonEmptyString.check(
 const WebViewApiName = BridgeSafeNonEmptyString.check(Schema.isPattern(/^[A-Za-z_$][\w$]*$/u))
 const WebViewApiMethodName = BridgeSafeNonEmptyString.check(Schema.isPattern(/^[A-Za-z_$][\w$]*$/u))
 const WebViewApiPayload = BridgeSafeString
+const WebViewFindQuery = BridgeSafeNonEmptyString
+const WebViewUserAgent = BridgeSafeNonEmptyString
+const WebViewNonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const WebViewZoomFactor = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
 export type WebViewHandle = ResourceHandle<"webview", "open">
 
 export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolicy>(
@@ -122,6 +126,37 @@ export type WebViewScreenshotMime = Schema.Schema.Type<typeof WebViewScreenshotM
 export class WebViewScreenshot extends Schema.Class<WebViewScreenshot>("WebViewScreenshot")({
   mime: WebViewScreenshotMime,
   bytes: Schema.Uint8Array
+}) {}
+
+export class WebViewPdf extends Schema.Class<WebViewPdf>("WebViewPdf")({
+  mime: Schema.Literal("application/pdf"),
+  bytes: Schema.Uint8Array
+}) {}
+
+export class WebViewFindInPageInput extends Schema.Class<WebViewFindInPageInput>(
+  "WebViewFindInPageInput"
+)({
+  webview: WebViewResource,
+  query: WebViewFindQuery
+}) {}
+
+export class WebViewFindInPageResult extends Schema.Class<WebViewFindInPageResult>(
+  "WebViewFindInPageResult"
+)({
+  matches: WebViewNonNegativeInt,
+  activeMatchOrdinal: WebViewNonNegativeInt
+}) {}
+
+export class WebViewSetZoomInput extends Schema.Class<WebViewSetZoomInput>("WebViewSetZoomInput")({
+  webview: WebViewResource,
+  zoom: WebViewZoomFactor
+}) {}
+
+export class WebViewSetUserAgentInput extends Schema.Class<WebViewSetUserAgentInput>(
+  "WebViewSetUserAgentInput"
+)({
+  webview: WebViewResource,
+  userAgent: WebViewUserAgent
 }) {}
 
 export class WebViewNavigationBlockedEvent extends Schema.Class<WebViewNavigationBlockedEvent>(

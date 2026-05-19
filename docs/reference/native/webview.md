@@ -59,11 +59,13 @@ contract, audio mute command, or auditable permission-response host route.
 The installed WebView provider exposes some callback ingredients, but they are
 not wired into typed Effect streams or permission decisions.
 
-Document output controls are not host-backed today. `captureScreenshot` exists
-as a declared TypeScript bridge contract, but the Rust host only validates the
-routed payload before returning unsupported. Effect Desktop has no
-`WebViewDocument` service for capture-page, print-to-PDF, find-in-page, zoom,
-or user-agent controls.
+Document controls are partially host-backed for child WebViews. `print` and
+`setZoom` route through the retained Wry WebView resource. `captureScreenshot`,
+`printToPdf`, `findInPage`, and `setUserAgent` are permission-gated and
+handle-validated, but return typed unsupported because Wry exposes no portable
+public screenshot, PDF export, find-in-page, or runtime user-agent setter. Wry
+supports user-agent policy at WebView creation time; Effect Desktop does not
+pretend that is a runtime mutation.
 
 Inspection controls are partially host-backed for child WebViews.
 `openDevTools` and `closeDevTools` route through the retained Wry WebView in
@@ -120,6 +122,11 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 | `goForward`           | `{ webview }`                               | `void`                   |
 | `getNavigationState`  | `{ webview }`                               | navigation state         |
 | `captureScreenshot`   | `{ webview }`                               | screenshot data          |
+| `print`               | `{ webview }`                               | `void`                   |
+| `printToPdf`          | `{ webview }`                               | PDF bytes                |
+| `findInPage`          | `{ webview, query }`                        | match counts             |
+| `setZoom`             | `{ webview, zoom }`                         | `void`                   |
+| `setUserAgent`        | `{ webview, userAgent }`                    | `void`                   |
 | `openDevTools`        | `{ webview }`                               | `void`                   |
 | `closeDevTools`       | `{ webview }`                               | `void`                   |
 | `attachDebugger`      | `{ webview }`                               | `void`                   |
@@ -178,13 +185,17 @@ those resources and shares the same partial support reason because popup
 approval and external-open delegation are still intentionally conservative.
 Create-time preload isolation is host-backed through Wry initialization-script
 and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
+`print` and `setZoom` are host-backed through Wry. `captureScreenshot`,
+`printToPdf`, and `findInPage` remain typed unsupported with
+`host-document-output-unavailable`; `setUserAgent` remains typed unsupported
+with `host-user-agent-runtime-unavailable`.
 `openDevTools` and `closeDevTools` are host-backed in debug builds only.
 `attachDebugger` remains typed unsupported with
 `host-debugger-protocol-unavailable` because the current Wry provider does not
 offer a portable debugger attach contract.
-`captureScreenshot` and `capability` remain validation-first unsupported routes
-until their own host adapters land. `webViewCapability(...)` remains a local
-platform and runtime-mode feature helper; it does not grant permission.
+`capability` remains a validation-first unsupported route until its own host
+adapter lands. `webViewCapability(...)` remains a local platform and
+runtime-mode feature helper; it does not grant permission.
 Request/response interception is also not part of this surface yet; it requires
 a separate native host adapter.
 Proxy/auth/certificate hooks are likewise absent from the current host-backed

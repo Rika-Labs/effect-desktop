@@ -429,6 +429,66 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         ))
     }
 
+    fn capture_webview_screenshot(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-document-output-unavailable",
+            host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD,
+        ))
+    }
+
+    fn print_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_PRINT_METHOD,
+        ))
+    }
+
+    fn print_webview_to_pdf(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-document-output-unavailable",
+            host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD,
+        ))
+    }
+
+    fn find_in_webview_page(
+        &self,
+        _request: WebViewFindInPageRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-document-output-unavailable",
+            host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
+        ))
+    }
+
+    fn set_webview_zoom(
+        &self,
+        _request: WebViewSetZoomRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+        ))
+    }
+
+    fn set_webview_user_agent(
+        &self,
+        _request: WebViewSetUserAgentRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-user-agent-runtime-unavailable",
+            host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
+        ))
+    }
+
     fn open_webview_devtools(
         &self,
         _handle: WebViewHandleRequest,
@@ -610,6 +670,42 @@ impl WebViewSetNavigationPolicyRequest {
 impl WebViewLoadUrlRequest {
     pub(crate) fn new(handle: WebViewHandleRequest, url: String) -> Self {
         Self { handle, url }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewFindInPageRequest {
+    handle: WebViewHandleRequest,
+    query: String,
+}
+
+impl WebViewFindInPageRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, query: String) -> Self {
+        Self { handle, query }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct WebViewSetZoomRequest {
+    handle: WebViewHandleRequest,
+    zoom: f64,
+}
+
+impl WebViewSetZoomRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, zoom: f64) -> Self {
+        Self { handle, zoom }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewSetUserAgentRequest {
+    handle: WebViewHandleRequest,
+    user_agent: String,
+}
+
+impl WebViewSetUserAgentRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, user_agent: String) -> Self {
+        Self { handle, user_agent }
     }
 }
 
@@ -935,6 +1031,30 @@ enum WindowCommand {
         handle: WebViewHandleRequest,
         reply: Sender<WindowCommandReply>,
     },
+    CaptureWebViewScreenshot {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    PrintWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    PrintWebViewToPdf {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    FindInWebViewPage {
+        request: WebViewFindInPageRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetWebViewZoom {
+        request: WebViewSetZoomRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetWebViewUserAgent {
+        request: WebViewSetUserAgentRequest,
+        reply: Sender<WindowCommandReply>,
+    },
     OpenWebViewDevTools {
         handle: WebViewHandleRequest,
         reply: Sender<WindowCommandReply>,
@@ -995,6 +1115,7 @@ enum WindowCommandResponse {
     ScreenSupported(ScreenSupportedPayload),
     WebViewCreated(WebViewResourcePayload),
     WebViewNavigationState(WebViewNavigationStatePayload),
+    WebViewDocument(serde_json::Value),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1233,7 +1354,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "window lifecycle command received unrelated response",
                 operation,
             )),
@@ -1267,7 +1389,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "window state command received unrelated response",
                 operation,
             )),
@@ -1301,7 +1424,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "window placement command received unrelated response",
                 operation,
             )),
@@ -1398,7 +1522,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "window create received tray response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
@@ -1470,7 +1595,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "window destroy received tray response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
@@ -1622,7 +1748,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "window get bounds received unrelated response",
                 host_protocol::WINDOW_GET_BOUNDS_METHOD,
             )),
@@ -2014,7 +2141,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "window get state received unrelated response",
                 host_protocol::WINDOW_GET_STATE_METHOD,
             )),
@@ -2055,7 +2183,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "dock badge command received window response",
                 operation,
             )),
@@ -2094,7 +2223,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "dock set progress received unrelated response",
                 host_protocol::DOCK_SET_PROGRESS_METHOD,
             )),
@@ -2130,7 +2260,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "dock attention command received window response",
                 host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
             )),
@@ -2169,7 +2300,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "dock menu command received window response",
                 host_protocol::DOCK_SET_MENU_METHOD,
             )),
@@ -2208,7 +2340,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "application menu command received window response",
                 host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
             )),
@@ -2249,7 +2382,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
-            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::WebViewDocument(_) => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
             )),
@@ -2539,6 +2673,120 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_webview_response(
                 response,
                 host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
+            )),
+        }
+    }
+
+    fn capture_webview_screenshot(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::CaptureWebViewScreenshot {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WebViewDocument(response) => Ok(response),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD,
+            )),
+        }
+    }
+
+    fn print_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::PrintWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_PRINT_METHOD,
+            )),
+        }
+    }
+
+    fn print_webview_to_pdf(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::PrintWebViewToPdf {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WebViewDocument(response) => Ok(response),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD,
+            )),
+        }
+    }
+
+    fn find_in_webview_page(
+        &self,
+        request: WebViewFindInPageRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::FindInWebViewPage {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WebViewDocument(response) => Ok(response),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
+            )),
+        }
+    }
+
+    fn set_webview_zoom(
+        &self,
+        request: WebViewSetZoomRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetWebViewZoom {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+            )),
+        }
+    }
+
+    fn set_webview_user_agent(
+        &self,
+        request: WebViewSetUserAgentRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetWebViewUserAgent {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
             )),
         }
     }
@@ -4255,6 +4503,75 @@ impl WindowRegistry {
         Ok(resources.navigation.borrow().to_payload())
     }
 
+    fn capture_webview_screenshot(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        let _resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD)?;
+        Err(HostProtocolError::unsupported(
+            "host-document-output-unavailable",
+            host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD,
+        ))
+    }
+
+    fn print_webview(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_PRINT_METHOD)?;
+        webview::print(&resources._webview)
+    }
+
+    fn print_webview_to_pdf(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        let _resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD)?;
+        Err(HostProtocolError::unsupported(
+            "host-document-output-unavailable",
+            host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD,
+        ))
+    }
+
+    fn find_in_webview_page(
+        &self,
+        request: &WebViewFindInPageRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        let _resources =
+            self.webview_resources(&request.handle, host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD)?;
+        let _query = &request.query;
+        Err(HostProtocolError::unsupported(
+            "host-document-output-unavailable",
+            host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
+        ))
+    }
+
+    fn set_webview_zoom(
+        &self,
+        request: &WebViewSetZoomRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources =
+            self.webview_resources(&request.handle, host_protocol::WEBVIEW_SET_ZOOM_METHOD)?;
+        webview::zoom(&resources._webview, request.zoom)
+    }
+
+    fn set_webview_user_agent(
+        &self,
+        request: &WebViewSetUserAgentRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let _resources = self.webview_resources(
+            &request.handle,
+            host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
+        )?;
+        let _user_agent = &request.user_agent;
+        Err(HostProtocolError::unsupported(
+            "host-user-agent-runtime-unavailable",
+            host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
+        ))
+    }
+
     fn open_webview_devtools(
         &self,
         handle: &WebViewHandleRequest,
@@ -4991,6 +5308,48 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::CaptureWebViewScreenshot { handle, reply } => {
+                let result = self
+                    .capture_webview_screenshot(&handle)
+                    .map(WindowCommandResponse::WebViewDocument);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::PrintWebView { handle, reply } => {
+                let result = self
+                    .print_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::PrintWebViewToPdf { handle, reply } => {
+                let result = self
+                    .print_webview_to_pdf(&handle)
+                    .map(WindowCommandResponse::WebViewDocument);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::FindInWebViewPage { request, reply } => {
+                let result = self
+                    .find_in_webview_page(&request)
+                    .map(WindowCommandResponse::WebViewDocument);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetWebViewZoom { request, reply } => {
+                let result = self
+                    .set_webview_zoom(&request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetWebViewUserAgent { request, reply } => {
+                let result = self
+                    .set_webview_user_agent(&request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::OpenWebViewDevTools { handle, reply } => {
                 let result = self
                     .open_webview_devtools(&handle)
@@ -5421,9 +5780,8 @@ fn unexpected_tray_response(
         | WindowCommandResponse::ScreenPoint(_)
         | WindowCommandResponse::ScreenSupported(_) => "tray command received screen response",
         WindowCommandResponse::WebViewCreated(_)
-        | WindowCommandResponse::WebViewNavigationState(_) => {
-            "tray command received webview response"
-        }
+        | WindowCommandResponse::WebViewNavigationState(_)
+        | WindowCommandResponse::WebViewDocument(_) => "tray command received webview response",
     };
     HostProtocolError::internal(message, operation)
 }
@@ -5457,6 +5815,7 @@ fn unexpected_webview_response(
         WindowCommandResponse::WebViewNavigationState(_) => {
             "webview command received navigation state response"
         }
+        WindowCommandResponse::WebViewDocument(_) => "webview command received document response",
     };
     HostProtocolError::internal(message, operation)
 }
@@ -5489,9 +5848,8 @@ fn unexpected_screen_response(
         WindowCommandResponse::ScreenPoint(_) => "screen command received point response",
         WindowCommandResponse::ScreenSupported(_) => "screen command received support response",
         WindowCommandResponse::WebViewCreated(_)
-        | WindowCommandResponse::WebViewNavigationState(_) => {
-            "screen command received webview response"
-        }
+        | WindowCommandResponse::WebViewNavigationState(_)
+        | WindowCommandResponse::WebViewDocument(_) => "screen command received webview response",
     };
     HostProtocolError::internal(message, operation)
 }

@@ -221,6 +221,29 @@ pub(crate) fn close_devtools(webview: &HostWebView) -> std::result::Result<(), H
     }
 }
 
+#[allow(clippy::result_large_err)]
+pub(crate) fn print(webview: &HostWebView) -> std::result::Result<(), HostProtocolError> {
+    webview.print().map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to print WebView: {error}"),
+            host_protocol::WEBVIEW_PRINT_METHOD,
+        )
+    })
+}
+
+#[allow(clippy::result_large_err)]
+pub(crate) fn zoom(
+    webview: &HostWebView,
+    scale_factor: f64,
+) -> std::result::Result<(), HostProtocolError> {
+    webview.zoom(scale_factor).map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to zoom WebView: {error}"),
+            host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+        )
+    })
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct WebEngineSelection {
     kind: WebEngineKind,

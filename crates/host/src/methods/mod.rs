@@ -1163,7 +1163,27 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD,
-        HostMethodDispatcher::Payload(webview::capture_screenshot),
+        HostMethodDispatcher::Window(webview::capture_screenshot),
+    ),
+    route(
+        host_protocol::WEBVIEW_PRINT_METHOD,
+        HostMethodDispatcher::Window(webview::print),
+    ),
+    route(
+        host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD,
+        HostMethodDispatcher::Window(webview::print_to_pdf),
+    ),
+    route(
+        host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
+        HostMethodDispatcher::Window(webview::find_in_page),
+    ),
+    route(
+        host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+        HostMethodDispatcher::Window(webview::set_zoom),
+    ),
+    route(
+        host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
+        HostMethodDispatcher::Window(webview::set_user_agent),
     ),
     route(
         host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
@@ -5146,6 +5166,31 @@ mod tests {
                 "request-webview-open-devtools",
                 host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
                 serde_json::json!({ "webview": webview }),
+            ),
+            (
+                "request-webview-print",
+                host_protocol::WEBVIEW_PRINT_METHOD,
+                serde_json::json!({ "webview": webview }),
+            ),
+            (
+                "request-webview-print-to-pdf",
+                host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD,
+                serde_json::json!({ "webview": webview }),
+            ),
+            (
+                "request-webview-find-in-page",
+                host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
+                serde_json::json!({ "webview": webview, "query": "needle" }),
+            ),
+            (
+                "request-webview-set-zoom",
+                host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+                serde_json::json!({ "webview": webview, "zoom": 1.25 }),
+            ),
+            (
+                "request-webview-set-user-agent",
+                host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
+                serde_json::json!({ "webview": webview, "userAgent": "EffectDesktopTest/1.0" }),
             ),
             (
                 "request-webview-close-devtools",

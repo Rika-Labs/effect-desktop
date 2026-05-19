@@ -31,10 +31,15 @@ import {
   WebViewNavigationBlockedEvent,
   WebViewNavigationState,
   type WebViewNavigationPolicyOptions,
+  WebViewPdf,
+  WebViewFindInPageInput,
+  WebViewFindInPageResult,
   WebViewResource,
   type WebViewPlatform,
   type WebViewRuntimeMode,
+  WebViewSetUserAgentInput,
   WebViewSetNavigationPolicyInput,
+  WebViewSetZoomInput,
   WebViewScreenshot
 } from "./contracts/webview.js"
 import type { WindowHandle } from "./contracts/window.js"
@@ -71,6 +76,44 @@ const WebViewDebuggerSupport = NativeSurface.support.unsupported(WebViewDebugger
     { platform: "macos", status: "unsupported", reason: WebViewDebuggerUnsupportedReason },
     { platform: "windows", status: "unsupported", reason: WebViewDebuggerUnsupportedReason },
     { platform: "linux", status: "unsupported", reason: WebViewDebuggerUnsupportedReason }
+  ]
+})
+const WebViewDocumentUnsupportedReason = "host-document-output-unavailable"
+const WebViewRuntimeUserAgentUnsupportedReason = "host-user-agent-runtime-unavailable"
+const WebViewPrintZoomPartialReason = "host-print-zoom-provider-backed"
+const WebViewDocumentUnsupportedSupport = NativeSurface.support.unsupported(
+  WebViewDocumentUnsupportedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: WebViewDocumentUnsupportedReason },
+      { platform: "windows", status: "unsupported", reason: WebViewDocumentUnsupportedReason },
+      { platform: "linux", status: "unsupported", reason: WebViewDocumentUnsupportedReason }
+    ]
+  }
+)
+const WebViewRuntimeUserAgentSupport = NativeSurface.support.unsupported(
+  WebViewRuntimeUserAgentUnsupportedReason,
+  {
+    platforms: [
+      {
+        platform: "macos",
+        status: "unsupported",
+        reason: WebViewRuntimeUserAgentUnsupportedReason
+      },
+      {
+        platform: "windows",
+        status: "unsupported",
+        reason: WebViewRuntimeUserAgentUnsupportedReason
+      },
+      { platform: "linux", status: "unsupported", reason: WebViewRuntimeUserAgentUnsupportedReason }
+    ]
+  }
+)
+const WebViewPrintZoomSupport = NativeSurface.support.partial(WebViewPrintZoomPartialReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: WebViewPrintZoomPartialReason },
+    { platform: "windows", status: "partial", reason: WebViewPrintZoomPartialReason },
+    { platform: "linux", status: "partial", reason: WebViewPrintZoomPartialReason }
   ]
 })
 
@@ -153,7 +196,52 @@ export const WebViewCaptureScreenshot = NativeSurface.rpc("WebView", "captureScr
     P.nativeInvoke({ primitive: "WebView", methods: ["captureScreenshot"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewDocumentUnsupportedSupport
+})
+export const WebViewPrint = NativeSurface.rpc("WebView", "print", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["print"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewPrintZoomSupport
+})
+export const WebViewPrintToPdf = NativeSurface.rpc("WebView", "printToPdf", {
+  payload: WebViewHandleInput,
+  success: WebViewPdf,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["printToPdf"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewDocumentUnsupportedSupport
+})
+export const WebViewFindInPage = NativeSurface.rpc("WebView", "findInPage", {
+  payload: WebViewFindInPageInput,
+  success: WebViewFindInPageResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["findInPage"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewDocumentUnsupportedSupport
+})
+export const WebViewSetZoom = NativeSurface.rpc("WebView", "setZoom", {
+  payload: WebViewSetZoomInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["setZoom"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewPrintZoomSupport
+})
+export const WebViewSetUserAgent = NativeSurface.rpc("WebView", "setUserAgent", {
+  payload: WebViewSetUserAgentInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["setUserAgent"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRuntimeUserAgentSupport
 })
 export const WebViewOpenDevTools = NativeSurface.rpc("WebView", "openDevTools", {
   payload: WebViewHandleInput,
@@ -225,6 +313,11 @@ const WebViewRpcGroup = RpcGroup.make(
   WebViewGoForward,
   WebViewGetNavigationState,
   WebViewCaptureScreenshot,
+  WebViewPrint,
+  WebViewPrintToPdf,
+  WebViewFindInPage,
+  WebViewSetZoom,
+  WebViewSetUserAgent,
   WebViewOpenDevTools,
   WebViewCloseDevTools,
   WebViewAttachDebugger,
@@ -245,6 +338,11 @@ export const WebViewMethodNames = Object.freeze([
   "goForward",
   "getNavigationState",
   "captureScreenshot",
+  "print",
+  "printToPdf",
+  "findInPage",
+  "setZoom",
+  "setUserAgent",
   "openDevTools",
   "closeDevTools",
   "attachDebugger",
@@ -263,6 +361,8 @@ const WebViewCapabilityMethods = Object.freeze([
   "goForward",
   "getNavigationState",
   "captureScreenshot",
+  "print",
+  "setZoom",
   "openDevTools",
   "closeDevTools",
   "setNavigationPolicy",
@@ -291,6 +391,20 @@ export interface WebViewClientApi {
   readonly captureScreenshot: (
     webview: WebViewHandle
   ) => Effect.Effect<WebViewScreenshot, WebViewError, never>
+  readonly print: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
+  readonly printToPdf: (webview: WebViewHandle) => Effect.Effect<WebViewPdf, WebViewError, never>
+  readonly findInPage: (
+    webview: WebViewHandle,
+    query: string
+  ) => Effect.Effect<WebViewFindInPageResult, WebViewError, never>
+  readonly setZoom: (
+    webview: WebViewHandle,
+    zoom: number
+  ) => Effect.Effect<void, WebViewError, never>
+  readonly setUserAgent: (
+    webview: WebViewHandle,
+    userAgent: string
+  ) => Effect.Effect<void, WebViewError, never>
   readonly openDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly closeDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly attachDebugger: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
@@ -403,6 +517,31 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
       const webview = yield* WebView
       return yield* webview.captureScreenshot(input.webview)
     }),
+  "WebView.print": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.print(input.webview)
+    }),
+  "WebView.printToPdf": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* webview.printToPdf(input.webview)
+    }),
+  "WebView.findInPage": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* webview.findInPage(input.webview, input.query)
+    }),
+  "WebView.setZoom": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.setZoom(input.webview, input.zoom)
+    }),
+  "WebView.setUserAgent": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.setUserAgent(input.webview, input.userAgent)
+    }),
   "WebView.openDevTools": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
@@ -473,6 +612,11 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
     goForward: (webview) => client.goForward(webview),
     getNavigationState: (webview) => client.getNavigationState(webview),
     captureScreenshot: (webview) => client.captureScreenshot(webview),
+    print: (webview) => client.print(webview),
+    printToPdf: (webview) => client.printToPdf(webview),
+    findInPage: (webview, query) => client.findInPage(webview, query),
+    setZoom: (webview, zoom) => client.setZoom(webview, zoom),
+    setUserAgent: (webview, userAgent) => client.setUserAgent(webview, userAgent),
     openDevTools: (webview) => client.openDevTools(webview),
     closeDevTools: (webview) => client.closeDevTools(webview),
     attachDebugger: (webview) => client.attachDebugger(webview),
@@ -551,6 +695,38 @@ const webViewClientFromRpcClient = (
           runWebViewRpc(client["WebView.captureScreenshot"](decoded), "WebView.captureScreenshot")
         ),
         Effect.flatMap(validateWebViewScreenshot)
+      ),
+    print: (webview) =>
+      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.print"](decoded), "WebView.print")
+        )
+      ),
+    printToPdf: (webview) =>
+      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.printToPdf"](decoded), "WebView.printToPdf")
+        ),
+        Effect.flatMap(validateWebViewPdf)
+      ),
+    findInPage: (webview, query) =>
+      decodeWebViewFindInPageInput({ webview: toWebViewHandle(webview), query }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.findInPage"](decoded), "WebView.findInPage")
+        ),
+        Effect.flatMap(decodeWebViewFindInPageResult)
+      ),
+    setZoom: (webview, zoom) =>
+      decodeWebViewSetZoomInput({ webview: toWebViewHandle(webview), zoom }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.setZoom"](decoded), "WebView.setZoom")
+        )
+      ),
+    setUserAgent: (webview, userAgent) =>
+      decodeWebViewSetUserAgentInput({ webview: toWebViewHandle(webview), userAgent }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.setUserAgent"](decoded), "WebView.setUserAgent")
+        )
       ),
     openDevTools: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
@@ -671,6 +847,30 @@ const decodeWebViewSetNavigationPolicyInput = (
 ): Effect.Effect<WebViewSetNavigationPolicyInput, WebViewError, never> =>
   decodeInput(WebViewSetNavigationPolicyInput, input, "WebView.setNavigationPolicy")
 
+const decodeWebViewFindInPageInput = (
+  input: unknown
+): Effect.Effect<WebViewFindInPageInput, WebViewError, never> =>
+  decodeInput(WebViewFindInPageInput, input, "WebView.findInPage")
+
+const decodeWebViewFindInPageResult = (
+  input: unknown
+): Effect.Effect<WebViewFindInPageResult, WebViewError, never> =>
+  Schema.decodeUnknownEffect(WebViewFindInPageResult)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError("WebView.findInPage", formatUnknownError(error))
+    )
+  )
+
+const decodeWebViewSetZoomInput = (
+  input: unknown
+): Effect.Effect<WebViewSetZoomInput, WebViewError, never> =>
+  decodeInput(WebViewSetZoomInput, input, "WebView.setZoom")
+
+const decodeWebViewSetUserAgentInput = (
+  input: unknown
+): Effect.Effect<WebViewSetUserAgentInput, WebViewError, never> =>
+  decodeInput(WebViewSetUserAgentInput, input, "WebView.setUserAgent")
+
 const decodeWebViewCapabilityInput = (
   input: unknown
 ): Effect.Effect<WebViewCapabilityInput, WebViewError, never> =>
@@ -699,6 +899,17 @@ const validateWebViewScreenshot = (
     }
 
     return screenshot
+  })
+
+const validateWebViewPdf = (pdf: WebViewPdf): Effect.Effect<WebViewPdf, WebViewError, never> =>
+  Effect.gen(function* () {
+    if (pdf.bytes.length === 0) {
+      return yield* Effect.fail(
+        makeHostProtocolInvalidOutputError("WebView.printToPdf", "PDF bytes must not be empty")
+      )
+    }
+
+    return pdf
   })
 
 const decodeInput = <A>(
@@ -767,7 +978,7 @@ const WEBVIEW_CAPABILITY_MATRIX: Readonly<
     "PDF embedded viewer": true
   }),
   linux: Object.freeze({
-    print: false,
+    print: true,
     "popup blocking": false,
     autofill: false,
     "devtools open": "dev-only",

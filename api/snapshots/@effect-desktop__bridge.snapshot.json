@@ -1169,6 +1169,11 @@
       "signature": "const WEBVIEW_DESTROY_METHOD: \"WebView.destroy\""
     },
     {
+      "name": "WEBVIEW_FIND_IN_PAGE_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_FIND_IN_PAGE_METHOD: \"WebView.findInPage\""
+    },
+    {
       "name": "WEBVIEW_GET_NAVIGATION_STATE_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_GET_NAVIGATION_STATE_METHOD: \"WebView.getNavigationState\""
@@ -1204,6 +1209,16 @@
       "signature": "const WEBVIEW_OPEN_DEVTOOLS_METHOD: \"WebView.openDevTools\""
     },
     {
+      "name": "WEBVIEW_PRINT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_PRINT_METHOD: \"WebView.print\""
+    },
+    {
+      "name": "WEBVIEW_PRINT_TO_PDF_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_PRINT_TO_PDF_METHOD: \"WebView.printToPdf\""
+    },
+    {
       "name": "WEBVIEW_RELOAD_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_RELOAD_METHOD: \"WebView.reload\""
@@ -1212,6 +1227,16 @@
       "name": "WEBVIEW_SET_NAVIGATION_POLICY_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_SET_NAVIGATION_POLICY_METHOD: \"WebView.setNavigationPolicy\""
+    },
+    {
+      "name": "WEBVIEW_SET_USER_AGENT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_SET_USER_AGENT_METHOD: \"WebView.setUserAgent\""
+    },
+    {
+      "name": "WEBVIEW_SET_ZOOM_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_SET_ZOOM_METHOD: \"WebView.setZoom\""
     },
     {
       "name": "WEBVIEW_STOP_METHOD",
