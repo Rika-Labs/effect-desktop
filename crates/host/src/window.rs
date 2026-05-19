@@ -4171,6 +4171,16 @@ fn monitor_work_area(monitor: &MonitorHandle) -> PhysicalScreenArea {
                 work_area.height(),
             )
         })
+        .or_else(|| {
+            windows::screen_work_area(monitor).and_then(|work_area| {
+                PhysicalScreenArea::new(
+                    work_area.x(),
+                    work_area.y(),
+                    work_area.width(),
+                    work_area.height(),
+                )
+            })
+        })
         .unwrap_or_else(|| monitor_bounds(monitor))
 }
 

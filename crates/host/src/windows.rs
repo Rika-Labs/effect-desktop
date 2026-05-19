@@ -8,7 +8,10 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 #[cfg(any(test, windows))]
 use tao::window::Theme;
-use tao::window::{Window, WindowBuilder};
+use tao::{
+    monitor::MonitorHandle,
+    window::{Window, WindowBuilder},
+};
 
 const WINDOWS_POLISH_OPERATION: &str = "WindowsPolish";
 #[cfg(any(test, windows))]
@@ -138,19 +141,69 @@ pub(crate) fn apply_window_parent(
     platform::apply_window_parent(builder, parent)
 }
 
+pub(crate) fn screen_work_area(monitor: &MonitorHandle) -> Option<WindowsScreenWorkArea> {
+    platform::screen_work_area(monitor)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct WindowsScreenWorkArea {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl WindowsScreenWorkArea {
+    #[cfg_attr(not(any(test, windows)), allow(dead_code))]
+    fn from_edges(left: i32, top: i32, right: i32, bottom: i32) -> Option<Self> {
+        let width = right.checked_sub(left)?;
+        let height = bottom.checked_sub(top)?;
+        if width < 0 || height < 0 {
+            return None;
+        }
+
+        Some(Self {
+            x: f64::from(left),
+            y: f64::from(top),
+            width: f64::from(width),
+            height: f64::from(height),
+        })
+    }
+
+    pub(crate) fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub(crate) fn y(&self) -> f64 {
+        self.y
+    }
+
+    pub(crate) fn width(&self) -> f64 {
+        self.width
+    }
+
+    pub(crate) fn height(&self) -> f64 {
+        self.height
+    }
+}
+
 #[cfg(windows)]
 mod platform {
-    use super::{HostProtocolError, WindowsProcessPolish, WINDOWS_POLISH_OPERATION};
+    use super::{
+        HostProtocolError, WindowsProcessPolish, WindowsScreenWorkArea, WINDOWS_POLISH_OPERATION,
+    };
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use tao::{
-        platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
+        monitor::MonitorHandle,
+        platform::windows::{MonitorHandleExtWindows, WindowBuilderExtWindows, WindowExtWindows},
         window::{Window, WindowBuilder},
     };
     use tracing::warn;
     use windows_sys::Win32::{
         Foundation::HWND,
         Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE},
+        Graphics::Gdi::{GetMonitorInfoW, HMONITOR, MONITORINFO},
         UI::{
             HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2},
             Shell::SetCurrentProcessExplicitAppUserModelID,
@@ -218,6 +271,29 @@ mod platform {
         Ok(builder.with_owner_window(parent.hwnd()))
     }
 
+    pub(super) fn screen_work_area(monitor: &MonitorHandle) -> Option<WindowsScreenWorkArea> {
+        let hmonitor = monitor.hmonitor();
+        if hmonitor == 0 {
+            return None;
+        }
+
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let result = unsafe { GetMonitorInfoW(hmonitor as HMONITOR, &mut info) };
+        if result == 0 {
+            return None;
+        }
+
+        WindowsScreenWorkArea::from_edges(
+            info.rcWork.left,
+            info.rcWork.top,
+            info.rcWork.right,
+            info.rcWork.bottom,
+        )
+    }
+
     fn wide_null(value: &str) -> Vec<u16> {
         OsStr::new(value).encode_wide().chain([0]).collect()
     }
@@ -236,8 +312,11 @@ mod platform {
 
 #[cfg(not(windows))]
 mod platform {
-    use super::{HostProtocolError, WindowsProcessPolish};
-    use tao::window::{Window, WindowBuilder};
+    use super::{HostProtocolError, WindowsProcessPolish, WindowsScreenWorkArea};
+    use tao::{
+        monitor::MonitorHandle,
+        window::{Window, WindowBuilder},
+    };
 
     pub(super) fn apply_process_polish(
         _polish: Option<&WindowsProcessPolish>,
@@ -259,6 +338,10 @@ mod platform {
             "window parent ownership is not implemented for this host platform",
             host_protocol::WINDOW_CREATE_METHOD,
         ))
+    }
+
+    pub(super) fn screen_work_area(_monitor: &MonitorHandle) -> Option<WindowsScreenWorkArea> {
+        None
     }
 }
 
@@ -335,5 +418,22 @@ mod tests {
     #[test]
     fn access_denied_code_matches_windows_dpi_already_set_error() {
         assert_eq!(super::ERROR_ACCESS_DENIED_CODE, 5);
+    }
+
+    #[test]
+    fn screen_work_area_converts_windows_rect_edges() {
+        let area = super::WindowsScreenWorkArea::from_edges(-1920, 40, 0, 1080)
+            .expect("valid Windows work area");
+
+        assert_eq!(area.x(), -1920.0);
+        assert_eq!(area.y(), 40.0);
+        assert_eq!(area.width(), 1920.0);
+        assert_eq!(area.height(), 1040.0);
+    }
+
+    #[test]
+    fn screen_work_area_rejects_inverted_windows_rect_edges() {
+        assert!(super::WindowsScreenWorkArea::from_edges(10, 0, 9, 100).is_none());
+        assert!(super::WindowsScreenWorkArea::from_edges(0, 10, 100, 9).is_none());
     }
 }

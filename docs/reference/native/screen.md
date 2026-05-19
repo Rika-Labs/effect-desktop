@@ -51,16 +51,17 @@ ScreenPoint = { x: number; y: number }
 
 The Rust host reports Tao monitor geometry in physical host coordinates. On
 macOS, `workArea` uses AppKit `NSScreen.visibleFrame`, so menu-bar and Dock
-reserved areas are excluded. On Windows and Linux, Tao does not expose monitor
-work areas through its public monitor API yet, so `workArea` currently matches
-`bounds`.
+reserved areas are excluded. On Windows, `workArea` uses Win32 `rcWork`, so
+taskbar and app desktop toolbar reservations are excluded. On Linux, Tao does
+not expose monitor work areas through its public monitor API yet, so `workArea`
+currently matches `bounds`.
 
 ## Platform matrix
 
 | Platform | Status    | Notes                                                                                                                                                        |
 | -------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | macOS    | supported | Tao-backed monitors, AppKit-backed work areas, and pointer position.                                                                                         |
-| Windows  | supported | Tao-backed monitors and pointer position; `workArea` currently matches `bounds`.                                                                             |
+| Windows  | supported | Tao-backed monitors, Win32-backed work areas, and pointer position.                                                                                          |
 | Linux    | partial   | Monitor enumeration is supported and `workArea` currently matches `bounds`; pointer position may report unsupported on compositors that deny cursor queries. |
 
 ## Errors
