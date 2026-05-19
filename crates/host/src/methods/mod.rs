@@ -1063,11 +1063,11 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::NATIVE_FILE_SYSTEM_WATCH_METHOD,
-        HostMethodDispatcher::Payload(native_file_system::watch),
+        HostMethodDispatcher::EventfulPayload(native_file_system::watch_with_event_sender),
     ),
     route(
         host_protocol::NATIVE_FILE_SYSTEM_STOP_WATCHING_METHOD,
-        HostMethodDispatcher::Payload(native_file_system::stop_watching),
+        HostMethodDispatcher::EventfulPayload(native_file_system::stop_watching_with_event_sender),
     ),
     route(
         host_protocol::NATIVE_FILE_SYSTEM_IS_SUPPORTED_METHOD,
@@ -1683,7 +1683,9 @@ impl HostMethodRouter {
             resource_id.as_deref(),
             "host.runtime.cancel",
         )
-        .map_err(|error| format!("{error:?}"))
+        .map_err(|error| format!("{error:?}"))?;
+        native_file_system::close_resource_for_cancel(resource_id.as_deref(), "host.runtime.cancel")
+            .map_err(|error| format!("{error:?}"))
     }
 
     pub(crate) fn track_pending_local_tool_runtime_run_request(
@@ -1712,6 +1714,8 @@ impl HostMethodRouter {
             .map_err(|error| format!("{error:?}"))?;
         notification::clear_runtime_notifications().map_err(|error| format!("{error:?}"))?;
         realtime_media_session::close_all_sessions("host.runtime.disconnect")
+            .map_err(|error| format!("{error:?}"))?;
+        native_file_system::clear_runtime_resources("host.runtime.disconnect")
             .map_err(|error| format!("{error:?}"))?;
         let runtime_ids = self.drain_local_tool_runtime_ids()?;
         local_tool_runtime::clear_runtime_resources_for_runtime_ids(
@@ -7131,38 +7135,56 @@ mod tests {
     }
 
     #[test]
-    fn native_file_system_methods_route_to_fail_closed_adapter() {
+    fn native_file_system_methods_route_to_supported_adapter() {
+        let _guard = super::native_file_system::state_test_guard();
+        let path = temp_file("native-file-system-route", b"report\n");
+        let path_string = path.to_string_lossy().to_string();
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
                     "request-native-file-system-open",
                     host_protocol::NATIVE_FILE_SYSTEM_OPEN_METHOD,
                     serde_json::json!({
-                        "path": { "path": "/tmp/report.txt" },
-                        "mode": "read"
+                        "path": { "path": path_string },
+                        "mode": "read",
+                        "handleId": "native-file-system-route-handle"
                     }),
                 ),
                 1710000000136,
             )
             .expect("native filesystem request should return response");
 
+        let HostProtocolEnvelope::Response {
+            payload: Some(payload),
+            error: None,
+            ..
+        } = response
+        else {
+            panic!("native filesystem open should return a successful response");
+        };
         assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-native-file-system-open".to_string(),
-                timestamp: 1710000000136,
-                trace_id: "trace-request-native-file-system-open".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON,
-                    host_protocol::NATIVE_FILE_SYSTEM_OPEN_METHOD,
-                )),
-            }
+            payload["handle"],
+            serde_json::json!({
+                "kind": "native-file-system-handle",
+                "id": "native-file-system-route-handle",
+                "generation": 0,
+                "ownerScope": "native-file-system:native-file-system-route-handle",
+                "state": "open"
+            })
         );
+        assert_eq!(
+            payload["metadata"]["path"],
+            serde_json::json!({ "path": path_string })
+        );
+        assert_eq!(payload["metadata"]["kind"], serde_json::json!("file"));
+        assert_eq!(payload["metadata"]["sizeBytes"], serde_json::json!(7));
+        super::native_file_system::clear_runtime_resources("host.runtime.test")
+            .expect("native filesystem route test should clear resources");
+        cleanup_path(path);
     }
 
     #[test]
-    fn native_file_system_invalid_payload_returns_invalid_argument_before_unsupported() {
+    fn native_file_system_invalid_payload_returns_invalid_argument_before_host_work() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -7194,7 +7216,7 @@ mod tests {
     }
 
     #[test]
-    fn native_file_system_is_supported_reports_unsupported_adapter() {
+    fn native_file_system_is_supported_reports_supported_adapter() {
         let response = test_router()
             .dispatch_at(
                 request(
@@ -7211,10 +7233,7 @@ mod tests {
                 id: "request-native-file-system-supported".to_string(),
                 timestamp: 1710000000138,
                 trace_id: "trace-request-native-file-system-supported".to_string(),
-                payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON
-                })),
+                payload: Some(serde_json::json!({ "supported": true })),
                 error: None,
             }
         );

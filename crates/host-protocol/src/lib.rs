@@ -965,6 +965,10 @@ impl NativeFileSystemOpenPayload {
     pub fn handle_id(&self) -> Option<&str> {
         self.handle_id.as_deref()
     }
+
+    pub fn mode(&self) -> Option<NativeFileSystemOpenModePayload> {
+        self.mode
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -1014,6 +1018,10 @@ impl NativeFileSystemWatchPayload {
         &self.path
     }
 
+    pub fn recursive(&self) -> Option<bool> {
+        self.recursive
+    }
+
     pub fn watch_id(&self) -> Option<&str> {
         self.watch_id.as_deref()
     }
@@ -1060,6 +1068,16 @@ impl NativeFileSystemMetadataPayload {
             size_bytes: None,
             modified_millis: None,
         }
+    }
+
+    pub fn with_size_bytes(mut self, size_bytes: u64) -> Self {
+        self.size_bytes = Some(size_bytes);
+        self
+    }
+
+    pub fn with_modified_millis(mut self, modified_millis: u64) -> Self {
+        self.modified_millis = Some(modified_millis);
+        self
     }
 }
 
@@ -1126,6 +1144,13 @@ pub struct NativeFileSystemSupportedPayload {
 }
 
 impl NativeFileSystemSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -1158,6 +1183,21 @@ impl NativeFileSystemEventPayload {
             phase,
             reason: None,
         }
+    }
+
+    pub fn with_watch_id(mut self, watch_id: impl Into<String>) -> Self {
+        self.watch_id = Some(watch_id.into());
+        self
+    }
+
+    pub fn with_path(mut self, path: CanonicalPathPayload) -> Self {
+        self.path = Some(path);
+        self
+    }
+
+    pub fn with_reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
     }
 }
 

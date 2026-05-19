@@ -140,11 +140,11 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Menu`                      | `clear`                     | `unsupported` | `Menu.clear`                              | `routed`    |
 | `Menu`                      | `setApplicationMenu`        | `supported`   | `Menu.setApplicationMenu`                 | `routed`    |
 | `Menu`                      | `setWindowMenu`             | `supported`   | `Menu.setWindowMenu`                      | `routed`    |
-| `NativeFileSystem`          | `isSupported`               | `unsupported` | `NativeFileSystem.isSupported`            | `routed`    |
-| `NativeFileSystem`          | `open`                      | `unsupported` | `NativeFileSystem.open`                   | `routed`    |
-| `NativeFileSystem`          | `stat`                      | `unsupported` | `NativeFileSystem.stat`                   | `routed`    |
-| `NativeFileSystem`          | `stopWatching`              | `unsupported` | `NativeFileSystem.stopWatching`           | `routed`    |
-| `NativeFileSystem`          | `watch`                     | `unsupported` | `NativeFileSystem.watch`                  | `routed`    |
+| `NativeFileSystem`          | `isSupported`               | `supported`   | `NativeFileSystem.isSupported`            | `routed`    |
+| `NativeFileSystem`          | `open`                      | `supported`   | `NativeFileSystem.open`                   | `routed`    |
+| `NativeFileSystem`          | `stat`                      | `supported`   | `NativeFileSystem.stat`                   | `routed`    |
+| `NativeFileSystem`          | `stopWatching`              | `supported`   | `NativeFileSystem.stopWatching`           | `routed`    |
+| `NativeFileSystem`          | `watch`                     | `supported`   | `NativeFileSystem.watch`                  | `routed`    |
 | `NativeNetwork`             | `closeWebSocket`            | `unsupported` | `NativeNetwork.closeWebSocket`            | `routed`    |
 | `NativeNetwork`             | `connectWebSocket`          | `unsupported` | `NativeNetwork.connectWebSocket`          | `routed`    |
 | `NativeNetwork`             | `fetch`                     | `unsupported` | `NativeNetwork.fetch`                     | `routed`    |

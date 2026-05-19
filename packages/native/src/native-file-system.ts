@@ -34,14 +34,7 @@ import { NativeSurface } from "./native-surface.js"
 export * from "./contracts/native-file-system.js"
 
 const Surface = "NativeFileSystem"
-const UnsupportedReason = "host-adapter-unimplemented"
-const NativeFileSystemSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
+const NativeFileSystemSupport = NativeSurface.support.supported
 
 export type NativeFileSystemError = HostProtocolError
 
