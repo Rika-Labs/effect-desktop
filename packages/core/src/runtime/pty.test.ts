@@ -1008,42 +1008,48 @@ const makeFakeChild = (options: {
     get killedWith() {
       return killedWith
     },
-    write: async (chunk) => {
+    write: (chunk) => {
       writes.push(chunk)
+      return Promise.resolve()
     },
-    resize: async (size) => {
+    resize: (size) => {
       resizes.push(size)
+      return Promise.resolve()
     },
     isRunning: () => running,
-    terminateTree: async () => {
+    terminateTree: () => {
       terminateTreeCalls += 1
       if (options.terminateError !== undefined) {
-        throw options.terminateError
+        return Promise.reject(options.terminateError)
       }
-      await killFakeChild("SIGTERM")
+      return killFakeChild("SIGTERM")
     },
-    forceKillTree: async () => {
+    forceKillTree: () => {
       forceKillTreeCalls += 1
       if (options.forceKillError !== undefined) {
-        throw options.forceKillError
+        return Promise.reject(options.forceKillError)
       }
-      await killFakeChild("SIGKILL")
+      return killFakeChild("SIGKILL")
     },
-    kill: async (signal) => {
-      await killFakeChild(signal ?? "SIGTERM")
-    }
+    kill: (signal) => killFakeChild(signal ?? "SIGTERM")
   }
 
-  async function killFakeChild(signal: PtySignalInput): Promise<void> {
+  function killFakeChild(signal: PtySignalInput): Promise<void> {
     killedWith = signal
     kills.push(killedWith)
     if (options.ignoreKill !== true && options.ignoredSignals?.includes(killedWith) !== true) {
       if (options.killExitDelayMs === undefined) {
         finish(String(killedWith))
       } else {
-        setTimeout(() => finish(String(killedWith)), options.killExitDelayMs)
+        return new Promise<void>((resolve) => {
+          setTimeout(() => {
+            finish(String(killedWith))
+            resolve()
+          }, options.killExitDelayMs)
+        })
       }
     }
+    return Promise.resolve()
   }
 }
 
