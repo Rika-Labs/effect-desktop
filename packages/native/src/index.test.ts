@@ -7382,6 +7382,7 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
     "SystemAppearance.getAccentColor",
     "SystemAppearance.getReducedMotion",
     "SystemAppearance.getReducedTransparency",
+    "SystemAppearance.isSupported",
     "SystemAppearance.isSupported"
   ])
 })
@@ -7427,6 +7428,40 @@ test("SystemAppearance bridge client rejects partial appearance events as Invali
 
     expectExitFailure(result, (error) => hasErrorTag(error, "InvalidOutput"))
   }
+})
+
+test("SystemAppearance bridge client fails unsupported appearance events before subscription", async () => {
+  const requests: string[] = []
+  const subscriptions: string[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request.method)
+      return request.method === "SystemAppearance.isSupported"
+        ? Effect.succeed({ kind: "success", payload: { supported: false } })
+        : Effect.die(`unexpected SystemAppearance request: ${request.method}`)
+    },
+    subscribe: (method) => {
+      subscriptions.push(method)
+      return Stream.empty
+    }
+  }
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const appearance = yield* SystemAppearance
+      return yield* Effect.exit(
+        appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+      )
+    }).pipe(
+      Effect.provide(
+        Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+      )
+    )
+  )
+
+  expectExitFailure(result, (error) => error instanceof HostProtocolUnsupportedError)
+  expect(requests).toEqual(["SystemAppearance.isSupported"])
+  expect(subscriptions).toEqual([])
 })
 
 const systemAppearanceEventExchange = (payload: Record<string, unknown>): BridgeClientExchange => ({

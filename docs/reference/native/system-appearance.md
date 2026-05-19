@@ -61,6 +61,11 @@ decode through Rust `SystemAppearance.*` routes and fail closed as typed
 support; `onAppearanceChanged` remains unsupported because subscriptions do not
 have a native OS event source.
 
+`onAppearanceChanged()` checks `isSupported("onAppearanceChanged")` before it
+subscribes. When the host reports that appearance events are unsupported, the
+stream fails as typed `Unsupported` and does not open a native event
+subscription.
+
 ## React hook
 
 `useTheme()` and `useThemeMode()` from `@effect-desktop/react` consume the

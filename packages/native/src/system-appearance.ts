@@ -3,6 +3,7 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
+  HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
@@ -249,19 +250,8 @@ export const SystemAppearanceSurface = NativeSurface.make(
     service: SystemAppearanceClient,
     capabilities: SystemAppearanceCapabilityMethods,
     handlers: SystemAppearanceHandlersLive,
-    client: (client) =>
-      systemAppearanceClientFromRpcClient(client, () =>
-        Stream.fail(
-          makeHostProtocolInvalidOutputError(
-            "SystemAppearance.AppearanceChanged",
-            "event exchange does not support subscriptions"
-          )
-        )
-      ),
-    bridgeClient: (client, exchange) =>
-      systemAppearanceClientFromRpcClient(client, () =>
-        subscribeSystemAppearanceEvent(exchange, "SystemAppearance.AppearanceChanged")
-      )
+    client: (client) => systemAppearanceClientFromRpcClient(client, undefined),
+    bridgeClient: (client, exchange) => systemAppearanceClientFromRpcClient(client, exchange)
   }
 )
 
@@ -273,11 +263,7 @@ export const makeHostSystemAppearanceRpcRuntime = (
 
 const systemAppearanceClientFromRpcClient = (
   client: DesktopRpcClient<SystemAppearanceRpc>,
-  onAppearanceChanged: () => Stream.Stream<
-    SystemAppearanceChangedEvent,
-    SystemAppearanceError,
-    never
-  >
+  exchange: BridgeClientExchange | undefined
 ): SystemAppearanceClientApi =>
   Object.freeze({
     getAppearance: () =>
@@ -300,7 +286,7 @@ const systemAppearanceClientFromRpcClient = (
         client["SystemAppearance.getReducedTransparency"](undefined),
         "SystemAppearance.getReducedTransparency"
       ),
-    onAppearanceChanged,
+    onAppearanceChanged: () => supportedAppearanceChangedEvent(client, exchange),
     isSupported: (method) =>
       runSystemAppearanceRpc(
         client["SystemAppearance.isSupported"](new SystemAppearanceIsSupportedInput({ method })),
@@ -308,8 +294,27 @@ const systemAppearanceClientFromRpcClient = (
       )
   } satisfies SystemAppearanceClientApi)
 
+const supportedAppearanceChangedEvent = (
+  client: DesktopRpcClient<SystemAppearanceRpc>,
+  exchange: BridgeClientExchange | undefined
+): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> =>
+  Stream.unwrap(
+    runSystemAppearanceRpc(
+      client["SystemAppearance.isSupported"](
+        new SystemAppearanceIsSupportedInput({ method: "onAppearanceChanged" })
+      ),
+      "SystemAppearance.isSupported"
+    ).pipe(
+      Effect.map((result) =>
+        result.supported
+          ? subscribeSystemAppearanceEvent(exchange, "SystemAppearance.AppearanceChanged")
+          : Stream.fail(unsupportedError("SystemAppearance.AppearanceChanged"))
+      )
+    )
+  )
+
 const subscribeSystemAppearanceEvent = (
-  exchange: BridgeClientExchange,
+  exchange: BridgeClientExchange | undefined,
   method: "SystemAppearance.AppearanceChanged"
 ): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> =>
   subscribeNativeEvent(exchange, method, SystemAppearanceChangedEvent, StrictParseOptions)
@@ -356,6 +361,15 @@ const isSystemAppearanceError = (error: unknown): error is SystemAppearanceError
   "tag" in error &&
   "operation" in error &&
   "recoverable" in error
+
+const unsupportedError = (operation: string): HostProtocolUnsupportedError =>
+  new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: UnsupportedReason,
+    message: `unsupported SystemAppearance event source: ${operation}`,
+    operation,
+    recoverable: false
+  })
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) return error.message
