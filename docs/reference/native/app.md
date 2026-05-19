@@ -18,11 +18,13 @@ current executable with validated restart args before requesting event-loop
 exit, and `App.focus` and `App.activate` by focusing the current native window.
 The Rust host also implements `App.requestSingleInstanceLock` with a
 process-held OS file lock and returns the primary process id when another
-process already owns the lock. When the primary process owns a runtime event
-stream, duplicate launch attempts forward `argv`, `cwd`, `activationReason`,
-and `traceId` to the primary process as `App.onSecondInstance`. Safe open-file
-and open-url intents from the primary launch argv and duplicate-launch argv are
-also emitted through `App.onOpenFile` or `App.onOpenUrl`.
+process already owns the lock. `App.releaseSingleInstanceLock` explicitly drops
+the process-held lock and any duplicate-launch handoff listener. When the
+primary process owns a runtime event stream, duplicate launch attempts forward
+`argv`, `cwd`, `activationReason`, and `traceId` to the primary process as
+`App.onSecondInstance`. Safe open-file and open-url intents from the primary
+launch argv and duplicate-launch argv are also emitted through `App.onOpenFile`
+or `App.onOpenUrl`.
 `activationReason` is classified from argv as `"open-file"` when exactly one
 safe absolute file path is present, `"open-url"` when exactly one safe
 non-dangerous URL is present, `"unknown"` when intent-like argv is unsafe or
@@ -46,6 +48,7 @@ launch a smoke-only replacement process.
 | `focus`                     | `void`                    | supported       |
 | `activate`                  | `void`                    | supported       |
 | `requestSingleInstanceLock` | `AppSingleInstanceResult` | supported       |
+| `releaseSingleInstanceLock` | `void`                    | supported       |
 
 ## Events
 

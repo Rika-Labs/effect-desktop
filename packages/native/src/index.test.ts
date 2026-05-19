@@ -326,7 +326,7 @@ import {
   type WindowClientApi
 } from "./index.js"
 import { makeAppMetadataBridgeClientLayer, makeHostAppMetadataRpcRuntime } from "./app-metadata.js"
-import { makeAppBridgeClientLayer } from "./app.js"
+import { makeAppBridgeClientLayer, makeHostAppRpcRuntime } from "./app.js"
 import { makeAssociationBridgeClientLayer, makeHostAssociationRpcRuntime } from "./association.js"
 import { makeAutostartBridgeClientLayer, makeHostAutostartRpcRuntime } from "./autostart.js"
 import { makeClipboardBridgeClientLayer, makeHostClipboardRpcRuntime } from "./clipboard.js"
@@ -382,6 +382,7 @@ import {
   AppOpenFileEvent,
   AppOpenUrlEvent,
   AppSecondInstanceEvent,
+  AppSingleInstanceResult,
   ClipboardHtml,
   ClipboardImage,
   ClipboardSupportedResult,
@@ -578,6 +579,9 @@ test("native capability selections come from their surfaces", () => {
   expect("setOpenAtLogin" in Native.App).toBe(false)
   expect(Native.Permissions.app.requestSingleInstanceLock).toEqual(
     AppSurface.permissions.requestSingleInstanceLock
+  )
+  expect(Native.Permissions.app.releaseSingleInstanceLock).toEqual(
+    AppSurface.permissions.releaseSingleInstanceLock
   )
   expect(declared).toContain("Clipboard.readText")
 })
@@ -789,7 +793,8 @@ const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
   "relaunch",
   "focus",
   "activate",
-  "requestSingleInstanceLock"
+  "requestSingleInstanceLock",
+  "releaseSingleInstanceLock"
 ]
 
 const expectedAppMetadataMethods: Array<(typeof AppMetadataMethodNames)[number]> = [
@@ -1110,6 +1115,7 @@ test("App service delegates through a substitutable AppClient port", async () =>
       yield* app.exit({ exitCode: 7 })
       yield* app.restart({ args: ["--restarted"] })
       yield* app.relaunch({ args: ["--relaunched"] })
+      yield* app.releaseSingleInstanceLock()
       const protocolEvents = yield* app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect)
 
       return { protocolEvents }
@@ -1125,7 +1131,8 @@ test("App service delegates through a substitutable AppClient port", async () =>
     "quit:-1",
     "exit:7",
     "restart:--restarted",
-    "relaunch:--relaunched"
+    "relaunch:--relaunched",
+    "releaseSingleInstanceLock"
   ])
 })
 
@@ -1146,6 +1153,7 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
       yield* app.focus()
       yield* app.activate()
       yield* app.requestSingleInstanceLock()
+      yield* app.releaseSingleInstanceLock()
       const openFiles = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
 
       return { openFiles }
@@ -1160,8 +1168,108 @@ test("App bridge client sends typed host envelopes and decodes event streams", a
     ["App.relaunch", { args: ["--relaunched"] }],
     ["App.focus", null],
     ["App.activate", null],
-    ["App.requestSingleInstanceLock", null]
+    ["App.requestSingleInstanceLock", null],
+    ["App.releaseSingleInstanceLock", null]
   ])
+})
+
+test("native host RPC runtime gates single-instance release before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostAppRpcRuntime(
+    {
+      "App.quit": () => Effect.void,
+      "App.exit": () => Effect.void,
+      "App.restart": () => Effect.void,
+      "App.relaunch": () => Effect.void,
+      "App.focus": () => Effect.void,
+      "App.activate": () => Effect.void,
+      "App.requestSingleInstanceLock": () =>
+        Effect.succeed(new AppSingleInstanceResult({ acquired: true })),
+      "App.releaseSingleInstanceLock": () =>
+        Effect.sync(() => {
+          calls.push("releaseSingleInstanceLock")
+        })
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const denied = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "app-release-single-instance-denied",
+          method: "App.releaseSingleInstanceLock",
+          timestamp: 1710000000000,
+          traceId: "trace-app-release-single-instance-denied"
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+  expect(denied.kind).toBe("failure")
+  if (denied.kind === "failure") {
+    expect(hasErrorTag(denied.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  await Effect.runPromise(
+    permissions.declare(Native.Permissions.app.releaseSingleInstanceLock, {
+      source: "app-single-instance-test",
+      effect: "allow"
+    })
+  )
+  const allowed = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "app-release-single-instance-allowed",
+          method: "App.releaseSingleInstanceLock",
+          timestamp: 1710000000001,
+          traceId: "trace-app-release-single-instance-allowed"
+        })
+      )
+      .pipe(Effect.provide(Layer.succeed(PermissionRegistry)(permissions)))
+  )
+
+  expect(allowed.kind).toBe("success")
+  expect(calls).toEqual(["releaseSingleInstanceLock"])
+})
+
+test("App single-instance service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-adapter-unimplemented",
+    message: "unsupported App.requestSingleInstanceLock",
+    operation: "App.requestSingleInstanceLock",
+    recoverable: false
+  })
+  const unsupportedClient: AppClientApi = {
+    ...appClient([]),
+    requestSingleInstanceLock: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: AppClientApi = {
+    ...appClient([]),
+    releaseSingleInstanceLock: () =>
+      Effect.fail(makeHostProtocolHostUnavailableError("App.releaseSingleInstanceLock"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* Effect.exit(app.requestSingleInstanceLock())
+    }).pipe(Effect.provide(makeAppServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* Effect.exit(app.releaseSingleInstanceLock())
+    }).pipe(Effect.provide(makeAppServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("App bridge client decodes event streams without host requests", async () => {
@@ -11854,6 +11962,7 @@ const appClient = (calls: string[]): AppClientApi => ({
   focus: () => recordVoid(calls, "focus"),
   activate: () => recordVoid(calls, "activate"),
   requestSingleInstanceLock: () => Effect.succeed({ acquired: true }),
+  releaseSingleInstanceLock: () => recordVoid(calls, "releaseSingleInstanceLock"),
   onSecondInstance: () =>
     Stream.make(
       new AppSecondInstanceEvent({

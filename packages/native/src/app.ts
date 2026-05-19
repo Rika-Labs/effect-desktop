@@ -94,6 +94,15 @@ export const AppRequestSingleInstanceLock = NativeSurface.rpc("App", "requestSin
   endpoint: "mutation",
   support: AppSupported
 })
+export const AppReleaseSingleInstanceLock = NativeSurface.rpc("App", "releaseSingleInstanceLock", {
+  payload: Schema.Void,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "App", methods: ["releaseSingleInstanceLock"] })
+  ),
+  endpoint: "mutation",
+  support: AppSupported
+})
 export const AppRpcEvents = Object.freeze({
   onSecondInstance: { payload: AppSecondInstanceEvent },
   onOpenFile: { payload: AppOpenFileEvent },
@@ -110,7 +119,8 @@ const AppRpcGroup = RpcGroup.make(
   AppRelaunch,
   AppFocus,
   AppActivate,
-  AppRequestSingleInstanceLock
+  AppRequestSingleInstanceLock,
+  AppReleaseSingleInstanceLock
 )
 
 export const AppRpcs: RpcGroup.RpcGroup<AppRpc> = AppRpcGroup
@@ -122,7 +132,8 @@ export const AppMethodNames = Object.freeze([
   "relaunch",
   "focus",
   "activate",
-  "requestSingleInstanceLock"
+  "requestSingleInstanceLock",
+  "releaseSingleInstanceLock"
 ] as const)
 
 const AppCapabilityMethods = Object.freeze([
@@ -132,7 +143,8 @@ const AppCapabilityMethods = Object.freeze([
   "relaunch",
   "focus",
   "activate",
-  "requestSingleInstanceLock"
+  "requestSingleInstanceLock",
+  "releaseSingleInstanceLock"
 ] as const satisfies readonly (typeof AppMethodNames)[number][])
 
 export type AppError = HostProtocolError
@@ -145,6 +157,7 @@ export interface AppClientApi {
   readonly focus: () => Effect.Effect<void, AppError, never>
   readonly activate: () => Effect.Effect<void, AppError, never>
   readonly requestSingleInstanceLock: () => Effect.Effect<AppSingleInstanceResult, AppError, never>
+  readonly releaseSingleInstanceLock: () => Effect.Effect<void, AppError, never>
   readonly onSecondInstance: () => Stream.Stream<AppSecondInstanceEvent, AppError, never>
   readonly onOpenFile: () => Stream.Stream<AppOpenFileEvent, AppError, never>
   readonly onOpenUrl: () => Stream.Stream<AppOpenUrlEvent, AppError, never>
@@ -226,6 +239,11 @@ export const AppHandlersLive = AppRpcGroup.toLayer({
     Effect.gen(function* () {
       const app = yield* App
       return yield* app.requestSingleInstanceLock()
+    }),
+  "App.releaseSingleInstanceLock": () =>
+    Effect.gen(function* () {
+      const app = yield* App
+      yield* app.releaseSingleInstanceLock()
     })
 })
 
@@ -251,6 +269,7 @@ const makeAppService = (client: AppClientApi): AppServiceApi => {
     focus: () => client.focus(),
     activate: () => client.activate(),
     requestSingleInstanceLock: () => client.requestSingleInstanceLock(),
+    releaseSingleInstanceLock: () => client.releaseSingleInstanceLock(),
     onSecondInstance: () => client.onSecondInstance(),
     onOpenFile: () => client.onOpenFile(),
     onOpenUrl: () => client.onOpenUrl(),
@@ -266,19 +285,19 @@ const appClientFromRpcClient = (
 ): AppClientApi =>
   Object.freeze({
     quit: (input) =>
-      decodeAppQuitInput(input).pipe(
+      decodeAppQuitInput(input, "App.quit").pipe(
         Effect.flatMap((decoded) => runAppRpc(client["App.quit"](decoded), "App.quit"))
       ),
     exit: (input) =>
-      decodeAppQuitInput(input).pipe(
+      decodeAppQuitInput(input, "App.exit").pipe(
         Effect.flatMap((decoded) => runAppRpc(client["App.exit"](decoded), "App.exit"))
       ),
     restart: (input) =>
-      decodeAppRestartInput(input).pipe(
+      decodeAppRestartInput(input, "App.restart").pipe(
         Effect.flatMap((decoded) => runAppRpc(client["App.restart"](decoded), "App.restart"))
       ),
     relaunch: (input) =>
-      decodeAppRestartInput(input).pipe(
+      decodeAppRestartInput(input, "App.relaunch").pipe(
         Effect.flatMap((decoded) => runAppRpc(client["App.relaunch"](decoded), "App.relaunch"))
       ),
     focus: () => runAppRpc(client["App.focus"](undefined), "App.focus"),
@@ -287,6 +306,11 @@ const appClientFromRpcClient = (
       runAppRpc(
         client["App.requestSingleInstanceLock"](undefined),
         "App.requestSingleInstanceLock"
+      ),
+    releaseSingleInstanceLock: () =>
+      runAppRpc(
+        client["App.releaseSingleInstanceLock"](undefined),
+        "App.releaseSingleInstanceLock"
       ),
     onSecondInstance: () =>
       subscribeAppEvent(exchange, "App.onSecondInstance", AppSecondInstanceEvent),
@@ -303,14 +327,16 @@ const subscribeAppEvent = <A>(
   subscribeNativeEvent(exchange, method, schema, StrictParseOptions)
 
 const decodeAppQuitInput = (
-  input: unknown
+  input: unknown,
+  operation: string
 ): Effect.Effect<AppQuitInput, HostProtocolError, never> =>
-  decodeInput(AppQuitInput, input, "App.quit")
+  decodeInput(AppQuitInput, input, operation)
 
 const decodeAppRestartInput = (
-  input: unknown
+  input: unknown,
+  operation: string
 ): Effect.Effect<AppRestartInput, HostProtocolError, never> =>
-  decodeInput(AppRestartInput, input, "App.restart")
+  decodeInput(AppRestartInput, input, operation)
 
 const decodeInput = <A>(
   schema: Schema.Codec<A, unknown, never, never>,

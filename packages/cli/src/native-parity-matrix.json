@@ -91,6 +91,16 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "App.releaseSingleInstanceLock",
+      "surface": "App",
+      "method": "releaseSingleInstanceLock",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "App.requestSingleInstanceLock",
       "surface": "App",
       "method": "requestSingleInstanceLock",
@@ -4227,10 +4237,10 @@
     }
   ],
   "summary": {
-    "total": 242,
-    "routed": 242,
+    "total": 243,
+    "routed": 243,
     "missing": 0,
-    "supported": 139,
+    "supported": 140,
     "partial": 56,
     "unsupported": 47
   }

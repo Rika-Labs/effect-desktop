@@ -237,6 +237,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::EventfulPayload(app::request_single_instance_lock_with_event_sender),
     ),
     route(
+        host_protocol::APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD,
+        HostMethodDispatcher::Payload(app::release_single_instance_lock),
+    ),
+    route(
         host_protocol::APP_METADATA_GET_INFO_METHOD,
         HostMethodDispatcher::Payload(app_metadata::get_info),
     ),
@@ -3172,6 +3176,30 @@ mod tests {
     }
 
     #[test]
+    fn app_release_single_instance_lock_routes_to_host_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-app-release-single-instance",
+                    host_protocol::APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD,
+                ),
+                1710000000125,
+            )
+            .expect("app release single-instance lock should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-release-single-instance".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-release-single-instance".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+    }
+
+    #[test]
     fn app_void_routes_reject_present_payloads() {
         let response = test_router()
             .dispatch_at(
@@ -3189,6 +3217,25 @@ mod tests {
         } = response
         else {
             panic!("app focus should reject present payload");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
+
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-release-single-instance-object",
+                    host_protocol::APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD,
+                    serde_json::json!({}),
+                ),
+                1710000000125,
+            )
+            .expect("app release single-instance lock should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("app release single-instance lock should reject present payload");
         };
         assert_eq!(error.tag(), "InvalidArgument");
     }

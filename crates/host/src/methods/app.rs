@@ -156,6 +156,23 @@ pub(crate) fn request_single_instance_lock_with_event_sender(
     )
 }
 
+pub(crate) fn release_single_instance_lock(
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    reject_unexpected_payload(
+        payload,
+        host_protocol::APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD,
+    )?;
+    let mut current = SINGLE_INSTANCE_LOCK.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "single-instance lock state is poisoned",
+            host_protocol::APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD,
+        )
+    })?;
+    current.take();
+    Ok(None)
+}
+
 pub(crate) fn run_single_instance_lock_smoke() -> Result<(), HostProtocolError> {
     let payload = request_single_instance_lock(None)?.ok_or_else(|| {
         HostProtocolError::internal(
@@ -951,9 +968,9 @@ fn unlock_single_instance_file(_file: &File) {}
 mod tests {
     use super::{
         emit_open_intent_event_for_argv, read_single_instance_lock_file,
-        request_single_instance_lock, request_single_instance_lock_with_event_sender, restart,
-        send_second_instance_handoff, SingleInstanceHandoffEndpoint, SINGLE_INSTANCE_LOCK,
-        SINGLE_INSTANCE_LOCK_PATH_ENV,
+        release_single_instance_lock, request_single_instance_lock,
+        request_single_instance_lock_with_event_sender, restart, send_second_instance_handoff,
+        SingleInstanceHandoffEndpoint, SINGLE_INSTANCE_LOCK, SINGLE_INSTANCE_LOCK_PATH_ENV,
     };
     use crate::methods::tests::FakeWindowHandler;
     use host_protocol::{
@@ -1042,6 +1059,29 @@ mod tests {
         request_single_instance_lock(None).expect("first single instance lock");
         let result = request_single_instance_lock(None).expect("second single instance lock");
 
+        assert_eq!(
+            result.expect("single instance payload"),
+            json!({
+                "acquired": true
+            })
+        );
+    }
+
+    #[test]
+    fn app_single_instance_release_drops_process_lock() {
+        let _env = SingleInstanceTestEnv::new("release-primary");
+        request_single_instance_lock(None).expect("single instance lock");
+
+        release_single_instance_lock(None).expect("single instance release");
+
+        assert!(
+            SINGLE_INSTANCE_LOCK
+                .lock()
+                .expect("single-instance state should lock")
+                .is_none(),
+            "release should drop the process-held lock"
+        );
+        let result = request_single_instance_lock(None).expect("single instance reacquire");
         assert_eq!(
             result.expect("single instance payload"),
             json!({
@@ -1240,6 +1280,14 @@ mod tests {
                 "payload",
                 "must be omitted",
                 host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
+            )
+        );
+        assert_eq!(
+            release_single_instance_lock(Some(json!({}))).expect_err("object payload"),
+            HostProtocolError::invalid_argument(
+                "payload",
+                "must be omitted",
+                host_protocol::APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD,
             )
         );
     }

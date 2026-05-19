@@ -21,6 +21,7 @@ pub const APP_RELAUNCH_METHOD: &str = "App.relaunch";
 pub const APP_FOCUS_METHOD: &str = "App.focus";
 pub const APP_ACTIVATE_METHOD: &str = "App.activate";
 pub const APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD: &str = "App.requestSingleInstanceLock";
+pub const APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD: &str = "App.releaseSingleInstanceLock";
 pub const APP_SECOND_INSTANCE_EVENT: &str = "App.onSecondInstance";
 pub const APP_OPEN_FILE_EVENT: &str = "App.onOpenFile";
 pub const APP_OPEN_URL_EVENT: &str = "App.onOpenUrl";
