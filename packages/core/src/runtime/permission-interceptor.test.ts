@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Layer, Option, Schema } from "effect"
+import { Effect, Exit, Layer, ManagedRuntime, Option, Schema } from "effect"
 import { Headers } from "effect/unstable/http"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { RequestId } from "effect/unstable/rpc/RpcMessage"
@@ -159,284 +159,351 @@ test("Rpc without RpcCapability returns Option.none from annotations", () => {
   expect(Option.isNone(retrieved)).toBe(true)
 })
 
-test("makePermissionInterceptorLayer passes through Rpc without annotation", async () => {
-  const PublicRpc = Rpc.make("Public", {
-    payload: { message: Schema.String },
-    success: Schema.String
-  }).middleware(PermissionInterceptor)
-
-  const group = RpcGroup.make(PublicRpc)
-  const interceptorLayer = makePermissionInterceptorLayer()
-
-  const result = await Effect.runPromise(
+test("makePermissionInterceptorLayer passes through Rpc without annotation", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const ctx = yield* group.toHandlers({
-        Public: ({ message }) => Effect.succeed(`echo: ${message}`)
-      })
-      return ctx
-    }).pipe(Effect.provide(interceptorLayer), Effect.provide(RegistryLayer))
-  )
+      const PublicRpc = Rpc.make("Public", {
+        payload: { message: Schema.String },
+        success: Schema.String
+      }).middleware(PermissionInterceptor)
 
-  expect(result).toBeDefined()
-})
+      const group = RpcGroup.make(PublicRpc)
+      const interceptorLayer = makePermissionInterceptorLayer()
+      const combined = Layer.provideMerge(interceptorLayer, RegistryLayer)
 
-test("makePermissionInterceptorLayer allows call when capability is declared", async () => {
-  const cap = P.filesystemRead({ roots: ["/tmp/app"] })
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const ctx = yield* group.toHandlers({
+            Public: ({ message }) => Effect.succeed(`echo: ${message}`)
+          })
+          return ctx
+        }),
+        combined
+      )
 
-  const GuardedRpc = Rpc.make("ReadFile", {
-    payload: { path: Schema.String },
-    success: Schema.String
-  })
-    .pipe(RpcCapability(cap))
-    .middleware(PermissionInterceptor)
-
-  const group = RpcGroup.make(GuardedRpc)
-  const interceptorLayer = makePermissionInterceptorLayer()
-
-  const registryWithDeclaration = Layer.effect(
-    PermissionRegistry,
-    Effect.gen(function* () {
-      const registry = yield* makePermissionRegistry({
-        traceId: () => "trace-test",
-        nextToken: () => "token-test"
-      })
-      yield* registry.declare(cap, { source: "test", effect: "allow" })
-      return registry
+      expect(result).toBeDefined()
     })
-  )
+  ))
 
-  const result = await Effect.runPromise(
+test("makePermissionInterceptorLayer allows call when capability is declared", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const ctx = yield* group.toHandlers({
-        ReadFile: ({ path }) => Effect.succeed(`contents of ${path}`)
+      const cap = P.filesystemRead({ roots: ["/tmp/app"] })
+
+      const GuardedRpc = Rpc.make("ReadFile", {
+        payload: { path: Schema.String },
+        success: Schema.String
       })
-      return ctx
-    }).pipe(Effect.provide(interceptorLayer), Effect.provide(registryWithDeclaration))
-  )
+        .pipe(RpcCapability(cap))
+        .middleware(PermissionInterceptor)
 
-  expect(result).toBeDefined()
-})
+      const group = RpcGroup.make(GuardedRpc)
+      const interceptorLayer = makePermissionInterceptorLayer()
 
-test("makePermissionInterceptorLayer fails denied calls as typed middleware errors", async () => {
-  const cap = P.filesystemRead({ roots: ["/tmp/app"] })
-  let handlerCalls = 0
-  const GuardedRpc = Rpc.make("ReadFile", {
-    payload: { path: Schema.String },
-    success: Schema.String
-  })
-    .pipe(RpcCapability(cap))
-    .middleware(PermissionInterceptor)
+      const registryWithDeclaration = Layer.effect(
+        PermissionRegistry,
+        Effect.gen(function* () {
+          const registry = yield* makePermissionRegistry({
+            traceId: () => "trace-test",
+            nextToken: () => "token-test"
+          })
+          yield* registry.declare(cap, { source: "test", effect: "allow" })
+          return registry
+        })
+      )
 
-  const interceptorLayer = makePermissionInterceptorLayer()
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const ctx = yield* group.toHandlers({
+            ReadFile: ({ path }) => Effect.succeed(`contents of ${path}`)
+          })
+          return ctx
+        }),
+        Layer.provideMerge(interceptorLayer, registryWithDeclaration)
+      )
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const middleware = yield* PermissionInterceptor
-        return yield* middleware(
-          deniedHandler(() => {
-            handlerCalls += 1
-          }),
-          rpcMiddlewareOptions(permissionMiddlewareRpc(GuardedRpc), { path: "/tmp/app/file.txt" })
-        )
+      expect(result).toBeDefined()
+    })
+  ))
+
+test("makePermissionInterceptorLayer fails denied calls as typed middleware errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cap = P.filesystemRead({ roots: ["/tmp/app"] })
+      let handlerCalls = 0
+      const GuardedRpc = Rpc.make("ReadFile", {
+        payload: { path: Schema.String },
+        success: Schema.String
       })
-    ).pipe(Effect.provide(interceptorLayer), Effect.provide(RegistryLayer))
-  )
+        .pipe(RpcCapability(cap))
+        .middleware(PermissionInterceptor)
 
-  expect(handlerCalls).toBe(0)
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
-    expect(fail).toBeDefined()
-    if (fail?._tag === "Fail") {
-      expect(fail.error).toBeInstanceOf(PermissionDenied)
-      const error = fail.error as PermissionDenied
-      expect(error.reason).toBe("default-deny")
-      expect(error.capability.kind).toBe("filesystem.read")
-    }
-  }
-})
+      const interceptorLayer = makePermissionInterceptorLayer()
 
-test("makePermissionInterceptorLayer fails malformed capabilities closed", async () => {
-  let handlerCalls = 0
-  const GuardedRpc = Rpc.make("ReadFile", {
-    payload: { path: Schema.String },
-    success: Schema.String
-  })
-    .pipe(RpcCapability({ kind: "filesystem.read" }))
-    .middleware(PermissionInterceptor)
+      const exit = yield* runScopedExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const middleware = yield* PermissionInterceptor
+            return yield* middleware(
+              deniedHandler(() => {
+                handlerCalls += 1
+              }),
+              rpcMiddlewareOptions(permissionMiddlewareRpc(GuardedRpc), {
+                path: "/tmp/app/file.txt"
+              })
+            )
+          })
+        ),
+        Layer.provideMerge(interceptorLayer, RegistryLayer)
+      )
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const middleware = yield* PermissionInterceptor
-        return yield* middleware(
-          deniedHandler(() => {
-            handlerCalls += 1
-          }),
-          rpcMiddlewareOptions(permissionMiddlewareRpc(GuardedRpc), { path: "/tmp/app/file.txt" })
-        )
+      expect(handlerCalls).toBe(0)
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
+        expect(fail).toBeDefined()
+        if (fail?._tag === "Fail") {
+          expect(fail.error).toBeInstanceOf(PermissionDenied)
+          const error = fail.error as PermissionDenied
+          expect(error.reason).toBe("default-deny")
+          expect(error.capability.kind).toBe("filesystem.read")
+        }
+      }
+    })
+  ))
+
+test("makePermissionInterceptorLayer fails malformed capabilities closed", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      let handlerCalls = 0
+      const GuardedRpc = Rpc.make("ReadFile", {
+        payload: { path: Schema.String },
+        success: Schema.String
       })
-    ).pipe(Effect.provide(makePermissionInterceptorLayer()), Effect.provide(RegistryLayer))
-  )
+        .pipe(RpcCapability({ kind: "filesystem.read" }))
+        .middleware(PermissionInterceptor)
 
-  expect(handlerCalls).toBe(0)
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
-    expect(fail).toBeDefined()
-    if (fail?._tag === "Fail") {
-      expect(fail.error).toBeInstanceOf(PermissionDenied)
-      const error = fail.error as PermissionDenied
-      expect(error.reason).toBe("invalid-capability")
-      expect(error.capability.kind).toBe("filesystem.read")
-    }
-  }
-})
+      const exit = yield* runScopedExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const middleware = yield* PermissionInterceptor
+            return yield* middleware(
+              deniedHandler(() => {
+                handlerCalls += 1
+              }),
+              rpcMiddlewareOptions(permissionMiddlewareRpc(GuardedRpc), {
+                path: "/tmp/app/file.txt"
+              })
+            )
+          })
+        ),
+        Layer.provideMerge(makePermissionInterceptorLayer(), RegistryLayer)
+      )
 
-test("makePermissionInterceptorLayer builds actor and trace context from RPC headers", async () => {
-  const cap = P.filesystemRead({ roots: ["/tmp/app"] })
-  const GuardedRpc = Rpc.make("ReadFile", {
-    payload: { path: Schema.String },
-    success: Schema.String
-  })
-    .pipe(RpcCapability(cap))
-    .middleware(PermissionInterceptor)
+      expect(handlerCalls).toBe(0)
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
+        expect(fail).toBeDefined()
+        if (fail?._tag === "Fail") {
+          expect(fail.error).toBeInstanceOf(PermissionDenied)
+          const error = fail.error as PermissionDenied
+          expect(error.reason).toBe("invalid-capability")
+          expect(error.capability.kind).toBe("filesystem.read")
+        }
+      }
+    })
+  ))
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const middleware = yield* PermissionInterceptor
-        return yield* middleware(
-          Effect.die("permission interceptor should deny before invoking handler"),
-          rpcMiddlewareOptions(
-            permissionMiddlewareRpc(GuardedRpc),
-            { path: "/tmp/app/file.txt" },
-            Headers.fromInput({
-              "x-effect-desktop-window-id": "window-main",
-              "x-effect-desktop-trace-id": "trace-renderer"
-            })
-          )
-        )
+test("makePermissionInterceptorLayer builds actor and trace context from RPC headers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cap = P.filesystemRead({ roots: ["/tmp/app"] })
+      const GuardedRpc = Rpc.make("ReadFile", {
+        payload: { path: Schema.String },
+        success: Schema.String
       })
-    ).pipe(Effect.provide(makePermissionInterceptorLayer()), Effect.provide(RegistryLayer))
-  )
+        .pipe(RpcCapability(cap))
+        .middleware(PermissionInterceptor)
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
-    expect(fail).toBeDefined()
-    if (fail?._tag === "Fail") {
-      expect(fail.error).toBeInstanceOf(PermissionDenied)
-      const error = fail.error as PermissionDenied
-      expect(error.actor).toMatchObject({ kind: "window", id: "window-main" })
-      expect(error.traceId).toBe("trace-renderer")
-    }
-  }
-})
+      const exit = yield* runScopedExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const middleware = yield* PermissionInterceptor
+            return yield* middleware(
+              Effect.die("permission interceptor should deny before invoking handler"),
+              rpcMiddlewareOptions(
+                permissionMiddlewareRpc(GuardedRpc),
+                { path: "/tmp/app/file.txt" },
+                Headers.fromInput({
+                  "x-effect-desktop-window-id": "window-main",
+                  "x-effect-desktop-trace-id": "trace-renderer"
+                })
+              )
+            )
+          })
+        ),
+        Layer.provideMerge(makePermissionInterceptorLayer(), RegistryLayer)
+      )
 
-test("makePermissionInterceptorLayer returns typed denial for malformed RPC headers", async () => {
-  const cap = P.filesystemRead({ roots: ["/tmp/app"] })
-  let handlerCalls = 0
-  const GuardedRpc = Rpc.make("ReadFile", {
-    payload: { path: Schema.String },
-    success: Schema.String
-  })
-    .pipe(RpcCapability(cap))
-    .middleware(PermissionInterceptor)
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
+        expect(fail).toBeDefined()
+        if (fail?._tag === "Fail") {
+          expect(fail.error).toBeInstanceOf(PermissionDenied)
+          const error = fail.error as PermissionDenied
+          expect(error.actor).toMatchObject({ kind: "window", id: "window-main" })
+          expect(error.traceId).toBe("trace-renderer")
+        }
+      }
+    })
+  ))
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const middleware = yield* PermissionInterceptor
-        return yield* middleware(
-          deniedHandler(() => {
-            handlerCalls += 1
-          }),
-          rpcMiddlewareOptions(
-            permissionMiddlewareRpc(GuardedRpc),
-            { path: "/tmp/app/file.txt" },
-            Headers.fromInput({
-              "x-effect-desktop-window-id": "window\nforged",
-              "x-effect-desktop-trace-id": "trace-renderer"
-            })
-          )
-        )
+test("makePermissionInterceptorLayer returns typed denial for malformed RPC headers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cap = P.filesystemRead({ roots: ["/tmp/app"] })
+      let handlerCalls = 0
+      const GuardedRpc = Rpc.make("ReadFile", {
+        payload: { path: Schema.String },
+        success: Schema.String
       })
-    ).pipe(Effect.provide(makePermissionInterceptorLayer()), Effect.provide(RegistryLayer))
-  )
+        .pipe(RpcCapability(cap))
+        .middleware(PermissionInterceptor)
 
-  expect(handlerCalls).toBe(0)
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
-    expect(fail).toBeDefined()
-    if (fail?._tag === "Fail") {
-      expect(fail.error).toBeInstanceOf(PermissionDenied)
-      const error = fail.error as PermissionDenied
-      expect(error.reason).toBe("invalid-context")
-      expect(error.capability.kind).toBe("filesystem.read")
-    }
-  }
-})
+      const exit = yield* runScopedExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const middleware = yield* PermissionInterceptor
+            return yield* middleware(
+              deniedHandler(() => {
+                handlerCalls += 1
+              }),
+              rpcMiddlewareOptions(
+                permissionMiddlewareRpc(GuardedRpc),
+                { path: "/tmp/app/file.txt" },
+                Headers.fromInput({
+                  "x-effect-desktop-window-id": "window\nforged",
+                  "x-effect-desktop-trace-id": "trace-renderer"
+                })
+              )
+            )
+          })
+        ),
+        Layer.provideMerge(makePermissionInterceptorLayer(), RegistryLayer)
+      )
 
-test("validatePermissions succeeds when all required capabilities are declared", async () => {
-  const declared: readonly NormalizedCapability[] = [
-    P.filesystemRead({ roots: ["/tmp"] }),
-    P.networkConnect({ hosts: ["api.example.com"] })
-  ]
-  const required: readonly NormalizedCapability[] = [P.filesystemRead({ roots: ["/tmp"] })]
+      expect(handlerCalls).toBe(0)
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
+        expect(fail).toBeDefined()
+        if (fail?._tag === "Fail") {
+          expect(fail.error).toBeInstanceOf(PermissionDenied)
+          const error = fail.error as PermissionDenied
+          expect(error.reason).toBe("invalid-context")
+          expect(error.capability.kind).toBe("filesystem.read")
+        }
+      }
+    })
+  ))
 
-  const exit = await Effect.runPromiseExit(validatePermissions(declared, required))
-  expect(Exit.isSuccess(exit)).toBe(true)
-})
+test("validatePermissions succeeds when all required capabilities are declared", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const declared: readonly NormalizedCapability[] = [
+        P.filesystemRead({ roots: ["/tmp"] }),
+        P.networkConnect({ hosts: ["api.example.com"] })
+      ]
+      const required: readonly NormalizedCapability[] = [P.filesystemRead({ roots: ["/tmp"] })]
 
-test("validatePermissions fails with DesktopConfigError when capability kind is missing", async () => {
-  const declared: readonly NormalizedCapability[] = [P.filesystemRead({ roots: ["/tmp"] })]
-  const required: readonly NormalizedCapability[] = [
-    P.networkConnect({ hosts: ["api.example.com"] })
-  ]
+      const exit = yield* Effect.exit(validatePermissions(declared, required))
+      expect(Exit.isSuccess(exit)).toBe(true)
+    })
+  ))
 
-  const exit = await Effect.runPromiseExit(validatePermissions(declared, required))
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
-    expect(fail).toBeDefined()
-    if (fail?._tag === "Fail") {
-      expect(fail.error).toBeInstanceOf(DesktopConfigError)
-      const error = fail.error
-      expect(error.reason).toBe("undeclared-capability")
-      expect(error.contract).toBe("network.connect")
-    }
-  }
-})
+test("validatePermissions fails with DesktopConfigError when capability kind is missing", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const declared: readonly NormalizedCapability[] = [P.filesystemRead({ roots: ["/tmp"] })]
+      const required: readonly NormalizedCapability[] = [
+        P.networkConnect({ hosts: ["api.example.com"] })
+      ]
 
-test("validatePermissions fails when declared capability does not cover the required scope", async () => {
-  const declared: readonly NormalizedCapability[] = [P.filesystemRead({ roots: ["/tmp/app"] })]
-  const required: readonly NormalizedCapability[] = [P.filesystemRead({ roots: ["/tmp/other"] })]
+      const exit = yield* Effect.exit(validatePermissions(declared, required))
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
+        expect(fail).toBeDefined()
+        if (fail?._tag === "Fail") {
+          expect(fail.error).toBeInstanceOf(DesktopConfigError)
+          const error = fail.error
+          expect(error.reason).toBe("undeclared-capability")
+          expect(error.contract).toBe("network.connect")
+        }
+      }
+    })
+  ))
 
-  const exit = await Effect.runPromiseExit(validatePermissions(declared, required))
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
-    expect(fail).toBeDefined()
-    if (fail?._tag === "Fail") {
-      expect(fail.error).toBeInstanceOf(DesktopConfigError)
-      const error = fail.error
-      expect(error.reason).toBe("undeclared-capability")
-      expect(error.contract).toBe("filesystem.read")
-    }
-  }
-})
+test("validatePermissions fails when declared capability does not cover the required scope", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const declared: readonly NormalizedCapability[] = [P.filesystemRead({ roots: ["/tmp/app"] })]
+      const required: readonly NormalizedCapability[] = [
+        P.filesystemRead({ roots: ["/tmp/other"] })
+      ]
 
-test("validatePermissions succeeds with empty required list", async () => {
-  const declared: readonly NormalizedCapability[] = []
-  const required: readonly NormalizedCapability[] = []
-  const exit = await Effect.runPromiseExit(validatePermissions(declared, required))
-  expect(Exit.isSuccess(exit)).toBe(true)
-})
+      const exit = yield* Effect.exit(validatePermissions(declared, required))
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const fail = exit.cause.reasons.find((r) => r._tag === "Fail")
+        expect(fail).toBeDefined()
+        if (fail?._tag === "Fail") {
+          expect(fail.error).toBeInstanceOf(DesktopConfigError)
+          const error = fail.error
+          expect(error.reason).toBe("undeclared-capability")
+          expect(error.contract).toBe("filesystem.read")
+        }
+      }
+    })
+  ))
+
+test("validatePermissions succeeds with empty required list", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const declared: readonly NormalizedCapability[] = []
+      const required: readonly NormalizedCapability[] = []
+      const exit = yield* Effect.exit(validatePermissions(declared, required))
+      expect(Exit.isSuccess(exit)).toBe(true)
+    })
+  ))
 
 test("makePermissionInterceptorLayer is a Layer", () => {
   const layer = makePermissionInterceptorLayer()
   expect(Layer.isLayer(layer)).toBe(true)
 })
+
+const runScoped = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit as Exit.Exit<A, E | LE>
+  })
+
+const runScopedExit = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<Exit.Exit<A, E | LE>, never, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    try {
+      return (yield* Effect.promise(() => runtime.runPromiseExit(effect))) as Exit.Exit<A, E | LE>
+    } finally {
+      yield* Effect.promise(() => runtime.dispose())
+    }
+  })

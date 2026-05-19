@@ -18,12 +18,14 @@ import {
 } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
 import {
+  DateTime,
   Deferred,
   Effect,
   Exit,
   Fiber,
   FileSystem,
   Layer,
+  ManagedRuntime,
   Option,
   Queue,
   Schedule,
@@ -35,7 +37,6 @@ import * as PlatformError from "effect/PlatformError"
 import {
   FilesystemStatResult,
   makeFilesystem,
-  type FilesystemEvent,
   type FilesystemError,
   type FilesystemApi,
   type FilesystemOptions,
@@ -43,7 +44,7 @@ import {
 } from "./filesystem.js"
 import { PermissionActor } from "./permission-registry.js"
 import type { ResourceOwnerApi } from "./resource-owner.js"
-import { makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+import { makeResourceRegistry } from "./resources.js"
 
 const TEST_OWNER: ResourceOwnerApi = Object.freeze({
   kind: "test",
@@ -513,7 +514,7 @@ test("Filesystem allows recursive remove with delete root and recursive capabili
 
       yield* service.remove(path, { recursive: true })
 
-      const exists = yield* Effect.promise(() => pathExists(path))
+      const exists = yield* pathExists(path)
       expect(exists).toBe(false)
     })
   ))
@@ -534,13 +535,11 @@ test("Filesystem canonicalizes symlink targets before permission checks", () =>
       expectFailureTag(exit, "SymlinkEscapesRoot")
       const resolved1 = yield* Effect.promise(() => realpath(target))
       const allowedReal1 = yield* Effect.promise(() => realpath(allowed))
-      yield* Effect.promise(() =>
-        expectSymlinkEscapesRoot(exit, {
-          requested: link,
-          resolved: resolved1,
-          capabilityRoots: [allowedReal1]
-        })
-      )
+      yield* expectSymlinkEscapesRoot(exit, {
+        requested: link,
+        resolved: resolved1,
+        capabilityRoots: [allowedReal1]
+      })
     })
   ))
 
@@ -563,13 +562,11 @@ test("Filesystem reports SymlinkEscapesRoot for intermediate symlink escapes", (
       expectFailureTag(exit, "SymlinkEscapesRoot")
       const resolved2 = yield* Effect.promise(() => realpath(target))
       const allowedReal2 = yield* Effect.promise(() => realpath(allowed))
-      yield* Effect.promise(() =>
-        expectSymlinkEscapesRoot(exit, {
-          requested: linkPath,
-          resolved: resolved2,
-          capabilityRoots: [allowedReal2]
-        })
-      )
+      yield* expectSymlinkEscapesRoot(exit, {
+        requested: linkPath,
+        resolved: resolved2,
+        capabilityRoots: [allowedReal2]
+      })
     })
   ))
 
@@ -586,7 +583,7 @@ test("Filesystem realpath returns the authorized canonical path", () =>
       const resolved = yield* service.realpath(link)
 
       const realTarget = yield* Effect.promise(() => realpath(target))
-      yield* Effect.promise(() => expectSameFilesystemEntry(resolved, realTarget))
+      yield* expectSameFilesystemEntry(resolved, realTarget)
     })
   ))
 
@@ -640,12 +637,13 @@ test("Filesystem watch emits typed events from Effect FileSystem", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const fixture = yield* makeWatchFixture()
-      const fiber = Effect.runFork(
-        fixture.service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect)
+      const fiber = yield* Effect.forkChild(
+        fixture.service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect),
+        { startImmediately: true }
       )
 
       yield* waitUntil(() => fixture.watchStarted)
-      yield* Effect.promise(() => fixture.emit({ _tag: "Update", path: "/tmp/project/a.txt" }))
+      yield* fixture.emit({ _tag: "Update", path: "/tmp/project/a.txt" })
       const events = yield* Fiber.join(fiber)
       const afterStreamEnd = yield* fixture.registry.list()
 
@@ -683,12 +681,13 @@ test("Filesystem watch rejects control-byte filenames in FileSystem events", () 
   Effect.runPromise(
     Effect.gen(function* () {
       const fixture = yield* makeWatchFixture()
-      const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runCollect))
+      const fiber = yield* Effect.forkChild(
+        fixture.service.watch("/tmp/project").pipe(Stream.runCollect),
+        { startImmediately: true }
+      )
 
       yield* waitUntil(() => fixture.watchStarted)
-      yield* Effect.promise(() =>
-        fixture.emit({ _tag: "Update", path: "/tmp/project/audit\nlog.txt" })
-      )
+      yield* fixture.emit({ _tag: "Update", path: "/tmp/project/audit\nlog.txt" })
       const exit = yield* Effect.exit(Fiber.join(fiber))
 
       expectFailureTag(exit, "InvalidArgument")
@@ -699,10 +698,13 @@ test("Filesystem watch maps FileSystem errors into the stream failure channel", 
   Effect.runPromise(
     Effect.gen(function* () {
       const fixture = yield* makeWatchFixture()
-      const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runDrain))
+      const fiber = yield* Effect.forkChild(
+        fixture.service.watch("/tmp/project").pipe(Stream.runDrain),
+        { startImmediately: true }
+      )
 
       yield* waitUntil(() => fixture.watchStarted)
-      yield* Effect.promise(() => fixture.fail(makePermissionDeniedError()))
+      yield* fixture.fail(makePermissionDeniedError())
       const exit = yield* Effect.exit(Fiber.join(fiber))
 
       expectFailureTag(exit, "PermissionDenied")
@@ -713,14 +715,15 @@ test("Filesystem watch closes exactly once when the stream fiber is interrupted"
   Effect.runPromise(
     Effect.gen(function* () {
       const fixture = yield* makeWatchFixture()
-      const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runDrain))
+      const fiber = yield* Effect.forkChild(
+        fixture.service.watch("/tmp/project").pipe(Stream.runDrain),
+        { startImmediately: true }
+      )
 
       yield* waitUntil(() => fixture.watchStarted)
       yield* Fiber.interrupt(fiber)
       const afterInterrupt = yield* fixture.registry.list()
-      yield* Effect.promise(() =>
-        fixture.emit({ _tag: "Update", path: "/tmp/project/after-close.txt" })
-      )
+      yield* fixture.emit({ _tag: "Update", path: "/tmp/project/after-close.txt" })
 
       expect(fixture.closeCount).toBe(1)
       expect(afterInterrupt.entries).toEqual([])
@@ -731,9 +734,9 @@ test("Filesystem watch scope close does not wait for a busy downstream consumer"
   Effect.runPromise(
     Effect.gen(function* () {
       const fixture = yield* makeWatchFixture()
-      const consumerStarted = Effect.runSync(Deferred.make<void>())
-      const releaseConsumer = Effect.runSync(Deferred.make<void>())
-      const fiber = Effect.runFork(
+      const consumerStarted = yield* Deferred.make<void>()
+      const releaseConsumer = yield* Deferred.make<void>()
+      const fiber = yield* Effect.forkChild(
         fixture.service.watch("/tmp/project").pipe(
           Stream.mapEffect((event) =>
             Deferred.succeed(consumerStarted, undefined).pipe(
@@ -742,11 +745,12 @@ test("Filesystem watch scope close does not wait for a busy downstream consumer"
             )
           ),
           Stream.runDrain
-        )
+        ),
+        { startImmediately: true }
       )
 
       yield* waitUntil(() => fixture.watchStarted)
-      yield* Effect.promise(() => fixture.emit({ _tag: "Update", path: "/tmp/project/busy.txt" }))
+      yield* fixture.emit({ _tag: "Update", path: "/tmp/project/busy.txt" })
       yield* Deferred.await(consumerStarted)
       const closeResult = yield* fixture.registry
         .closeScope("scope-main")
@@ -763,7 +767,10 @@ test("Filesystem watch registers a scope-bound resource and closes on scope clos
   Effect.runPromise(
     Effect.gen(function* () {
       const fixture = yield* makeWatchFixture()
-      const fiber = Effect.runFork(fixture.service.watch("/tmp/project").pipe(Stream.runDrain))
+      const fiber = yield* Effect.forkChild(
+        fixture.service.watch("/tmp/project").pipe(Stream.runDrain),
+        { startImmediately: true }
+      )
 
       yield* waitUntil(() => fixture.watchStarted)
       const registered = yield* fixture.registry.list()
@@ -792,9 +799,18 @@ const makeTestFilesystem = (
 ): Effect.Effect<FilesystemApi> =>
   Effect.gen(function* () {
     const registry = yield* makeResourceRegistry()
-    return yield* makeFilesystem(registry, TEST_OWNER, options).pipe(
-      Effect.provide(fileSystemLayer)
-    )
+    return yield* runtimeProvide(makeFilesystem(registry, TEST_OWNER, options), fileSystemLayer)
+  })
+
+const runtimeProvide = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit as Exit.Exit<A, E | LE>
   })
 
 const recordingFileSystem = (calls: string[]): Layer.Layer<FileSystem.FileSystem> =>
@@ -979,7 +995,7 @@ const testFile = (calls: string[]): FileSystem.File => ({
 
 const testFileInfo = (overrides: Partial<FileSystem.File.Info> = {}): FileSystem.File.Info => ({
   type: "File",
-  mtime: Option.some(new Date(1)),
+  mtime: Option.some(DateTime.toDateUtc(DateTime.makeUnsafe(1))),
   atime: Option.none(),
   birthtime: Option.none(),
   dev: 1,
@@ -1029,63 +1045,64 @@ function allowFilesystemRoot(root: string): FilesystemPermissionPolicy {
 const collectOneWatchEvent = (options: {
   readonly existingPaths: ReadonlySet<string>
   readonly event: FileSystem.WatchEvent
-}): Effect.Effect<FilesystemEvent> =>
+}) =>
   Effect.gen(function* () {
     const fixture = yield* makeWatchFixture({ existingPaths: options.existingPaths })
-    const fiber = Effect.runFork(
-      fixture.service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect)
+    const fiber = yield* Effect.forkChild(
+      fixture.service.watch("/tmp/project").pipe(Stream.take(1), Stream.runCollect),
+      { startImmediately: true }
     )
 
     yield* waitUntil(() => fixture.watchStarted)
-    yield* Effect.promise(() => fixture.emit(options.event))
+    yield* fixture.emit(options.event)
     const events = yield* Fiber.join(fiber)
 
     const event = Array.from(events)[0]
     if (event === undefined) {
-      throw new Error("expected watch event")
+      return yield* new ExpectedWatchEventMissing()
     }
     return event
   })
+
+class ExpectedWatchEventMissing extends Schema.TaggedErrorClass<ExpectedWatchEventMissing>()(
+  "ExpectedWatchEventMissing",
+  {}
+) {}
 
 const makeWatchFixture = (
   options: {
     readonly existingPaths?: ReadonlySet<string>
   } = {}
-): Effect.Effect<{
-  readonly service: FilesystemApi
-  readonly registry: ResourceRegistryApi
-  readonly emit: (event: FileSystem.WatchEvent) => Promise<void>
-  readonly fail: (error: PlatformError.PlatformError) => Promise<void>
-  readonly watchStarted: boolean
-  readonly closeCount: number
-}> =>
+) =>
   Effect.gen(function* () {
     const watchQueue = yield* Queue.unbounded<FileSystem.WatchEvent, PlatformError.PlatformError>()
     let watchStarted = false
     let closeCount = 0
     const registry = yield* makeResourceRegistry()
-    const service = yield* makeFilesystem(registry, TEST_OWNER, {
-      permissions: { readRoots: ["/tmp/project"] }
-    }).pipe(
-      Effect.provide(
-        watchFixtureFileSystem(
-          watchQueue,
-          options.existingPaths ?? new Set(),
-          () => {
-            watchStarted = true
-          },
-          () => {
-            closeCount += 1
-          }
-        )
-      )
+    const fsLayer = watchFixtureFileSystem(
+      watchQueue,
+      options.existingPaths ?? new Set(),
+      () => {
+        watchStarted = true
+      },
+      () => {
+        closeCount += 1
+      }
+    )
+    const service = yield* runtimeProvide(
+      makeFilesystem(registry, TEST_OWNER, {
+        permissions: { readRoots: ["/tmp/project"] }
+      }),
+      fsLayer
     )
 
     return {
       service,
       registry,
-      emit: (event) => Effect.runPromise(Queue.offer(watchQueue, event).pipe(Effect.asVoid)),
-      fail: (error) => Effect.runPromise(Queue.fail(watchQueue, error).pipe(Effect.asVoid)),
+      emit: (event: FileSystem.WatchEvent): Effect.Effect<void> =>
+        Queue.offer(watchQueue, event).pipe(Effect.asVoid),
+      fail: (error: PlatformError.PlatformError): Effect.Effect<void> =>
+        Queue.fail(watchQueue, error).pipe(Effect.asVoid),
       get watchStarted() {
         return watchStarted
       },
@@ -1120,14 +1137,16 @@ const waitUntil = (predicate: () => boolean): Effect.Effect<void, WaitUntilTimeo
     Effect.mapError(() => new WaitUntilTimeout())
   )
 
-const pathExists = async (path: string): Promise<boolean> => {
-  try {
-    await nodeStat(path)
-    return true
-  } catch {
-    return false
-  }
-}
+const pathExists = (path: string): Effect.Effect<boolean> =>
+  Effect.tryPromise({
+    try: () => nodeStat(path),
+    catch: () => null
+  }).pipe(
+    Effect.match({
+      onFailure: () => false,
+      onSuccess: () => true
+    })
+  )
 
 function expectFailureTag(exit: Exit.Exit<unknown, unknown>, tag: string): void {
   expect(Exit.isFailure(exit)).toBe(true)
@@ -1158,38 +1177,41 @@ class ExpectedPermissionDeniedMissing extends Schema.TaggedErrorClass<ExpectedPe
   {}
 ) {}
 
-async function expectSymlinkEscapesRoot(
+const expectSymlinkEscapesRoot = (
   exit: Exit.Exit<unknown, unknown>,
   expected: {
     readonly requested: string
     readonly resolved: string
     readonly capabilityRoots: readonly string[]
   }
-): globalThis.Promise<void> {
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
-    const error = fail?.error as HostProtocolSymlinkEscapesRootError | undefined
-    expect(error?.requested).toBe(expected.requested)
-    if (error?.resolved !== undefined) {
-      await expectSameFilesystemEntry(error.resolved, expected.resolved)
-    }
-    expect(error?.capabilityRoots.length).toBe(expected.capabilityRoots.length)
-    for (let index = 0; index < expected.capabilityRoots.length; index += 1) {
-      const actualRoot = error?.capabilityRoots[index]
-      expect(actualRoot).toBeDefined()
-      if (actualRoot !== undefined) {
-        await expectSameFilesystemEntry(actualRoot, expected.capabilityRoots[index] ?? "")
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+      const error = fail?.error as HostProtocolSymlinkEscapesRootError | undefined
+      expect(error?.requested).toBe(expected.requested)
+      if (error?.resolved !== undefined) {
+        yield* expectSameFilesystemEntry(error.resolved, expected.resolved)
+      }
+      expect(error?.capabilityRoots.length).toBe(expected.capabilityRoots.length)
+      for (let index = 0; index < expected.capabilityRoots.length; index += 1) {
+        const actualRoot = error?.capabilityRoots[index]
+        expect(actualRoot).toBeDefined()
+        if (actualRoot !== undefined) {
+          yield* expectSameFilesystemEntry(actualRoot, expected.capabilityRoots[index] ?? "")
+        }
       }
     }
-  }
-}
+  })
 
-async function expectSameFilesystemEntry(
-  actual: string,
-  expected: string
-): globalThis.Promise<void> {
-  const [actualStat, expectedStat] = await Promise.all([nodeStat(actual), nodeStat(expected)])
-  expect(actualStat.dev).toBe(expectedStat.dev)
-  expect(actualStat.ino).toBe(expectedStat.ino)
-}
+const expectSameFilesystemEntry = (actual: string, expected: string): Effect.Effect<void> =>
+  Effect.promise(() => Promise.all([nodeStat(actual), nodeStat(expected)])).pipe(
+    Effect.tap(([actualStat, expectedStat]) =>
+      Effect.sync(() => {
+        expect(actualStat.dev).toBe(expectedStat.dev)
+        expect(actualStat.ino).toBe(expectedStat.ino)
+      })
+    ),
+    Effect.asVoid
+  )
