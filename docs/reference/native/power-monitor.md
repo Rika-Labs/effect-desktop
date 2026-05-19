@@ -27,7 +27,7 @@ implemented.
 
 ## Events
 
-The current TypeScript event streams are:
+The TypeScript event streams and Rust host-protocol event payload structs are:
 
 - `onSuspend()` emits `PowerMonitorSuspendEvent`.
 - `onResume()` emits `PowerMonitorResumeEvent`.

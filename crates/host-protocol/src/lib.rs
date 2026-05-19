@@ -2847,6 +2847,53 @@ impl PowerMonitorSupportedPayload {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PowerMonitorReasonEventPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+pub type PowerMonitorSuspendEventPayload = PowerMonitorReasonEventPayload;
+pub type PowerMonitorResumeEventPayload = PowerMonitorReasonEventPayload;
+pub type PowerMonitorShutdownEventPayload = PowerMonitorReasonEventPayload;
+pub type PowerMonitorLockScreenEventPayload = PowerMonitorReasonEventPayload;
+pub type PowerMonitorUnlockScreenEventPayload = PowerMonitorReasonEventPayload;
+
+impl PowerMonitorReasonEventPayload {
+    pub fn new(reason: Option<String>) -> Self {
+        Self { reason }
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PowerMonitorSourcePayload {
+    Ac,
+    Battery,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PowerMonitorSourceChangedEventPayload {
+    source: PowerMonitorSourcePayload,
+}
+
+impl PowerMonitorSourceChangedEventPayload {
+    pub fn new(source: PowerMonitorSourcePayload) -> Self {
+        Self { source }
+    }
+
+    pub fn source(&self) -> PowerMonitorSourcePayload {
+        self.source
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SystemAppearanceMethodPayload {
@@ -11767,18 +11814,20 @@ mod tests {
         NotificationActionEventPayload, NotificationActionPayload, NotificationClickEventPayload,
         NotificationPermissionPayload, NotificationPermissionStatePayload,
         NotificationResourcePayload, NotificationShowPayload, NotificationSupportedPayload,
-        PowerMonitorIsSupportedPayload, PowerMonitorMethodPayload, PowerMonitorSupportedPayload,
-        ProtocolDenyPayload, ProtocolRegisterAppProtocolPayload, ProtocolServeAssetPayload,
-        ProtocolServeRoutePayload, RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
-        RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
-        RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
-        RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
-        RealtimeMediaSessionInterruptPayload, RealtimeMediaSessionSelectDevicePayload,
-        RealtimeMediaSessionState, RealtimeMediaSessionStateEventPayload,
-        RealtimeMediaSessionSupportedPayload, RecentDocumentPayload, RecentDocumentsAddPayload,
-        RecentDocumentsEventPayload, RecentDocumentsEventPhasePayload,
-        RecentDocumentsListResultPayload, RendererResumeDeniedPayload, RendererResumeDeniedReason,
-        RendererResumePayload, RendererResumedPayload, ResidentLifecycleBackgroundAvailability,
+        PowerMonitorIsSupportedPayload, PowerMonitorMethodPayload, PowerMonitorReasonEventPayload,
+        PowerMonitorSourceChangedEventPayload, PowerMonitorSourcePayload,
+        PowerMonitorSupportedPayload, ProtocolDenyPayload, ProtocolRegisterAppProtocolPayload,
+        ProtocolServeAssetPayload, ProtocolServeRoutePayload, RealtimeMediaDeviceKind,
+        RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
+        RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
+        RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
+        RealtimeMediaSessionIdentityPayload, RealtimeMediaSessionInterruptPayload,
+        RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
+        RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
+        RecentDocumentPayload, RecentDocumentsAddPayload, RecentDocumentsEventPayload,
+        RecentDocumentsEventPhasePayload, RecentDocumentsListResultPayload,
+        RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
+        RendererResumedPayload, ResidentLifecycleBackgroundAvailability,
         ResidentLifecycleDisablePayload, ResidentLifecycleEnablePayload,
         ResidentLifecycleEventPayload, ResidentLifecycleEventPhase, ResidentLifecyclePolicyPayload,
         ResidentLifecycleProcessPolicy, ResidentLifecycleStatePayload,
@@ -12792,6 +12841,28 @@ mod tests {
             serde_json::to_string(&unsupported).expect("power monitor unsupported should encode"),
             r#"{"supported":false}"#
         );
+
+        let suspend = PowerMonitorReasonEventPayload::new(Some("sleep".to_string()));
+        assert_eq!(suspend.reason(), Some("sleep"));
+        assert_eq!(
+            serde_json::to_string(&suspend).expect("power monitor reason event should encode"),
+            r#"{"reason":"sleep"}"#
+        );
+
+        let resume = PowerMonitorReasonEventPayload::new(None);
+        assert_eq!(resume.reason(), None);
+        assert_eq!(
+            serde_json::to_string(&resume).expect("power monitor empty reason event should encode"),
+            r#"{}"#
+        );
+
+        let source = PowerMonitorSourceChangedEventPayload::new(PowerMonitorSourcePayload::Battery);
+        assert_eq!(source.source(), PowerMonitorSourcePayload::Battery);
+        assert_eq!(
+            serde_json::to_string(&source)
+                .expect("power monitor source changed event should encode"),
+            r#"{"source":"battery"}"#
+        );
     }
 
     #[test]
@@ -12817,6 +12888,17 @@ mod tests {
         )
         .expect_err("excess power monitor support field should be rejected");
         assert!(error.to_string().contains("unknown field `watch`"));
+
+        let error = serde_json::from_str::<PowerMonitorReasonEventPayload>(
+            r#"{"reason":"sleep","timestamp":1710000000000}"#,
+        )
+        .expect_err("excess power monitor event field should be rejected");
+        assert!(error.to_string().contains("unknown field `timestamp`"));
+
+        let error =
+            serde_json::from_str::<PowerMonitorSourceChangedEventPayload>(r#"{"source":"ups"}"#)
+                .expect_err("unknown power source should be rejected");
+        assert!(error.to_string().contains("unknown variant `ups`"));
     }
 
     #[test]
