@@ -13,9 +13,11 @@ paths, launch context, and environment-shape reads.
 
 The TypeScript surface is present for contract and bridge-client validation.
 The Rust host implements `App.quit` by requesting event-loop exit and
-`App.focus` by focusing the current native window. Process restart, single
-instance coordination, and native lifecycle event sources are still unsupported
-until the host owns those lifecycle controls.
+`App.focus` by focusing the current native window. The Rust host also
+implements `App.requestSingleInstanceLock` with a process-held OS file lock and
+returns the primary process id when another process already owns the lock.
+Process restart, second-instance handoff, and native lifecycle event sources
+are still unsupported until the host owns those lifecycle controls.
 `Association` owns OS-level protocol and file association contracts.
 `Autostart` owns open-at-login and login-item operations.
 
@@ -26,7 +28,7 @@ until the host owns those lifecycle controls.
 | `quit`                      | `void`                    | supported       |
 | `restart`                   | `void`                    | unsupported     |
 | `focus`                     | `void`                    | supported       |
-| `requestSingleInstanceLock` | `AppSingleInstanceResult` | unsupported     |
+| `requestSingleInstanceLock` | `AppSingleInstanceResult` | supported       |
 
 ## Events
 
@@ -34,7 +36,7 @@ The current TypeScript event streams are `onSecondInstance`, `onOpenFile`,
 `onOpenUrl`, and `onBeforeQuit`. `onSecondInstance` events carry `argv`, `cwd`,
 `activationReason`, and `traceId`; `activationReason` is `"launch"`,
 `"open-file"`, `"open-url"`, or `"unknown"`. Native event delivery is currently
-unsupported until the host adapter exists.
+unsupported until the second-instance handoff adapter exists.
 
 `onOpenUrl` requires a syntactically valid URL with no ASCII control characters
 and rejects dangerous schemes before application code receives the event:

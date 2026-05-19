@@ -63,12 +63,14 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
     hostStatus: "routed",
     support: { status: "supported" }
   })
-  for (const tag of ["App.requestSingleInstanceLock", "App.restart"]) {
-    expect(result.rows.find((row) => row.tag === tag)).toMatchObject({
-      hostStatus: "routed",
-      support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-    })
-  }
+  expect(result.rows.find((row) => row.tag === "App.requestSingleInstanceLock")).toMatchObject({
+    hostStatus: "routed",
+    support: { status: "supported" }
+  })
+  expect(result.rows.find((row) => row.tag === "App.restart")).toMatchObject({
+    hostStatus: "routed",
+    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
+  })
   expect(result.rows.find((row) => row.tag === "Clipboard.readText")).toMatchObject({
     hostStatus: "routed",
     support: { status: "supported" }

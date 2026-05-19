@@ -24,7 +24,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `ActivationRegistry`        | `unregisterSurface`         | `supported`   | `ActivationRegistry.unregisterSurface`    | `routed`    |
 | `App`                       | `focus`                     | `supported`   | `App.focus`                               | `routed`    |
 | `App`                       | `quit`                      | `supported`   | `App.quit`                                | `routed`    |
-| `App`                       | `requestSingleInstanceLock` | `unsupported` | `App.requestSingleInstanceLock`           | `routed`    |
+| `App`                       | `requestSingleInstanceLock` | `supported`   | `App.requestSingleInstanceLock`           | `routed`    |
 | `App`                       | `restart`                   | `unsupported` | `App.restart`                             | `routed`    |
 | `AppMetadata`               | `getInfo`                   | `supported`   | `AppMetadata.getInfo`                     | `routed`    |
 | `AppMetadata`               | `getLaunchContext`          | `supported`   | `AppMetadata.getLaunchContext`            | `routed`    |

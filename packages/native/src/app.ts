@@ -65,7 +65,8 @@ export const AppRequestSingleInstanceLock = appRpc(
   "requestSingleInstanceLock",
   Schema.Void,
   AppSingleInstanceOutput,
-  P.nativeInvoke({ primitive: "App", methods: ["requestSingleInstanceLock"] })
+  P.nativeInvoke({ primitive: "App", methods: ["requestSingleInstanceLock"] }),
+  AppSupported
 )
 export const AppRpcEvents = Object.freeze({
   onSecondInstance: { payload: AppSecondInstanceEvent },

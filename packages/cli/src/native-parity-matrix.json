@@ -66,25 +66,7 @@
       "method": "requestSingleInstanceLock",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4180,8 +4162,8 @@
     "total": 234,
     "routed": 234,
     "missing": 0,
-    "supported": 130,
+    "supported": 131,
     "partial": 38,
-    "unsupported": 66
+    "unsupported": 65
   }
 }
