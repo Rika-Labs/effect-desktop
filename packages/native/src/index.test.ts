@@ -39,6 +39,7 @@ import {
   WINDOW_SET_TITLE_BAR_STYLE_METHOD,
   WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
   WINDOW_SET_TITLE_METHOD,
+  WINDOW_SET_TRANSPARENT_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
   WINDOW_SET_VIBRANCY_METHOD,
   WINDOW_SHOW_METHOD,
@@ -757,6 +758,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "setShadow",
   "setTitleBarStyle",
   "setTitleBarTransparent",
+  "setTransparent",
   "setAlwaysOnTop",
   "setSkipTaskbar",
   "setProgress",
@@ -8324,6 +8326,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setShadow",
     "Window.setTitleBarStyle",
     "Window.setTitleBarTransparent",
+    "Window.setTransparent",
     "Window.setAlwaysOnTop",
     "Window.setSkipTaskbar",
     "Window.setProgress",
@@ -8365,6 +8368,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.setShadow"]
     void client["Window.setTitleBarStyle"]
     void client["Window.setTitleBarTransparent"]
+    void client["Window.setTransparent"]
     void client["Window.setAlwaysOnTop"]
     void client["Window.setSkipTaskbar"]
     void client["Window.setProgress"]
@@ -8404,6 +8408,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setShadow",
     "Window.setTitleBarStyle",
     "Window.setTitleBarTransparent",
+    "Window.setTransparent",
     "Window.setAlwaysOnTop",
     "Window.setSkipTaskbar",
     "Window.setProgress",
@@ -8532,6 +8537,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       recordVoid(calls, `setTitleBarStyle:${titleBarStyle}`),
     setTitleBarTransparent: (_window, titleBarTransparent) =>
       recordVoid(calls, `setTitleBarTransparent:${titleBarTransparent}`),
+    setTransparent: (_window, transparent) => recordVoid(calls, `setTransparent:${transparent}`),
     setAlwaysOnTop: (_window, alwaysOnTop) => recordVoid(calls, `setAlwaysOnTop:${alwaysOnTop}`),
     setSkipTaskbar: (_window, skipTaskbar) => recordVoid(calls, `setSkipTaskbar:${skipTaskbar}`),
     setProgress: (_window, input) => recordVoid(calls, `setProgress:${input.progress ?? ""}`),
@@ -8594,6 +8600,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.setShadow(created, false)
       yield* window.setTitleBarStyle(created, "hiddenInset")
       yield* window.setTitleBarTransparent(created, true)
+      yield* window.setTransparent(created, true)
       yield* window.setAlwaysOnTop(created, true)
       yield* window.setSkipTaskbar(created, true)
       yield* window.setProgress(created, { state: "normal", progress: 42 })
@@ -8657,6 +8664,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "setShadow:false",
     "setTitleBarStyle:hiddenInset",
     "setTitleBarTransparent:true",
+    "setTransparent:true",
     "setAlwaysOnTop:true",
     "setSkipTaskbar:true",
     "setProgress:42",
@@ -8717,6 +8725,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-shadow-request",
       "set-title-bar-style-request",
       "set-title-bar-transparent-request",
+      "set-transparent-request",
       "set-always-on-top-request",
       "set-skip-taskbar-request",
       "set-progress-request",
@@ -8748,6 +8757,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-shadow-trace",
       "set-title-bar-style-trace",
       "set-title-bar-transparent-trace",
+      "set-transparent-trace",
       "set-always-on-top-trace",
       "set-skip-taskbar-trace",
       "set-progress-trace",
@@ -8767,7 +8777,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
       1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019,
       1_710_000_000_020, 1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024,
-      1_710_000_000_025, 1_710_000_000_026, 1_710_000_000_027, 1_710_000_000_028
+      1_710_000_000_025, 1_710_000_000_026, 1_710_000_000_027, 1_710_000_000_028, 1_710_000_000_029
     ])
   })
   const program = Effect.gen(function* () {
@@ -8800,6 +8810,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     yield* window.setShadow(created, false)
     yield* window.setTitleBarStyle(created, "hiddenInset")
     yield* window.setTitleBarTransparent(created, true)
+    yield* window.setTransparent(created, true)
     yield* window.setAlwaysOnTop(created, true)
     yield* window.setSkipTaskbar(created, true)
     yield* window.setProgress(created, {
@@ -8967,6 +8978,13 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       {
         windowId: "host-window-1",
         titleBarTransparent: true
+      }
+    ],
+    [
+      WINDOW_SET_TRANSPARENT_METHOD,
+      {
+        windowId: "host-window-1",
+        transparent: true
       }
     ],
     [
@@ -10896,6 +10914,7 @@ test("host WindowClient adapter exposes only supported callable methods", async 
   expect("setShadow" in client).toBe(true)
   expect("setTitleBarStyle" in client).toBe(true)
   expect("setTitleBarTransparent" in client).toBe(true)
+  expect("setTransparent" in client).toBe(true)
 })
 
 test("Window bridge client rejects invalid chrome inputs before crossing the host boundary", async () => {
@@ -12125,6 +12144,7 @@ const noopWindowClient: WindowClientApi = {
   setShadow: () => Effect.void,
   setTitleBarStyle: () => Effect.void,
   setTitleBarTransparent: () => Effect.void,
+  setTransparent: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
   setSkipTaskbar: () => Effect.void,
   setProgress: () => Effect.void,

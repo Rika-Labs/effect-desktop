@@ -186,6 +186,13 @@ pub(crate) fn set_title_bar_transparent(
     platform::set_title_bar_transparent(window, title_bar_transparent)
 }
 
+pub(crate) fn set_transparent(
+    window: &Window,
+    transparent: bool,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_transparent(window, transparent)
+}
+
 pub(crate) fn set_dock_badge_label(
     window: &Window,
     label: Option<String>,
@@ -260,7 +267,7 @@ mod platform {
     };
     use objc2::rc::Retained;
     use objc2_app_kit::{
-        NSScreen, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTitleVisibility,
+        NSColor, NSScreen, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTitleVisibility,
     };
     use std::ptr::NonNull;
     use tao::{
@@ -376,7 +383,7 @@ mod platform {
         window: &Window,
         title_bar_style: WindowTitleBarStyle,
     ) -> std::result::Result<(), HostProtocolError> {
-        let ns_window = ns_window(window)?;
+        let ns_window = ns_window(window, host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD)?;
         match title_bar_style {
             WindowTitleBarStyle::Default => {
                 set_style_mask(ns_window, |mask| {
@@ -433,12 +440,30 @@ mod platform {
         Ok(())
     }
 
-    fn ns_window(window: &Window) -> std::result::Result<&NSWindow, HostProtocolError> {
+    pub(super) fn set_transparent(
+        window: &Window,
+        transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let ns_window = ns_window(window, host_protocol::WINDOW_SET_TRANSPARENT_METHOD)?;
+        ns_window.setOpaque(!transparent);
+        let color = if transparent {
+            NSColor::clearColor()
+        } else {
+            NSColor::windowBackgroundColor()
+        };
+        ns_window.setBackgroundColor(Some(&color));
+        Ok(())
+    }
+
+    fn ns_window<'window>(
+        window: &'window Window,
+        operation: &'static str,
+    ) -> std::result::Result<&'window NSWindow, HostProtocolError> {
         let pointer = window.ns_window();
         let Some(pointer) = NonNull::new(pointer) else {
             return Err(HostProtocolError::internal(
                 "tao returned a null NSWindow pointer",
-                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+                operation,
             ));
         };
 
@@ -708,6 +733,16 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "window titlebar transparency is only supported on macOS",
             host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+        ))
+    }
+
+    pub(super) fn set_transparent(
+        _window: &Window,
+        _transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window transparency is only supported on macOS",
+            host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
         ))
     }
 

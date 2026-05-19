@@ -566,6 +566,7 @@ const makeWindowClient = (
   setShadow: () => Effect.void,
   setTitleBarStyle: () => Effect.void,
   setTitleBarTransparent: () => Effect.void,
+  setTransparent: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
   setSkipTaskbar: () => Effect.void,
   setProgress: () => Effect.void,

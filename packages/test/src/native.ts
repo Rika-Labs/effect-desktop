@@ -445,6 +445,7 @@ const makeWindowScenario = (
       _window,
       _titleBarTransparent
     ): Effect.Effect<void, WindowError, never> => Effect.void,
+    setTransparent: (_window, _transparent): Effect.Effect<void, WindowError, never> => Effect.void,
     setAlwaysOnTop: (_window, _alwaysOnTop): Effect.Effect<void, WindowError, never> => Effect.void,
     setSkipTaskbar: (_window, _skipTaskbar): Effect.Effect<void, WindowError, never> => Effect.void,
     setProgress: (_window, _input): Effect.Effect<void, WindowError, never> => Effect.void,

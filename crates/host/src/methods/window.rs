@@ -11,7 +11,8 @@ use host_protocol::{
     WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
     WindowSetShadowPayload, WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
     WindowSetTitleBarStylePayload, WindowSetTitleBarTransparentPayload, WindowSetTitlePayload,
-    WindowSetTrafficLightsPayload, WindowSetVibrancyPayload, WindowStatePayload,
+    WindowSetTrafficLightsPayload, WindowSetTransparentPayload, WindowSetVibrancyPayload,
+    WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -254,6 +255,16 @@ pub(crate) fn set_title_bar_transparent(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_title_bar_transparent_payload(payload)?;
     handler.set_title_bar_transparent(payload.window_id(), payload.title_bar_transparent())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_transparent(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_transparent_payload(payload)?;
+    handler.set_transparent(payload.window_id(), payload.transparent())?;
 
     Ok(None)
 }
@@ -863,6 +874,43 @@ fn decode_set_title_bar_transparent_payload(
             "payload",
             "windowId must be non-empty",
             host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_transparent_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetTransparentPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_transparent_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_TRANSPARENT_METHOD
+            ),
+            host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
+        )),
+    }
+}
+
+fn decode_set_transparent_payload(
+    payload: Value,
+) -> Result<WindowSetTransparentPayload, HostProtocolError> {
+    let payload: WindowSetTransparentPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
         ));
     }
     Ok(payload)

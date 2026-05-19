@@ -191,6 +191,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         title_bar_transparent: bool,
     ) -> std::result::Result<(), HostProtocolError>;
 
+    fn set_transparent(
+        &self,
+        window_id: &str,
+        transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
     fn set_always_on_top(
         &self,
         window_id: &str,
@@ -450,6 +456,11 @@ enum WindowCommand {
     SetTitleBarTransparent {
         window_id: String,
         title_bar_transparent: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTransparent {
+        window_id: String,
+        transparent: bool,
         reply: Sender<WindowCommandReply>,
     },
     SetAlwaysOnTop {
@@ -1222,6 +1233,21 @@ impl WindowMethodHandler for WindowMethodPort {
             reply_rx,
             host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
         )
+    }
+
+    fn set_transparent(
+        &self,
+        window_id: &str,
+        transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTransparent {
+            window_id: window_id.to_string(),
+            transparent,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_TRANSPARENT_METHOD)
     }
 
     fn set_always_on_top(
@@ -2542,6 +2568,21 @@ impl WindowRegistry {
         macos::set_title_bar_style(&resources._window, title_bar_style)
     }
 
+    fn set_transparent(
+        &self,
+        window_id: &str,
+        transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
+            ));
+        };
+
+        macos::set_transparent(&resources._window, transparent)
+    }
+
     fn set_always_on_top(
         &self,
         window_id: &str,
@@ -3519,6 +3560,17 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_title_bar_transparent(&window_id, title_bar_transparent)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTransparent {
+                window_id,
+                transparent,
+                reply,
+            } => {
+                let result = self
+                    .set_transparent(&window_id, transparent)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other

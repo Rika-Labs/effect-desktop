@@ -70,6 +70,7 @@ import {
   type WindowTitleBarStyleValue,
   WindowTitleBarTransparentInput,
   WindowTitleInput,
+  WindowTransparentInput,
   WindowTrafficLightsInput,
   WindowVibrancyInput,
   type WindowVibrancyMaterialInput
@@ -145,6 +146,15 @@ const WindowTitleBarTransparentSupport = NativeSurface.support.partial(
     ]
   }
 ) satisfies RpcSupportMetadata
+const WindowTransparentMacosOnlyReason = "window-transparency-macos-only"
+
+const WindowTransparentSupport = NativeSurface.support.partial(WindowTransparentMacosOnlyReason, {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: WindowTransparentMacosOnlyReason },
+    { platform: "linux", status: "unsupported", reason: WindowTransparentMacosOnlyReason }
+  ]
+}) satisfies RpcSupportMetadata
 const WindowSimpleFullscreenMacosOnlyReason = "simple-fullscreen-macos-only"
 
 const WindowSimpleFullscreenSupport = NativeSurface.support.partial(
@@ -325,6 +335,13 @@ export const WindowSetTitleBarTransparent = windowRpc(
   P.nativeInvoke({ primitive: "Window", methods: ["setTitleBarTransparent"] }),
   WindowTitleBarTransparentSupport
 )
+export const WindowSetTransparent = windowRpc(
+  "setTransparent",
+  WindowTransparentInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setTransparent"] }),
+  WindowTransparentSupport
+)
 export const WindowSetAlwaysOnTop = windowRpc(
   "setAlwaysOnTop",
   WindowAlwaysOnTopInput,
@@ -426,6 +443,7 @@ const makeWindowRpcGroup = () =>
     WindowSetShadow,
     WindowSetTitleBarStyle,
     WindowSetTitleBarTransparent,
+    WindowSetTransparent,
     WindowSetAlwaysOnTop,
     WindowSetSkipTaskbar,
     WindowSetProgress,
@@ -484,6 +502,7 @@ export const WindowMethodNames = Object.freeze([
   "setShadow",
   "setTitleBarStyle",
   "setTitleBarTransparent",
+  "setTransparent",
   "setAlwaysOnTop",
   "setSkipTaskbar",
   "setProgress",
@@ -560,6 +579,10 @@ export interface WindowClientApi {
   readonly setTitleBarTransparent: (
     window: WindowHandle,
     titleBarTransparent: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setTransparent: (
+    window: WindowHandle,
+    transparent: boolean
   ) => Effect.Effect<void, WindowError, never>
   readonly setAlwaysOnTop: (
     window: WindowHandle,
@@ -764,6 +787,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       yield* window.setTitleBarTransparent(input.window, input.titleBarTransparent)
     }),
+  "Window.setTransparent": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setTransparent(input.window, input.transparent)
+    }),
   "Window.setAlwaysOnTop": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -881,6 +909,7 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     setTitleBarStyle: (window, titleBarStyle) => client.setTitleBarStyle(window, titleBarStyle),
     setTitleBarTransparent: (window, titleBarTransparent) =>
       client.setTitleBarTransparent(window, titleBarTransparent),
+    setTransparent: (window, transparent) => client.setTransparent(window, transparent),
     setAlwaysOnTop: (window, alwaysOnTop) => client.setAlwaysOnTop(window, alwaysOnTop),
     setSkipTaskbar: (window, skipTaskbar) => client.setSkipTaskbar(window, skipTaskbar),
     setProgress: (window, input) => client.setProgress(window, input),
@@ -1078,6 +1107,15 @@ function windowClientFromRpcClient(
           client["Window.setTitleBarTransparent"](decoded),
           "Window.setTitleBarTransparent"
         )
+      }),
+    setTransparent: (window, transparent) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowTransparentInput(
+          window,
+          transparent,
+          "Window.setTransparent"
+        )
+        yield* runWindowRpc(client["Window.setTransparent"](decoded), "Window.setTransparent")
       }),
     setAlwaysOnTop: (window, alwaysOnTop) =>
       Effect.gen(function* () {
@@ -1296,6 +1334,20 @@ const decodeWindowTitleBarTransparentInput = (
 ): Effect.Effect<WindowTitleBarTransparentInput, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowTitleBarTransparentInput)(
     { window, titleBarTransparent },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowTransparentInput = (
+  window: WindowHandle,
+  transparent: boolean,
+  operation: string
+): Effect.Effect<WindowTransparentInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowTransparentInput)(
+    { window, transparent },
     StrictParseOptions
   ).pipe(
     Effect.mapError((error) =>
@@ -1928,6 +1980,15 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           "Window.setTitleBarTransparent"
         )
         yield* host.setTitleBarTransparent(window.id, input.titleBarTransparent)
+      }),
+    "Window.setTransparent": (input: WindowTransparentInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setTransparent"
+        )
+        yield* host.setTransparent(window.id, input.transparent)
       }),
     "Window.setAlwaysOnTop": (input: WindowAlwaysOnTopInput) =>
       Effect.gen(function* () {

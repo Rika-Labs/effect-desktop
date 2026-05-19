@@ -264,6 +264,13 @@ export class WindowTitleBarTransparentInput extends Schema.Class<WindowTitleBarT
   titleBarTransparent: Schema.Boolean
 }) {}
 
+export class WindowTransparentInput extends Schema.Class<WindowTransparentInput>(
+  "WindowTransparentInput"
+)({
+  window: WindowResource,
+  transparent: Schema.Boolean
+}) {}
+
 export class WindowScaleFactorOutput extends Schema.Class<WindowScaleFactorOutput>(
   "WindowScaleFactorOutput"
 )({

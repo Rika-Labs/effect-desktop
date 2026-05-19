@@ -4219,6 +4219,33 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setTransparent",
+      "surface": "Window",
+      "method": "setTransparent",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "window-transparency-macos-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "window-transparency-macos-only"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "window-transparency-macos-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.setVibrancy",
       "surface": "Window",
       "method": "setVibrancy",
@@ -4308,11 +4335,11 @@
     }
   ],
   "summary": {
-    "total": 237,
-    "routed": 237,
+    "total": 238,
+    "routed": 238,
     "missing": 0,
     "supported": 127,
-    "partial": 52,
+    "partial": 53,
     "unsupported": 58
   }
 }

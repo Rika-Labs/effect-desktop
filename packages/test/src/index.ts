@@ -57,6 +57,8 @@ import {
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_SHADOW_METHOD,
   WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+  WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+  WINDOW_SET_TRANSPARENT_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
   WINDOW_SET_VIBRANCY_METHOD,
@@ -258,6 +260,8 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           request.method === WINDOW_CLEAR_VIBRANCY_METHOD ||
           request.method === WINDOW_SET_SHADOW_METHOD ||
           request.method === WINDOW_SET_TITLE_BAR_STYLE_METHOD ||
+          request.method === WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD ||
+          request.method === WINDOW_SET_TRANSPARENT_METHOD ||
           request.method === WINDOW_SET_ALWAYS_ON_TOP_METHOD ||
           request.method === WINDOW_SET_PROGRESS_METHOD ||
           request.method === WINDOW_REQUEST_ATTENTION_METHOD ||
@@ -857,6 +861,7 @@ export const runHeadless = <A, E, R>(
           rawWindow.setTitleBarStyle(windowId, titleBarStyle),
         setTitleBarTransparent: (windowId, titleBarTransparent) =>
           rawWindow.setTitleBarTransparent(windowId, titleBarTransparent),
+        setTransparent: (windowId, transparent) => rawWindow.setTransparent(windowId, transparent),
         setAlwaysOnTop: (windowId, alwaysOnTop) => rawWindow.setAlwaysOnTop(windowId, alwaysOnTop),
         setSkipTaskbar: (windowId, skipTaskbar) => rawWindow.setSkipTaskbar(windowId, skipTaskbar),
         setProgress: (windowId, input) => rawWindow.setProgress(windowId, input),
@@ -968,6 +973,8 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_CLEAR_VIBRANCY_METHOD:
     case WINDOW_SET_SHADOW_METHOD:
     case WINDOW_SET_TITLE_BAR_STYLE_METHOD:
+    case WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD:
+    case WINDOW_SET_TRANSPARENT_METHOD:
     case WINDOW_SET_ALWAYS_ON_TOP_METHOD:
     case WINDOW_SET_PROGRESS_METHOD:
     case WINDOW_REQUEST_ATTENTION_METHOD:

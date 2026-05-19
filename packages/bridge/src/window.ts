@@ -36,6 +36,7 @@ import {
   WINDOW_SET_TITLE_BAR_STYLE_METHOD,
   WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
   WINDOW_SET_TITLE_METHOD,
+  WINDOW_SET_TRANSPARENT_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
   WINDOW_SET_VIBRANCY_METHOD,
   WINDOW_SHOW_METHOD,
@@ -256,6 +257,13 @@ export class WindowSetTitleBarTransparentPayload extends Schema.Class<WindowSetT
   titleBarTransparent: Schema.Boolean
 }) {}
 
+export class WindowSetTransparentPayload extends Schema.Class<WindowSetTransparentPayload>(
+  "WindowSetTransparentPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  transparent: Schema.Boolean
+}) {}
+
 export class WindowSetAlwaysOnTopPayload extends Schema.Class<WindowSetAlwaysOnTopPayload>(
   "WindowSetAlwaysOnTopPayload"
 )({
@@ -400,6 +408,10 @@ export interface HostWindowClient {
   readonly setTitleBarTransparent: (
     windowId: string,
     titleBarTransparent: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setTransparent: (
+    windowId: string,
+    transparent: boolean
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly setAlwaysOnTop: (
     windowId: string,
@@ -617,6 +629,14 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
+    setTransparent: (windowId, transparent) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetTransparentPayload(windowId, transparent)
+        const request = yield* makeRequest(WINDOW_SET_TRANSPARENT_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     setAlwaysOnTop: (windowId, alwaysOnTop) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetAlwaysOnTopPayload(windowId, alwaysOnTop)
@@ -769,6 +789,9 @@ const decodeUnknownWindowSetTitleBarStylePayload = Schema.decodeUnknownSync(
 const decodeUnknownWindowSetTitleBarTransparentPayload = Schema.decodeUnknownSync(
   WindowSetTitleBarTransparentPayload
 )
+const decodeUnknownWindowSetTransparentPayload = Schema.decodeUnknownSync(
+  WindowSetTransparentPayload
+)
 const decodeUnknownWindowSetAlwaysOnTopPayload = Schema.decodeUnknownSync(
   WindowSetAlwaysOnTopPayload
 )
@@ -914,6 +937,16 @@ const encodeSetTitleBarTransparentPayload = (
         StrictParseOptions
       ),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD)
+  })
+
+const encodeSetTransparentPayload = (
+  windowId: string,
+  transparent: boolean
+): Effect.Effect<WindowSetTransparentPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetTransparentPayload({ windowId, transparent }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_TRANSPARENT_METHOD)
   })
 
 const encodeSetAlwaysOnTopPayload = (

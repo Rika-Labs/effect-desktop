@@ -55,6 +55,7 @@ import {
 | `setShadow`              | `WindowShadowInput`              | `void`               | Enable or disable the macOS native window shadow.                   |
 | `setTitleBarStyle`       | `WindowTitleBarStyleInput`       | `void`               | Apply a macOS titlebar style.                                       |
 | `setTitleBarTransparent` | `WindowTitleBarTransparentInput` | `void`               | Enable or disable macOS transparent titlebar drawing.               |
+| `setTransparent`         | `WindowTransparentInput`         | `void`               | Enable or disable macOS window transparency.                        |
 | `setAlwaysOnTop`         | `WindowAlwaysOnTopInput`         | `void`               | Enable or disable always-on-top z-order.                            |
 | `setSkipTaskbar`         | `WindowSkipTaskbarInput`         | `void`               | Hide or show a window in the taskbar where supported.               |
 | `setProgress`            | `WindowProgressInput`            | `void`               | Set host task progress state for the window.                        |
@@ -69,7 +70,7 @@ import {
 | `close`                  | `WindowHandle`                   | `void`               | Compatibility name for `destroy`.                                   |
 | `destroy`                | `WindowHandle`                   | `void`               | Destroy a native window and close its scope.                        |
 
-`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getParent", "getChildren", "getBounds", "setBounds", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setVibrancy", "clearVibrancy", "setShadow", "setTitleBarStyle", "setTitleBarTransparent", "setAlwaysOnTop", "setSkipTaskbar", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "setSimpleFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights`, `setVibrancy`, `clearVibrancy`, `setShadow`, `setTitleBarStyle`, `setTitleBarTransparent`, and `setSimpleFullscreen` are macOS-only and return typed `Unsupported` on other hosts. `setSkipTaskbar` is supported on Windows and Linux and returns typed `Unsupported` on macOS. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
+`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getParent", "getChildren", "getBounds", "setBounds", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setVibrancy", "clearVibrancy", "setShadow", "setTitleBarStyle", "setTitleBarTransparent", "setTransparent", "setAlwaysOnTop", "setSkipTaskbar", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "setSimpleFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights`, `setVibrancy`, `clearVibrancy`, `setShadow`, `setTitleBarStyle`, `setTitleBarTransparent`, `setTransparent`, and `setSimpleFullscreen` are macOS-only and return typed `Unsupported` on other hosts. `setSkipTaskbar` is supported on Windows and Linux and returns typed `Unsupported` on macOS. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
 The placement surface is not complete. `getBounds`, `setBounds`, and `center`
 are host-routed logical-coordinate operations. `centerOnDisplay` uses the host's
@@ -91,12 +92,13 @@ accepts, and `clearVibrancy` removes the macOS `NSVisualEffectView` installed by
 the vibrancy adapter. Both return typed `Unsupported` on non-macOS hosts.
 `setTitleBarStyle` mutates macOS AppKit titlebar style state with the same
 validated style literals accepted by `Window.create({ titleBarStyle })`. Effect
-Desktop does not yet expose a `WindowChrome` service, general window
-transparency controls, or a complete platform support matrix for those chrome
-features. `setShadow` mutates the macOS native window shadow through Tao and
-returns typed `Unsupported` on Windows and Linux. `setTitleBarTransparent`
-mutates the macOS titlebar background drawing flag through Tao and returns typed
-`Unsupported` on Windows and Linux.
+Desktop does not yet expose a `WindowChrome` service or a complete platform
+support matrix for those chrome features. `setShadow` mutates the macOS native
+window shadow through Tao and returns typed `Unsupported` on Windows and Linux.
+`setTitleBarTransparent` mutates the macOS titlebar background drawing flag
+through Tao and returns typed `Unsupported` on Windows and Linux.
+`setTransparent` mutates macOS AppKit window opacity and background-color state
+and returns typed `Unsupported` on Windows and Linux.
 
 The state surface has command, read, and state-event support for host-tracked
 minimized, maximized, fullscreen, and simple-fullscreen booleans. `minimize`,
@@ -134,7 +136,7 @@ This is not a complete modal ownership API. Effect Desktop does not yet expose a
 `WindowOwnership` service, runtime `setParent`, modal enable/disable, owner
 lookup, or a host event stream dedicated to ownership changes.
 
-Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, mutable titlebar style, vibrancy clearing, transparency, portable traffic-light placement beyond macOS, non-macOS shadow controls, macOS skip-taskbar behavior, badge, flash, blur, OS-originated simple-fullscreen change events, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
+Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, portable traffic-light placement beyond macOS, non-macOS shadow and transparency controls, macOS skip-taskbar behavior, badge, flash, blur, OS-originated simple-fullscreen change events, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
 
 ## Errors
 

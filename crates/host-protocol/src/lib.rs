@@ -68,6 +68,7 @@ pub const WINDOW_CLEAR_VIBRANCY_METHOD: &str = "Window.clearVibrancy";
 pub const WINDOW_SET_SHADOW_METHOD: &str = "Window.setShadow";
 pub const WINDOW_SET_TITLE_BAR_STYLE_METHOD: &str = "Window.setTitleBarStyle";
 pub const WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD: &str = "Window.setTitleBarTransparent";
+pub const WINDOW_SET_TRANSPARENT_METHOD: &str = "Window.setTransparent";
 pub const WINDOW_SET_ALWAYS_ON_TOP_METHOD: &str = "Window.setAlwaysOnTop";
 pub const WINDOW_SET_SKIP_TASKBAR_METHOD: &str = "Window.setSkipTaskbar";
 pub const WINDOW_SET_PROGRESS_METHOD: &str = "Window.setProgress";
@@ -3749,6 +3750,30 @@ impl WindowSetTitleBarTransparentPayload {
 
     pub fn title_bar_transparent(&self) -> bool {
         self.title_bar_transparent
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetTransparentPayload {
+    window_id: String,
+    transparent: bool,
+}
+
+impl WindowSetTransparentPayload {
+    pub fn new(window_id: impl Into<String>, transparent: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            transparent,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn transparent(&self) -> bool {
+        self.transparent
     }
 }
 
@@ -11999,11 +12024,11 @@ mod tests {
         WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSimpleFullscreenPayload,
         WindowSetSkipTaskbarPayload, WindowSetTitleBarStylePayload,
         WindowSetTitleBarTransparentPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
-        WindowSetVibrancyPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
-        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
-        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
-        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
-        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowSetTransparentPayload, WindowSetVibrancyPayload, WindowStateEventPayload,
+        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
+        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
+        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
+        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
         CRASH_REPORTER_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS,
@@ -13440,6 +13465,15 @@ mod tests {
             serde_json::to_string(&set_title_bar_transparent)
                 .expect("window set title bar transparent payload should encode"),
             r#"{"windowId":"window-1","titleBarTransparent":true}"#
+        );
+
+        let set_transparent = WindowSetTransparentPayload::new("window-1", true);
+        assert_eq!(set_transparent.window_id(), "window-1");
+        assert!(set_transparent.transparent());
+        assert_eq!(
+            serde_json::to_string(&set_transparent)
+                .expect("window set transparent payload should encode"),
+            r#"{"windowId":"window-1","transparent":true}"#
         );
 
         let set_always_on_top = WindowSetAlwaysOnTopPayload::new("window-1", true);
