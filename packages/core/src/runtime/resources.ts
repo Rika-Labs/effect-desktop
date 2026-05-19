@@ -306,8 +306,8 @@ const makeResourceRegistryInstance = (
 
     const register = <Kind extends ResourceKind, State extends ResourceState>(
       input: RegisterResourceInput<Kind, State>
-    ): Effect.Effect<ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> => {
-      return Effect.gen(function* () {
+    ): Effect.Effect<ManagedResourceHandle<Kind, State>, ResourceInvalidArgumentError, never> =>
+      Effect.gen(function* () {
         const kind = (yield* validateIdentity(
           input.kind,
           "kind",
@@ -334,7 +334,6 @@ const makeResourceRegistryInstance = (
           )
         )
       })
-    }
 
     const registerWithCleanupGroup = <Kind extends ResourceKind, State extends ResourceState>(
       input: RegisterResourceInput<Kind, State>,
@@ -779,9 +778,7 @@ const generationForRegistration = (
     : nextGenerationAfter(disposed.generation)
 }
 
-const nextGenerationAfter = (generation: number): number => {
-  return generation < 0 ? 1 : generation + 1
-}
+const nextGenerationAfter = (generation: number): number => (generation < 0 ? 1 : generation + 1)
 
 const availableRegistrationId = (
   requestedId: ResourceId | undefined,
@@ -877,17 +874,15 @@ const entriesInDependencyOrder = (
   entries: ReadonlyMap<ResourceId, StoredResourceEntry>,
   scopes: ReadonlySet<ScopeId>,
   scopeParents: ReadonlyMap<ScopeId, ScopeId>
-): readonly StoredResourceEntry[] => {
-  return Array.from(entries.values())
+): readonly StoredResourceEntry[] =>
+  Array.from(entries.values())
     .filter((entry) => scopes.has(entry.handle.ownerScope))
     .sort((left, right) => {
       const depthDifference =
         scopeDepth(right.handle.ownerScope, scopeParents) -
         scopeDepth(left.handle.ownerScope, scopeParents)
-
       return depthDifference === 0 ? right.createdAt - left.createdAt : depthDifference
     })
-}
 
 const scopeDepth = (scope: ScopeId, scopeParents: ReadonlyMap<ScopeId, ScopeId>): number => {
   let depth = 0
@@ -913,11 +908,9 @@ const scopeDepth = (scope: ScopeId, scopeParents: ReadonlyMap<ScopeId, ScopeId>)
 
 const snapshotFromMap = (
   entries: ReadonlyMap<ResourceId, StoredResourceEntry>
-): RegistrySnapshot => {
-  return {
-    entries: Array.from(entries.values()).map(publicEntry)
-  }
-}
+): RegistrySnapshot => ({
+  entries: Array.from(entries.values()).map(publicEntry)
+})
 
 const byteAt = (bytes: Uint8Array, index: number): number => {
   const value = bytes[index]

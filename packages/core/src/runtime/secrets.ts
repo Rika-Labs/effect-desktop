@@ -432,7 +432,7 @@ const mapSafeStorageError =
     if (cause._tag === "Unsupported") {
       return new SecretsSafeStorageUnavailableError({ operation, cause: Option.some(cause) })
     }
-    if (cause instanceof HostProtocolPermissionDeniedError) {
+    if (Schema.is(HostProtocolPermissionDeniedError)(cause)) {
       return new SecretsPermissionDeniedError({
         operation,
         capability:

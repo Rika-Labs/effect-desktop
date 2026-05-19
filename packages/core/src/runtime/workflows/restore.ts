@@ -86,13 +86,11 @@ export const RestoreWorkflowLayer: Layer.Layer<
           )
         )
         if (parsed.format !== "effect-desktop-backup-v1") {
-          return yield* Effect.fail(
-            new RestoreError({
-              phase: "validate",
-              message: `unknown backup format: ${parsed.format}`,
-              cause: undefined
-            })
-          )
+          return yield* new RestoreError({
+            phase: "validate",
+            message: `unknown backup format: ${parsed.format}`,
+            cause: undefined
+          })
         }
         return { manifestLabel: parsed.label }
       })
