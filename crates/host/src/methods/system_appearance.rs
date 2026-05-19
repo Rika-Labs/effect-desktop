@@ -11,6 +11,9 @@ use host_protocol::{
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{to_value, Value};
+use tracing::info;
+
+const SYSTEM_APPEARANCE_SMOKE_OPERATION: &str = "SystemAppearance.smoke";
 
 pub(crate) fn get_appearance(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     reject_unexpected_payload(
@@ -82,6 +85,51 @@ pub(crate) fn is_supported(payload: Option<Value>) -> Result<Option<Value>, Host
         },
         host_protocol::SYSTEM_APPEARANCE_IS_SUPPORTED_METHOD,
     )
+}
+
+pub(crate) fn run_main_thread_smoke() -> Result<(), HostProtocolError> {
+    let appearance = require_smoke_payload(get_appearance(None)?, "appearance")?;
+    let accent_color = require_smoke_payload(get_accent_color(None)?, "accentColor")?;
+    let reduced_motion = require_smoke_payload(get_reduced_motion(None)?, "reducedMotion")?;
+    let reduced_transparency =
+        require_smoke_payload(get_reduced_transparency(None)?, "reducedTransparency")?;
+    let supported = require_smoke_payload(
+        is_supported(Some(
+            to_value(SystemAppearanceIsSupportedPayload::new(
+                SystemAppearanceMethodPayload::GetAppearance,
+            ))
+            .map_err(|error| {
+                HostProtocolError::internal(
+                    format!("failed to encode system appearance smoke support query: {error}"),
+                    SYSTEM_APPEARANCE_SMOKE_OPERATION,
+                )
+            })?,
+        ))?,
+        "supported",
+    )?;
+
+    info!(
+        event = "host.system_appearance.smoke_verified",
+        appearance = %appearance,
+        accent_color = %accent_color,
+        reduced_motion = %reduced_motion,
+        reduced_transparency = %reduced_transparency,
+        supported = %supported,
+        "system appearance smoke verified"
+    );
+    Ok(())
+}
+
+fn require_smoke_payload(
+    payload: Option<Value>,
+    field: &'static str,
+) -> Result<Value, HostProtocolError> {
+    payload.ok_or_else(|| {
+        HostProtocolError::internal(
+            format!("system appearance smoke missing {field} payload"),
+            SYSTEM_APPEARANCE_SMOKE_OPERATION,
+        )
+    })
 }
 
 fn reject_unexpected_payload(

@@ -33,7 +33,7 @@ mod scoped_access_grant;
 mod screen;
 mod selection_context;
 mod shell;
-mod system_appearance;
+pub(crate) mod system_appearance;
 mod transactional_file_mutation;
 mod transient_window_role;
 mod tray;

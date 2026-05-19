@@ -25,6 +25,7 @@ const RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(10);
 const HOST_PROTOCOL_STDIO_ARG: &str = "--host-protocol-stdio";
 const WINDOW_SMOKE_TEST_ARG: &str = "--window-smoke-test";
 const RESIDENT_LIFECYCLE_SMOKE_TEST_ARG: &str = "--resident-lifecycle-smoke-test";
+const SYSTEM_APPEARANCE_SMOKE_TEST_ARG: &str = "--system-appearance-smoke-test";
 const WINDOW_SMOKE_TEST_ENV: &str = "EFFECT_DESKTOP_WINDOW_SMOKE_TEST";
 const STARTUP_WINDOWS_ENV: &str = "EFFECT_DESKTOP_STARTUP_WINDOWS";
 const WINDOW_SMOKE_TEST_STARTUP_WINDOWS: &str =
@@ -62,6 +63,12 @@ fn main() -> Result<()> {
         version = event.version,
         "host started"
     );
+
+    if matches!(run_mode, RunMode::SystemAppearanceSmokeTest) {
+        methods::system_appearance::run_main_thread_smoke()
+            .map_err(|error| anyhow::anyhow!("system appearance smoke failed: {error:?}"))?;
+        return Ok(());
+    }
 
     let runtime_profile = runtime::RuntimeProfile::from_env()?;
     let runtime_policy = runtime::RestartPolicy::for_profile(runtime_profile);
@@ -168,6 +175,7 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
             HOST_PROTOCOL_STDIO_ARG => run_mode = RunMode::HostProtocolStdio,
             WINDOW_SMOKE_TEST_ARG => run_mode = RunMode::WindowSmokeTest,
             RESIDENT_LIFECYCLE_SMOKE_TEST_ARG => run_mode = RunMode::ResidentLifecycleSmokeTest,
+            SYSTEM_APPEARANCE_SMOKE_TEST_ARG => run_mode = RunMode::SystemAppearanceSmokeTest,
             unknown => bail!("unknown host argument: {unknown}"),
         }
     }
@@ -181,7 +189,7 @@ mod tests {
         packaged_runtime_config_for_exe, parse_run_mode, resolve_source_runtime_cwd_from_anchors,
         runtime_config, startup_event, HOST_PROTOCOL_STDIO_ARG, HOST_STARTED_EVENT,
         RESIDENT_LIFECYCLE_SMOKE_TEST_ARG, SOURCE_RUNTIME_ENTRY, STARTUP_WINDOWS_ENV,
-        WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
+        SYSTEM_APPEARANCE_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
     };
     use crate::window::RunMode;
     use std::path::PathBuf;
@@ -230,6 +238,18 @@ mod tests {
             ])
             .expect("run mode should parse"),
             RunMode::ResidentLifecycleSmokeTest
+        );
+    }
+
+    #[test]
+    fn system_appearance_smoke_test_arg_selects_system_appearance_smoke_mode() {
+        assert_eq!(
+            parse_run_mode([
+                "host".to_string(),
+                SYSTEM_APPEARANCE_SMOKE_TEST_ARG.to_string()
+            ])
+            .expect("run mode should parse"),
+            RunMode::SystemAppearanceSmokeTest
         );
     }
 

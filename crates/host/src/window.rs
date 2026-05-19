@@ -52,6 +52,7 @@ pub(crate) enum RunMode {
     HostProtocolStdio,
     WindowSmokeTest,
     ResidentLifecycleSmokeTest,
+    SystemAppearanceSmokeTest,
 }
 
 impl RunMode {

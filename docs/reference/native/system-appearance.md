@@ -12,6 +12,9 @@ Theme and appearance information.
 
 The Rust host system appearance adapter implements read-only snapshot methods on
 macOS. Windows, Linux, and native OS appearance-change events remain unsupported.
+The host binary includes a macOS-only `--system-appearance-smoke-test` mode that
+reads the snapshot methods on the main thread and exits before starting the
+renderer runtime.
 
 ## Methods
 
