@@ -10,10 +10,10 @@ use host_protocol::{
     HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
     ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
-    WindowAttentionType, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
-    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
-    WindowStateEventPayload, WindowStatePayload, WindowTrafficLights,
+    WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
+    WindowCreateResponse, WindowListResponse, WindowLookupResponse, WindowParentResponse,
+    WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
+    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTrafficLights,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -2693,6 +2693,35 @@ impl WindowRegistry {
         }
     }
 
+    fn emit_native_window_bounds_event(&self, native_window_id: WindowId) {
+        let Some(window_id) = self.window_id_by_native_id.get(&native_window_id).cloned() else {
+            return;
+        };
+        let Some(resources) = self.windows.get(&window_id) else {
+            return;
+        };
+        match window_bounds(&resources._window, host_protocol::WINDOW_EVENT) {
+            Ok(bounds) => {
+                if let Err(error) = emit_window_bounds_event(&window_id, bounds) {
+                    warn!(
+                        event = "host.window.event_emit_failed",
+                        error = ?error,
+                        window_id,
+                        "failed to emit window bounds event"
+                    );
+                }
+            }
+            Err(error) => {
+                warn!(
+                    event = "host.window.bounds_event_failed",
+                    error = ?error,
+                    window_id,
+                    "failed to read window bounds for event"
+                );
+            }
+        }
+    }
+
     fn set_visible(
         &self,
         window_id: &str,
@@ -4459,6 +4488,27 @@ fn emit_window_state_event(
         .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
 }
 
+fn emit_window_bounds_event(
+    window_id: &str,
+    bounds: WindowBoundsPayload,
+) -> std::result::Result<(), HostProtocolError> {
+    let Some(sender) = window_event_sender()? else {
+        return Ok(());
+    };
+    let payload = serde_json::to_value(WindowBoundsEventPayload::new(window_id, bounds)).map_err(
+        |error| HostProtocolError::invalid_output(host_protocol::WINDOW_EVENT, error.to_string()),
+    )?;
+    sender
+        .send(HostProtocolEnvelope::Event {
+            method: host_protocol::WINDOW_EVENT.to_string(),
+            timestamp: timestamp_millis(),
+            trace_id: format!("window-bounds-event-{}", Uuid::now_v7()),
+            window_id: Some(window_id.to_string()),
+            payload: Some(payload),
+        })
+        .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
+}
+
 fn warn_if_before_quit_event_failed(source: &'static str) {
     if let Err(error) = emit_app_before_quit_event(source) {
         warn!(
@@ -4914,6 +4964,14 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
                 ..
             } => {
                 registry.track_native_window_focused(window_id);
+                WindowLifecycleEvent::Other
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::Moved(_) | WindowEvent::Resized(_),
+                ..
+            } => {
+                registry.emit_native_window_bounds_event(window_id);
                 WindowLifecycleEvent::Other
             }
             Event::WindowEvent {
@@ -5530,6 +5588,49 @@ mod tests {
                     "maximized": false,
                     "fullscreen": false,
                     "simpleFullscreen": false
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn window_bounds_events_encode_to_runtime_sender() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (receiver, _event_sender_guard) = install_test_window_event_sender();
+
+        super::emit_window_bounds_event(
+            "window-1",
+            host_protocol::WindowBoundsPayload::new(10.0, 20.0, 640.0, 480.0),
+        )
+        .expect("window bounds event should emit");
+
+        let event = receiver
+            .recv()
+            .expect("window event receiver should receive bounds event");
+
+        let HostProtocolEnvelope::Event {
+            method,
+            window_id,
+            payload,
+            ..
+        } = event
+        else {
+            panic!("expected window bounds event envelope");
+        };
+        assert_eq!(method, host_protocol::WINDOW_EVENT);
+        assert_eq!(window_id.as_deref(), Some("window-1"));
+        assert_eq!(
+            payload.expect("window bounds event should include payload"),
+            serde_json::json!({
+                "type": "window-bounds-event",
+                "windowId": "window-1",
+                "bounds": {
+                    "x": 10.0,
+                    "y": 20.0,
+                    "width": 640.0,
+                    "height": 480.0
                 }
             })
         );

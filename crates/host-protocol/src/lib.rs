@@ -3332,6 +3332,65 @@ impl WindowStateEventPayload {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowBoundsEventPayload {
+    #[serde(rename = "type")]
+    type_name: String,
+    window_id: String,
+    bounds: WindowBoundsPayload,
+}
+
+impl WindowBoundsEventPayload {
+    pub fn new(window_id: impl Into<String>, bounds: WindowBoundsPayload) -> Self {
+        Self {
+            type_name: "window-bounds-event".to_string(),
+            window_id: window_id.into(),
+            bounds,
+        }
+    }
+
+    pub fn type_name(&self) -> &str {
+        &self.type_name
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn bounds(&self) -> &WindowBoundsPayload {
+        &self.bounds
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawWindowBoundsEventPayload {
+    #[serde(rename = "type")]
+    type_name: String,
+    window_id: String,
+    bounds: WindowBoundsPayload,
+}
+
+impl<'de> Deserialize<'de> for WindowBoundsEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawWindowBoundsEventPayload::deserialize(deserializer)?;
+        if raw.type_name != "window-bounds-event" {
+            return Err(de::Error::custom(
+                "window bounds event type must be window-bounds-event",
+            ));
+        }
+        Ok(Self {
+            type_name: raw.type_name,
+            window_id: raw.window_id,
+            bounds: raw.bounds,
+        })
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RawWindowStateEventPayload {
@@ -11862,18 +11921,19 @@ mod tests {
         TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
         UpdaterStatusPayload, UpdaterStatusState, UpdaterTrustAnchorPayload, WindowAttentionType,
-        WindowBoundsPayload, WindowCenterOnDisplayPayload, WindowCreatePayload,
-        WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
-        WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
-        WindowRegistryEventPhase, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
-        WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
-        WindowSetProgressPayload, WindowSetResizablePayload, WindowSetShadowPayload,
-        WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload, WindowSetTitlePayload,
-        WindowSetTrafficLightsPayload, WindowSetVibrancyPayload, WindowStateEventPayload,
-        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
-        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
-        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
-        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowBoundsEventPayload, WindowBoundsPayload, WindowCenterOnDisplayPayload,
+        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowListResponse,
+        WindowLookupResponse, WindowParentResponse, WindowProgressState,
+        WindowRegistryEventPayload, WindowRegistryEventPhase, WindowRequestAttentionPayload,
+        WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
+        WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
+        WindowSetShadowPayload, WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
+        WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowSetVibrancyPayload,
+        WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
+        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
+        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
         CRASH_REPORTER_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS,
@@ -13374,6 +13434,27 @@ mod tests {
             error
                 .to_string()
                 .contains("window state event type must be window-state-event"),
+            "unexpected error: {error}"
+        );
+
+        let bounds_event =
+            WindowBoundsEventPayload::new("window-1", WindowBoundsPayload::new(1.0, 2.0, 3.0, 4.0));
+        assert_eq!(bounds_event.type_name(), "window-bounds-event");
+        assert_eq!(bounds_event.window_id(), "window-1");
+        assert_eq!(bounds_event.bounds().width(), 3.0);
+        assert_eq!(
+            serde_json::to_string(&bounds_event).expect("window bounds event should encode"),
+            r#"{"type":"window-bounds-event","windowId":"window-1","bounds":{"x":1.0,"y":2.0,"width":3.0,"height":4.0}}"#
+        );
+
+        let error = serde_json::from_str::<WindowBoundsEventPayload>(
+            r#"{"type":"not-window-bounds-event","windowId":"window-1","bounds":{"x":1.0,"y":2.0,"width":3.0,"height":4.0}}"#,
+        )
+        .expect_err("invalid window bounds event type must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("window bounds event type must be window-bounds-event"),
             "unexpected error: {error}"
         );
     }

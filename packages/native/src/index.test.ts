@@ -427,6 +427,7 @@ import {
   WebViewNavigationBlockedEvent,
   WebViewScreenshot,
   WindowBounds,
+  WindowBoundsEvent,
   WindowRegistryEvent,
   WindowState,
   type NotificationHandle,
@@ -9611,6 +9612,62 @@ test("Window.events attaches host-originated state events to fresh handles", asy
     fullscreen: false,
     simpleFullscreen: false
   })
+})
+
+test("Window.events attaches host-originated bounds events to fresh handles", async () => {
+  const registry = await Effect.runPromise(makeResourceRegistry())
+  const baseExchange = makeWindowRpcExchange(windowExchange([]), registry)
+  const exchange: BridgeClientExchange = {
+    request: (request) =>
+      request.method === WINDOW_GET_STATE_METHOD
+        ? Effect.succeed({
+            kind: "success",
+            payload: {
+              minimized: false,
+              maximized: false,
+              fullscreen: false,
+              simpleFullscreen: false
+            }
+          })
+        : baseExchange.request(request),
+    subscribe: (method) =>
+      method === WINDOW_EVENT_METHOD
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_002_726,
+              traceId: "host-window-bounds-event",
+              payload: {
+                type: "window-bounds-event",
+                windowId: "host-window-1",
+                bounds: { x: 10, y: 20, width: 640, height: 480 }
+              }
+            })
+          )
+        : Stream.empty
+  }
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      const created = yield* window.create({ title: "Host bounds" })
+      const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
+      return { created, event }
+    }).pipe(
+      Effect.provide(Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry)))
+    )
+  )
+
+  const event = Option.getOrThrow(result.event)
+  expect(event).toEqual(
+    new WindowBoundsEvent({
+      type: "window-bounds-event",
+      windowId: String(result.created.id),
+      window: result.created,
+      bounds: new WindowBounds({ x: 10, y: 20, width: 640, height: 480 })
+    })
+  )
 })
 
 test("Window.events checks and audits subscribe permission before opening the event stream", async () => {

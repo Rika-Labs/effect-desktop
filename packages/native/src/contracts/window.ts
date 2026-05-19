@@ -110,16 +110,6 @@ export class WindowState extends Schema.Class<WindowState>("WindowState")({
   simpleFullscreen: Schema.Boolean
 }) {}
 
-export class WindowStateEvent extends Schema.Class<WindowStateEvent>("WindowStateEvent")({
-  type: Schema.Literal("window-state-event"),
-  windowId: Schema.NonEmptyString,
-  window: Schema.optionalKey(WindowResource),
-  state: WindowState
-}) {}
-
-export const WindowEvent = Schema.Union([WindowRegistryEvent, WindowStateEvent])
-export type WindowEvent = Schema.Schema.Type<typeof WindowEvent>
-
 export class WindowBounds extends Schema.Class<WindowBounds>("WindowBounds")({
   x: Schema.Number.check(Schema.isFinite()),
   y: Schema.Number.check(Schema.isFinite()),
@@ -128,6 +118,23 @@ export class WindowBounds extends Schema.Class<WindowBounds>("WindowBounds")({
 }) {}
 
 export type WindowBoundsType = Schema.Schema.Type<typeof WindowBounds>
+
+export class WindowStateEvent extends Schema.Class<WindowStateEvent>("WindowStateEvent")({
+  type: Schema.Literal("window-state-event"),
+  windowId: Schema.NonEmptyString,
+  window: Schema.optionalKey(WindowResource),
+  state: WindowState
+}) {}
+
+export class WindowBoundsEvent extends Schema.Class<WindowBoundsEvent>("WindowBoundsEvent")({
+  type: Schema.Literal("window-bounds-event"),
+  windowId: Schema.NonEmptyString,
+  window: Schema.optionalKey(WindowResource),
+  bounds: WindowBounds
+}) {}
+
+export const WindowEvent = Schema.Union([WindowRegistryEvent, WindowStateEvent, WindowBoundsEvent])
+export type WindowEvent = Schema.Schema.Type<typeof WindowEvent>
 
 export class WindowBoundsInput extends Schema.Class<WindowBoundsInput>("WindowBoundsInput")({
   window: WindowResource,

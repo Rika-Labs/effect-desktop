@@ -38,6 +38,7 @@ export * from "./contracts/window.js"
 import {
   WindowCreateInput,
   WindowBounds,
+  WindowBoundsEvent,
   WindowBoundsInput,
   WindowAlwaysOnTopInput,
   type WindowAttentionType,
@@ -1301,6 +1302,13 @@ const reconcileWindowEvent = (
         : stateEventWithWindow(event, window.value)
     }
 
+    if (event.type === "window-bounds-event") {
+      const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
+      return Option.isNone(window)
+        ? boundsEventWithoutWindow(event)
+        : boundsEventWithWindow(event, window.value)
+    }
+
     const terminal = event.phase === "closed"
     if (event.terminal !== terminal) {
       return yield* Effect.fail(
@@ -1429,6 +1437,21 @@ const stateEventWithoutWindow = (event: WindowStateEvent): WindowStateEvent =>
     type: event.type,
     windowId: event.windowId,
     state: event.state
+  })
+
+const boundsEventWithWindow = (event: WindowBoundsEvent, window: WindowHandle): WindowBoundsEvent =>
+  new WindowBoundsEvent({
+    type: event.type,
+    windowId: event.windowId,
+    window,
+    bounds: event.bounds
+  })
+
+const boundsEventWithoutWindow = (event: WindowBoundsEvent): WindowBoundsEvent =>
+  new WindowBoundsEvent({
+    type: event.type,
+    windowId: event.windowId,
+    bounds: event.bounds
   })
 
 const runWindowRpc = <A, E>(

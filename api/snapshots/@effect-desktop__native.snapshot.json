@@ -4346,7 +4346,7 @@
     {
       "name": "WindowRpcEvents",
       "kind": "type",
-      "signature": "const WindowRpcEvents: Readonly<{ Event: { payload: Schema.Union<readonly [typeof WindowRegistryEvent, typeof WindowStateEvent]>; }; }>"
+      "signature": "const WindowRpcEvents: Readonly<{ Event: { payload: Schema.Union<readonly [typeof WindowRegistryEvent, typeof WindowStateEvent, typeof WindowBoundsEvent]>; }; }>"
     },
     {
       "name": "WindowRpcHandlers",
