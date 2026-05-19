@@ -17,7 +17,6 @@ import {
   AutostartEvent,
   AutostartStatus
 } from "./contracts/autostart.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
@@ -149,7 +148,7 @@ export const makeHostAutostartRpcRuntime = (
 
 const autostartClientFromRpcClient = (
   client: DesktopRpcClient<AutostartRpc>,
-  exchange?: BridgeClientExchange
+  _exchange?: BridgeClientExchange
 ): AutostartClientApi =>
   Object.freeze({
     isEnabled: () => runAutostartRpc(client["Autostart.isEnabled"](), "Autostart.isEnabled"),
@@ -160,7 +159,7 @@ const autostartClientFromRpcClient = (
         )
       ),
     disable: () => runAutostartRpc(client["Autostart.disable"](), "Autostart.disable"),
-    events: () => subscribeNativeEvent(exchange, "Autostart.Event", AutostartEvent)
+    events: () => unsupportedAutostartEvents()
   } satisfies AutostartClientApi)
 
 const decodeAutostartEnableInput = (
@@ -168,6 +167,20 @@ const decodeAutostartEnableInput = (
   operation: string
 ): Effect.Effect<AutostartEnableInput, AutostartError> =>
   decodeNativeInput(AutostartEnableInput, input, operation)
+
+const unsupportedAutostartEvents = (): Stream.Stream<AutostartEvent, AutostartError> =>
+  Stream.fail(unsupportedAutostartEventError())
+
+const unsupportedAutostartEventError = (): AutostartError => ({
+  tag: "Unsupported",
+  get _tag() {
+    return this.tag
+  },
+  reason: UnsupportedReason,
+  message: "unsupported Autostart.Event",
+  operation: "Autostart.Event",
+  recoverable: false
+})
 
 function autostartRpc<
   const Method extends string,

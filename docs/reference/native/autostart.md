@@ -39,8 +39,10 @@ exists:
 ## Events
 
 The current event stream is `events()`. Event phases are `checked`, `enabled`,
-`disabled`, and `failed`. Native event delivery is currently unsupported until
-the host adapter exists.
+`disabled`, and `failed`. The bridge client fails `events()` as typed
+`Unsupported` with reason `host-adapter-unimplemented` before opening a
+subscription because native event delivery is currently unsupported until the
+host adapter exists.
 
 ## Validation
 

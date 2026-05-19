@@ -4985,23 +4985,60 @@ test("Autostart bridge client sends typed host envelopes and decodes events and 
       const initial = yield* autostart.isEnabled()
       const enabled = yield* autostart.enable({ args: ["--hidden"] })
       const disabled = yield* autostart.disable()
-      const events = yield* autostart.events().pipe(Stream.take(1), Stream.runCollect)
 
-      return { disabled, enabled, events, initial }
+      return { disabled, enabled, initial }
     }).pipe(Effect.provide(Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))))
   )
 
   expect(result.initial.enabled).toBe(false)
   expect(result.enabled.enabled).toBe(true)
   expect(result.disabled.enabled).toBe(false)
-  expect(Array.from(result.events)).toEqual([
-    new AutostartEvent({ phase: "enabled", mechanism: "linux-xdg-autostart" })
-  ])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["Autostart.isEnabled", null],
     ["Autostart.enable", { args: ["--hidden"] }],
     ["Autostart.disable", null]
   ])
+})
+
+test("Autostart bridge client fails event stream as unsupported before subscribing", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const subscriptions: string[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({
+        kind: "success",
+        payload: { enabled: false, mechanism: "unsupported" }
+      })
+    },
+    subscribe: (method) => {
+      subscriptions.push(method)
+      return Stream.empty
+    }
+  }
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const autostart = yield* Autostart
+      return yield* Effect.exit(autostart.events().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(Effect.provide(Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))))
+  )
+
+  expectExitFailure(exit, (error) => {
+    const unsupported =
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "reason" in error &&
+      "operation" in error
+    expect(unsupported).toBe(true)
+    if (unsupported) {
+      expect(error.reason).toBe("host-adapter-unimplemented")
+      expect(error.operation).toBe("Autostart.Event")
+    }
+    return unsupported
+  })
+  expect(requests).toEqual([])
+  expect(subscriptions).toEqual([])
 })
 
 test("Autostart bridge client rejects invalid launch args before transport", async () => {
