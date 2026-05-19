@@ -3774,6 +3774,62 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "WebView.respondToPermission",
+      "surface": "WebView",
+      "method": "respondToPermission",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-permission-request-routing-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-permission-request-routing-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-permission-request-routing-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-permission-request-routing-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WebView.setAudioMuted",
+      "surface": "WebView",
+      "method": "setAudioMuted",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-runtime-media-control-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-runtime-media-control-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-runtime-media-control-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-runtime-media-control-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "WebView.setNavigationPolicy",
       "surface": "WebView",
       "method": "setNavigationPolicy",
@@ -4461,11 +4517,11 @@
     }
   ],
   "summary": {
-    "total": 251,
-    "routed": 251,
+    "total": 253,
+    "routed": 253,
     "missing": 0,
     "supported": 140,
     "partial": 70,
-    "unsupported": 41
+    "unsupported": 43
   }
 }

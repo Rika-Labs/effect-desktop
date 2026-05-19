@@ -1139,6 +1139,11 @@
       "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never>"
     },
     {
+      "name": "WEBVIEW_API_CALL_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_API_CALL_EVENT_METHOD: \"WebView.ApiCall\""
+    },
+    {
       "name": "WEBVIEW_ATTACH_DEBUGGER_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_ATTACH_DEBUGGER_METHOD: \"WebView.attachDebugger\""
@@ -1222,6 +1227,21 @@
       "name": "WEBVIEW_RELOAD_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_RELOAD_METHOD: \"WebView.reload\""
+    },
+    {
+      "name": "WEBVIEW_RESPOND_TO_PERMISSION_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_RESPOND_TO_PERMISSION_METHOD: \"WebView.respondToPermission\""
+    },
+    {
+      "name": "WEBVIEW_RUNTIME_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_RUNTIME_EVENT_METHOD: \"WebView.RuntimeEvent\""
+    },
+    {
+      "name": "WEBVIEW_SET_AUDIO_MUTED_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_SET_AUDIO_MUTED_METHOD: \"WebView.setAudioMuted\""
     },
     {
       "name": "WEBVIEW_SET_NAVIGATION_POLICY_METHOD",

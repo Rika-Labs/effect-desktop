@@ -39,7 +39,50 @@ const WebViewFindQuery = BridgeSafeNonEmptyString
 const WebViewUserAgent = BridgeSafeNonEmptyString
 const WebViewNonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const WebViewZoomFactor = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
+const WebViewRuntimeRequestId = BridgeSafeNonEmptyString
+const WebViewRuntimeEventReason = BridgeSafeString
+const WebViewRuntimePath = BridgeSafeNonEmptyString.check(
+  Schema.isPattern(/^(?!.*(?:^|[\\/])\.\.(?:[\\/]|$))[\s\S]*$/u)
+)
+const WebViewRuntimeUrl = BridgeSafeNonEmptyString.check(
+  Schema.isPattern(/^(?!javascript:|data:|vbscript:|blob:)[\s\S]*$/iu),
+  Schema.makeFilter((value) => isAbsoluteUrl(value) || "must be an absolute URL")
+)
+const WebViewRuntimeEventPhase = Schema.Literals([
+  "page-load-started",
+  "page-load-finished",
+  "drag-enter",
+  "drag-over",
+  "drag-drop",
+  "drag-leave",
+  "download-started",
+  "download-completed",
+  "permission-requested",
+  "permission-resolved",
+  "crashed",
+  "unresponsive",
+  "media-started",
+  "media-stopped",
+  "file-input-requested",
+  "failed"
+])
+const WebViewPermissionDecision = Schema.Literals(["grant", "deny"])
+const WebViewRuntimePermissionKind = Schema.Literals([
+  "camera",
+  "microphone",
+  "display-capture",
+  "geolocation",
+  "notifications",
+  "midi",
+  "clipboard-read",
+  "clipboard-write",
+  "file-system",
+  "unknown"
+])
 export type WebViewHandle = ResourceHandle<"webview", "open">
+export type WebViewRuntimeEventPhase = Schema.Schema.Type<typeof WebViewRuntimeEventPhase>
+export type WebViewPermissionDecision = Schema.Schema.Type<typeof WebViewPermissionDecision>
+export type WebViewRuntimePermissionKind = Schema.Schema.Type<typeof WebViewRuntimePermissionKind>
 
 export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolicy>(
   "WebViewNavigationPolicy"
@@ -159,6 +202,21 @@ export class WebViewSetUserAgentInput extends Schema.Class<WebViewSetUserAgentIn
   userAgent: WebViewUserAgent
 }) {}
 
+export class WebViewSetAudioMutedInput extends Schema.Class<WebViewSetAudioMutedInput>(
+  "WebViewSetAudioMutedInput"
+)({
+  webview: WebViewResource,
+  muted: Schema.Boolean
+}) {}
+
+export class WebViewRespondToPermissionInput extends Schema.Class<WebViewRespondToPermissionInput>(
+  "WebViewRespondToPermissionInput"
+)({
+  webview: WebViewResource,
+  requestId: WebViewRuntimeRequestId,
+  decision: WebViewPermissionDecision
+}) {}
+
 export class WebViewNavigationBlockedEvent extends Schema.Class<WebViewNavigationBlockedEvent>(
   "WebViewNavigationBlockedEvent"
 )({
@@ -172,6 +230,23 @@ export class WebViewApiCallEvent extends Schema.Class<WebViewApiCallEvent>("WebV
   api: WebViewApiName,
   method: WebViewApiMethodName,
   payload: WebViewApiPayload
+}) {}
+
+export class WebViewRuntimePoint extends Schema.Class<WebViewRuntimePoint>("WebViewRuntimePoint")({
+  x: Schema.Int,
+  y: Schema.Int
+}) {}
+
+export class WebViewRuntimeEvent extends Schema.Class<WebViewRuntimeEvent>("WebViewRuntimeEvent")({
+  webview: WebViewResource,
+  phase: WebViewRuntimeEventPhase,
+  url: Schema.optionalKey(WebViewRuntimeUrl),
+  reason: Schema.optionalKey(WebViewRuntimeEventReason),
+  requestId: Schema.optionalKey(WebViewRuntimeRequestId),
+  permission: Schema.optionalKey(WebViewRuntimePermissionKind),
+  decision: Schema.optionalKey(WebViewPermissionDecision),
+  position: Schema.optionalKey(WebViewRuntimePoint),
+  paths: Schema.optionalKey(Schema.Array(WebViewRuntimePath))
 }) {}
 
 const isAbsoluteUrl = (value: string): boolean => {

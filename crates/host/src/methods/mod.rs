@@ -1186,6 +1186,14 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(webview::set_user_agent),
     ),
     route(
+        host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
+        HostMethodDispatcher::Window(webview::set_audio_muted),
+    ),
+    route(
+        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+        HostMethodDispatcher::Window(webview::respond_to_permission),
+    ),
+    route(
         host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
         HostMethodDispatcher::Window(webview::open_devtools),
     ),
@@ -5193,6 +5201,20 @@ mod tests {
                 serde_json::json!({ "webview": webview, "userAgent": "EffectDesktopTest/1.0" }),
             ),
             (
+                "request-webview-set-audio-muted",
+                host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
+                serde_json::json!({ "webview": webview, "muted": true }),
+            ),
+            (
+                "request-webview-respond-to-permission",
+                host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "requestId": "permission-1",
+                    "decision": "deny"
+                }),
+            ),
+            (
                 "request-webview-close-devtools",
                 host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
                 serde_json::json!({ "webview": webview }),
@@ -5289,6 +5311,15 @@ mod tests {
                         "ownerScope": "window:window-1",
                         "state": "open"
                     }
+                }),
+            ),
+            (
+                "request-webview-respond-to-permission-invalid-decision",
+                host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "requestId": "permission-1",
+                    "decision": "allow"
                 }),
             ),
             (

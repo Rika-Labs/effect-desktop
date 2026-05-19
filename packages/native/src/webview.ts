@@ -34,9 +34,12 @@ import {
   WebViewPdf,
   WebViewFindInPageInput,
   WebViewFindInPageResult,
+  WebViewRuntimeEvent,
   WebViewResource,
   type WebViewPlatform,
+  WebViewRespondToPermissionInput,
   type WebViewRuntimeMode,
+  WebViewSetAudioMutedInput,
   WebViewSetUserAgentInput,
   WebViewSetNavigationPolicyInput,
   WebViewSetZoomInput,
@@ -80,6 +83,8 @@ const WebViewDebuggerSupport = NativeSurface.support.unsupported(WebViewDebugger
 })
 const WebViewDocumentUnsupportedReason = "host-document-output-unavailable"
 const WebViewRuntimeUserAgentUnsupportedReason = "host-user-agent-runtime-unavailable"
+const WebViewRuntimeMediaControlUnsupportedReason = "host-runtime-media-control-unavailable"
+const WebViewRuntimePermissionUnsupportedReason = "host-permission-request-routing-unavailable"
 const WebViewPrintZoomPartialReason = "host-print-zoom-provider-backed"
 const WebViewDocumentUnsupportedSupport = NativeSurface.support.unsupported(
   WebViewDocumentUnsupportedReason,
@@ -116,6 +121,50 @@ const WebViewPrintZoomSupport = NativeSurface.support.partial(WebViewPrintZoomPa
     { platform: "linux", status: "partial", reason: WebViewPrintZoomPartialReason }
   ]
 })
+const WebViewRuntimeMediaControlSupport = NativeSurface.support.unsupported(
+  WebViewRuntimeMediaControlUnsupportedReason,
+  {
+    platforms: [
+      {
+        platform: "macos",
+        status: "unsupported",
+        reason: WebViewRuntimeMediaControlUnsupportedReason
+      },
+      {
+        platform: "windows",
+        status: "unsupported",
+        reason: WebViewRuntimeMediaControlUnsupportedReason
+      },
+      {
+        platform: "linux",
+        status: "unsupported",
+        reason: WebViewRuntimeMediaControlUnsupportedReason
+      }
+    ]
+  }
+)
+const WebViewRuntimePermissionSupport = NativeSurface.support.unsupported(
+  WebViewRuntimePermissionUnsupportedReason,
+  {
+    platforms: [
+      {
+        platform: "macos",
+        status: "unsupported",
+        reason: WebViewRuntimePermissionUnsupportedReason
+      },
+      {
+        platform: "windows",
+        status: "unsupported",
+        reason: WebViewRuntimePermissionUnsupportedReason
+      },
+      {
+        platform: "linux",
+        status: "unsupported",
+        reason: WebViewRuntimePermissionUnsupportedReason
+      }
+    ]
+  }
+)
 
 export const WebViewCreate = NativeSurface.rpc("WebView", "create", {
   payload: WebViewCreateInput,
@@ -243,6 +292,24 @@ export const WebViewSetUserAgent = NativeSurface.rpc("WebView", "setUserAgent", 
   endpoint: "mutation",
   support: WebViewRuntimeUserAgentSupport
 })
+export const WebViewSetAudioMuted = NativeSurface.rpc("WebView", "setAudioMuted", {
+  payload: WebViewSetAudioMutedInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["setAudioMuted"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRuntimeMediaControlSupport
+})
+export const WebViewRespondToPermission = NativeSurface.rpc("WebView", "respondToPermission", {
+  payload: WebViewRespondToPermissionInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["respondToPermission"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewRuntimePermissionSupport
+})
 export const WebViewOpenDevTools = NativeSurface.rpc("WebView", "openDevTools", {
   payload: WebViewHandleInput,
   success: Schema.Void,
@@ -298,7 +365,8 @@ export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
 
 export const WebViewRpcEvents = Object.freeze({
   NavigationBlocked: { payload: WebViewNavigationBlockedEvent },
-  ApiCall: { payload: WebViewApiCallEvent }
+  ApiCall: { payload: WebViewApiCallEvent },
+  Runtime: { payload: WebViewRuntimeEvent }
 })
 
 export type WebViewRpcEvents = typeof WebViewRpcEvents
@@ -318,6 +386,8 @@ const WebViewRpcGroup = RpcGroup.make(
   WebViewFindInPage,
   WebViewSetZoom,
   WebViewSetUserAgent,
+  WebViewSetAudioMuted,
+  WebViewRespondToPermission,
   WebViewOpenDevTools,
   WebViewCloseDevTools,
   WebViewAttachDebugger,
@@ -343,6 +413,8 @@ export const WebViewMethodNames = Object.freeze([
   "findInPage",
   "setZoom",
   "setUserAgent",
+  "setAudioMuted",
+  "respondToPermission",
   "openDevTools",
   "closeDevTools",
   "attachDebugger",
@@ -363,6 +435,8 @@ const WebViewCapabilityMethods = Object.freeze([
   "captureScreenshot",
   "print",
   "setZoom",
+  "setAudioMuted",
+  "respondToPermission",
   "openDevTools",
   "closeDevTools",
   "setNavigationPolicy",
@@ -405,6 +479,15 @@ export interface WebViewClientApi {
     webview: WebViewHandle,
     userAgent: string
   ) => Effect.Effect<void, WebViewError, never>
+  readonly setAudioMuted: (
+    webview: WebViewHandle,
+    muted: boolean
+  ) => Effect.Effect<void, WebViewError, never>
+  readonly respondToPermission: (
+    webview: WebViewHandle,
+    requestId: string,
+    decision: "grant" | "deny"
+  ) => Effect.Effect<void, WebViewError, never>
   readonly openDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly closeDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly attachDebugger: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
@@ -422,6 +505,9 @@ export interface WebViewClientApi {
     never
   >
   readonly onApiCall: () => Stream.Stream<WebViewApiCallEvent, WebViewError, never>
+  readonly onRuntimeEvent: (
+    webview?: WebViewHandle
+  ) => Stream.Stream<WebViewRuntimeEvent, WebViewError, never>
 }
 
 export class WebViewClient extends Context.Service<WebViewClient, WebViewClientApi>()(
@@ -542,6 +628,16 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
       const webview = yield* WebView
       yield* webview.setUserAgent(input.webview, input.userAgent)
     }),
+  "WebView.setAudioMuted": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.setAudioMuted(input.webview, input.muted)
+    }),
+  "WebView.respondToPermission": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.respondToPermission(input.webview, input.requestId, input.decision)
+    }),
   "WebView.openDevTools": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
@@ -617,6 +713,9 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
     findInPage: (webview, query) => client.findInPage(webview, query),
     setZoom: (webview, zoom) => client.setZoom(webview, zoom),
     setUserAgent: (webview, userAgent) => client.setUserAgent(webview, userAgent),
+    setAudioMuted: (webview, muted) => client.setAudioMuted(webview, muted),
+    respondToPermission: (webview, requestId, decision) =>
+      client.respondToPermission(webview, requestId, decision),
     openDevTools: (webview) => client.openDevTools(webview),
     closeDevTools: (webview) => client.closeDevTools(webview),
     attachDebugger: (webview) => client.attachDebugger(webview),
@@ -631,7 +730,8 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
         .pipe(Effect.map((result) => result.supported)),
     destroy: (webview) => client.destroy(webview),
     onNavigationBlocked: () => client.onNavigationBlocked(),
-    onApiCall: () => client.onApiCall()
+    onApiCall: () => client.onApiCall(),
+    onRuntimeEvent: (webview) => client.onRuntimeEvent(webview)
   }
 
   return Object.freeze(service)
@@ -728,6 +828,25 @@ const webViewClientFromRpcClient = (
           runWebViewRpc(client["WebView.setUserAgent"](decoded), "WebView.setUserAgent")
         )
       ),
+    setAudioMuted: (webview, muted) =>
+      decodeWebViewSetAudioMutedInput({ webview: toWebViewHandle(webview), muted }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.setAudioMuted"](decoded), "WebView.setAudioMuted")
+        )
+      ),
+    respondToPermission: (webview, requestId, decision) =>
+      decodeWebViewRespondToPermissionInput({
+        webview: toWebViewHandle(webview),
+        requestId,
+        decision
+      }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(
+            client["WebView.respondToPermission"](decoded),
+            "WebView.respondToPermission"
+          )
+        )
+      ),
     openDevTools: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
@@ -768,7 +887,8 @@ const webViewClientFromRpcClient = (
         )
       ),
     onNavigationBlocked: () => subscribeWebViewNavigationBlockedEvent(exchange),
-    onApiCall: () => subscribeWebViewApiCallEvent(exchange)
+    onApiCall: () => subscribeWebViewApiCallEvent(exchange),
+    onRuntimeEvent: (webview) => subscribeWebViewRuntimeEvent(exchange, webview)
   }
 
   return Object.freeze(webViewClient)
@@ -783,6 +903,16 @@ const subscribeWebViewApiCallEvent = (
   exchange: BridgeClientExchange | undefined
 ): Stream.Stream<WebViewApiCallEvent, WebViewError, never> =>
   subscribeNativeEvent(exchange, "WebView.ApiCall", WebViewApiCallEvent)
+
+const subscribeWebViewRuntimeEvent = (
+  exchange: BridgeClientExchange | undefined,
+  webview?: WebViewHandle
+): Stream.Stream<WebViewRuntimeEvent, WebViewError, never> => {
+  const stream = subscribeNativeEvent(exchange, "WebView.RuntimeEvent", WebViewRuntimeEvent)
+  return webview === undefined
+    ? stream
+    : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
+}
 
 const defaultWebViewCreateOptions = (
   input?: WebViewCreateNavigationOptions
@@ -870,6 +1000,16 @@ const decodeWebViewSetUserAgentInput = (
   input: unknown
 ): Effect.Effect<WebViewSetUserAgentInput, WebViewError, never> =>
   decodeInput(WebViewSetUserAgentInput, input, "WebView.setUserAgent")
+
+const decodeWebViewSetAudioMutedInput = (
+  input: unknown
+): Effect.Effect<WebViewSetAudioMutedInput, WebViewError, never> =>
+  decodeInput(WebViewSetAudioMutedInput, input, "WebView.setAudioMuted")
+
+const decodeWebViewRespondToPermissionInput = (
+  input: unknown
+): Effect.Effect<WebViewRespondToPermissionInput, WebViewError, never> =>
+  decodeInput(WebViewRespondToPermissionInput, input, "WebView.respondToPermission")
 
 const decodeWebViewCapabilityInput = (
   input: unknown

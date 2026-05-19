@@ -489,6 +489,26 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         ))
     }
 
+    fn set_webview_audio_muted(
+        &self,
+        _request: WebViewSetAudioMutedRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-runtime-media-control-unavailable",
+            host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
+        ))
+    }
+
+    fn respond_to_webview_permission(
+        &self,
+        _request: WebViewRespondToPermissionRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-permission-request-routing-unavailable",
+            host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+        ))
+    }
+
     fn open_webview_devtools(
         &self,
         _handle: WebViewHandleRequest,
@@ -706,6 +726,35 @@ pub(crate) struct WebViewSetUserAgentRequest {
 impl WebViewSetUserAgentRequest {
     pub(crate) fn new(handle: WebViewHandleRequest, user_agent: String) -> Self {
         Self { handle, user_agent }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewSetAudioMutedRequest {
+    handle: WebViewHandleRequest,
+    muted: bool,
+}
+
+impl WebViewSetAudioMutedRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, muted: bool) -> Self {
+        Self { handle, muted }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewRespondToPermissionRequest {
+    handle: WebViewHandleRequest,
+    request_id: String,
+    decision: String,
+}
+
+impl WebViewRespondToPermissionRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, request_id: String, decision: String) -> Self {
+        Self {
+            handle,
+            request_id,
+            decision,
+        }
     }
 }
 
@@ -1055,6 +1104,14 @@ enum WindowCommand {
         request: WebViewSetUserAgentRequest,
         reply: Sender<WindowCommandReply>,
     },
+    SetWebViewAudioMuted {
+        request: WebViewSetAudioMutedRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    RespondToWebViewPermission {
+        request: WebViewRespondToPermissionRequest,
+        reply: Sender<WindowCommandReply>,
+    },
     OpenWebViewDevTools {
         handle: WebViewHandleRequest,
         reply: Sender<WindowCommandReply>,
@@ -1143,6 +1200,7 @@ struct NativeWebViewResources {
 
 type SharedWebViewNavigationPolicy = Rc<RefCell<WebViewNavigationPolicy>>;
 type SharedWebViewNavigationState = Rc<RefCell<WebViewNavigationState>>;
+type WebViewDragDropPayload = (&'static str, Option<Vec<String>>, Option<(i32, i32)>);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct WebViewNavigationState {
@@ -2791,6 +2849,44 @@ impl WindowMethodHandler for WindowMethodPort {
         }
     }
 
+    fn set_webview_audio_muted(
+        &self,
+        request: WebViewSetAudioMutedRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetWebViewAudioMuted {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
+            )),
+        }
+    }
+
+    fn respond_to_webview_permission(
+        &self,
+        request: WebViewRespondToPermissionRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::RespondToWebViewPermission {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+            )),
+        }
+    }
+
     fn open_webview_devtools(
         &self,
         handle: WebViewHandleRequest,
@@ -4353,8 +4449,12 @@ impl WindowRegistry {
         let policy_for_handler = Rc::clone(&policy);
         let policy_for_new_window = Rc::clone(&policy);
         let webview_id_for_navigation = webview_id.clone();
+        let webview_id_for_page_load = webview_id.clone();
+        let webview_id_for_drag_drop = webview_id.clone();
         let webview_id_for_new_window = webview_id.clone();
         let owner_scope_for_event = owner_scope.clone();
+        let owner_scope_for_page_load = owner_scope.clone();
+        let owner_scope_for_drag_drop = owner_scope.clone();
         let owner_scope_for_new_window = owner_scope.clone();
         let isolation = request
             .isolation
@@ -4391,10 +4491,41 @@ impl WindowRegistry {
                 page_load_handler: Box::new(move |event, url| match event {
                     wry::PageLoadEvent::Started => {
                         navigation_for_load.borrow_mut().mark_loading(&url);
+                        emit_webview_runtime_event(
+                            &webview_id_for_page_load,
+                            &owner_scope_for_page_load,
+                            "page-load-started",
+                            Some(&url),
+                            None,
+                            None,
+                            None,
+                        );
                     }
                     wry::PageLoadEvent::Finished => {
                         navigation_for_load.borrow_mut().mark_finished(&url);
+                        emit_webview_runtime_event(
+                            &webview_id_for_page_load,
+                            &owner_scope_for_page_load,
+                            "page-load-finished",
+                            Some(&url),
+                            None,
+                            None,
+                            None,
+                        );
                     }
+                }),
+                drag_drop_handler: Box::new(move |event| {
+                    let (phase, paths, position) = webview_drag_drop_event_payload(event);
+                    emit_webview_runtime_event(
+                        &webview_id_for_drag_drop,
+                        &owner_scope_for_drag_drop,
+                        phase,
+                        None,
+                        None,
+                        paths.as_deref(),
+                        position,
+                    );
+                    true
                 }),
             },
         )
@@ -4569,6 +4700,37 @@ impl WindowRegistry {
         Err(HostProtocolError::unsupported(
             "host-user-agent-runtime-unavailable",
             host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
+        ))
+    }
+
+    fn set_webview_audio_muted(
+        &self,
+        request: &WebViewSetAudioMutedRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let _resources = self.webview_resources(
+            &request.handle,
+            host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
+        )?;
+        let _muted = request.muted;
+        Err(HostProtocolError::unsupported(
+            "host-runtime-media-control-unavailable",
+            host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
+        ))
+    }
+
+    fn respond_to_webview_permission(
+        &self,
+        request: &WebViewRespondToPermissionRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let _resources = self.webview_resources(
+            &request.handle,
+            host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+        )?;
+        let _request_id = &request.request_id;
+        let _decision = &request.decision;
+        Err(HostProtocolError::unsupported(
+            "host-permission-request-routing-unavailable",
+            host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
         ))
     }
 
@@ -5346,6 +5508,20 @@ impl WindowRegistry {
             WindowCommand::SetWebViewUserAgent { request, reply } => {
                 let result = self
                     .set_webview_user_agent(&request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetWebViewAudioMuted { request, reply } => {
+                let result = self
+                    .set_webview_audio_muted(&request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::RespondToWebViewPermission { request, reply } => {
+                let result = self
+                    .respond_to_webview_permission(&request)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
@@ -6699,6 +6875,87 @@ fn emit_webview_api_call_event(
     });
 }
 
+fn emit_webview_runtime_event(
+    webview_id: &str,
+    owner_scope: &str,
+    phase: &str,
+    url: Option<&str>,
+    reason: Option<&str>,
+    paths: Option<&[String]>,
+    position: Option<(i32, i32)>,
+) {
+    let sender = match webview_event_sender() {
+        Ok(Some(sender)) => sender,
+        Ok(None) => return,
+        Err(error) => {
+            warn!(
+                event = "host.webview.runtime_event_sender_failed",
+                error = ?error,
+                "failed to read webview event sender"
+            );
+            return;
+        }
+    };
+    let mut payload = serde_json::json!({
+        "webview": {
+            "kind": "webview",
+            "id": webview_id,
+            "generation": 0,
+            "ownerScope": owner_scope,
+            "state": "open"
+        },
+        "phase": phase
+    });
+    if let Some(url) = url {
+        payload["url"] = serde_json::json!(url);
+    }
+    if let Some(reason) = reason {
+        payload["reason"] = serde_json::json!(reason);
+    }
+    if let Some(paths) = paths {
+        payload["paths"] = serde_json::json!(paths);
+    }
+    if let Some((x, y)) = position {
+        payload["position"] = serde_json::json!({ "x": x, "y": y });
+    }
+    let timestamp = timestamp_millis();
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::WEBVIEW_RUNTIME_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("webview-runtime-{webview_id}-{phase}-{timestamp}"),
+        window_id: None,
+        payload: Some(payload),
+    });
+}
+
+fn webview_drag_drop_event_payload(event: wry::DragDropEvent) -> WebViewDragDropPayload {
+    match event {
+        wry::DragDropEvent::Enter { paths, position } => (
+            "drag-enter",
+            Some(
+                paths
+                    .into_iter()
+                    .map(|path| path.display().to_string())
+                    .collect(),
+            ),
+            Some(position),
+        ),
+        wry::DragDropEvent::Over { position } => ("drag-over", None, Some(position)),
+        wry::DragDropEvent::Drop { paths, position } => (
+            "drag-drop",
+            Some(
+                paths
+                    .into_iter()
+                    .map(|path| path.display().to_string())
+                    .collect(),
+            ),
+            Some(position),
+        ),
+        wry::DragDropEvent::Leave => ("drag-leave", None, None),
+        _ => ("failed", None, None),
+    }
+}
+
 fn emit_window_state_event(
     window_id: &str,
     state: WindowStatePayload,
@@ -7409,9 +7666,9 @@ mod tests {
         clear_window_runtime_event_state, clip_window_bounds_to_logical_area,
         control_flow_for_lifecycle_event, control_flow_for_window_state,
         display_relative_physical_axis, emit_webview_api_call_event,
-        emit_webview_navigation_blocked_event, emit_window_registry_event,
-        handle_native_window_close_requested, handle_webview_isolation_ipc,
-        install_webview_event_sender, install_window_event_sender,
+        emit_webview_navigation_blocked_event, emit_webview_runtime_event,
+        emit_window_registry_event, handle_native_window_close_requested,
+        handle_webview_isolation_ipc, install_webview_event_sender, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
         lifecycle_for_create_result, resident_lifecycle, rounded_i32, rounded_u32,
         screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
@@ -7562,6 +7819,48 @@ mod tests {
                 "api": "desktop",
                 "method": "ping",
                 "payload": "{\"ok\":true}"
+            })
+        );
+    }
+
+    #[test]
+    fn webview_runtime_event_uses_typed_payload() {
+        let _guard = WINDOW_EVENT_TEST_LOCK.lock().expect("window event lock");
+        let (sender, receiver) = mpsc::channel();
+        install_webview_event_sender(sender).expect("webview event sender should install");
+
+        emit_webview_runtime_event(
+            "webview-1",
+            "window:window-1",
+            "drag-drop",
+            None,
+            None,
+            Some(&["/tmp/report.txt".to_string()]),
+            Some((12, 24)),
+        );
+
+        let event = receiver.recv().expect("runtime event should be emitted");
+        clear_webview_runtime_event_state().expect("webview event sender should clear");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = event
+        else {
+            panic!("expected event envelope");
+        };
+        assert_eq!(method, host_protocol::WEBVIEW_RUNTIME_EVENT);
+        assert_eq!(
+            payload.expect("event should include payload"),
+            serde_json::json!({
+                "webview": {
+                    "kind": "webview",
+                    "id": "webview-1",
+                    "generation": 0,
+                    "ownerScope": "window:window-1",
+                    "state": "open"
+                },
+                "phase": "drag-drop",
+                "paths": ["/tmp/report.txt"],
+                "position": { "x": 12, "y": 24 }
             })
         );
     }

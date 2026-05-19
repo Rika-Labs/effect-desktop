@@ -5,8 +5,9 @@
 use crate::window::{
     WebViewCreateRequest, WebViewExposedApi, WebViewFindInPageRequest, WebViewHandleRequest,
     WebViewIsolationPolicy, WebViewLoadRouteRequest, WebViewLoadUrlRequest,
-    WebViewNavigationDecision, WebViewNavigationPolicy, WebViewSetNavigationPolicyRequest,
-    WebViewSetUserAgentRequest, WebViewSetZoomRequest, WindowMethodHandler,
+    WebViewNavigationDecision, WebViewNavigationPolicy, WebViewRespondToPermissionRequest,
+    WebViewSetAudioMutedRequest, WebViewSetNavigationPolicyRequest, WebViewSetUserAgentRequest,
+    WebViewSetZoomRequest, WindowMethodHandler,
 };
 use host_protocol::HostProtocolError;
 use serde_json::{Map, Value};
@@ -19,6 +20,8 @@ const ALLOWED_FIND_FIELDS: &[&str] = &["webview", "query"];
 const ALLOWED_POLICY_FIELDS: &[&str] = &["webview", "policy"];
 const ALLOWED_SET_ZOOM_FIELDS: &[&str] = &["webview", "zoom"];
 const ALLOWED_SET_USER_AGENT_FIELDS: &[&str] = &["webview", "userAgent"];
+const ALLOWED_SET_AUDIO_MUTED_FIELDS: &[&str] = &["webview", "muted"];
+const ALLOWED_RESPOND_TO_PERMISSION_FIELDS: &[&str] = &["webview", "requestId", "decision"];
 const ALLOWED_CAPABILITY_FIELDS: &[&str] = &["name", "platform", "mode"];
 const ALLOWED_ORIGIN_POLICY_FIELDS: &[&str] = &["allowedOrigins", "onDisallowed"];
 const ALLOWED_ISOLATION_FIELDS: &[&str] = &["exposedApis"];
@@ -269,6 +272,83 @@ pub(crate) fn set_user_agent(
             host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
         )?
         .to_string(),
+    ))?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_audio_muted(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_object(payload, host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD)?;
+    validate_allowed_fields(
+        &payload,
+        ALLOWED_SET_AUDIO_MUTED_FIELDS,
+        host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
+    )?;
+    validate_webview_handle_field(&payload, host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD)?;
+    let muted = payload
+        .get("muted")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument(
+                "muted",
+                "must be a boolean",
+                host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
+            )
+        })?;
+    handler.set_webview_audio_muted(WebViewSetAudioMutedRequest::new(
+        decode_webview_handle(&payload, host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD)?,
+        muted,
+    ))?;
+
+    Ok(None)
+}
+
+pub(crate) fn respond_to_permission(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_object(payload, host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD)?;
+    validate_allowed_fields(
+        &payload,
+        ALLOWED_RESPOND_TO_PERMISSION_FIELDS,
+        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+    )?;
+    validate_webview_handle_field(
+        &payload,
+        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+    )?;
+    validate_printable_string_field(
+        &payload,
+        "requestId",
+        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+    )?;
+    let decision = required_string(
+        &payload,
+        "decision",
+        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+    )?;
+    if !matches!(decision, "grant" | "deny") {
+        return Err(HostProtocolError::invalid_argument(
+            "decision",
+            "must be grant or deny",
+            host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+        ));
+    }
+    handler.respond_to_webview_permission(WebViewRespondToPermissionRequest::new(
+        decode_webview_handle(
+            &payload,
+            host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+        )?,
+        required_string(
+            &payload,
+            "requestId",
+            host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+        )?
+        .to_string(),
+        decision.to_string(),
     ))?;
 
     Ok(None)

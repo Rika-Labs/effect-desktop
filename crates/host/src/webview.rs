@@ -5,7 +5,9 @@ use std::borrow::Cow;
 use std::path::Path;
 use tao::window::Window;
 use tracing::info;
-use wry::{NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebView, WebViewBuilder};
+use wry::{
+    DragDropEvent, NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebView, WebViewBuilder,
+};
 
 const WEBVIEW_OPENED_EVENT: &str = "host.webview.opened";
 const WEBVIEW_CHILD_OPENED_EVENT: &str = "host.webview.child_opened";
@@ -48,6 +50,7 @@ pub(crate) struct ChildWebViewRequest {
     pub(crate) new_window_handler: Box<dyn Fn(String, NewWindowFeatures) -> NewWindowResponse>,
     pub(crate) isolation: Option<ChildWebViewIsolation>,
     pub(crate) page_load_handler: Box<dyn Fn(PageLoadEvent, String)>,
+    pub(crate) drag_drop_handler: Box<dyn Fn(DragDropEvent) -> bool>,
 }
 
 pub(crate) struct ChildWebViewIsolation {
@@ -169,6 +172,7 @@ pub(crate) fn attach_child_webview(
         None => builder,
     }
     .with_on_page_load_handler(request.page_load_handler);
+    let builder = builder.with_drag_drop_handler(request.drag_drop_handler);
     let webview = build_webview(builder, window).map_err(|error| {
         Box::new(HostProtocolError::internal(
             format!("failed to attach child WebView provider: {error}"),

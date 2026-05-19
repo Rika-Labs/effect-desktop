@@ -51,6 +51,9 @@ import {
   WEBVIEW_OPEN_DEVTOOLS_METHOD,
   WEBVIEW_PRINT_METHOD,
   WEBVIEW_PRINT_TO_PDF_METHOD,
+  WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+  WEBVIEW_RUNTIME_EVENT_METHOD,
+  WEBVIEW_SET_AUDIO_MUTED_METHOD,
   WEBVIEW_SET_USER_AGENT_METHOD,
   WEBVIEW_SET_ZOOM_METHOD,
   makeHostProtocolHostUnavailableError,
@@ -449,6 +452,7 @@ import {
   WebViewFindInPageResult,
   WebViewNavigationBlockedEvent,
   WebViewPdf,
+  WebViewRuntimeEvent,
   WebViewScreenshot,
   WindowBounds,
   WindowBoundsEvent,
@@ -829,6 +833,8 @@ const expectedWebViewMethods: Array<(typeof WebViewMethodNames)[number]> = [
   "findInPage",
   "setZoom",
   "setUserAgent",
+  "setAudioMuted",
+  "respondToPermission",
   "openDevTools",
   "closeDevTools",
   "attachDebugger",
@@ -2069,7 +2075,7 @@ test("AppMetadata service propagates unsupported platform and host failure", asy
 test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => {
   expect([...WebViewMethodNames]).toEqual(expectedWebViewMethods)
   expect(rpcMethodNames("WebView", WebViewRpcs)).toEqual(expectedWebViewMethods)
-  expect(Object.keys(WebViewRpcEvents)).toEqual(["NavigationBlocked", "ApiCall"])
+  expect(Object.keys(WebViewRpcEvents)).toEqual(["NavigationBlocked", "ApiCall", "Runtime"])
 })
 
 test("WebView service delegates through a substitutable WebViewClient port", async () => {
@@ -2091,6 +2097,8 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       yield* webview.print(created)
       yield* webview.setZoom(created, 1.25)
       yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
+      yield* webview.setAudioMuted(created, true)
+      yield* webview.respondToPermission(created, "permission-1", "deny")
       yield* webview.openDevTools(created)
       yield* webview.closeDevTools(created)
       yield* webview.attachDebugger(created)
@@ -2101,6 +2109,9 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       const linuxAutofill = yield* webview.capability("autofill", { platform: "linux" })
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
       const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
+      const runtimeEvents = yield* webview
+        .onRuntimeEvent(created)
+        .pipe(Stream.take(1), Stream.runCollect)
       yield* webview.destroy(created)
 
       return {
@@ -2111,6 +2122,7 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
         linuxAutofill,
         navigationState,
         pdf,
+        runtimeEvents,
         screenshot
       }
     }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
@@ -2143,6 +2155,14 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       payload: '{"ok":true}'
     })
   ])
+  expect(Array.from(result.runtimeEvents)).toEqual([
+    new WebViewRuntimeEvent({
+      webview: webviewHandle,
+      phase: "drag-drop",
+      paths: ["/tmp/report.txt"],
+      position: { x: 12, y: 24 }
+    })
+  ])
   expect(calls).toEqual([
     "create:app://localhost/",
     "loadRoute:/settings",
@@ -2158,6 +2178,8 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
     "print",
     "setZoom:1.25",
     "setUserAgent:EffectDesktopTest/1.0",
+    "setAudioMuted:true",
+    "respondToPermission:permission-1:deny",
     "openDevTools",
     "closeDevTools",
     "attachDebugger",
@@ -2321,6 +2343,67 @@ test("WebView devtools and debugger controls propagate success, unsupported, and
   expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
+test("WebView runtime controls propagate success, unsupported, and host failures", async () => {
+  const calls: string[] = []
+  const successResult = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.setAudioMuted(webviewHandle, true)
+      yield* webview.respondToPermission(webviewHandle, "permission-1", "deny")
+    }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
+  )
+  expect(successResult).toBeUndefined()
+  expect(calls).toEqual(["setAudioMuted:true", "respondToPermission:permission-1:deny"])
+
+  const audioUnsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-runtime-media-control-unavailable",
+    message: "unsupported WebView.setAudioMuted",
+    operation: WEBVIEW_SET_AUDIO_MUTED_METHOD,
+    recoverable: false
+  })
+  const permissionUnsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-permission-request-routing-unavailable",
+    message: "unsupported WebView.respondToPermission",
+    operation: WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+    recoverable: false
+  })
+  const unsupportedClient: WebViewClientApi = {
+    ...webViewClient([]),
+    setAudioMuted: () => Effect.fail(audioUnsupported),
+    respondToPermission: () => Effect.fail(permissionUnsupported)
+  }
+  const hostFailureClient: WebViewClientApi = {
+    ...webViewClient([]),
+    setAudioMuted: () =>
+      Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_SET_AUDIO_MUTED_METHOD))
+  }
+
+  const audioExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.setAudioMuted(webviewHandle, true))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+  )
+  const permissionExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.respondToPermission(webviewHandle, "permission-1", "deny"))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.setAudioMuted(webviewHandle, true))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(audioExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(permissionExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+})
+
 test("native host RPC runtime denies protected WebView document and devtools calls", async () => {
   const deniedRows: AuditEvent[] = []
   const runtime = makeNativeHostRpcRuntime(WebViewRpcs, WebViewHandlersLive, {
@@ -2346,6 +2429,14 @@ test("native host RPC runtime denies protected WebView document and devtools cal
     {
       method: WEBVIEW_SET_USER_AGENT_METHOD,
       capability: P.nativeInvoke({ primitive: "WebView", methods: ["setUserAgent"] })
+    },
+    {
+      method: WEBVIEW_SET_AUDIO_MUTED_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["setAudioMuted"] })
+    },
+    {
+      method: WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["respondToPermission"] })
     },
     {
       method: WEBVIEW_OPEN_DEVTOOLS_METHOD,
@@ -2405,6 +2496,12 @@ const webviewDeniedPayload = (method: string): unknown => {
   if (method === WEBVIEW_SET_USER_AGENT_METHOD) {
     return { webview: webviewHandle, userAgent: "EffectDesktopTest/1.0" }
   }
+  if (method === WEBVIEW_SET_AUDIO_MUTED_METHOD) {
+    return { webview: webviewHandle, muted: true }
+  }
+  if (method === WEBVIEW_RESPOND_TO_PERMISSION_METHOD) {
+    return { webview: webviewHandle, requestId: "permission-1", decision: "deny" }
+  }
   return { webview: webviewHandle }
 }
 
@@ -2449,12 +2546,17 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       const findResult = yield* webview.findInPage(created, "needle")
       yield* webview.setZoom(created, 1.25)
       yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
+      yield* webview.setAudioMuted(created, true)
+      yield* webview.respondToPermission(created, "permission-1", "deny")
       yield* webview.openDevTools(created)
       yield* webview.closeDevTools(created)
       yield* webview.attachDebugger(created)
       const canOpenDevtools = yield* webview.capability("devtools open", { platform: "windows" })
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
       const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
+      const runtimeEvents = yield* webview
+        .onRuntimeEvent(created)
+        .pipe(Stream.take(1), Stream.runCollect)
 
       return {
         apiCalls,
@@ -2464,6 +2566,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
         findResult,
         navigationState,
         pdf,
+        runtimeEvents,
         screenshot
       }
     }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
@@ -2498,6 +2601,14 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       payload: '{"ok":true}'
     })
   ])
+  expect(Array.from(result.runtimeEvents)).toEqual([
+    new WebViewRuntimeEvent({
+      webview: webviewHandle,
+      phase: "drag-drop",
+      paths: ["/tmp/report.txt"],
+      position: { x: 12, y: 24 }
+    })
+  ])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [
       "WebView.create",
@@ -2527,6 +2638,11 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
     ["WebView.findInPage", { webview: webviewHandle, query: "needle" }],
     ["WebView.setZoom", { webview: webviewHandle, zoom: 1.25 }],
     ["WebView.setUserAgent", { webview: webviewHandle, userAgent: "EffectDesktopTest/1.0" }],
+    ["WebView.setAudioMuted", { webview: webviewHandle, muted: true }],
+    [
+      "WebView.respondToPermission",
+      { webview: webviewHandle, requestId: "permission-1", decision: "deny" }
+    ],
     ["WebView.openDevTools", { webview: webviewHandle }],
     ["WebView.closeDevTools", { webview: webviewHandle }],
     ["WebView.attachDebugger", { webview: webviewHandle }],
@@ -2738,6 +2854,49 @@ test("WebView bridge client rejects undeclared API-call event names", async () =
         Layer.provide(
           WebViewLive,
           makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+        )
+      )
+    )
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+})
+
+test("WebView bridge client rejects control-byte runtime event paths", async () => {
+  const exchange = webViewExchange([], (request) => ({
+    kind: "success",
+    payload: request.method === "WebView.create" ? webviewHandle : undefined
+  }))
+  const unsafeExchange: BridgeClientExchange = {
+    ...exchange,
+    subscribe: (method) =>
+      method === WEBVIEW_RUNTIME_EVENT_METHOD
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000203,
+              traceId: "event-trace-runtime-unsafe",
+              method,
+              payload: {
+                webview: webviewHandle,
+                phase: "drag-drop",
+                paths: [`/tmp/${String.fromCharCode(0)}secret`],
+                position: { x: 12, y: 24 }
+              }
+            })
+          )
+        : Stream.empty
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* webview.onRuntimeEvent().pipe(Stream.take(1), Stream.runCollect, Effect.exit)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(unsafeExchange, { nextTraceId: () => "trace" })
         )
       )
     )
@@ -12581,6 +12740,9 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
     }),
   setZoom: (_webview, zoom) => recordVoid(calls, `setZoom:${zoom}`),
   setUserAgent: (_webview, userAgent) => recordVoid(calls, `setUserAgent:${userAgent}`),
+  setAudioMuted: (_webview, muted) => recordVoid(calls, `setAudioMuted:${muted}`),
+  respondToPermission: (_webview, requestId, decision) =>
+    recordVoid(calls, `respondToPermission:${requestId}:${decision}`),
   openDevTools: () => recordVoid(calls, "openDevTools"),
   closeDevTools: () => recordVoid(calls, "closeDevTools"),
   attachDebugger: () => recordVoid(calls, "attachDebugger"),
@@ -12606,6 +12768,15 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
         api: "desktop",
         method: "ping",
         payload: '{"ok":true}'
+      })
+    ),
+  onRuntimeEvent: () =>
+    Stream.make(
+      new WebViewRuntimeEvent({
+        webview: webviewHandle,
+        phase: "drag-drop",
+        paths: ["/tmp/report.txt"],
+        position: { x: 12, y: 24 }
       })
     )
 })
@@ -13338,6 +13509,22 @@ const webViewExchange = (
             api: "desktop",
             method: "ping",
             payload: '{"ok":true}'
+          }
+        })
+      )
+    }
+    if (method === WEBVIEW_RUNTIME_EVENT_METHOD) {
+      return Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          timestamp: 1710000000202,
+          traceId: "event-trace-runtime",
+          method,
+          payload: {
+            webview: webviewHandle,
+            phase: "drag-drop",
+            paths: ["/tmp/report.txt"],
+            position: { x: 12, y: 24 }
           }
         })
       )

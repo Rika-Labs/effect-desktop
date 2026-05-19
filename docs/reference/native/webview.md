@@ -27,8 +27,10 @@ partition.
 `WebView.NavigationBlocked` is a navigation-policy event, not request/response
 interception. `WebView.ApiCall` is a preload-isolation event emitted only for
 API names and method names declared in the `WebView.create` isolation manifest.
-There is no `WebRequest` service yet for ordered interceptors, subresource
-inspection, response-header mutation, blocking, redirects, or request audit.
+`WebView.RuntimeEvent` is a runtime lifecycle stream for host-observable
+WebView state. There is no `WebRequest` service yet for ordered interceptors,
+subresource inspection, response-header mutation, blocking, redirects, or
+request audit.
 
 Navigation controls are host-backed for child WebViews. `WebView.create`
 registers a generation-stamped handle scoped to the owner window, enforces the
@@ -36,8 +38,8 @@ create origin policy before attachment, and releases the native WebView on
 `destroy`. `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, and `goForward`
 dispatch to the retained Wry WebView. `getNavigationState` returns host-tracked
 `canGoBack`, `canGoForward`, and `loading` state. The host still has no typed
-navigation lifecycle event stream, and browser-internal same-document history is
-not exposed as a portable native primitive.
+browser-internal same-document history API, so same-document history is not
+exposed as a portable native primitive.
 
 Navigation and popup policy is host-backed for child WebViews. `create` stores
 an initial origin policy, `setNavigationPolicy` replaces that policy on the
@@ -53,11 +55,21 @@ service, frame handle schema, frame lifecycle stream, `listFrames`, or
 `postToFrame` host route, and the current Wry-backed host path does not provide
 portable stable frame identifiers across macOS, Windows, and Linux.
 
-Runtime event coverage is not exposed today. Effect Desktop has no
-`WebViewRuntime` service, crash/unresponsive/media/file-input/drag-drop event
-contract, audio mute command, or auditable permission-response host route.
-The installed WebView provider exposes some callback ingredients, but they are
-not wired into typed Effect streams or permission decisions.
+Runtime event coverage is partial. `onRuntimeEvent` exposes host-observed page
+load and drag/drop events through `WebView.RuntimeEvent`; events are ordered by
+host emission, have no replay/backfill, apply normal stream cancellation, and
+use the bridge event queue as the backpressure boundary. Crash, unresponsive,
+media session, file-input, download, and browser permission prompt events are
+declared in the event phase contract but are not emitted by the current Wry host
+adapter because Wry does not expose portable public callbacks for them on all
+desktop targets.
+
+`setAudioMuted` and `respondToPermission` are permission-gated and
+handle-validated, but return typed unsupported. `setAudioMuted` uses
+`host-runtime-media-control-unavailable`; `respondToPermission` uses
+`host-permission-request-routing-unavailable`. Keeping the permission response
+route explicit gives permission decisions an auditable path before native prompt
+routing exists.
 
 Document controls are partially host-backed for child WebViews. `print` and
 `setZoom` route through the retained Wry WebView resource. `captureScreenshot`,
@@ -90,7 +102,9 @@ require a new network-auth service and host adapter.
 
 Browser permission prompts are not handled by `WebView` today. Camera,
 microphone, notifications, geolocation, clipboard, and display-capture
-decisions still need explicit profile/session-partitioned host wiring.
+decisions still need explicit profile/session-partitioned host wiring. Calls to
+`respondToPermission` fail as typed unsupported after permission and handle
+validation.
 
 Browsing data is not managed by `WebView` today. Cache, cookies, local storage,
 IndexedDB, and history cannot be cleared by profile, session, or data type
@@ -127,6 +141,8 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 | `findInPage`          | `{ webview, query }`                        | match counts             |
 | `setZoom`             | `{ webview, zoom }`                         | `void`                   |
 | `setUserAgent`        | `{ webview, userAgent }`                    | `void`                   |
+| `setAudioMuted`       | `{ webview, muted }`                        | `void`                   |
+| `respondToPermission` | `{ webview, requestId, decision }`          | `void`                   |
 | `openDevTools`        | `{ webview }`                               | `void`                   |
 | `closeDevTools`       | `{ webview }`                               | `void`                   |
 | `attachDebugger`      | `{ webview }`                               | `void`                   |
@@ -185,10 +201,15 @@ those resources and shares the same partial support reason because popup
 approval and external-open delegation are still intentionally conservative.
 Create-time preload isolation is host-backed through Wry initialization-script
 and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
+Runtime events are partially host-backed through Wry page-load and drag/drop
+callbacks and report through `WebView.RuntimeEvent`.
 `print` and `setZoom` are host-backed through Wry. `captureScreenshot`,
 `printToPdf`, and `findInPage` remain typed unsupported with
 `host-document-output-unavailable`; `setUserAgent` remains typed unsupported
-with `host-user-agent-runtime-unavailable`.
+with `host-user-agent-runtime-unavailable`. `setAudioMuted` and
+`respondToPermission` remain typed unsupported with
+`host-runtime-media-control-unavailable` and
+`host-permission-request-routing-unavailable`.
 `openDevTools` and `closeDevTools` are host-backed in debug builds only.
 `attachDebugger` remains typed unsupported with
 `host-debugger-protocol-unavailable` because the current Wry provider does not
