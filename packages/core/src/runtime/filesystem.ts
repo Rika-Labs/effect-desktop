@@ -578,9 +578,7 @@ const removeFilesystemPath = (
                 )
             : Effect.fail(mapFilesystemError(error, path, "Filesystem.remove", capability))
         ),
-        Effect.catch(() =>
-          Effect.fail(mapFilesystemError(error, path, "Filesystem.remove", capability))
-        )
+        Effect.mapError(() => mapFilesystemError(error, path, "Filesystem.remove", capability))
       )
     })
   )
@@ -890,8 +888,8 @@ const makeWatchEvent = (
   fileSystem: EffectFileSystem.FileSystem,
   directory: string,
   event: EffectFileSystem.WatchEvent
-): Effect.Effect<FilesystemEvent, FilesystemError, never> => {
-  return Effect.gen(function* () {
+): Effect.Effect<FilesystemEvent, FilesystemError, never> =>
+  Effect.gen(function* () {
     const path = watchEventPath(directory, event.path)
     const filename =
       path === directory ? undefined : yield* decodeWatchEventFilename(pathSegment(path))
@@ -902,7 +900,6 @@ const makeWatchEvent = (
       ...(filename === undefined ? {} : { filename })
     })
   })
-}
 
 const decodeWatchEventFilename = (
   filename: string

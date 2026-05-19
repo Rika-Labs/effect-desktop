@@ -172,9 +172,7 @@ export const makePermissionRegistry = (
           {
             capability,
             effect: declarationOptions.effect ?? "allow",
-            ...(declarationOptions.actor === undefined
-              ? {}
-              : { actor: declarationOptions.actor }),
+            ...(declarationOptions.actor === undefined ? {} : { actor: declarationOptions.actor }),
             source: declarationOptions.source ?? "declaration"
           },
           "PermissionRegistry.declare"
