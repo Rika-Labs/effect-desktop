@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange, HostProtocolInternalError } from "@effect-desktop/bridge"
 import { type AuditEvent, makePermissionRegistry, P } from "@effect-desktop/core"
-import { Cause, Effect, Exit, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
 
 import {
   DisplayCapture,
@@ -51,7 +51,7 @@ test("DisplayCapture captures image bytes with redacted audit metadata", () =>
         displayId: "display-1"
       })
       expect(rows.some((row) => row.source === "DisplayCapture.captureDisplay")).toBe(true)
-      expect(JSON.stringify(rows)).not.toContain(Array.from(result.image.bytes).join(","))
+      expect(serialize(rows)).not.toContain(Array.from(result.image.bytes).join(","))
       yield* Effect.promise(() => runtime.dispose())
     })
   ))
@@ -397,4 +397,15 @@ const expectExitFailure = <A>(
   if (Exit.isFailure(exit)) {
     assert(Cause.squash(exit.cause))
   }
+}
+
+const serialize = (value: unknown): string => {
+  if (value === null || value === undefined) return String(value)
+  if (typeof value !== "object") return String(value)
+  if (value instanceof Uint8Array) return Array.from(value).join(",")
+  if (Array.isArray(value)) return `[${value.map(serialize).join(",")}]`
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([key, child]) => `${key}:${serialize(child)}`)
+    .join(",")
+  return `{${entries}}`
 }

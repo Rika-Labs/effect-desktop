@@ -116,7 +116,8 @@ test("DistributionParity rejects mismatched capability evidence before transport
       const permissions = yield* configuredPermissions()
       const client = yield* runScoped(
         Effect.gen(function* () {
-          return yield* DistributionParityClient
+          const c = yield* DistributionParityClient
+          return c
         }),
         makeDistributionParityBridgeClientLayer(exchange)
       )

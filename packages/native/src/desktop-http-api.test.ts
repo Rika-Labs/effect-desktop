@@ -30,7 +30,7 @@ const windowClient: WindowClientApi = {
   getCurrent: () => Effect.succeed(windowHandle),
   getById: () => Effect.succeed(windowHandle),
   list: () => Effect.succeed([windowHandle]),
-  getParent: () => Effect.succeed(undefined),
+  getParent: () => Effect.sync(() => undefined),
   getChildren: () => Effect.succeed([]),
   getBounds: () => Effect.succeed({ x: 0, y: 0, width: 640, height: 480 }),
   setBounds: (_window, bounds) => Effect.succeed(bounds),
@@ -69,6 +69,13 @@ const defaultWindowState = (): WindowState =>
     simpleFullscreen: false
   })
 
+const windowCreateRequest = (): Request =>
+  new Request("http://localhost/window", {
+    method: "POST",
+    body: JSON.stringify({ title: "Main" }),
+    headers: { "content-type": "application/json" }
+  })
+
 const makeHandler = (permissions: Layer.Layer<PermissionRegistry>) =>
   HttpRouter.toWebHandler(
     DesktopHttpApiRoutes.pipe(
@@ -84,64 +91,58 @@ test("DesktopHttpApi generated client builds the window create endpoint", () => 
   expect(urls.window.create()).toBe("http://localhost/window")
 })
 
-test("DesktopHttpApi creates windows through schema-backed HTTP", async () => {
-  const permissions = Layer.effect(
-    PermissionRegistry,
+test("DesktopHttpApi creates windows through schema-backed HTTP", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const registry = yield* makePermissionRegistry({ traceId: () => "trace-http" })
-      yield* registry.declare(DesktopHttpWindowCreateCapability).pipe(Effect.orDie)
-      return registry
+      const permissions = Layer.effect(
+        PermissionRegistry,
+        Effect.gen(function* () {
+          const registry = yield* makePermissionRegistry({ traceId: () => "trace-http" })
+          yield* registry.declare(DesktopHttpWindowCreateCapability).pipe(Effect.orDie)
+          return registry
+        })
+      )
+      const { dispose, handler } = makeHandler(permissions)
+
+      try {
+        const response = yield* Effect.promise(() => handler(windowCreateRequest()))
+        const body = yield* Effect.promise(() => response.json())
+
+        expect(response.status).toBe(200)
+        expect(body).toEqual({
+          id: "window-1",
+          kind: "window",
+          state: "open",
+          ownerScope: "desktop-http-test",
+          generation: 0
+        })
+      } finally {
+        yield* Effect.promise(() => dispose())
+      }
     })
-  )
-  const { handler, dispose } = makeHandler(permissions)
+  ))
 
-  try {
-    const response = await handler(
-      new Request("http://localhost/window", {
-        method: "POST",
-        body: JSON.stringify({ title: "Main" }),
-        headers: { "content-type": "application/json" }
-      })
-    )
-    const body = await response.json()
+test("DesktopHttpPermission rejects undeclared window create permission as typed HTTP error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = Layer.effect(
+        PermissionRegistry,
+        makePermissionRegistry({ traceId: () => "trace-http" })
+      )
+      const { dispose, handler } = makeHandler(permissions)
 
-    expect(response.status).toBe(200)
-    expect(body).toEqual({
-      id: "window-1",
-      kind: "window",
-      state: "open",
-      ownerScope: "desktop-http-test",
-      generation: 0
+      try {
+        const response = yield* Effect.promise(() => handler(windowCreateRequest()))
+        const body = yield* Effect.promise(() => response.json())
+
+        expect(response.status).toBe(403)
+        expect(body).toMatchObject({
+          tag: "PermissionDenied",
+          capability: "native.invoke",
+          operation: "DesktopHttpPermission"
+        })
+      } finally {
+        yield* Effect.promise(() => dispose())
+      }
     })
-  } finally {
-    await dispose()
-  }
-})
-
-test("DesktopHttpPermission rejects undeclared window create permission as typed HTTP error", async () => {
-  const permissions = Layer.effect(
-    PermissionRegistry,
-    makePermissionRegistry({ traceId: () => "trace-http" })
-  )
-  const { handler, dispose } = makeHandler(permissions)
-
-  try {
-    const response = await handler(
-      new Request("http://localhost/window", {
-        method: "POST",
-        body: JSON.stringify({ title: "Main" }),
-        headers: { "content-type": "application/json" }
-      })
-    )
-    const body = await response.json()
-
-    expect(response.status).toBe(403)
-    expect(body).toMatchObject({
-      tag: "PermissionDenied",
-      capability: "native.invoke",
-      operation: "DesktopHttpPermission"
-    })
-  } finally {
-    await dispose()
-  }
-})
+  ))
