@@ -6,8 +6,8 @@ use crate::methods::open_intent;
 use crate::window::WindowMethodHandler;
 use host_protocol::HostProtocolError;
 use host_protocol::{
-    AppQuitPayload, AppRestartPayload, AppSecondInstanceEventPayload, AppSingleInstancePayload,
-    HostProtocolEnvelope,
+    AppOpenFileEventPayload, AppOpenUrlEventPayload, AppQuitPayload, AppRestartPayload,
+    AppSecondInstanceEventPayload, AppSingleInstancePayload, HostProtocolEnvelope,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{to_value, Value};
@@ -211,6 +211,7 @@ fn validate_args(
 }
 
 struct SingleInstanceLock {
+    cold_open_intent_emitted: bool,
     handoff: Option<SingleInstanceHandoffServer>,
     file: File,
 }
@@ -323,8 +324,11 @@ fn acquire_single_instance_lock(
     }
 
     let primary_pid = u64::from(std::process::id());
-    let handoff = match event_sender {
-        Some(sender) => Some(start_single_instance_handoff_server(sender, operation)?),
+    let handoff = match event_sender.as_ref() {
+        Some(sender) => Some(start_single_instance_handoff_server(
+            sender.clone(),
+            operation,
+        )?),
         None => None,
     };
     let lock_file = SingleInstanceLockFile {
@@ -332,7 +336,13 @@ fn acquire_single_instance_lock(
         handoff: handoff.as_ref().map(SingleInstanceHandoffServer::endpoint),
     };
     write_single_instance_lock_file(&mut file, &lock_file, operation)?;
-    *current = Some(SingleInstanceLock { handoff, file });
+    let mut lock = SingleInstanceLock {
+        cold_open_intent_emitted: false,
+        handoff,
+        file,
+    };
+    emit_current_open_intent_once(&mut lock, event_sender.as_ref());
+    *current = Some(lock);
     encode_single_instance(AppSingleInstancePayload::acquired(), operation)
 }
 
@@ -344,13 +354,14 @@ fn refresh_single_instance_handoff(
     let Some(sender) = event_sender else {
         return Ok(());
     };
-    let handoff = start_single_instance_handoff_server(sender, operation)?;
+    let handoff = start_single_instance_handoff_server(sender.clone(), operation)?;
     let lock_file = SingleInstanceLockFile {
         primary_pid: u64::from(std::process::id()),
         handoff: Some(handoff.endpoint()),
     };
     write_single_instance_lock_file(&mut lock.file, &lock_file, operation)?;
     lock.handoff = Some(handoff);
+    emit_current_open_intent_once(lock, Some(&sender));
     Ok(())
 }
 
@@ -646,7 +657,7 @@ fn handle_single_instance_handoff_stream(
         return;
     }
     let trace_id = message.event.trace_id().to_string();
-    let payload = match serde_json::to_value(message.event) {
+    let payload = match serde_json::to_value(&message.event) {
         Ok(payload) => payload,
         Err(error) => {
             warn!(
@@ -661,7 +672,7 @@ fn handle_single_instance_handoff_stream(
         .send(HostProtocolEnvelope::Event {
             method: host_protocol::APP_SECOND_INSTANCE_EVENT.to_string(),
             timestamp: timestamp_millis(),
-            trace_id,
+            trace_id: trace_id.clone(),
             window_id: None,
             payload: Some(payload),
         })
@@ -670,6 +681,70 @@ fn handle_single_instance_handoff_stream(
         warn!(
             event = "host.app.single_instance_handoff.emit_failed",
             "failed to emit single-instance handoff event"
+        );
+    }
+    emit_open_intent_event_for_argv(sender, message.event.argv(), trace_id);
+}
+
+fn emit_current_open_intent_once(
+    lock: &mut SingleInstanceLock,
+    sender: Option<&Sender<HostProtocolEnvelope>>,
+) {
+    if lock.cold_open_intent_emitted {
+        return;
+    }
+    let Some(sender) = sender else {
+        return;
+    };
+    let argv = std::env::args_os()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    emit_open_intent_event_for_argv(sender, &argv, format!("app-open-intent-{}", Uuid::now_v7()));
+    lock.cold_open_intent_emitted = true;
+}
+
+fn emit_open_intent_event_for_argv(
+    sender: &Sender<HostProtocolEnvelope>,
+    argv: &[String],
+    trace_id: String,
+) {
+    let Some(intent) = open_intent::app_open_intent(argv) else {
+        return;
+    };
+    let (method, payload) = match intent {
+        open_intent::AppOpenIntent::File(path) => (
+            host_protocol::APP_OPEN_FILE_EVENT,
+            serde_json::to_value(AppOpenFileEventPayload::new(path)),
+        ),
+        open_intent::AppOpenIntent::Url(url) => (
+            host_protocol::APP_OPEN_URL_EVENT,
+            serde_json::to_value(AppOpenUrlEventPayload::new(url)),
+        ),
+    };
+    let payload = match payload {
+        Ok(payload) => payload,
+        Err(error) => {
+            warn!(
+                event = "host.app.open_intent.encode_failed",
+                error = %error,
+                "failed to encode app open-intent event"
+            );
+            return;
+        }
+    };
+    if sender
+        .send(HostProtocolEnvelope::Event {
+            method: method.to_string(),
+            timestamp: timestamp_millis(),
+            trace_id,
+            window_id: None,
+            payload: Some(payload),
+        })
+        .is_err()
+    {
+        warn!(
+            event = "host.app.open_intent.emit_failed",
+            "failed to emit app open-intent event"
         );
     }
 }
@@ -830,9 +905,10 @@ fn unlock_single_instance_file(_file: &File) {}
 #[cfg(test)]
 mod tests {
     use super::{
-        read_single_instance_lock_file, request_single_instance_lock,
-        request_single_instance_lock_with_event_sender, restart, send_second_instance_handoff,
-        SingleInstanceHandoffEndpoint, SINGLE_INSTANCE_LOCK, SINGLE_INSTANCE_LOCK_PATH_ENV,
+        emit_open_intent_event_for_argv, read_single_instance_lock_file,
+        request_single_instance_lock, request_single_instance_lock_with_event_sender, restart,
+        send_second_instance_handoff, SingleInstanceHandoffEndpoint, SINGLE_INSTANCE_LOCK,
+        SINGLE_INSTANCE_LOCK_PATH_ENV,
     };
     use crate::methods::tests::FakeWindowHandler;
     use host_protocol::{
@@ -1015,6 +1091,99 @@ mod tests {
                 "cwd": "/repo",
                 "traceId": "trace-second-instance"
             })
+        );
+    }
+
+    #[test]
+    fn app_single_instance_handoff_emits_open_intent_after_second_instance() {
+        let env = SingleInstanceTestEnv::new("handoff-open-intent");
+        let (sender, receiver) = mpsc::channel();
+        request_single_instance_lock_with_event_sender(None, Some(sender))
+            .expect("single-instance lock should start handoff server");
+        let lock_file = read_test_lock_file(env.path());
+        let endpoint: SingleInstanceHandoffEndpoint =
+            lock_file.handoff.expect("handoff endpoint should exist");
+        let event = AppSecondInstanceEventPayload::new(
+            AppActivationReasonPayload::OpenFile,
+            vec!["secondary".to_string(), "/tmp/README.md".to_string()],
+            "/repo",
+            "trace-second-open-file",
+        );
+
+        send_second_instance_handoff(
+            &endpoint,
+            event,
+            host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
+        )
+        .expect("handoff should reach primary listener");
+
+        let first = receiver
+            .recv()
+            .expect("primary should receive second-instance event");
+        let second = receiver
+            .recv()
+            .expect("primary should receive open-intent event");
+        let HostProtocolEnvelope::Event {
+            method: first_method,
+            ..
+        } = first
+        else {
+            panic!("expected first app event");
+        };
+        let HostProtocolEnvelope::Event {
+            method: second_method,
+            trace_id,
+            payload,
+            ..
+        } = second
+        else {
+            panic!("expected second app event");
+        };
+        assert_eq!(first_method, host_protocol::APP_SECOND_INSTANCE_EVENT);
+        assert_eq!(second_method, host_protocol::APP_OPEN_FILE_EVENT);
+        assert_eq!(trace_id, "trace-second-open-file");
+        assert_eq!(
+            payload.expect("open-file event should include payload"),
+            json!({ "path": "/tmp/README.md" })
+        );
+    }
+
+    #[test]
+    fn app_open_intent_event_emits_url_payloads_and_ignores_ambiguous_argv() {
+        let (sender, receiver) = mpsc::channel();
+        emit_open_intent_event_for_argv(
+            &sender,
+            &["app".to_string(), "effect-desktop://open".to_string()],
+            "trace-open-url".to_string(),
+        );
+        emit_open_intent_event_for_argv(
+            &sender,
+            &[
+                "app".to_string(),
+                "/tmp/README.md".to_string(),
+                "effect-desktop://open".to_string(),
+            ],
+            "trace-ambiguous".to_string(),
+        );
+
+        let HostProtocolEnvelope::Event {
+            method,
+            trace_id,
+            payload,
+            ..
+        } = receiver.recv().expect("open-url event")
+        else {
+            panic!("expected app open-url event");
+        };
+        assert_eq!(method, host_protocol::APP_OPEN_URL_EVENT);
+        assert_eq!(trace_id, "trace-open-url");
+        assert_eq!(
+            payload.expect("open-url event should include payload"),
+            json!({ "url": "effect-desktop://open" })
+        );
+        assert!(
+            receiver.try_recv().is_err(),
+            "ambiguous open intent should not emit an event"
         );
     }
 

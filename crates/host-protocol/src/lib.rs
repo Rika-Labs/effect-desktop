@@ -474,6 +474,18 @@ impl AppSecondInstanceEventPayload {
     pub fn trace_id(&self) -> &str {
         &self.trace_id
     }
+
+    pub fn argv(&self) -> &[String] {
+        &self.argv
+    }
+
+    pub fn cwd(&self) -> &str {
+        &self.cwd
+    }
+
+    pub fn activation_reason(&self) -> AppActivationReasonPayload {
+        self.activation_reason
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

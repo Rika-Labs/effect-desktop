@@ -19,7 +19,9 @@ window. The Rust host also implements `App.requestSingleInstanceLock` with a
 process-held OS file lock and returns the primary process id when another
 process already owns the lock. When the primary process owns a runtime event
 stream, duplicate launch attempts forward `argv`, `cwd`, `activationReason`,
-and `traceId` to the primary process as `App.onSecondInstance`.
+and `traceId` to the primary process as `App.onSecondInstance`. Safe open-file
+and open-url intents from the primary launch argv and duplicate-launch argv are
+also emitted through `App.onOpenFile` or `App.onOpenUrl`.
 `activationReason` is classified from argv as `"open-file"` when exactly one
 safe absolute file path is present, `"open-url"` when exactly one safe
 non-dangerous URL is present, `"unknown"` when intent-like argv is unsafe or
@@ -28,8 +30,7 @@ verifies this lock across host processes.
 The host binary includes `--app-quit-smoke-test`, `--app-focus-smoke-test`, and
 `--app-restart-smoke-test` to verify live startup windows can exit through the
 app-quit lifecycle path, focus through the native window-manager path, and
-launch a smoke-only replacement process. File/open-url activation sources are
-still unsupported until the host owns those lifecycle controls.
+launch a smoke-only replacement process.
 `Association` owns OS-level protocol and file association contracts.
 `Autostart` owns open-at-login and login-item operations.
 
@@ -52,7 +53,12 @@ Rust host before the current `App.quit` path exits the event loop and before a
 native close request exits the app. Native `onSecondInstance` is emitted by the
 single-instance handoff path for duplicate launches, including argv-derived
 open-file/open-url activation reasons. Native `onOpenFile` and `onOpenUrl`
-delivery remains unsupported until their source adapters exist.
+are emitted from the same argv classifier: the host emits at most one open
+intent event, after `onSecondInstance` for duplicate launches, and does not emit
+an open intent event for unsafe or ambiguous argv. Event delivery uses the host
+runtime event stream; if no renderer subscription is installed yet, the primary
+launch intent remains pending until `requestSingleInstanceLock` installs the
+runtime event sender.
 
 `onOpenUrl` requires a syntactically valid URL with no ASCII control characters
 and rejects dangerous schemes before application code receives the event:
@@ -68,8 +74,8 @@ the event.
 `AppError` is the host protocol error union. Unsupported App methods decode
 through Rust `App.*` routes and fail closed as typed `Unsupported`.
 `onBeforeQuit` has a host event source for app-exit paths, and
-`onSecondInstance` has a host event source for duplicate launch handoff. The
-other App subscriptions still do not have native lifecycle event sources.
+`onSecondInstance`, `onOpenFile`, and `onOpenUrl` have host event sources for
+single-instance launch and duplicate-launch handoff paths.
 
 ## Notes
 

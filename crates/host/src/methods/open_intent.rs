@@ -8,9 +8,15 @@ enum LaunchReason {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum AppOpenIntent {
+    File(String),
+    Url(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum IntentCandidate {
-    Safe(LaunchReason),
+    Safe(AppOpenIntent),
     Unsafe,
 }
 
@@ -32,12 +38,26 @@ pub(crate) fn app_metadata_launch_reason(argv: &[String]) -> AppMetadataLaunchRe
     }
 }
 
+pub(crate) fn app_open_intent(argv: &[String]) -> Option<AppOpenIntent> {
+    match classify_argv(argv) {
+        LaunchReason::OpenFile | LaunchReason::OpenUrl => {
+            argv.iter()
+                .skip(1)
+                .find_map(|argument| match classify_argument(argument) {
+                    Some(IntentCandidate::Safe(intent)) => Some(intent),
+                    Some(IntentCandidate::Unsafe) | None => None,
+                })
+        }
+        LaunchReason::Launch | LaunchReason::Unknown => None,
+    }
+}
+
 fn classify_argv(argv: &[String]) -> LaunchReason {
     let mut reason = None;
     for argument in argv.iter().skip(1) {
         match classify_argument(argument) {
             Some(IntentCandidate::Safe(candidate)) => {
-                if reason.replace(candidate).is_some() {
+                if reason.replace(candidate.reason()).is_some() {
                     return LaunchReason::Unknown;
                 }
             }
@@ -46,6 +66,15 @@ fn classify_argv(argv: &[String]) -> LaunchReason {
         }
     }
     reason.unwrap_or(LaunchReason::Launch)
+}
+
+impl AppOpenIntent {
+    fn reason(&self) -> LaunchReason {
+        match self {
+            Self::File(_) => LaunchReason::OpenFile,
+            Self::Url(_) => LaunchReason::OpenUrl,
+        }
+    }
 }
 
 fn classify_argument(argument: &str) -> Option<IntentCandidate> {
@@ -63,13 +92,13 @@ fn classify_file_path(value: &str) -> Option<IntentCandidate> {
         return Some(if has_dot_path_segment(value, &['/']) {
             IntentCandidate::Unsafe
         } else {
-            IntentCandidate::Safe(LaunchReason::OpenFile)
+            IntentCandidate::Safe(AppOpenIntent::File(value.to_string()))
         });
     }
     if is_windows_drive_path_like(value) {
         return Some(
             if is_windows_drive_absolute_path(value) && !has_dot_path_segment(value, &['/', '\\']) {
-                IntentCandidate::Safe(LaunchReason::OpenFile)
+                IntentCandidate::Safe(AppOpenIntent::File(value.to_string()))
             } else {
                 IntentCandidate::Unsafe
             },
@@ -78,7 +107,7 @@ fn classify_file_path(value: &str) -> Option<IntentCandidate> {
     if value.starts_with("\\\\") {
         return Some(
             if is_windows_unc_absolute_path(value) && !has_dot_path_segment(value, &['/', '\\']) {
-                IntentCandidate::Safe(LaunchReason::OpenFile)
+                IntentCandidate::Safe(AppOpenIntent::File(value.to_string()))
             } else {
                 IntentCandidate::Unsafe
             },
@@ -98,7 +127,7 @@ fn classify_url(value: &str) -> Option<IntentCandidate> {
     if rest.is_empty() || is_dangerous_open_intent_scheme(scheme) {
         return Some(IntentCandidate::Unsafe);
     }
-    Some(IntentCandidate::Safe(LaunchReason::OpenUrl))
+    Some(IntentCandidate::Safe(AppOpenIntent::Url(value.to_string())))
 }
 
 fn is_url_scheme(scheme: &str) -> bool {
@@ -155,7 +184,9 @@ fn has_ascii_control(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{app_activation_reason, app_metadata_launch_reason};
+    use super::{
+        app_activation_reason, app_metadata_launch_reason, app_open_intent, AppOpenIntent,
+    };
     use host_protocol::{AppActivationReasonPayload, AppMetadataLaunchReasonPayload};
 
     #[test]
@@ -188,6 +219,10 @@ mod tests {
                     path.to_string()
                 ]),
                 AppMetadataLaunchReasonPayload::OpenFile
+            );
+            assert_eq!(
+                app_open_intent(&["app".to_string(), path.to_string()]),
+                Some(AppOpenIntent::File(path.to_string()))
             );
         }
     }
@@ -223,6 +258,10 @@ mod tests {
             app_metadata_launch_reason(&["app".to_string(), "https://example.invalid".to_string()]),
             AppMetadataLaunchReasonPayload::OpenUrl
         );
+        assert_eq!(
+            app_open_intent(&["app".to_string(), "effect-desktop://open".to_string()]),
+            Some(AppOpenIntent::Url("effect-desktop://open".to_string()))
+        );
     }
 
     #[test]
@@ -251,6 +290,14 @@ mod tests {
                 "effect-desktop://open".to_string(),
             ]),
             AppActivationReasonPayload::Unknown
+        );
+        assert_eq!(
+            app_open_intent(&[
+                "app".to_string(),
+                "/tmp/one.txt".to_string(),
+                "effect-desktop://open".to_string(),
+            ]),
+            None
         );
     }
 }
