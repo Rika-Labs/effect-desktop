@@ -1179,6 +1179,11 @@
       "signature": "const WEBVIEW_FIND_IN_PAGE_METHOD: \"WebView.findInPage\""
     },
     {
+      "name": "WEBVIEW_FRAME_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_FRAME_EVENT_METHOD: \"WebView.FrameEvent\""
+    },
+    {
       "name": "WEBVIEW_GET_NAVIGATION_STATE_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_GET_NAVIGATION_STATE_METHOD: \"WebView.getNavigationState\""
@@ -1192,6 +1197,11 @@
       "name": "WEBVIEW_GO_FORWARD_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_GO_FORWARD_METHOD: \"WebView.goForward\""
+    },
+    {
+      "name": "WEBVIEW_LIST_FRAMES_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_LIST_FRAMES_METHOD: \"WebView.listFrames\""
     },
     {
       "name": "WEBVIEW_LOAD_ROUTE_METHOD",
@@ -1212,6 +1222,11 @@
       "name": "WEBVIEW_OPEN_DEVTOOLS_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_OPEN_DEVTOOLS_METHOD: \"WebView.openDevTools\""
+    },
+    {
+      "name": "WEBVIEW_POST_TO_FRAME_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_POST_TO_FRAME_METHOD: \"WebView.postToFrame\""
     },
     {
       "name": "WEBVIEW_PRINT_METHOD",

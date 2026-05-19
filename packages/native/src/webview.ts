@@ -24,6 +24,9 @@ import {
   type WebViewCreateNavigationOptions,
   type WebViewCreateOptions,
   WebViewCreateInput,
+  WebViewFrameEvent,
+  type WebViewFrameHandle,
+  WebViewFrameList,
   type WebViewHandle,
   WebViewHandleInput,
   WebViewLoadRouteInput,
@@ -34,6 +37,7 @@ import {
   WebViewPdf,
   WebViewFindInPageInput,
   WebViewFindInPageResult,
+  WebViewPostToFrameInput,
   WebViewRuntimeEvent,
   WebViewResource,
   type WebViewPlatform,
@@ -85,6 +89,7 @@ const WebViewDocumentUnsupportedReason = "host-document-output-unavailable"
 const WebViewRuntimeUserAgentUnsupportedReason = "host-user-agent-runtime-unavailable"
 const WebViewRuntimeMediaControlUnsupportedReason = "host-runtime-media-control-unavailable"
 const WebViewRuntimePermissionUnsupportedReason = "host-permission-request-routing-unavailable"
+const WebViewFrameRoutingUnsupportedReason = "host-frame-routing-unavailable"
 const WebViewPrintZoomPartialReason = "host-print-zoom-provider-backed"
 const WebViewDocumentUnsupportedSupport = NativeSurface.support.unsupported(
   WebViewDocumentUnsupportedReason,
@@ -162,6 +167,16 @@ const WebViewRuntimePermissionSupport = NativeSurface.support.unsupported(
         status: "unsupported",
         reason: WebViewRuntimePermissionUnsupportedReason
       }
+    ]
+  }
+)
+const WebViewFrameRoutingSupport = NativeSurface.support.unsupported(
+  WebViewFrameRoutingUnsupportedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: WebViewFrameRoutingUnsupportedReason },
+      { platform: "windows", status: "unsupported", reason: WebViewFrameRoutingUnsupportedReason },
+      { platform: "linux", status: "unsupported", reason: WebViewFrameRoutingUnsupportedReason }
     ]
   }
 )
@@ -310,6 +325,24 @@ export const WebViewRespondToPermission = NativeSurface.rpc("WebView", "respondT
   endpoint: "mutation",
   support: WebViewRuntimePermissionSupport
 })
+export const WebViewListFrames = NativeSurface.rpc("WebView", "listFrames", {
+  payload: WebViewHandleInput,
+  success: WebViewFrameList,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["listFrames"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewFrameRoutingSupport
+})
+export const WebViewPostToFrame = NativeSurface.rpc("WebView", "postToFrame", {
+  payload: WebViewPostToFrameInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["postToFrame"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewFrameRoutingSupport
+})
 export const WebViewOpenDevTools = NativeSurface.rpc("WebView", "openDevTools", {
   payload: WebViewHandleInput,
   success: Schema.Void,
@@ -366,7 +399,8 @@ export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
 export const WebViewRpcEvents = Object.freeze({
   NavigationBlocked: { payload: WebViewNavigationBlockedEvent },
   ApiCall: { payload: WebViewApiCallEvent },
-  Runtime: { payload: WebViewRuntimeEvent }
+  Runtime: { payload: WebViewRuntimeEvent },
+  Frame: { payload: WebViewFrameEvent }
 })
 
 export type WebViewRpcEvents = typeof WebViewRpcEvents
@@ -388,6 +422,8 @@ const WebViewRpcGroup = RpcGroup.make(
   WebViewSetUserAgent,
   WebViewSetAudioMuted,
   WebViewRespondToPermission,
+  WebViewListFrames,
+  WebViewPostToFrame,
   WebViewOpenDevTools,
   WebViewCloseDevTools,
   WebViewAttachDebugger,
@@ -415,6 +451,8 @@ export const WebViewMethodNames = Object.freeze([
   "setUserAgent",
   "setAudioMuted",
   "respondToPermission",
+  "listFrames",
+  "postToFrame",
   "openDevTools",
   "closeDevTools",
   "attachDebugger",
@@ -437,6 +475,8 @@ const WebViewCapabilityMethods = Object.freeze([
   "setZoom",
   "setAudioMuted",
   "respondToPermission",
+  "listFrames",
+  "postToFrame",
   "openDevTools",
   "closeDevTools",
   "setNavigationPolicy",
@@ -488,6 +528,14 @@ export interface WebViewClientApi {
     requestId: string,
     decision: "grant" | "deny"
   ) => Effect.Effect<void, WebViewError, never>
+  readonly listFrames: (
+    webview: WebViewHandle
+  ) => Effect.Effect<WebViewFrameList, WebViewError, never>
+  readonly postToFrame: (
+    webview: WebViewHandle,
+    frame: WebViewFrameHandle,
+    payload: string
+  ) => Effect.Effect<void, WebViewError, never>
   readonly openDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly closeDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly attachDebugger: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
@@ -508,6 +556,9 @@ export interface WebViewClientApi {
   readonly onRuntimeEvent: (
     webview?: WebViewHandle
   ) => Stream.Stream<WebViewRuntimeEvent, WebViewError, never>
+  readonly onFrameEvent: (
+    webview?: WebViewHandle
+  ) => Stream.Stream<WebViewFrameEvent, WebViewError, never>
 }
 
 export class WebViewClient extends Context.Service<WebViewClient, WebViewClientApi>()(
@@ -638,6 +689,16 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
       const webview = yield* WebView
       yield* webview.respondToPermission(input.webview, input.requestId, input.decision)
     }),
+  "WebView.listFrames": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* webview.listFrames(input.webview)
+    }),
+  "WebView.postToFrame": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.postToFrame(input.webview, input.frame, input.payload)
+    }),
   "WebView.openDevTools": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
@@ -716,6 +777,8 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
     setAudioMuted: (webview, muted) => client.setAudioMuted(webview, muted),
     respondToPermission: (webview, requestId, decision) =>
       client.respondToPermission(webview, requestId, decision),
+    listFrames: (webview) => client.listFrames(webview),
+    postToFrame: (webview, frame, payload) => client.postToFrame(webview, frame, payload),
     openDevTools: (webview) => client.openDevTools(webview),
     closeDevTools: (webview) => client.closeDevTools(webview),
     attachDebugger: (webview) => client.attachDebugger(webview),
@@ -731,7 +794,8 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
     destroy: (webview) => client.destroy(webview),
     onNavigationBlocked: () => client.onNavigationBlocked(),
     onApiCall: () => client.onApiCall(),
-    onRuntimeEvent: (webview) => client.onRuntimeEvent(webview)
+    onRuntimeEvent: (webview) => client.onRuntimeEvent(webview),
+    onFrameEvent: (webview) => client.onFrameEvent(webview)
   }
 
   return Object.freeze(service)
@@ -847,6 +911,23 @@ const webViewClientFromRpcClient = (
           )
         )
       ),
+    listFrames: (webview) =>
+      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.listFrames"](decoded), "WebView.listFrames")
+        ),
+        Effect.flatMap(decodeWebViewFrameList)
+      ),
+    postToFrame: (webview, frame, payload) =>
+      decodeWebViewPostToFrameInput({
+        webview: toWebViewHandle(webview),
+        frame: toWebViewFrameHandle(frame),
+        payload
+      }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.postToFrame"](decoded), "WebView.postToFrame")
+        )
+      ),
     openDevTools: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
@@ -888,7 +969,8 @@ const webViewClientFromRpcClient = (
       ),
     onNavigationBlocked: () => subscribeWebViewNavigationBlockedEvent(exchange),
     onApiCall: () => subscribeWebViewApiCallEvent(exchange),
-    onRuntimeEvent: (webview) => subscribeWebViewRuntimeEvent(exchange, webview)
+    onRuntimeEvent: (webview) => subscribeWebViewRuntimeEvent(exchange, webview),
+    onFrameEvent: (webview) => subscribeWebViewFrameEvent(exchange, webview)
   }
 
   return Object.freeze(webViewClient)
@@ -909,6 +991,16 @@ const subscribeWebViewRuntimeEvent = (
   webview?: WebViewHandle
 ): Stream.Stream<WebViewRuntimeEvent, WebViewError, never> => {
   const stream = subscribeNativeEvent(exchange, "WebView.RuntimeEvent", WebViewRuntimeEvent)
+  return webview === undefined
+    ? stream
+    : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
+}
+
+const subscribeWebViewFrameEvent = (
+  exchange: BridgeClientExchange | undefined,
+  webview?: WebViewHandle
+): Stream.Stream<WebViewFrameEvent, WebViewError, never> => {
+  const stream = subscribeNativeEvent(exchange, "WebView.FrameEvent", WebViewFrameEvent)
   return webview === undefined
     ? stream
     : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
@@ -935,6 +1027,15 @@ const toWindowHandle = (handle: WindowHandle): WindowHandle =>
   })
 
 const toWebViewHandle = (handle: WebViewHandle): WebViewHandle =>
+  Object.freeze({
+    kind: handle.kind,
+    id: handle.id,
+    generation: handle.generation,
+    ownerScope: handle.ownerScope,
+    state: handle.state
+  })
+
+const toWebViewFrameHandle = (handle: WebViewFrameHandle): WebViewFrameHandle =>
   Object.freeze({
     kind: handle.kind,
     id: handle.id,
@@ -1010,6 +1111,20 @@ const decodeWebViewRespondToPermissionInput = (
   input: unknown
 ): Effect.Effect<WebViewRespondToPermissionInput, WebViewError, never> =>
   decodeInput(WebViewRespondToPermissionInput, input, "WebView.respondToPermission")
+
+const decodeWebViewFrameList = (
+  input: unknown
+): Effect.Effect<WebViewFrameList, WebViewError, never> =>
+  Schema.decodeUnknownEffect(WebViewFrameList)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError("WebView.listFrames", formatUnknownError(error))
+    )
+  )
+
+const decodeWebViewPostToFrameInput = (
+  input: unknown
+): Effect.Effect<WebViewPostToFrameInput, WebViewError, never> =>
+  decodeInput(WebViewPostToFrameInput, input, "WebView.postToFrame")
 
 const decodeWebViewCapabilityInput = (
   input: unknown

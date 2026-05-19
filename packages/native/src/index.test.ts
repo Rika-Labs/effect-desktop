@@ -48,7 +48,10 @@ import {
   WEBVIEW_ATTACH_DEBUGGER_METHOD,
   WEBVIEW_CLOSE_DEVTOOLS_METHOD,
   WEBVIEW_FIND_IN_PAGE_METHOD,
+  WEBVIEW_FRAME_EVENT_METHOD,
+  WEBVIEW_LIST_FRAMES_METHOD,
   WEBVIEW_OPEN_DEVTOOLS_METHOD,
+  WEBVIEW_POST_TO_FRAME_METHOD,
   WEBVIEW_PRINT_METHOD,
   WEBVIEW_PRINT_TO_PDF_METHOD,
   WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
@@ -449,6 +452,8 @@ import {
   UpdaterStatusResult,
   UpdaterStatusState,
   WebViewApiCallEvent,
+  WebViewFrameEvent,
+  WebViewFrameList,
   WebViewFindInPageResult,
   WebViewNavigationBlockedEvent,
   WebViewPdf,
@@ -461,6 +466,7 @@ import {
   type NotificationHandle,
   type TrayHandle,
   type WebViewHandle,
+  type WebViewFrameHandle,
   type WindowCreateOptions,
   type WindowHandle
 } from "./contracts/index.js"
@@ -835,6 +841,8 @@ const expectedWebViewMethods: Array<(typeof WebViewMethodNames)[number]> = [
   "setUserAgent",
   "setAudioMuted",
   "respondToPermission",
+  "listFrames",
+  "postToFrame",
   "openDevTools",
   "closeDevTools",
   "attachDebugger",
@@ -1044,6 +1052,14 @@ const webviewHandle: WebViewHandle = {
   id: resourceId("webview-1"),
   generation: 0,
   ownerScope: "window:window-1",
+  state: "open"
+}
+
+const webviewFrameHandle: WebViewFrameHandle = {
+  kind: "webview-frame",
+  id: resourceId("frame-1"),
+  generation: 0,
+  ownerScope: "webview:webview-1",
   state: "open"
 }
 
@@ -2075,7 +2091,12 @@ test("AppMetadata service propagates unsupported platform and host failure", asy
 test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => {
   expect([...WebViewMethodNames]).toEqual(expectedWebViewMethods)
   expect(rpcMethodNames("WebView", WebViewRpcs)).toEqual(expectedWebViewMethods)
-  expect(Object.keys(WebViewRpcEvents)).toEqual(["NavigationBlocked", "ApiCall", "Runtime"])
+  expect(Object.keys(WebViewRpcEvents)).toEqual([
+    "NavigationBlocked",
+    "ApiCall",
+    "Runtime",
+    "Frame"
+  ])
 })
 
 test("WebView service delegates through a substitutable WebViewClient port", async () => {
@@ -2099,6 +2120,8 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
       yield* webview.setAudioMuted(created, true)
       yield* webview.respondToPermission(created, "permission-1", "deny")
+      const frames = yield* webview.listFrames(created)
+      yield* webview.postToFrame(created, webviewFrameHandle, '{"kind":"ping"}')
       yield* webview.openDevTools(created)
       yield* webview.closeDevTools(created)
       yield* webview.attachDebugger(created)
@@ -2112,12 +2135,17 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       const runtimeEvents = yield* webview
         .onRuntimeEvent(created)
         .pipe(Stream.take(1), Stream.runCollect)
+      const frameEvents = yield* webview
+        .onFrameEvent(created)
+        .pipe(Stream.take(1), Stream.runCollect)
       yield* webview.destroy(created)
 
       return {
         apiCalls,
         blocked,
         created,
+        frameEvents,
+        frames,
         findResult,
         linuxAutofill,
         navigationState,
@@ -2163,6 +2191,15 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       position: { x: 12, y: 24 }
     })
   ])
+  expect(result.frames).toEqual(new WebViewFrameList({ webview: webviewHandle, frames: [] }))
+  expect(Array.from(result.frameEvents)).toEqual([
+    new WebViewFrameEvent({
+      webview: webviewHandle,
+      frame: webviewFrameHandle,
+      phase: "created",
+      url: "https://example.com/frame"
+    })
+  ])
   expect(calls).toEqual([
     "create:app://localhost/",
     "loadRoute:/settings",
@@ -2180,6 +2217,8 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
     "setUserAgent:EffectDesktopTest/1.0",
     "setAudioMuted:true",
     "respondToPermission:permission-1:deny",
+    "listFrames",
+    'postToFrame:frame-1:{"kind":"ping"}',
     "openDevTools",
     "closeDevTools",
     "attachDebugger",
@@ -2404,6 +2443,67 @@ test("WebView runtime controls propagate success, unsupported, and host failures
   expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
+test("WebView frame routing propagates success, unsupported, and host failures", async () => {
+  const calls: string[] = []
+  const success = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      const frames = yield* webview.listFrames(webviewHandle)
+      yield* webview.postToFrame(webviewHandle, webviewFrameHandle, '{"kind":"ping"}')
+      const events = yield* webview
+        .onFrameEvent(webviewHandle)
+        .pipe(Stream.take(1), Stream.runCollect)
+      return { events, frames }
+    }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
+  )
+
+  expect(success.frames).toEqual(new WebViewFrameList({ webview: webviewHandle, frames: [] }))
+  expect(Array.from(success.events)).toEqual([
+    new WebViewFrameEvent({
+      webview: webviewHandle,
+      frame: webviewFrameHandle,
+      phase: "created",
+      url: "https://example.com/frame"
+    })
+  ])
+  expect(calls).toEqual(["listFrames", 'postToFrame:frame-1:{"kind":"ping"}'])
+
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-frame-routing-unavailable",
+    message: "unsupported WebView.listFrames",
+    operation: WEBVIEW_LIST_FRAMES_METHOD,
+    recoverable: false
+  })
+  const unsupportedClient: WebViewClientApi = {
+    ...webViewClient([]),
+    listFrames: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: WebViewClientApi = {
+    ...webViewClient([]),
+    postToFrame: () =>
+      Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_POST_TO_FRAME_METHOD))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.listFrames(webviewHandle))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(
+        webview.postToFrame(webviewHandle, webviewFrameHandle, '{"kind":"ping"}')
+      )
+    }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+})
+
 test("native host RPC runtime denies protected WebView document and devtools calls", async () => {
   const deniedRows: AuditEvent[] = []
   const runtime = makeNativeHostRpcRuntime(WebViewRpcs, WebViewHandlersLive, {
@@ -2437,6 +2537,14 @@ test("native host RPC runtime denies protected WebView document and devtools cal
     {
       method: WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
       capability: P.nativeInvoke({ primitive: "WebView", methods: ["respondToPermission"] })
+    },
+    {
+      method: WEBVIEW_LIST_FRAMES_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["listFrames"] })
+    },
+    {
+      method: WEBVIEW_POST_TO_FRAME_METHOD,
+      capability: P.nativeInvoke({ primitive: "WebView", methods: ["postToFrame"] })
     },
     {
       method: WEBVIEW_OPEN_DEVTOOLS_METHOD,
@@ -2502,6 +2610,9 @@ const webviewDeniedPayload = (method: string): unknown => {
   if (method === WEBVIEW_RESPOND_TO_PERMISSION_METHOD) {
     return { webview: webviewHandle, requestId: "permission-1", decision: "deny" }
   }
+  if (method === WEBVIEW_POST_TO_FRAME_METHOD) {
+    return { webview: webviewHandle, frame: webviewFrameHandle, payload: '{"kind":"ping"}' }
+  }
   return { webview: webviewHandle }
 }
 
@@ -2520,9 +2631,11 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
               ? { mime: "application/pdf", bytes: "JVBERg==" }
               : request.method === "WebView.findInPage"
                 ? { matches: 2, activeMatchOrdinal: 1 }
-                : request.method === "WebView.capability"
-                  ? { supported: true }
-                  : undefined
+                : request.method === "WebView.listFrames"
+                  ? { webview: webviewHandle, frames: [] }
+                  : request.method === "WebView.capability"
+                    ? { supported: true }
+                    : undefined
   }))
 
   const result = await Effect.runPromise(
@@ -2548,6 +2661,8 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
       yield* webview.setAudioMuted(created, true)
       yield* webview.respondToPermission(created, "permission-1", "deny")
+      const frames = yield* webview.listFrames(created)
+      yield* webview.postToFrame(created, webviewFrameHandle, '{"kind":"ping"}')
       yield* webview.openDevTools(created)
       yield* webview.closeDevTools(created)
       yield* webview.attachDebugger(created)
@@ -2557,12 +2672,17 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       const runtimeEvents = yield* webview
         .onRuntimeEvent(created)
         .pipe(Stream.take(1), Stream.runCollect)
+      const frameEvents = yield* webview
+        .onFrameEvent(created)
+        .pipe(Stream.take(1), Stream.runCollect)
 
       return {
         apiCalls,
         blocked,
         canOpenDevtools,
         created,
+        frameEvents,
+        frames,
         findResult,
         navigationState,
         pdf,
@@ -2609,6 +2729,15 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       position: { x: 12, y: 24 }
     })
   ])
+  expect(result.frames).toEqual(new WebViewFrameList({ webview: webviewHandle, frames: [] }))
+  expect(Array.from(result.frameEvents)).toEqual([
+    new WebViewFrameEvent({
+      webview: webviewHandle,
+      frame: webviewFrameHandle,
+      phase: "created",
+      url: "https://example.com/frame"
+    })
+  ])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [
       "WebView.create",
@@ -2642,6 +2771,11 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
     [
       "WebView.respondToPermission",
       { webview: webviewHandle, requestId: "permission-1", decision: "deny" }
+    ],
+    ["WebView.listFrames", { webview: webviewHandle }],
+    [
+      "WebView.postToFrame",
+      { webview: webviewHandle, frame: webviewFrameHandle, payload: '{"kind":"ping"}' }
     ],
     ["WebView.openDevTools", { webview: webviewHandle }],
     ["WebView.closeDevTools", { webview: webviewHandle }],
@@ -12743,6 +12877,13 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
   setAudioMuted: (_webview, muted) => recordVoid(calls, `setAudioMuted:${muted}`),
   respondToPermission: (_webview, requestId, decision) =>
     recordVoid(calls, `respondToPermission:${requestId}:${decision}`),
+  listFrames: () =>
+    Effect.sync(() => {
+      calls.push("listFrames")
+      return new WebViewFrameList({ webview: webviewHandle, frames: [] })
+    }),
+  postToFrame: (_webview, frame, payload) =>
+    recordVoid(calls, `postToFrame:${frame.id}:${payload}`),
   openDevTools: () => recordVoid(calls, "openDevTools"),
   closeDevTools: () => recordVoid(calls, "closeDevTools"),
   attachDebugger: () => recordVoid(calls, "attachDebugger"),
@@ -12777,6 +12918,15 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
         phase: "drag-drop",
         paths: ["/tmp/report.txt"],
         position: { x: 12, y: 24 }
+      })
+    ),
+  onFrameEvent: () =>
+    Stream.make(
+      new WebViewFrameEvent({
+        webview: webviewHandle,
+        frame: webviewFrameHandle,
+        phase: "created",
+        url: "https://example.com/frame"
       })
     )
 })
@@ -13525,6 +13675,22 @@ const webViewExchange = (
             phase: "drag-drop",
             paths: ["/tmp/report.txt"],
             position: { x: 12, y: 24 }
+          }
+        })
+      )
+    }
+    if (method === WEBVIEW_FRAME_EVENT_METHOD) {
+      return Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          timestamp: 1710000000203,
+          traceId: "event-trace-frame",
+          method,
+          payload: {
+            webview: webviewHandle,
+            frame: webviewFrameHandle,
+            phase: "created",
+            url: "https://example.com/frame"
           }
         })
       )

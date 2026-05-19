@@ -3606,6 +3606,34 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "WebView.listFrames",
+      "surface": "WebView",
+      "method": "listFrames",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-frame-routing-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-frame-routing-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-frame-routing-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-frame-routing-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "WebView.loadRoute",
       "surface": "WebView",
       "method": "loadRoute",
@@ -3684,6 +3712,34 @@
             "platform": "linux",
             "status": "partial",
             "reason": "host-devtools-debug-build-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WebView.postToFrame",
+      "surface": "WebView",
+      "method": "postToFrame",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-frame-routing-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-frame-routing-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-frame-routing-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-frame-routing-unavailable"
           }
         ]
       },
@@ -4517,11 +4573,11 @@
     }
   ],
   "summary": {
-    "total": 253,
-    "routed": 253,
+    "total": 255,
+    "routed": 255,
     "missing": 0,
     "supported": 140,
     "partial": 70,
-    "unsupported": 43
+    "unsupported": 45
   }
 }

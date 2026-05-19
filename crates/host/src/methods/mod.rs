@@ -1194,6 +1194,14 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(webview::respond_to_permission),
     ),
     route(
+        host_protocol::WEBVIEW_LIST_FRAMES_METHOD,
+        HostMethodDispatcher::Window(webview::list_frames),
+    ),
+    route(
+        host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
+        HostMethodDispatcher::Window(webview::post_to_frame),
+    ),
+    route(
         host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
         HostMethodDispatcher::Window(webview::open_devtools),
     ),
@@ -5120,6 +5128,13 @@ mod tests {
             "ownerScope": "window:window-1",
             "state": "open"
         });
+        let frame = serde_json::json!({
+            "kind": "webview-frame",
+            "id": "frame-1",
+            "generation": 0,
+            "ownerScope": "webview:webview-1",
+            "state": "open"
+        });
         let window = serde_json::json!({
             "kind": "window",
             "id": "window-1",
@@ -5215,6 +5230,20 @@ mod tests {
                 }),
             ),
             (
+                "request-webview-list-frames",
+                host_protocol::WEBVIEW_LIST_FRAMES_METHOD,
+                serde_json::json!({ "webview": webview }),
+            ),
+            (
+                "request-webview-post-to-frame",
+                host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "frame": frame,
+                    "payload": "{\"kind\":\"ping\"}"
+                }),
+            ),
+            (
                 "request-webview-close-devtools",
                 host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
                 serde_json::json!({ "webview": webview }),
@@ -5253,6 +5282,13 @@ mod tests {
             "id": "webview-1",
             "generation": 0,
             "ownerScope": "window:window-1",
+            "state": "open"
+        });
+        let frame = serde_json::json!({
+            "kind": "webview-frame",
+            "id": "frame-1",
+            "generation": 0,
+            "ownerScope": "webview:webview-1",
             "state": "open"
         });
         let window = serde_json::json!({
@@ -5320,6 +5356,30 @@ mod tests {
                     "webview": webview,
                     "requestId": "permission-1",
                     "decision": "allow"
+                }),
+            ),
+            (
+                "request-webview-post-to-frame-invalid-frame",
+                host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "frame": {
+                        "kind": "webview",
+                        "id": "frame-1",
+                        "generation": 0,
+                        "ownerScope": "webview:webview-1",
+                        "state": "open"
+                    },
+                    "payload": "{\"kind\":\"ping\"}"
+                }),
+            ),
+            (
+                "request-webview-post-to-frame-control-byte",
+                host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "frame": frame,
+                    "payload": format!("bad{}payload", char::from(0))
                 }),
             ),
             (

@@ -5,9 +5,10 @@
 use crate::window::{
     WebViewCreateRequest, WebViewExposedApi, WebViewFindInPageRequest, WebViewHandleRequest,
     WebViewIsolationPolicy, WebViewLoadRouteRequest, WebViewLoadUrlRequest,
-    WebViewNavigationDecision, WebViewNavigationPolicy, WebViewRespondToPermissionRequest,
-    WebViewSetAudioMutedRequest, WebViewSetNavigationPolicyRequest, WebViewSetUserAgentRequest,
-    WebViewSetZoomRequest, WindowMethodHandler,
+    WebViewNavigationDecision, WebViewNavigationPolicy, WebViewPostToFrameRequest,
+    WebViewRespondToPermissionRequest, WebViewSetAudioMutedRequest,
+    WebViewSetNavigationPolicyRequest, WebViewSetUserAgentRequest, WebViewSetZoomRequest,
+    WindowMethodHandler,
 };
 use host_protocol::HostProtocolError;
 use serde_json::{Map, Value};
@@ -22,11 +23,14 @@ const ALLOWED_SET_ZOOM_FIELDS: &[&str] = &["webview", "zoom"];
 const ALLOWED_SET_USER_AGENT_FIELDS: &[&str] = &["webview", "userAgent"];
 const ALLOWED_SET_AUDIO_MUTED_FIELDS: &[&str] = &["webview", "muted"];
 const ALLOWED_RESPOND_TO_PERMISSION_FIELDS: &[&str] = &["webview", "requestId", "decision"];
+const ALLOWED_POST_TO_FRAME_FIELDS: &[&str] = &["webview", "frame", "payload"];
 const ALLOWED_CAPABILITY_FIELDS: &[&str] = &["name", "platform", "mode"];
 const ALLOWED_ORIGIN_POLICY_FIELDS: &[&str] = &["allowedOrigins", "onDisallowed"];
 const ALLOWED_ISOLATION_FIELDS: &[&str] = &["exposedApis"];
 const ALLOWED_EXPOSED_API_FIELDS: &[&str] = &["name", "methods"];
 const ALLOWED_WEBVIEW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
+const ALLOWED_WEBVIEW_FRAME_HANDLE_FIELDS: &[&str] =
+    &["kind", "id", "generation", "ownerScope", "state"];
 const ALLOWED_WINDOW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
 
 pub(crate) fn create(
@@ -354,6 +358,50 @@ pub(crate) fn respond_to_permission(
     Ok(None)
 }
 
+pub(crate) fn list_frames(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_LIST_FRAMES_METHOD)?;
+    let response = handler.list_webview_frames(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_LIST_FRAMES_METHOD,
+    )?)?;
+
+    Ok(Some(response))
+}
+
+pub(crate) fn post_to_frame(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_object(payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?;
+    validate_allowed_fields(
+        &payload,
+        ALLOWED_POST_TO_FRAME_FIELDS,
+        host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
+    )?;
+    validate_webview_handle_field(&payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?;
+    validate_webview_frame_handle_field(&payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?;
+    validate_printable_string_field(
+        &payload,
+        "payload",
+        host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
+    )?;
+    handler.post_to_webview_frame(WebViewPostToFrameRequest::new(
+        decode_webview_handle(&payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?,
+        decode_webview_frame_handle(&payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?,
+        required_string(
+            &payload,
+            "payload",
+            host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
+        )?
+        .to_string(),
+    ))?;
+
+    Ok(None)
+}
+
 pub(crate) fn open_devtools(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
@@ -508,6 +556,32 @@ fn decode_webview_handle(
             .ok_or_else(|| {
                 HostProtocolError::invalid_argument(
                     "webview.generation",
+                    "must be an integer",
+                    operation,
+                )
+            })?,
+        required_string(handle, "ownerScope", operation)?.to_string(),
+    ))
+}
+
+fn decode_webview_frame_handle(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<WebViewHandleRequest, HostProtocolError> {
+    let handle = payload
+        .get("frame")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument("frame", "must be an object", operation)
+        })?;
+    Ok(WebViewHandleRequest::new(
+        required_string(handle, "id", operation)?.to_string(),
+        handle
+            .get("generation")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                HostProtocolError::invalid_argument(
+                    "frame.generation",
                     "must be an integer",
                     operation,
                 )
@@ -741,6 +815,47 @@ fn validate_webview_handle_field(
     if state != "open" {
         return Err(HostProtocolError::invalid_argument(
             "webview.state",
+            "must be open",
+            operation,
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_webview_frame_handle_field(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    let handle = payload
+        .get("frame")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument("frame", "must be an object", operation)
+        })?;
+    validate_allowed_fields(handle, ALLOWED_WEBVIEW_FRAME_HANDLE_FIELDS, operation)?;
+
+    let kind = handle.get("kind").and_then(Value::as_str).ok_or_else(|| {
+        HostProtocolError::invalid_argument("frame.kind", "must be a string", operation)
+    })?;
+    if kind != "webview-frame" {
+        return Err(HostProtocolError::invalid_argument(
+            "frame.kind",
+            "must be webview-frame",
+            operation,
+        ));
+    }
+
+    validate_printable_object_string(handle, "id", "frame.id", operation)?;
+    validate_u64_field(handle, "generation", "frame.generation", operation)?;
+    validate_printable_object_string(handle, "ownerScope", "frame.ownerScope", operation)?;
+
+    let state = handle.get("state").and_then(Value::as_str).ok_or_else(|| {
+        HostProtocolError::invalid_argument("frame.state", "must be a string", operation)
+    })?;
+    if state != "open" {
+        return Err(HostProtocolError::invalid_argument(
+            "frame.state",
             "must be open",
             operation,
         ));

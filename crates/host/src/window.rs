@@ -509,6 +509,26 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         ))
     }
 
+    fn list_webview_frames(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-frame-routing-unavailable",
+            host_protocol::WEBVIEW_LIST_FRAMES_METHOD,
+        ))
+    }
+
+    fn post_to_webview_frame(
+        &self,
+        _request: WebViewPostToFrameRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-frame-routing-unavailable",
+            host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
+        ))
+    }
+
     fn open_webview_devtools(
         &self,
         _handle: WebViewHandleRequest,
@@ -754,6 +774,27 @@ impl WebViewRespondToPermissionRequest {
             handle,
             request_id,
             decision,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewPostToFrameRequest {
+    handle: WebViewHandleRequest,
+    frame: WebViewHandleRequest,
+    payload: String,
+}
+
+impl WebViewPostToFrameRequest {
+    pub(crate) fn new(
+        handle: WebViewHandleRequest,
+        frame: WebViewHandleRequest,
+        payload: String,
+    ) -> Self {
+        Self {
+            handle,
+            frame,
+            payload,
         }
     }
 }
@@ -1110,6 +1151,14 @@ enum WindowCommand {
     },
     RespondToWebViewPermission {
         request: WebViewRespondToPermissionRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    ListWebViewFrames {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    PostToWebViewFrame {
+        request: WebViewPostToFrameRequest,
         reply: Sender<WindowCommandReply>,
     },
     OpenWebViewDevTools {
@@ -2883,6 +2932,44 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_webview_response(
                 response,
                 host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
+            )),
+        }
+    }
+
+    fn list_webview_frames(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ListWebViewFrames {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WebViewDocument(response) => Ok(response),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_LIST_FRAMES_METHOD,
+            )),
+        }
+    }
+
+    fn post_to_webview_frame(
+        &self,
+        request: WebViewPostToFrameRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::PostToWebViewFrame {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
             )),
         }
     }
@@ -4734,6 +4821,32 @@ impl WindowRegistry {
         ))
     }
 
+    fn list_webview_frames(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<serde_json::Value, HostProtocolError> {
+        let _resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_LIST_FRAMES_METHOD)?;
+        Err(HostProtocolError::unsupported(
+            "host-frame-routing-unavailable",
+            host_protocol::WEBVIEW_LIST_FRAMES_METHOD,
+        ))
+    }
+
+    fn post_to_webview_frame(
+        &self,
+        request: &WebViewPostToFrameRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let _resources =
+            self.webview_resources(&request.handle, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?;
+        let _frame = &request.frame;
+        let _payload = &request.payload;
+        Err(HostProtocolError::unsupported(
+            "host-frame-routing-unavailable",
+            host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
+        ))
+    }
+
     fn open_webview_devtools(
         &self,
         handle: &WebViewHandleRequest,
@@ -5522,6 +5635,20 @@ impl WindowRegistry {
             WindowCommand::RespondToWebViewPermission { request, reply } => {
                 let result = self
                     .respond_to_webview_permission(&request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ListWebViewFrames { handle, reply } => {
+                let result = self
+                    .list_webview_frames(&handle)
+                    .map(WindowCommandResponse::WebViewDocument);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::PostToWebViewFrame { request, reply } => {
+                let result = self
+                    .post_to_webview_frame(&request)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other

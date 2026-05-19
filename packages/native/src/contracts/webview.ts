@@ -6,6 +6,7 @@ import { ImageMime } from "./image.js"
 import { WindowResource } from "./window.js"
 
 export const WebViewResource = ResourceHandleSchema("webview", "open")
+export const WebViewFrameResource = ResourceHandleSchema("webview-frame", "open")
 const WebViewPlatform = Schema.Literals(["macos", "windows", "linux"])
 const WebViewRuntimeMode = Schema.Literals(["dev", "prod"])
 const WebViewCapabilityName = Schema.Literals([
@@ -79,10 +80,22 @@ const WebViewRuntimePermissionKind = Schema.Literals([
   "file-system",
   "unknown"
 ])
+const WebViewFrameUrl = WebViewRuntimeUrl
+const WebViewFrameMessagePayload = BridgeSafeString
+const WebViewFrameEventReason = BridgeSafeString
+const WebViewFrameEventPhase = Schema.Literals([
+  "created",
+  "navigated",
+  "destroyed",
+  "message",
+  "failed"
+])
 export type WebViewHandle = ResourceHandle<"webview", "open">
+export type WebViewFrameHandle = ResourceHandle<"webview-frame", "open">
 export type WebViewRuntimeEventPhase = Schema.Schema.Type<typeof WebViewRuntimeEventPhase>
 export type WebViewPermissionDecision = Schema.Schema.Type<typeof WebViewPermissionDecision>
 export type WebViewRuntimePermissionKind = Schema.Schema.Type<typeof WebViewRuntimePermissionKind>
+export type WebViewFrameEventPhase = Schema.Schema.Type<typeof WebViewFrameEventPhase>
 
 export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolicy>(
   "WebViewNavigationPolicy"
@@ -217,6 +230,25 @@ export class WebViewRespondToPermissionInput extends Schema.Class<WebViewRespond
   decision: WebViewPermissionDecision
 }) {}
 
+export class WebViewFrame extends Schema.Class<WebViewFrame>("WebViewFrame")({
+  frame: WebViewFrameResource,
+  parentFrame: Schema.optionalKey(WebViewFrameResource),
+  url: Schema.optionalKey(WebViewFrameUrl)
+}) {}
+
+export class WebViewFrameList extends Schema.Class<WebViewFrameList>("WebViewFrameList")({
+  webview: WebViewResource,
+  frames: Schema.Array(WebViewFrame)
+}) {}
+
+export class WebViewPostToFrameInput extends Schema.Class<WebViewPostToFrameInput>(
+  "WebViewPostToFrameInput"
+)({
+  webview: WebViewResource,
+  frame: WebViewFrameResource,
+  payload: WebViewFrameMessagePayload
+}) {}
+
 export class WebViewNavigationBlockedEvent extends Schema.Class<WebViewNavigationBlockedEvent>(
   "WebViewNavigationBlockedEvent"
 )({
@@ -247,6 +279,16 @@ export class WebViewRuntimeEvent extends Schema.Class<WebViewRuntimeEvent>("WebV
   decision: Schema.optionalKey(WebViewPermissionDecision),
   position: Schema.optionalKey(WebViewRuntimePoint),
   paths: Schema.optionalKey(Schema.Array(WebViewRuntimePath))
+}) {}
+
+export class WebViewFrameEvent extends Schema.Class<WebViewFrameEvent>("WebViewFrameEvent")({
+  webview: WebViewResource,
+  frame: WebViewFrameResource,
+  parentFrame: Schema.optionalKey(WebViewFrameResource),
+  phase: WebViewFrameEventPhase,
+  url: Schema.optionalKey(WebViewFrameUrl),
+  payload: Schema.optionalKey(WebViewFrameMessagePayload),
+  reason: Schema.optionalKey(WebViewFrameEventReason)
 }) {}
 
 const isAbsoluteUrl = (value: string): boolean => {

@@ -50,10 +50,12 @@ before a native popup is created and emits the same event with a popup-policy
 reason. `openExternal` approval is still modeled as policy denial rather than
 automatic delegation to `Shell.openExternal`.
 
-Subframe identity is not exposed today. Effect Desktop has no `WebViewFrames`
-service, frame handle schema, frame lifecycle stream, `listFrames`, or
-`postToFrame` host route, and the current Wry-backed host path does not provide
-portable stable frame identifiers across macOS, Windows, and Linux.
+Subframe identity has a validation-first contract, but is not host-backed today.
+`listFrames`, `postToFrame`, and `WebView.FrameEvent` are Schema-typed and
+permission-gated. The host validates WebView and frame handles before returning
+typed unsupported with `host-frame-routing-unavailable`. The current Wry-backed
+host path does not provide portable stable frame identifiers across macOS,
+Windows, and Linux, so no frame handles are created yet.
 
 Runtime event coverage is partial. `onRuntimeEvent` exposes host-observed page
 load and drag/drop events through `WebView.RuntimeEvent`; events are ordered by
@@ -143,6 +145,8 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 | `setUserAgent`        | `{ webview, userAgent }`                    | `void`                   |
 | `setAudioMuted`       | `{ webview, muted }`                        | `void`                   |
 | `respondToPermission` | `{ webview, requestId, decision }`          | `void`                   |
+| `listFrames`          | `{ webview }`                               | frame list               |
+| `postToFrame`         | `{ webview, frame, payload }`               | `void`                   |
 | `openDevTools`        | `{ webview }`                               | `void`                   |
 | `closeDevTools`       | `{ webview }`                               | `void`                   |
 | `attachDebugger`      | `{ webview }`                               | `void`                   |
@@ -203,6 +207,10 @@ Create-time preload isolation is host-backed through Wry initialization-script
 and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
 Runtime events are partially host-backed through Wry page-load and drag/drop
 callbacks and report through `WebView.RuntimeEvent`.
+Frame routing is validation-first unsupported. `listFrames`, `postToFrame`, and
+`WebView.FrameEvent` define the public shape, but the host returns
+`host-frame-routing-unavailable` until a provider can create stable frame
+handles and route messages below the top frame.
 `print` and `setZoom` are host-backed through Wry. `captureScreenshot`,
 `printToPdf`, and `findInPage` remain typed unsupported with
 `host-document-output-unavailable`; `setUserAgent` remains typed unsupported
