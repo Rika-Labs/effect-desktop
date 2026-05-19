@@ -227,9 +227,8 @@ const HostProtocolErrorCommonFields = {
   docsUrl: OptionalString
 } as const
 
-export const hostProtocolErrorRecoverableDefault = (tag: HostProtocolErrorTag): boolean => {
-  return HOST_PROTOCOL_ERROR_RECOVERABLE_BY_TAG[tag]
-}
+export const hostProtocolErrorRecoverableDefault = (tag: HostProtocolErrorTag): boolean =>
+  HOST_PROTOCOL_ERROR_RECOVERABLE_BY_TAG[tag]
 
 interface HostProtocolErrorCommonInput {
   readonly message: string

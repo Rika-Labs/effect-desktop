@@ -554,11 +554,8 @@ const streamSchemasFromRpcSuccess = (
   return Option.some({ success: schema.success, error: schema.error })
 }
 
-const isSchema = (value: unknown): value is BridgeContractCodec => {
-  return (
-    (typeof value === "object" || typeof value === "function") && value !== null && "ast" in value
-  )
-}
+const isSchema = (value: unknown): value is BridgeContractCodec =>
+  (typeof value === "object" || typeof value === "function") && value !== null && "ast" in value
 
 export const isStreamSpec = (value: unknown): value is BridgeStreamSpec =>
   typeof value === "object" &&

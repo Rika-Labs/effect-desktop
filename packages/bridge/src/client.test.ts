@@ -858,14 +858,11 @@ const failingExchange = (error: HostProtocolError): BridgeClientExchange => ({
   request: () => Effect.fail(error)
 })
 
-const isBridgeClientResponse = (value: unknown): value is BridgeClientResponse => {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "kind" in value &&
-    (value.kind === "success" || value.kind === "failure")
-  )
-}
+const isBridgeClientResponse = (value: unknown): value is BridgeClientResponse =>
+  typeof value === "object" &&
+  value !== null &&
+  "kind" in value &&
+  (value.kind === "success" || value.kind === "failure")
 
 const expectFailureTag = (exit: Exit.Exit<unknown, unknown>, tag: string): void => {
   expect(Exit.isFailure(exit)).toBe(true)
