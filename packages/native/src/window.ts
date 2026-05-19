@@ -14,7 +14,6 @@ import {
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   makeStaleHandleError,
-  type RpcCapabilityMetadata,
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError,
@@ -172,248 +171,348 @@ const WindowStateSupport = NativeSurface.support.supported satisfies RpcSupportM
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type WindowError = HostProtocolError
 
-export const WindowCreate = windowRpc(
-  "create",
-  WindowCreateInput,
-  WindowResource,
-  P.nativeInvoke({ primitive: "Window", methods: ["create"] })
-)
-export const WindowClose = windowRpc(
-  "close",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["close"] })
-)
-export const WindowDestroy = windowRpc(
-  "destroy",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["destroy"] })
-)
-export const WindowShow = windowRpc(
-  "show",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["show"] })
-)
-export const WindowHide = windowRpc(
-  "hide",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["hide"] })
-)
-export const WindowFocus = windowRpc(
-  "focus",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["focus"] })
-)
-export const WindowGetCurrent = windowRpc(
-  "getCurrent",
-  Schema.Void,
-  WindowResource,
-  P.nativeInvoke({ primitive: "Window", methods: ["getCurrent"] })
-)
-export const WindowGetById = windowRpc(
-  "getById",
-  WindowLookupInput,
-  WindowResource,
-  P.nativeInvoke({ primitive: "Window", methods: ["getById"] })
-)
-export const WindowList = windowRpc(
-  "list",
-  Schema.Void,
-  WindowListResult,
-  P.nativeInvoke({ primitive: "Window", methods: ["list"] })
-)
-export const WindowGetParent = windowRpc(
-  "getParent",
-  WindowHandleInput,
-  WindowParentResult,
-  P.nativeInvoke({ primitive: "Window", methods: ["getParent"] })
-)
-export const WindowGetChildren = windowRpc(
-  "getChildren",
-  WindowHandleInput,
-  WindowChildrenResult,
-  P.nativeInvoke({ primitive: "Window", methods: ["getChildren"] })
-)
-export const WindowSubscribeEvents = windowRpc(
-  "subscribeEvents",
-  Schema.Void,
-  WindowSubscribeEventsResult,
-  P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
-)
-export const WindowGetBounds = windowRpc(
-  "getBounds",
-  WindowHandleInput,
-  WindowBounds,
-  P.nativeInvoke({ primitive: "Window", methods: ["getBounds"] })
-)
-export const WindowSetBounds = windowRpc(
-  "setBounds",
-  WindowBoundsInput,
-  WindowBounds,
-  P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
-)
-export const WindowSetBoundsOnDisplay = windowRpc(
-  "setBoundsOnDisplay",
-  WindowDisplayBoundsInput,
-  WindowBounds,
-  P.nativeInvoke({ primitive: "Window", methods: ["setBoundsOnDisplay"] })
-)
-export const WindowCenter = windowRpc(
-  "center",
-  WindowHandleInput,
-  WindowBounds,
-  P.nativeInvoke({ primitive: "Window", methods: ["center"] })
-)
-export const WindowCenterOnDisplay = windowRpc(
-  "centerOnDisplay",
-  WindowDisplayInput,
-  WindowBounds,
-  P.nativeInvoke({ primitive: "Window", methods: ["centerOnDisplay"] })
-)
-export const WindowSetTitle = windowRpc(
-  "setTitle",
-  WindowTitleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setTitle"] })
-)
-export const WindowSetResizable = windowRpc(
-  "setResizable",
-  WindowResizableInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setResizable"] })
-)
-export const WindowSetDecorations = windowRpc(
-  "setDecorations",
-  WindowDecorationsInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setDecorations"] })
-)
-export const WindowSetTrafficLights = windowRpc(
-  "setTrafficLights",
-  WindowTrafficLightsInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setTrafficLights"] }),
-  WindowTrafficLightsSupport
-)
-export const WindowSetVibrancy = windowRpc(
-  "setVibrancy",
-  WindowVibrancyInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setVibrancy"] }),
-  WindowVibrancySupport
-)
-export const WindowClearVibrancy = windowRpc(
-  "clearVibrancy",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["clearVibrancy"] }),
-  WindowVibrancySupport
-)
-export const WindowSetShadow = windowRpc(
-  "setShadow",
-  WindowShadowInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setShadow"] }),
-  WindowShadowSupport
-)
-export const WindowSetTitleBarStyle = windowRpc(
-  "setTitleBarStyle",
-  WindowTitleBarStyleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setTitleBarStyle"] }),
-  WindowTitleBarStyleSupport
-)
-export const WindowSetTitleBarTransparent = windowRpc(
-  "setTitleBarTransparent",
-  WindowTitleBarTransparentInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setTitleBarTransparent"] }),
-  WindowTitleBarTransparentSupport
-)
-export const WindowSetTransparent = windowRpc(
-  "setTransparent",
-  WindowTransparentInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setTransparent"] }),
-  WindowTransparentSupport
-)
-export const WindowSetAlwaysOnTop = windowRpc(
-  "setAlwaysOnTop",
-  WindowAlwaysOnTopInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setAlwaysOnTop"] })
-)
-export const WindowSetSkipTaskbar = windowRpc(
-  "setSkipTaskbar",
-  WindowSkipTaskbarInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setSkipTaskbar"] }),
-  WindowSkipTaskbarSupport
-)
-export const WindowSetProgress = windowRpc(
-  "setProgress",
-  WindowProgressInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setProgress"] })
-)
-export const WindowRequestAttention = windowRpc(
-  "requestAttention",
-  WindowRequestAttentionInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["requestAttention"] })
-)
-export const WindowCancelAttention = windowRpc(
-  "cancelAttention",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["cancelAttention"] })
-)
-export const WindowMinimize = windowRpc(
-  "minimize",
-  WindowHandleInput,
-  WindowState,
-  P.nativeInvoke({ primitive: "Window", methods: ["minimize"] }),
-  WindowStateSupport
-)
-export const WindowMaximize = windowRpc(
-  "maximize",
-  WindowHandleInput,
-  WindowState,
-  P.nativeInvoke({ primitive: "Window", methods: ["maximize"] }),
-  WindowStateSupport
-)
-export const WindowRestore = windowRpc(
-  "restore",
-  WindowHandleInput,
-  WindowState,
-  P.nativeInvoke({ primitive: "Window", methods: ["restore"] }),
-  WindowStateSupport
-)
-export const WindowSetFullscreen = windowRpc(
-  "setFullscreen",
-  WindowFullscreenInput,
-  WindowState,
-  P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] }),
-  WindowStateSupport
-)
-export const WindowSetSimpleFullscreen = windowRpc(
-  "setSimpleFullscreen",
-  WindowSimpleFullscreenInput,
-  WindowState,
-  P.nativeInvoke({ primitive: "Window", methods: ["setSimpleFullscreen"] }),
-  WindowSimpleFullscreenSupport
-)
-export const WindowGetState = windowRpc(
-  "getState",
-  WindowHandleInput,
-  WindowState,
-  P.nativeInvoke({ primitive: "Window", methods: ["getState"] }),
-  WindowStateSupport
-)
+export const WindowCreate = NativeSurface.rpc("Window", "create", {
+  payload: WindowCreateInput,
+  success: WindowResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["create"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowClose = NativeSurface.rpc("Window", "close", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["close"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowDestroy = NativeSurface.rpc("Window", "destroy", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["destroy"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowShow = NativeSurface.rpc("Window", "show", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["show"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowHide = NativeSurface.rpc("Window", "hide", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["hide"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowFocus = NativeSurface.rpc("Window", "focus", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["focus"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetCurrent = NativeSurface.rpc("Window", "getCurrent", {
+  payload: Schema.Void,
+  success: WindowResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getCurrent"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetById = NativeSurface.rpc("Window", "getById", {
+  payload: WindowLookupInput,
+  success: WindowResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getById"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowList = NativeSurface.rpc("Window", "list", {
+  payload: Schema.Void,
+  success: WindowListResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["list"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetParent = NativeSurface.rpc("Window", "getParent", {
+  payload: WindowHandleInput,
+  success: WindowParentResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getParent"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetChildren = NativeSurface.rpc("Window", "getChildren", {
+  payload: WindowHandleInput,
+  success: WindowChildrenResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getChildren"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSubscribeEvents = NativeSurface.rpc("Window", "subscribeEvents", {
+  payload: Schema.Void,
+  success: WindowSubscribeEventsResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetBounds = NativeSurface.rpc("Window", "getBounds", {
+  payload: WindowHandleInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getBounds"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetBounds = NativeSurface.rpc("Window", "setBounds", {
+  payload: WindowBoundsInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetBoundsOnDisplay = NativeSurface.rpc("Window", "setBoundsOnDisplay", {
+  payload: WindowDisplayBoundsInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setBoundsOnDisplay"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowCenter = NativeSurface.rpc("Window", "center", {
+  payload: WindowHandleInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["center"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowCenterOnDisplay = NativeSurface.rpc("Window", "centerOnDisplay", {
+  payload: WindowDisplayInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["centerOnDisplay"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetTitle = NativeSurface.rpc("Window", "setTitle", {
+  payload: WindowTitleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTitle"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetResizable = NativeSurface.rpc("Window", "setResizable", {
+  payload: WindowResizableInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setResizable"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetDecorations = NativeSurface.rpc("Window", "setDecorations", {
+  payload: WindowDecorationsInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setDecorations"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetTrafficLights = NativeSurface.rpc("Window", "setTrafficLights", {
+  payload: WindowTrafficLightsInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTrafficLights"] })
+  ),
+  endpoint: "mutation",
+  support: WindowTrafficLightsSupport
+})
+export const WindowSetVibrancy = NativeSurface.rpc("Window", "setVibrancy", {
+  payload: WindowVibrancyInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setVibrancy"] })
+  ),
+  endpoint: "mutation",
+  support: WindowVibrancySupport
+})
+export const WindowClearVibrancy = NativeSurface.rpc("Window", "clearVibrancy", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["clearVibrancy"] })
+  ),
+  endpoint: "mutation",
+  support: WindowVibrancySupport
+})
+export const WindowSetShadow = NativeSurface.rpc("Window", "setShadow", {
+  payload: WindowShadowInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setShadow"] })
+  ),
+  endpoint: "mutation",
+  support: WindowShadowSupport
+})
+export const WindowSetTitleBarStyle = NativeSurface.rpc("Window", "setTitleBarStyle", {
+  payload: WindowTitleBarStyleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTitleBarStyle"] })
+  ),
+  endpoint: "mutation",
+  support: WindowTitleBarStyleSupport
+})
+export const WindowSetTitleBarTransparent = NativeSurface.rpc("Window", "setTitleBarTransparent", {
+  payload: WindowTitleBarTransparentInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTitleBarTransparent"] })
+  ),
+  endpoint: "mutation",
+  support: WindowTitleBarTransparentSupport
+})
+export const WindowSetTransparent = NativeSurface.rpc("Window", "setTransparent", {
+  payload: WindowTransparentInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTransparent"] })
+  ),
+  endpoint: "mutation",
+  support: WindowTransparentSupport
+})
+export const WindowSetAlwaysOnTop = NativeSurface.rpc("Window", "setAlwaysOnTop", {
+  payload: WindowAlwaysOnTopInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setAlwaysOnTop"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetSkipTaskbar = NativeSurface.rpc("Window", "setSkipTaskbar", {
+  payload: WindowSkipTaskbarInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setSkipTaskbar"] })
+  ),
+  endpoint: "mutation",
+  support: WindowSkipTaskbarSupport
+})
+export const WindowSetProgress = NativeSurface.rpc("Window", "setProgress", {
+  payload: WindowProgressInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setProgress"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowRequestAttention = NativeSurface.rpc("Window", "requestAttention", {
+  payload: WindowRequestAttentionInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["requestAttention"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowCancelAttention = NativeSurface.rpc("Window", "cancelAttention", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["cancelAttention"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowMinimize = NativeSurface.rpc("Window", "minimize", {
+  payload: WindowHandleInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["minimize"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
+export const WindowMaximize = NativeSurface.rpc("Window", "maximize", {
+  payload: WindowHandleInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["maximize"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
+export const WindowRestore = NativeSurface.rpc("Window", "restore", {
+  payload: WindowHandleInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["restore"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
+export const WindowSetFullscreen = NativeSurface.rpc("Window", "setFullscreen", {
+  payload: WindowFullscreenInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
+export const WindowSetSimpleFullscreen = NativeSurface.rpc("Window", "setSimpleFullscreen", {
+  payload: WindowSimpleFullscreenInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setSimpleFullscreen"] })
+  ),
+  endpoint: "mutation",
+  support: WindowSimpleFullscreenSupport
+})
+export const WindowGetState = NativeSurface.rpc("Window", "getState", {
+  payload: WindowHandleInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getState"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
 
 const makeWindowRpcGroup = () =>
   RpcGroup.make(
@@ -2300,26 +2399,4 @@ const formatUnknownError = (error: unknown): string => {
   }
 
   return String(error)
-}
-
-type WindowRpcSuccess = Schema.Codec<unknown, unknown, never, never>
-
-function windowRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends WindowRpcSuccess
->(
-  method: Method,
-  payload: Payload,
-  success: Success,
-  capability: RpcCapabilityMetadata,
-  support: RpcSupportMetadata = NativeSurface.support.supported
-) {
-  return NativeSurface.rpc("Window", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support
-  })
 }
