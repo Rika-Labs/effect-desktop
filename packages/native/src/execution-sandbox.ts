@@ -27,7 +27,6 @@ import {
 } from "@effect-desktop/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import {
@@ -369,7 +368,7 @@ export const makeExecutionSandboxUnsupportedClient = (): ExecutionSandboxClientA
           reason: UnsupportedReason
         })
       ),
-    events: () => Stream.fail(unsupportedError("ExecutionSandbox.events"))
+    events: () => Stream.fail(unsupportedError(ExecutionSandboxEventMethod))
   } satisfies ExecutionSandboxClientApi)
 
 const makeExecutionSandboxService = (
@@ -510,7 +509,7 @@ const makeExecutionSandboxService = (
 
 const executionSandboxClientFromRpcClient = (
   client: DesktopRpcClient<ExecutionSandboxRpc>,
-  exchange: BridgeClientExchange | undefined
+  _exchange: BridgeClientExchange | undefined
 ): ExecutionSandboxClientApi =>
   Object.freeze({
     create: (input) =>
@@ -542,7 +541,7 @@ const executionSandboxClientFromRpcClient = (
         client["ExecutionSandbox.isSupported"](undefined),
         "ExecutionSandbox.isSupported"
       ),
-    events: () => subscribeNativeEvent(exchange, ExecutionSandboxEventMethod, ExecutionSandboxEvent)
+    events: () => Stream.fail(unsupportedError(ExecutionSandboxEventMethod))
   } satisfies ExecutionSandboxClientApi)
 
 function executionSandboxRpc<

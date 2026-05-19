@@ -63,6 +63,7 @@ Production OS isolation is tracked in [issue #1406](https://github.com/Rika-Labs
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
 `isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Mutating host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
+The bridge-backed `ExecutionSandbox.Event` stream also fails as typed `Unsupported` before opening a host subscription until an OS-enforced native adapter can publish lifecycle events.
 
 ## Testing
 
