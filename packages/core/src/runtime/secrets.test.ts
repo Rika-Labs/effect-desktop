@@ -272,7 +272,7 @@ test("Secrets preserves storage errors when error-audit write fails", () =>
 const makeSecretsService = (
   calls: string[] = [],
   auditRows?: AuditEvent[]
-): Effect.Effect<SecretsApi> =>
+): Effect.Effect<SecretsApi, SecretsInvalidArgumentError> =>
   makeSecrets(memorySafeStorage(calls), {
     appId: "com.rika.test",
     permissions: { read: ["auth", "sync"], write: ["auth", "sync"] },

@@ -1,6 +1,17 @@
 import { expect, test } from "bun:test"
 import { HostProtocolResponseEnvelope, type HostProtocolEnvelope } from "@effect-desktop/bridge"
-import { Clock, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import {
+  Clock,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Schema,
+  Scope,
+  Stream
+} from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import { Desktop } from "../index.js"
@@ -49,51 +60,54 @@ test("RendererRpcClients layer does not require transport for manifests with no 
     })
   ))
 
-test("RendererRpcClients layer closes the client protocol scope", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const NotesRpcs = RpcGroup.make(Ping)
-      const app = manifestFor(NotesRpcs)
-      const started = yield* Deferred.make<void>()
-      const closed = yield* Deferred.make<void>()
-      let pendingRequest: Extract<HostProtocolEnvelope, { readonly kind: "request" }> | undefined
-      let onEnvelope: ((envelope: HostProtocolEnvelope) => Effect.Effect<void>) | undefined
-      const respond = (): void => {
-        if (pendingRequest === undefined || onEnvelope === undefined) {
-          return
-        }
-        const request = pendingRequest
-        pendingRequest = undefined
-        void Effect.runPromise(
-          onEnvelope(
-            new HostProtocolResponseEnvelope({
-              kind: "response",
-              id: request.id,
-              timestamp: 0,
-              traceId: request.traceId,
-              payload: "pong"
-            })
+test("RendererRpcClients layer closes the client protocol scope", () => {
+  const NotesRpcs = RpcGroup.make(Ping)
+  const app = manifestFor(NotesRpcs)
+  const started = Deferred.makeUnsafe<void>()
+  const closed = Deferred.makeUnsafe<void>()
+  let pendingRequest: Extract<HostProtocolEnvelope, { readonly kind: "request" }> | undefined
+  let onEnvelope: ((envelope: HostProtocolEnvelope) => Effect.Effect<void>) | undefined
+  const respond = (): Effect.Effect<void> => {
+    if (pendingRequest === undefined || onEnvelope === undefined) {
+      return Effect.void
+    }
+    const request = pendingRequest
+    pendingRequest = undefined
+    return onEnvelope(
+      new HostProtocolResponseEnvelope({
+        kind: "response",
+        id: request.id,
+        timestamp: 0,
+        traceId: request.traceId,
+        payload: "pong"
+      })
+    )
+  }
+  const transport: DesktopRendererRpcTransport = {
+    send: (envelope) =>
+      envelope.kind === "request"
+        ? Effect.suspend(() => {
+            pendingRequest = envelope
+            return respond()
+          })
+        : Effect.void,
+    run: (handler) =>
+      Effect.suspend(() => {
+        onEnvelope = handler
+        return Deferred.succeed(started, undefined).pipe(
+          Effect.asVoid,
+          Effect.andThen(respond()),
+          Effect.andThen(
+            Effect.never.pipe(
+              Effect.ensuring(Deferred.succeed(closed, undefined).pipe(Effect.asVoid))
+            )
           )
         )
-      }
-      const transport: DesktopRendererRpcTransport = {
-        send: (envelope) =>
-          envelope.kind === "request"
-            ? Effect.sync(() => {
-                pendingRequest = envelope
-                respond()
-              })
-            : Effect.void,
-        run: (handler) => {
-          onEnvelope = handler
-          Effect.runSync(Deferred.succeed(started, undefined).pipe(Effect.asVoid))
-          respond()
-          return Effect.never.pipe(
-            Effect.ensuring(Deferred.succeed(closed, undefined).pipe(Effect.asVoid))
-          )
-        }
-      }
+      })
+  }
 
+  return Effect.runPromise(
+    Effect.gen(function* () {
       yield* runScoped(
         Effect.service(RendererRpcClients).pipe(
           Effect.flatMap((service) => {
@@ -111,7 +125,8 @@ test("RendererRpcClients layer closes the client protocol scope", () =>
       )
       yield* Deferred.await(closed)
     })
-  ))
+  )
+})
 
 test("RendererRpcClients test layer executes RpcTest clients and interrupts scoped streams", () =>
   Effect.runPromise(
@@ -277,7 +292,7 @@ const fixedClock = (timestamp: number): Clock.Clock => ({
 })
 
 const runScoped = <A, E, R, LE>(
-  effect: Effect.Effect<A, E, R>,
+  effect: Effect.Effect<A, E, R | Scope.Scope>,
   layer: Layer.Layer<R, LE, never>
 ): Effect.Effect<A, E | LE, never> =>
   Effect.gen(function* () {
