@@ -8,7 +8,7 @@ import {
   type HostWindowClient,
   type WindowCreateInput
 } from "@effect-desktop/bridge"
-import { Cause, ConfigProvider, Effect, Exit, Layer, Stream } from "effect"
+import { Cause, ConfigProvider, Effect, Exit, Layer, Schema, Stream } from "effect"
 
 import { ResourceOwner } from "./resource-owner.js"
 import { WindowContext } from "./window-context.js"
@@ -187,11 +187,10 @@ test("openDeclaredWindows tears down a window when its services Layer fails to b
           })
       })
 
-      class ServicesBuildFailure extends Error {
-        constructor() {
-          super("services failure")
-        }
-      }
+      class ServicesBuildFailure extends Schema.TaggedErrorClass<ServicesBuildFailure>()(
+        "ServicesBuildFailure",
+        {}
+      ) {}
 
       const failingServices = Layer.effectDiscard(
         Effect.acquireRelease(Effect.fail(new ServicesBuildFailure() as never), () =>
