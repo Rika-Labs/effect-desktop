@@ -60,43 +60,40 @@ test("makeUnaryDesktopTransportFromBridgeClientExchange adapts unary bridge exch
     error: ProjectOpenError
   })
   const ProjectRpcs = RpcGroup.make(Open)
-  const setup = makeUnaryDesktopTransportFromBridgeClientExchange(
-    responseExchange(requests, { id: "project-1" }),
-    {
-      now: () => 41,
-      nextTraceId: () => "trace-transport"
-    }
-  ).pipe(
-    Effect.map((transport) =>
-      Layer.effect(RpcClient.Protocol)(
-        makeDesktopClientProtocol(transport, { now: () => 42, nextTraceId: () => "trace-rpc" })
+
+  const TransportLayer = Layer.unwrap(
+    makeUnaryDesktopTransportFromBridgeClientExchange(
+      responseExchange(requests, { id: "project-1" }),
+      {
+        now: () => 41,
+        nextTraceId: () => "trace-transport"
+      }
+    ).pipe(
+      Effect.map((transport) =>
+        Layer.effect(RpcClient.Protocol)(
+          makeDesktopClientProtocol(transport, { now: () => 42, nextTraceId: () => "trace-rpc" })
+        )
       )
     )
   )
 
-  return Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const protocolLayer = yield* setup
-        const output = yield* Effect.gen(function* () {
-          const client = yield* RpcClient.make(ProjectRpcs)
-          return yield* client["ProjectRpcs.Transport.open"](
-            new ProjectOpenInput({ path: "/tmp/project" })
-          )
-        }).pipe(Effect.provide(protocolLayer))
-
-        expect(output).toEqual(new ProjectOpenOutput({ id: "project-1" }))
-        expect(requests).toHaveLength(1)
-        expect(requests[0]).toMatchObject({
-          kind: "request",
-          method: "ProjectRpcs.Transport.open",
-          timestamp: 42,
-          payload: { path: "/tmp/project" }
-        })
-        expect(requests[0]?.traceId).toBeString()
-      })
+  const program = Effect.gen(function* () {
+    const client = yield* RpcClient.make(ProjectRpcs)
+    const output = yield* client["ProjectRpcs.Transport.open"](
+      new ProjectOpenInput({ path: "/tmp/project" })
     )
-  )
+    expect(output).toEqual(new ProjectOpenOutput({ id: "project-1" }))
+    expect(requests).toHaveLength(1)
+    expect(requests[0]).toMatchObject({
+      kind: "request",
+      method: "ProjectRpcs.Transport.open",
+      timestamp: 42,
+      payload: { path: "/tmp/project" }
+    })
+    expect(requests[0]?.traceId).toBeString()
+  })
+
+  return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(TransportLayer)))
 })
 
 test("makeUnaryDesktopTransportFromBridgeClientExchange uses the Effect Clock by default", () =>
