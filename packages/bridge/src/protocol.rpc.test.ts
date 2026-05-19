@@ -358,11 +358,7 @@ test("makeDesktopClientProtocol returns a Protocol service with send and support
   }
 
   const protocol = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        return yield* makeDesktopClientProtocol(transport)
-      })
-    )
+    Effect.scoped(makeDesktopClientProtocol(transport))
   )
 
   expect(typeof protocol.send).toBe("function")
@@ -671,11 +667,7 @@ test("makeDesktopServerProtocol returns a Protocol service with disconnects and 
   }
 
   const protocol = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        return yield* makeDesktopServerProtocol(transport)
-      })
-    )
+    Effect.scoped(makeDesktopServerProtocol(transport))
   )
 
   expect(typeof protocol.send).toBe("function")
