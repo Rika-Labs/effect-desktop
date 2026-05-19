@@ -3,7 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   RpcGroup,
@@ -264,14 +263,16 @@ const isPowerMonitorError = (error: unknown): error is PowerMonitorError =>
   "operation" in error &&
   "recoverable" in error
 
-const unsupportedError = (operation: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: UnsupportedReason,
-    message: `unsupported PowerMonitor event source: ${operation}`,
-    operation,
-    recoverable: false
-  })
+const unsupportedError = (operation: string): PowerMonitorError => ({
+  tag: "Unsupported",
+  get _tag() {
+    return this.tag
+  },
+  reason: UnsupportedReason,
+  message: `unsupported PowerMonitor event source: ${operation}`,
+  operation,
+  recoverable: false
+})
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) return error.message

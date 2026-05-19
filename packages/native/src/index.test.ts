@@ -4759,9 +4759,8 @@ test("Association bridge client sends typed host envelopes and decodes events an
       const protocolStatus = yield* association.isDefaultProtocolClient({ scheme: "example" })
       yield* association.setDefaultProtocolClient({ scheme: "example" })
       const fileAssociations = yield* association.getFileAssociations({ extensions: [".txt"] })
-      const events = yield* association.events().pipe(Stream.take(1), Stream.runCollect)
 
-      return { events, fileAssociations, protocolStatus }
+      return { fileAssociations, protocolStatus }
     }).pipe(
       Effect.provide(Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange)))
     )
@@ -4775,14 +4774,51 @@ test("Association bridge client sends typed host envelopes and decodes events an
       associations: [new AssociationFileAssociation({ extension: ".txt", isDefault: false })]
     })
   )
-  expect(Array.from(result.events)).toEqual([
-    new AssociationEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
-  ])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     ["Association.isDefaultProtocolClient", { scheme: "example" }],
     ["Association.setDefaultProtocolClient", { scheme: "example" }],
     ["Association.getFileAssociations", { extensions: [".txt"] }]
   ])
+})
+
+test("Association bridge client fails event stream as unsupported before subscribing", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const subscriptions: string[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({ kind: "success", payload: undefined })
+    },
+    subscribe: (method) => {
+      subscriptions.push(method)
+      return Stream.empty
+    }
+  }
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const association = yield* Association
+      return yield* Effect.exit(association.events().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(
+      Effect.provide(Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange)))
+    )
+  )
+
+  expectExitFailure(exit, (error) => {
+    const unsupported =
+      hasErrorTag(error, "Unsupported") &&
+      typeof error === "object" &&
+      error !== null &&
+      "reason" in error &&
+      "operation" in error
+    expect(unsupported).toBe(true)
+    if (unsupported) {
+      expect(error.reason).toBe("host-adapter-unimplemented")
+      expect(error.operation).toBe("Association.Event")
+    }
+    return unsupported
+  })
+  expect(requests).toEqual([])
+  expect(subscriptions).toEqual([])
 })
 
 test("Association bridge client rejects invalid schemes and file extensions before transport", async () => {
@@ -7459,7 +7495,7 @@ test("SystemAppearance bridge client fails unsupported appearance events before 
     )
   )
 
-  expectExitFailure(result, (error) => error instanceof HostProtocolUnsupportedError)
+  expectExitFailure(result, (error) => hasErrorTag(error, "Unsupported"))
   expect(requests).toEqual(["SystemAppearance.isSupported"])
   expect(subscriptions).toEqual([])
 })
@@ -7614,7 +7650,7 @@ test("PowerMonitor bridge client fails unsupported event streams before subscrip
     )
   )
 
-  expectExitFailure(exit, (error) => error instanceof HostProtocolUnsupportedError)
+  expectExitFailure(exit, (error) => hasErrorTag(error, "Unsupported"))
   expect(requests).toEqual(["PowerMonitor.isSupported"])
   expect(subscriptions).toEqual([])
 })

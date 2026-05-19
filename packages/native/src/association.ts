@@ -20,7 +20,6 @@ import {
   type AssociationProtocolOptions,
   AssociationProtocolStatus
 } from "./contracts/association.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
@@ -165,7 +164,7 @@ export const makeHostAssociationRpcRuntime = (
 
 const associationClientFromRpcClient = (
   client: DesktopRpcClient<AssociationRpc>,
-  exchange?: BridgeClientExchange
+  _exchange?: BridgeClientExchange
 ): AssociationClientApi =>
   Object.freeze({
     isDefaultProtocolClient: (input) =>
@@ -195,7 +194,7 @@ const associationClientFromRpcClient = (
           )
         )
       ),
-    events: () => subscribeNativeEvent(exchange, "Association.Event", AssociationEvent)
+    events: () => unsupportedAssociationEvents()
   } satisfies AssociationClientApi)
 
 const decodeAssociationProtocolInput = (
@@ -209,6 +208,20 @@ const decodeAssociationFileAssociationsInput = (
   operation: string
 ): Effect.Effect<AssociationFileAssociationsInput, AssociationError, never> =>
   decodeNativeInput(AssociationFileAssociationsInput, input, operation)
+
+const unsupportedAssociationEvents = (): Stream.Stream<AssociationEvent, AssociationError, never> =>
+  Stream.fail(unsupportedAssociationEventError())
+
+const unsupportedAssociationEventError = (): AssociationError => ({
+  tag: "Unsupported",
+  get _tag() {
+    return this.tag
+  },
+  reason: UnsupportedReason,
+  message: "unsupported Association.Event",
+  operation: "Association.Event",
+  recoverable: false
+})
 
 function associationRpc<
   const Method extends string,

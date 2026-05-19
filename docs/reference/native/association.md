@@ -33,8 +33,9 @@ extensions are associated with this app?"
 
 The current event stream is `events()`. Event phases are
 `protocol-checked`, `protocol-updated`, `file-associations-checked`, and
-`failed`. Native event delivery is currently unsupported until the host adapter
-exists.
+`failed`. The bridge client fails `events()` as typed `Unsupported` with reason
+`host-adapter-unimplemented` before opening a subscription because native event
+delivery is currently unsupported until the host adapter exists.
 
 ## Validation
 
