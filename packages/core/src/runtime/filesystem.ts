@@ -515,14 +515,9 @@ const writeAtomicFile = (
 const cleanupAtomicTemp = (
   fileSystem: EffectFileSystem.FileSystem,
   tempPath: string
-): Effect.Effect<void, unknown, never> =>
+): Effect.Effect<void, PlatformError, never> =>
   fileSystem.remove(tempPath, { force: true }).pipe(
-    Effect.catch((error) => {
-      if (isNotFoundPlatformError(error)) {
-        return Effect.void
-      }
-      return Effect.fail(error)
-    })
+    Effect.catch((error) => (isNotFoundPlatformError(error) ? Effect.void : Effect.fail(error)))
   )
 
 const makeAtomicTempPath = (path: string): string => `${path}.tmp.${randomUUID()}`
