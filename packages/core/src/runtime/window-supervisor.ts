@@ -27,8 +27,7 @@ const DesktopWindowRegistrationSchema = Schema.Struct({
   id: Schema.String,
   spec: WindowSpecSchema
 })
-const DesktopAppDescriptorSchema = Schema.Struct({
-  _tag: Schema.Literal("DesktopAppDescriptor"),
+const DesktopAppDescriptorSchema = Schema.TaggedStruct("DesktopAppDescriptor", {
   windowRegistrations: Schema.Array(DesktopWindowRegistrationSchema)
 })
 
@@ -115,11 +114,10 @@ export const readStartupWindows = (
   const rawModule = config.appModule.value
   const exportName = config.appExport
   return Effect.tryPromise({
-    try: async () => {
-      const module = (await import(toStartupModuleSpecifier(rawModule))) as Record<string, unknown>
-      const app = module[exportName]
-      return app
-    },
+    try: () =>
+      import(toStartupModuleSpecifier(rawModule)).then(
+        (module: Record<string, unknown>) => module[exportName]
+      ),
     catch: (error) =>
       new StartupWindowConfigError({
         env: APP_MODULE_ENV,
