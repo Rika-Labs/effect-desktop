@@ -1,5 +1,4 @@
 import { afterEach, expect } from "bun:test"
-import { posix, sep } from "node:path"
 import {
   Clock,
   Context,
@@ -1556,6 +1555,47 @@ interface MemoryWatchRegistration {
 
 const ROOT_PATH = "/"
 
+const PATH_SEP = "/"
+
+const posixDirname = (path: string): string => {
+  if (path.length === 0) return "."
+  const trimmed = path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path
+  const idx = trimmed.lastIndexOf("/")
+  if (idx === -1) return "."
+  if (idx === 0) return "/"
+  return trimmed.slice(0, idx)
+}
+
+const posixNormalize = (path: string): string => {
+  if (path.length === 0) return "."
+  const isAbsolute = path.startsWith("/")
+  const trailingSlash = path.length > 1 && path.endsWith("/")
+  const segments: string[] = []
+  for (const part of path.split("/")) {
+    if (part === "" || part === ".") continue
+    if (part === "..") {
+      if (segments.length > 0 && segments[segments.length - 1] !== "..") {
+        segments.pop()
+      } else if (!isAbsolute) {
+        segments.push("..")
+      }
+      continue
+    }
+    segments.push(part)
+  }
+  let result = segments.join("/")
+  if (isAbsolute) result = `/${result}`
+  if (trailingSlash && !result.endsWith("/")) result = `${result}/`
+  if (result.length === 0) return isAbsolute ? "/" : "."
+  return result
+}
+
+const posixJoin = (...parts: readonly string[]): string => {
+  const filtered = parts.filter((part) => part.length > 0)
+  if (filtered.length === 0) return "."
+  return posixNormalize(filtered.join("/"))
+}
+
 interface MemoryFilesystemRuntime {
   readonly fileSystem: Layer.Layer<FileSystem.FileSystem>
   readonly options: FilesystemOptions
@@ -1575,12 +1615,12 @@ const makeMemoryFilesystemRuntime = (
   }
   for (const file of options.files ?? []) {
     const path = normalizeMemoryPath(file.path)
-    ensureDirectory(nodes, posix.dirname(path), now())
+    ensureDirectory(nodes, posixDirname(path), now())
     nodes.set(path, { kind: "file", bytes: copyBytes(file.bytes), modifiedAtMs: now() })
   }
   for (const symlink of options.symlinks ?? []) {
     const path = normalizeMemoryPath(symlink.path)
-    ensureDirectory(nodes, posix.dirname(path), now())
+    ensureDirectory(nodes, posixDirname(path), now())
     nodes.set(path, {
       kind: "symlink",
       target: normalizeMemorySymlinkTarget(symlink.target),
@@ -1615,7 +1655,7 @@ const makeMemoryFilesystemRuntime = (
           if (node === undefined) {
             throw nodeError("ENOENT", fromPath)
           }
-          const parentPath = posix.dirname(toPath)
+          const parentPath = posixDirname(toPath)
           const parent = nodes.get(parentPath)
           if (parent?.kind !== "directory") {
             throw nodeError("ENOENT", parentPath)
@@ -1665,7 +1705,7 @@ const makeMemoryFilesystemRuntime = (
       Effect.try({
         try: () => {
           const target = normalizeMemoryPath(memoryPathLikeToString(path))
-          const parentPath = posix.dirname(target)
+          const parentPath = posixDirname(target)
           const parent = nodes.get(parentPath)
           if (parent?.kind !== "directory") {
             throw nodeError("ENOENT", parentPath)
@@ -1710,9 +1750,9 @@ const makeMemoryFilesystemRuntime = (
       Effect.try({
         try: () => {
           const target = normalizeMemoryPath(path)
-          const parent = nodes.get(posix.dirname(target))
+          const parent = nodes.get(posixDirname(target))
           if (parent?.kind !== "directory" && mkdirOptions?.recursive !== true) {
-            throw nodeError("ENOENT", posix.dirname(target))
+            throw nodeError("ENOENT", posixDirname(target))
           }
 
           if (mkdirOptions?.recursive === true) {
@@ -1797,7 +1837,7 @@ const writeMemoryFile = (
   modifiedAtMs: number
 ): void => {
   const target = normalizeMemoryPath(path)
-  const parentPath = posix.dirname(target)
+  const parentPath = posixDirname(target)
   const parent = nodes.get(parentPath)
   if (parent?.kind !== "directory") {
     throw nodeError("ENOENT", parentPath)
@@ -1819,7 +1859,7 @@ const ensureDirectory = (
 ): void => {
   const normalized = normalizeMemoryPath(path)
   if (normalized !== ROOT_PATH) {
-    ensureDirectory(nodes, posix.dirname(normalized), modifiedAtMs)
+    ensureDirectory(nodes, posixDirname(normalized), modifiedAtMs)
   }
   nodes.set(normalized, { kind: "directory", modifiedAtMs })
 }
@@ -1881,8 +1921,8 @@ const lookupPath = (
       const remaining = segments.slice(index + 1)
       const target = node.target.startsWith("/")
         ? node.target
-        : normalizeMemoryPath(posix.join(posix.dirname(current), node.target))
-      return lookupPath(nodes, posix.join(target, ...remaining), mode, new Set([...seen, current]))
+        : normalizeMemoryPath(posixJoin(posixDirname(current), node.target))
+      return lookupPath(nodes, posixJoin(target, ...remaining), mode, new Set([...seen, current]))
     }
     if (node.kind !== "directory" && !isFinalSegment) {
       throw nodeError("ENOTDIR", current)
@@ -1904,17 +1944,17 @@ const resolveExistingPath = (
 
 const normalizeMemoryPath = (path: string): string => {
   const withoutDrive = path.replaceAll("\\", "/").replace(/^\/?[A-Za-z]:/, "")
-  const normalized = posix.normalize(withoutDrive)
+  const normalized = posixNormalize(withoutDrive)
   return normalized.startsWith("/") ? normalized : `/${normalized}`
 }
 
 const normalizeMemorySymlinkTarget = (target: string): string => {
   const normalized = target.replaceAll("\\", "/")
-  return normalized.startsWith("/") ? normalizeMemoryPath(normalized) : posix.normalize(normalized)
+  return normalized.startsWith("/") ? normalizeMemoryPath(normalized) : posixNormalize(normalized)
 }
 
 const toPlatformMemoryPath = (path: string): string =>
-  sep === "/" ? path : path.replaceAll("/", sep)
+  PATH_SEP === "/" ? path : path.replaceAll("/", PATH_SEP)
 
 const memoryPathLikeToString = (path: unknown): string => {
   if (typeof path === "string") {
@@ -1940,7 +1980,7 @@ const emitMemoryWatch = (
   path: string,
   type: "create" | "remove" | "update"
 ): void => {
-  const directory = posix.dirname(path)
+  const directory = posixDirname(path)
   for (const watcher of watchers) {
     if (!watcher.closed && watcher.directory === directory) {
       watcher.listener(memoryWatchEvent(type, path))

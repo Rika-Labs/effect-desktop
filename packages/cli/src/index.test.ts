@@ -571,7 +571,7 @@ test("release workflow runs package sign notarize publish activities in order", 
   ))
 
 test("release workflow skips notarization for non-macOS targets", () =>
-  Effect.runPromise(
+  WorkflowMemoryRuntime.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
       const services = fakeReleaseServices(calls, "linux-x64")
@@ -582,7 +582,7 @@ test("release workflow skips notarization for non-macOS targets", () =>
           platform: "linux-x64"
         }),
         services
-      ).pipe(Effect.provide(WorkflowEngine.layerMemory))
+      )
 
       expect(calls).toEqual(["package", "sign", "publish"])
       expect(report.phases).toContainEqual({
