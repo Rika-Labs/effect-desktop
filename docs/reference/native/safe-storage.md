@@ -10,7 +10,11 @@ effect_version: 4
 
 Lower-level credential-store boundary for scoped secret bytes. Most apps use [`Secrets`](../services/secrets.md) instead, which adds namespace permissions, redaction, key derivation, and auditing on top.
 
-The current native host only routes availability probing. Mutating or reading secret bytes requires a real platform adapter; until those host methods exist, `set`, `get`, `delete`, and `list` report `host-adapter-unimplemented` in capability metadata and bridge calls fail instead of falling back to plaintext storage.
+The native host stores secret bytes in the platform credential store through
+macOS Keychain, Windows Credential Manager, and Linux Secret Service. If the
+credential store is locked, absent, or denied by the OS, `isAvailable` returns
+`false` and secret operations fail loudly as typed host errors. There is no
+plaintext fallback.
 
 SafeStorage is not an HTTP auth credential broker. Proxy credentials,
 authentication challenges, and certificate decisions are absent; adding them

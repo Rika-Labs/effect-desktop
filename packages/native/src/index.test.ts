@@ -299,7 +299,7 @@ import {
   makeLinuxSafeStorageClient,
   makeGlobalShortcutServiceLayer,
   makeScreenServiceLayer,
-  makeSecretBytesFromUtf8,
+  makeSecretBytes,
   makeSystemAppearanceServiceLayer,
   makeUpdaterServiceLayer,
   makeMenuServiceLayer,
@@ -371,7 +371,7 @@ import {
   makeHostRecentDocumentsRpcRuntime,
   makeRecentDocumentsBridgeClientLayer
 } from "./recent-documents.js"
-import { makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
+import { makeHostSafeStorageRpcRuntime, makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
 import { makeHostShellRpcRuntime, makeShellBridgeClientLayer } from "./shell.js"
@@ -436,6 +436,9 @@ import {
   RecentDocument,
   RecentDocumentsEvent,
   RecentDocumentsListResult,
+  SafeStorageAvailabilityResult,
+  SafeStorageListResult,
+  SafeStorageSecretPayload,
   ScreenBounds,
   ScreenDisplay,
   ScreenDisplaysChangedEvent,
@@ -962,6 +965,9 @@ const expectedSafeStorageMethods: Array<(typeof SafeStorageMethodNames)[number]>
   "list",
   "isAvailable"
 ]
+const SafeStorageTestSecretBytes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const
+const SafeStorageTestSecretBase64 = "AAECAwQFBgcICQoLDA=="
+const makeSafeStorageTestSecret = () => makeSecretBytes(Uint8Array.from(SafeStorageTestSecretBytes))
 
 const expectedUpdaterMethods: Array<(typeof UpdaterMethodNames)[number]> = [
   "check",
@@ -6616,12 +6622,12 @@ test("SafeStorageRpcs declares the Phase 8 SafeStorage method surface", () => {
 })
 
 test("SecretBytes redacts JSON formatting while exposing explicit byte copies", async () => {
-  const secret = makeSecretBytesFromUtf8("refresh-token")
+  const secret = makeSafeStorageTestSecret()
   const bytes = unsafeSecretBytes(secret)
   bytes.fill(0)
 
   expect(JSON.stringify({ token: secret })).toBe('{"token":"<redacted:SecretBytes>"}')
-  expect(new TextDecoder().decode(unsafeSecretBytes(secret))).toBe("refresh-token")
+  expect(Array.from(unsafeSecretBytes(secret))).toEqual([...SafeStorageTestSecretBytes])
   await Effect.runPromise(wipeSecretBytes(secret))
   expect(() => unsafeSecretBytes(secret)).toThrow("Unable to get redacted value")
 })
@@ -6631,7 +6637,7 @@ test("SafeStorage service delegates through a substitutable SafeStorageClient po
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const storage = yield* SafeStorage
-      yield* storage.set("token", makeSecretBytesFromUtf8("refresh-token"))
+      yield* storage.set("token", makeSafeStorageTestSecret())
       const secret = yield* storage.get("token")
       const keys = yield* storage.list()
       const available = yield* storage.isAvailable()
@@ -6643,7 +6649,7 @@ test("SafeStorage service delegates through a substitutable SafeStorageClient po
   expect(result.available).toBe(true)
   expect(result.keys).toEqual(["token"])
   expect(JSON.stringify(result.secret)).toBe('"<redacted:SecretBytes>"')
-  expect(new TextDecoder().decode(unsafeSecretBytes(result.secret))).toBe("refresh-token")
+  expect(Array.from(unsafeSecretBytes(result.secret))).toEqual([...SafeStorageTestSecretBytes])
   expect(calls).toEqual(["set:token:13", "get:token", "list", "isAvailable", "delete:token"])
 })
 
@@ -6653,7 +6659,7 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
     kind: "success",
     payload:
       request.method === "SafeStorage.get"
-        ? { value: "cmVmcmVzaC10b2tlbg==" }
+        ? { value: SafeStorageTestSecretBase64 }
         : request.method === "SafeStorage.list"
           ? { keys: ["token"] }
           : request.method === "SafeStorage.isAvailable"
@@ -6663,14 +6669,12 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const storage = yield* SafeStorage
-      yield* storage.set("token", makeSecretBytesFromUtf8("refresh-token"))
+      yield* storage.set("token", makeSafeStorageTestSecret())
       const secret = yield* storage.get("token")
       const keys = yield* storage.list()
       const available = yield* storage.isAvailable()
       yield* storage.delete("token")
-      const emptyKeyExit = yield* Effect.exit(
-        storage.set("", makeSecretBytesFromUtf8("refresh-token"))
-      )
+      const emptyKeyExit = yield* Effect.exit(storage.set("", makeSafeStorageTestSecret()))
       return { available, emptyKeyExit, keys, secret }
     }).pipe(
       Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
@@ -6678,13 +6682,13 @@ test("SafeStorage bridge client validates keys and redacts decoded values", asyn
   )
 
   expect(JSON.stringify(result.secret)).toBe('"<redacted:SecretBytes>"')
-  expect(JSON.stringify({ token: result.secret })).not.toContain("refresh-token")
-  expect(new TextDecoder().decode(unsafeSecretBytes(result.secret))).toBe("refresh-token")
+  expect(JSON.stringify({ token: result.secret })).not.toContain(SafeStorageTestSecretBase64)
+  expect(Array.from(unsafeSecretBytes(result.secret))).toEqual([...SafeStorageTestSecretBytes])
   expect(result.keys).toEqual(["token"])
   expect(result.available).toBe(true)
   expectExitFailure(result.emptyKeyExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
-    ["SafeStorage.set", { key: "token", value: "cmVmcmVzaC10b2tlbg==" }],
+    ["SafeStorage.set", { key: "token", value: SafeStorageTestSecretBase64 }],
     ["SafeStorage.get", { key: "token" }],
     ["SafeStorage.list", null],
     ["SafeStorage.isAvailable", null],
@@ -6713,9 +6717,7 @@ test("SafeStorage bridge client rejects control-byte keys as InvalidArgument", a
       )
     )
 
-    const setExit = await Effect.runPromiseExit(
-      client.set(key, makeSecretBytesFromUtf8("refresh-token"))
-    )
+    const setExit = await Effect.runPromiseExit(client.set(key, makeSafeStorageTestSecret()))
     const getExit = await Effect.runPromiseExit(client.get(key))
     const deleteExit = await Effect.runPromiseExit(client.delete(key))
 
@@ -6769,12 +6771,101 @@ test("SafeStorage bridge client decodes valid printable keys in list output", as
   expect(keys).toEqual(["token", "session"])
 })
 
+test("native host RPC runtime denies protected SafeStorage calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostSafeStorageRpcRuntime(
+    {
+      "SafeStorage.set": (input) =>
+        Effect.sync(() => {
+          calls.push(`set:${input.key}:${input.value.byteLength}`)
+        }),
+      "SafeStorage.get": (input) =>
+        Effect.sync(() => {
+          calls.push(`get:${input.key}`)
+          return new SafeStorageSecretPayload({
+            value: unsafeSecretBytes(makeSafeStorageTestSecret())
+          })
+        }),
+      "SafeStorage.delete": (input) =>
+        Effect.sync(() => {
+          calls.push(`delete:${input.key}`)
+        }),
+      "SafeStorage.list": () =>
+        Effect.sync(() => {
+          calls.push("list")
+          return new SafeStorageListResult({ keys: ["token"] })
+        }),
+      "SafeStorage.isAvailable": () =>
+        Effect.succeed(new SafeStorageAvailabilityResult({ available: true }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "safe-storage-denied",
+          method: "SafeStorage.set",
+          timestamp: 1710000000000,
+          traceId: "trace-safe-storage-denied",
+          payload: { key: "token", value: SafeStorageTestSecretBase64 }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+  expect(JSON.stringify(response)).not.toContain(SafeStorageTestSecretBase64)
+})
+
+test("SafeStorage service propagates unsupported platform and host failure without secret values", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "secure-storage-unavailable",
+    message: "unsupported SafeStorage.set",
+    operation: "SafeStorage.set",
+    recoverable: false
+  })
+  const unsupportedClient: SafeStorageClientApi = {
+    ...safeStorageClient([]),
+    set: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: SafeStorageClientApi = {
+    ...safeStorageClient([]),
+    set: () => Effect.fail(makeHostProtocolHostUnavailableError("SafeStorage.set"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const storage = yield* SafeStorage
+      return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
+    }).pipe(Effect.provide(makeSafeStorageServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const storage = yield* SafeStorage
+      return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
+    }).pipe(Effect.provide(makeSafeStorageServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
+  expect(JSON.stringify(unsupportedExit)).not.toContain(SafeStorageTestSecretBase64)
+  expect(JSON.stringify(hostFailureExit)).not.toContain(SafeStorageTestSecretBase64)
+})
+
 test("Linux SafeStorage client reports unimplemented adapter as unavailable with unsupported operations", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const storage = yield* SafeStorage
       const available = yield* storage.isAvailable()
-      const setExit = yield* Effect.exit(storage.set("token", makeSecretBytesFromUtf8("secret")))
+      const setExit = yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
       const getExit = yield* Effect.exit(storage.get("token"))
       const deleteExit = yield* Effect.exit(storage.delete("token"))
       const keys = yield* storage.list()
@@ -13373,7 +13464,7 @@ const safeStorageClient = (calls: string[]): SafeStorageClientApi => ({
   get: (key) =>
     Effect.sync(() => {
       calls.push(`get:${key}`)
-      return makeSecretBytesFromUtf8("refresh-token")
+      return makeSafeStorageTestSecret()
     }),
   delete: (key) => recordVoid(calls, `delete:${key}`),
   list: () =>

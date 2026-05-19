@@ -111,15 +111,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
     ]
   })
-  expect(result.safeStorageSet).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
+  expect(result.safeStorageSet).toEqual({ status: "supported" })
   expect(result.safeStorageIsAvailable).toEqual({ status: "supported" })
   expect(result.updaterCheck).toEqual({
     status: "partial",

@@ -511,7 +511,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD,
-        HostMethodDispatcher::Empty(linux::safe_storage_is_available),
+        HostMethodDispatcher::Empty(safe_storage::is_available),
     ),
     route(
         host_protocol::DIALOG_OPEN_FILE_METHOD,
@@ -5192,47 +5192,7 @@ mod tests {
     }
 
     #[test]
-    fn safe_storage_secret_methods_fail_closed_after_validation() {
-        let router = test_router();
-        for (id, method, payload) in [
-            (
-                "request-safe-storage-set",
-                host_protocol::SAFE_STORAGE_SET_METHOD,
-                serde_json::json!({ "key": "token", "value": "AAE=" }),
-            ),
-            (
-                "request-safe-storage-get",
-                host_protocol::SAFE_STORAGE_GET_METHOD,
-                serde_json::json!({ "key": "token" }),
-            ),
-            (
-                "request-safe-storage-delete",
-                host_protocol::SAFE_STORAGE_DELETE_METHOD,
-                serde_json::json!({ "key": "token" }),
-            ),
-            (
-                "request-safe-storage-list",
-                host_protocol::SAFE_STORAGE_LIST_METHOD,
-                serde_json::Value::Null,
-            ),
-        ] {
-            let response = router
-                .dispatch_at(request_with_payload(id, method, payload), 1710000000112)
-                .expect("safe storage request should return response");
-
-            assert!(matches!(
-                response,
-                HostProtocolEnvelope::Response {
-                    payload: None,
-                    error: Some(HostProtocolError::Unsupported { .. }),
-                    ..
-                }
-            ));
-        }
-    }
-
-    #[test]
-    fn safe_storage_secret_methods_reject_invalid_payloads_before_unsupported() {
+    fn safe_storage_secret_methods_reject_invalid_payloads_before_backend_work() {
         let router = test_router();
         for (id, method, payload) in [
             (

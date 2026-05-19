@@ -7,8 +7,6 @@ use serde_json::{json, Value};
 #[cfg(target_os = "linux")]
 use std::env;
 #[cfg(target_os = "linux")]
-use std::process::Command;
-#[cfg(target_os = "linux")]
 use tao::{monitor::MonitorHandle, platform::unix::MonitorHandleExtUnix};
 
 #[cfg(any(target_os = "linux", test))]
@@ -59,10 +57,6 @@ pub(crate) fn unsupported_global_shortcut(operation: &'static str) -> HostProtoc
 
 pub(crate) fn global_shortcut_is_registered() -> Result<Option<Value>, HostProtocolError> {
     Ok(Some(json!({ "registered": false })))
-}
-
-pub(crate) fn safe_storage_is_available() -> Result<Option<Value>, HostProtocolError> {
-    Ok(Some(json!({ "available": secret_service_available() })))
 }
 
 #[cfg(target_os = "linux")]
@@ -215,31 +209,6 @@ fn global_shortcut_unsupported_reason() -> &'static str {
 #[cfg(not(target_os = "linux"))]
 fn global_shortcut_unsupported_reason() -> &'static str {
     HOST_ADAPTER_UNIMPLEMENTED_REASON
-}
-
-#[cfg(target_os = "linux")]
-fn secret_service_available() -> bool {
-    if env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
-        return false;
-    }
-
-    Command::new("dbus-send")
-        .args([
-            "--session",
-            "--dest=org.freedesktop.secrets",
-            "--type=method_call",
-            "--print-reply",
-            "/org/freedesktop/secrets",
-            "org.freedesktop.DBus.Peer.Ping",
-        ])
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
-}
-
-#[cfg(not(target_os = "linux"))]
-fn secret_service_available() -> bool {
-    false
 }
 
 #[cfg(target_os = "macos")]

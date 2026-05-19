@@ -183,11 +183,11 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `ResidentLifecycle`         | `enable`                    | `supported`   | `ResidentLifecycle.enable`                | `routed`    |
 | `ResidentLifecycle`         | `getState`                  | `supported`   | `ResidentLifecycle.getState`              | `routed`    |
 | `ResidentLifecycle`         | `isSupported`               | `supported`   | `ResidentLifecycle.isSupported`           | `routed`    |
-| `SafeStorage`               | `delete`                    | `unsupported` | `SafeStorage.delete`                      | `routed`    |
-| `SafeStorage`               | `get`                       | `unsupported` | `SafeStorage.get`                         | `routed`    |
+| `SafeStorage`               | `delete`                    | `supported`   | `SafeStorage.delete`                      | `routed`    |
+| `SafeStorage`               | `get`                       | `supported`   | `SafeStorage.get`                         | `routed`    |
 | `SafeStorage`               | `isAvailable`               | `supported`   | `SafeStorage.isAvailable`                 | `routed`    |
-| `SafeStorage`               | `list`                      | `unsupported` | `SafeStorage.list`                        | `routed`    |
-| `SafeStorage`               | `set`                       | `unsupported` | `SafeStorage.set`                         | `routed`    |
+| `SafeStorage`               | `list`                      | `supported`   | `SafeStorage.list`                        | `routed`    |
+| `SafeStorage`               | `set`                       | `supported`   | `SafeStorage.set`                         | `routed`    |
 | `ScopedAccessGrant`         | `grant`                     | `unsupported` | `ScopedAccessGrant.grant`                 | `routed`    |
 | `ScopedAccessGrant`         | `isSupported`               | `supported`   | `ScopedAccessGrant.isSupported`           | `routed`    |
 | `ScopedAccessGrant`         | `resolve`                   | `unsupported` | `ScopedAccessGrant.resolve`               | `routed`    |
