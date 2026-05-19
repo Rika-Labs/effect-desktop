@@ -3,22 +3,25 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use host_protocol::{
-    HostProtocolError, UpdaterCheckPayload, UpdaterDownloadPayload, UpdaterInstallPayload,
-    UpdaterStatusPayload, UpdaterStatusState,
+    HostProtocolEnvelope, HostProtocolError, UpdaterCheckPayload, UpdaterDownloadPayload,
+    UpdaterInstallPayload, UpdaterPreparingRestartPayload, UpdaterStatusPayload,
+    UpdaterStatusState,
 };
 use native_updater::{
+    commit_staged_install, prepare_restart, ready_for_restart as acknowledge_restart,
     stage_install, verify_manifest, InstallPaths, InstallPlan, InstallStagingError,
-    PreparedInstall, TrustAnchor, UpdateArtifact, UpdateManifestError, UpdatePlatform,
-    VerifiedManifest,
+    PreparedInstall, PreparingRestart, TrustAnchor, UpdateArtifact, UpdateManifestError,
+    UpdatePlatform, VerifiedManifest,
 };
 use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde_json::{to_value, Value};
 use std::{
     fs,
     path::PathBuf,
-    sync::{LazyLock, Mutex},
+    sync::{mpsc::Sender, LazyLock, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
+use uuid::Uuid;
 
 const UPDATER_DOWNLOAD_LOCAL_FILE_REASON: &str = "signed-manifest-file-artifact-only";
 const UPDATER_STAGING_DIR_NAME: &str = "effect-desktop-updater";
@@ -29,6 +32,7 @@ static UPDATER_STATE: LazyLock<Mutex<UpdaterState>> =
 #[derive(Clone, Debug)]
 struct UpdaterState {
     status: UpdaterStatusPayload,
+    pending_restart: Option<PendingRestart>,
     verified_update: Option<VerifiedUpdate>,
     staged_install: Option<PreparedInstall>,
 }
@@ -37,10 +41,24 @@ impl Default for UpdaterState {
     fn default() -> Self {
         Self {
             status: idle_status(None),
+            pending_restart: None,
             verified_update: None,
             staged_install: None,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+struct PendingRestart {
+    prepared: PreparedInstall,
+    preparing: PreparingRestart,
+}
+
+enum RestartPreparation {
+    None,
+    Prepare {
+        event_sender: Option<Sender<HostProtocolEnvelope>>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -82,11 +100,23 @@ pub(crate) fn install(payload: Option<Value>) -> Result<Option<Value>, HostProto
         input.version(),
         host_protocol::UPDATER_INSTALL_METHOD,
     )?;
-    Err(unsupported(host_protocol::UPDATER_INSTALL_METHOD))
+    install_staged_update(
+        &input,
+        host_protocol::UPDATER_INSTALL_METHOD,
+        RestartPreparation::None,
+    )
 }
 
+#[cfg(test)]
 pub(crate) fn install_and_restart(
     payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    install_and_restart_with_event_sender(payload, None)
+}
+
+pub(crate) fn install_and_restart_with_event_sender(
+    payload: Option<Value>,
+    event_sender: Option<Sender<HostProtocolEnvelope>>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let input = decode_payload::<UpdaterInstallPayload>(
         payload,
@@ -97,9 +127,11 @@ pub(crate) fn install_and_restart(
         input.version(),
         host_protocol::UPDATER_INSTALL_AND_RESTART_METHOD,
     )?;
-    Err(unsupported(
+    install_staged_update(
+        &input,
         host_protocol::UPDATER_INSTALL_AND_RESTART_METHOD,
-    ))
+        RestartPreparation::Prepare { event_sender },
+    )
 }
 
 pub(crate) fn get_status(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -123,7 +155,7 @@ pub(crate) fn ready_for_restart(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     reject_unexpected_payload(payload, host_protocol::UPDATER_READY_FOR_RESTART_METHOD)?;
-    Err(unsupported(host_protocol::UPDATER_READY_FOR_RESTART_METHOD))
+    acknowledge_pending_restart()
 }
 
 fn decode_payload<T: DeserializeOwned>(
@@ -375,6 +407,120 @@ fn download_verified_artifact(
     })
 }
 
+fn install_staged_update(
+    input: &UpdaterInstallPayload,
+    operation: &'static str,
+    restart: RestartPreparation,
+) -> Result<Option<Value>, HostProtocolError> {
+    let staged = {
+        let mut state = UPDATER_STATE.lock().map_err(|_| {
+            HostProtocolError::internal("updater state lock was poisoned", operation)
+        })?;
+        let staged = state
+            .staged_install
+            .clone()
+            .ok_or_else(|| invalid_state("no staged install", "install update", operation))?;
+        if let Some(version) = input.version() {
+            if version != staged.plan.target_version {
+                return Err(HostProtocolError::not_found(
+                    format!("staged update version {version}"),
+                    operation,
+                ));
+            }
+        }
+        state.status = UpdaterStatusPayload::new(
+            UpdaterStatusState::Installing,
+            Some(staged.plan.target_version.clone()),
+            Some(0.0),
+            Some("committing staged artifact".to_string()),
+        );
+        staged
+    };
+
+    if let Err(error) = commit_staged_install(&staged) {
+        let message = staging_status_message(&error);
+        let mapped = map_install_error(error, operation);
+        record_install_error(message, operation)?;
+        return Err(mapped);
+    }
+
+    let now = unix_millis(operation)?;
+    let pending_restart = match &restart {
+        RestartPreparation::None => None,
+        RestartPreparation::Prepare { .. } => Some(PendingRestart {
+            prepared: staged.clone(),
+            preparing: prepare_restart(&staged.plan.target_version, now),
+        }),
+    };
+    let message = if pending_restart.is_some() {
+        "signed artifact installed; preparing restart"
+    } else {
+        "signed artifact installed"
+    };
+    let status = UpdaterStatusPayload::new(
+        UpdaterStatusState::Installing,
+        Some(staged.plan.target_version.clone()),
+        Some(1.0),
+        Some(message.to_string()),
+    );
+    {
+        let mut state = UPDATER_STATE.lock().map_err(|_| {
+            HostProtocolError::internal("updater state lock was poisoned", operation)
+        })?;
+        state.status = status.clone();
+        state.pending_restart = pending_restart.clone();
+        state.staged_install = None;
+    }
+    if let (
+        RestartPreparation::Prepare {
+            event_sender: Some(sender),
+        },
+        Some(pending),
+    ) = (restart, pending_restart.as_ref())
+    {
+        emit_preparing_restart_event(sender, &pending.preparing, now, operation);
+    }
+
+    to_value(status)
+        .map(Some)
+        .map_err(|error| HostProtocolError::internal(error.to_string(), operation))
+}
+
+fn acknowledge_pending_restart() -> Result<Option<Value>, HostProtocolError> {
+    let operation = host_protocol::UPDATER_READY_FOR_RESTART_METHOD;
+    let pending = {
+        let state = UPDATER_STATE.lock().map_err(|_| {
+            HostProtocolError::internal("updater state lock was poisoned", operation)
+        })?;
+        state.pending_restart.clone().ok_or_else(|| {
+            invalid_state(
+                "no pending restart",
+                "acknowledge restart readiness",
+                operation,
+            )
+        })?
+    };
+    let now = unix_millis(operation)?;
+    if let Err(error) = acknowledge_restart(&pending.prepared.paths, &pending.preparing, now) {
+        let message = staging_status_message(&error);
+        let mapped = map_install_error(error, operation);
+        record_install_error(message, operation)?;
+        return Err(mapped);
+    }
+    let status = UpdaterStatusPayload::new(
+        UpdaterStatusState::Idle,
+        Some(pending.prepared.plan.target_version),
+        None,
+        Some("restart readiness acknowledged".to_string()),
+    );
+    let mut state = UPDATER_STATE
+        .lock()
+        .map_err(|_| HostProtocolError::internal("updater state lock was poisoned", operation))?;
+    state.status = status;
+    state.pending_restart = None;
+    Ok(None)
+}
+
 fn record_status(status: UpdaterStatusPayload) -> Result<(), HostProtocolError> {
     record_state(status, None, None, host_protocol::UPDATER_CHECK_METHOD)
 }
@@ -389,6 +535,7 @@ fn record_state(
         .lock()
         .map_err(|_| HostProtocolError::internal("updater state lock was poisoned", operation))?;
     state.status = status;
+    state.pending_restart = None;
     state.verified_update = verified_update;
     state.staged_install = staged_install;
     Ok(())
@@ -406,8 +553,46 @@ fn record_download_error(message: String) -> Result<(), HostProtocolError> {
         )
     })?;
     state.status = UpdaterStatusPayload::new(UpdaterStatusState::Error, None, None, Some(message));
+    state.pending_restart = None;
     state.staged_install = None;
     Ok(())
+}
+
+fn record_install_error(message: String, operation: &'static str) -> Result<(), HostProtocolError> {
+    let mut state = UPDATER_STATE
+        .lock()
+        .map_err(|_| HostProtocolError::internal("updater state lock was poisoned", operation))?;
+    state.status = UpdaterStatusPayload::new(UpdaterStatusState::Error, None, None, Some(message));
+    state.pending_restart = None;
+    state.staged_install = None;
+    Ok(())
+}
+
+fn emit_preparing_restart_event(
+    sender: Sender<HostProtocolEnvelope>,
+    preparing: &PreparingRestart,
+    now_unix_ms: u64,
+    operation: &'static str,
+) {
+    let payload = match to_value(UpdaterPreparingRestartPayload::new(
+        preparing.deadline_unix_ms.saturating_sub(now_unix_ms),
+    )) {
+        Ok(payload) => payload,
+        Err(error) => {
+            let _ = record_install_error(
+                format!("failed to encode restart preparation event: {error}"),
+                operation,
+            );
+            return;
+        }
+    };
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::UPDATER_PREPARING_RESTART_EVENT.to_string(),
+        timestamp: now_unix_ms,
+        trace_id: format!("updater-preparing-restart-{}", Uuid::now_v7()),
+        window_id: None,
+        payload: Some(payload),
+    });
 }
 
 fn select_current_platform_artifact(
@@ -616,6 +801,15 @@ fn map_staging_error(
     }
 }
 
+fn map_install_error(error: InstallStagingError, operation: &'static str) -> HostProtocolError {
+    match error {
+        InstallStagingError::Io { .. } | InstallStagingError::RestartDeadlineExceeded { .. } => {
+            HostProtocolError::internal(staging_status_message(&error), operation)
+        }
+        other => map_staging_error(other, 0, operation),
+    }
+}
+
 fn invalid_state(current: &str, attempted: &str, operation: &'static str) -> HostProtocolError {
     HostProtocolError::InvalidState {
         message: format!("cannot {attempted} while updater is {current}"),
@@ -699,10 +893,13 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{check, download, get_status, install, install_and_restart, ready_for_restart};
+    use super::{
+        check, download, get_status, install, install_and_restart,
+        install_and_restart_with_event_sender, ready_for_restart,
+    };
     use base64::{engine::general_purpose::STANDARD, Engine};
     use ed25519_dalek::{Signer, SigningKey};
-    use host_protocol::HostProtocolError;
+    use host_protocol::{HostProtocolEnvelope, HostProtocolError};
     use serde_json::{json, Value};
     use sha2::{Digest, Sha256};
     use std::{
@@ -743,18 +940,36 @@ mod tests {
         );
         assert_eq!(
             install(Some(json!({ "version": "1.1.0" }))).expect_err("install"),
-            HostProtocolError::unsupported(
-                host_protocol::UPDATER_UNSUPPORTED_REASON,
-                host_protocol::UPDATER_INSTALL_METHOD,
-            )
+            HostProtocolError::InvalidState {
+                message: "cannot install update while updater is no staged install".to_string(),
+                operation: host_protocol::UPDATER_INSTALL_METHOD.to_string(),
+                platform: None,
+                code: None,
+                cause: None,
+                recoverable: HostProtocolError::recoverable_default("InvalidState")
+                    .expect("known tag"),
+                remediation: None,
+                docs_url: None,
+                current: "no staged install".to_string(),
+                attempted: "install update".to_string(),
+            }
         );
         assert_eq!(
             install_and_restart(Some(json!({ "version": "1.1.0" })))
                 .expect_err("install and restart"),
-            HostProtocolError::unsupported(
-                host_protocol::UPDATER_UNSUPPORTED_REASON,
-                host_protocol::UPDATER_INSTALL_AND_RESTART_METHOD,
-            )
+            HostProtocolError::InvalidState {
+                message: "cannot install update while updater is no staged install".to_string(),
+                operation: host_protocol::UPDATER_INSTALL_AND_RESTART_METHOD.to_string(),
+                platform: None,
+                code: None,
+                cause: None,
+                recoverable: HostProtocolError::recoverable_default("InvalidState")
+                    .expect("known tag"),
+                remediation: None,
+                docs_url: None,
+                current: "no staged install".to_string(),
+                attempted: "install update".to_string(),
+            }
         );
         assert_eq!(
             get_status(None).expect("get status"),
@@ -764,11 +979,141 @@ mod tests {
         );
         assert_eq!(
             ready_for_restart(None).expect_err("ready for restart"),
-            HostProtocolError::unsupported(
-                host_protocol::UPDATER_UNSUPPORTED_REASON,
-                host_protocol::UPDATER_READY_FOR_RESTART_METHOD,
-            )
+            HostProtocolError::InvalidState {
+                message: "cannot acknowledge restart readiness while updater is no pending restart"
+                    .to_string(),
+                operation: host_protocol::UPDATER_READY_FOR_RESTART_METHOD.to_string(),
+                platform: None,
+                code: None,
+                cause: None,
+                recoverable: HostProtocolError::recoverable_default("InvalidState")
+                    .expect("known tag"),
+                remediation: None,
+                docs_url: None,
+                current: "no pending restart".to_string(),
+                attempted: "acknowledge restart readiness".to_string(),
+            }
         );
+    }
+
+    #[test]
+    fn updater_install_commits_staged_artifact() {
+        let _guard = updater_test_guard();
+        reset_status();
+        let version = "8.7.4";
+        cleanup_staged_version(version);
+        let root = test_temp_dir("install-commits");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("test root should be created");
+        let artifact_path = root.join("artifact.bin");
+        let artifact_bytes = b"verified-install-bundle";
+        fs::write(&artifact_path, artifact_bytes).expect("artifact should be written");
+        let signed =
+            signed_manifest_with_artifact(7, version, &file_url(&artifact_path), artifact_bytes);
+
+        check(Some(json!({
+            "currentVersion": "1.0.0",
+            "manifestJson": signed.json,
+            "trustAnchors": [{
+                "keyVersion": 7,
+                "publicKey": signed.public_key
+            }]
+        })))
+        .expect("signed manifest check should succeed");
+        download(Some(json!({ "version": version }))).expect("download should stage");
+        let response = install(Some(json!({ "version": version }))).expect("install should commit");
+
+        assert_eq!(
+            response,
+            Some(json!({
+                "state": "installing",
+                "version": version,
+                "progress": 1.0,
+                "message": "signed artifact installed"
+            }))
+        );
+        let paths = super::updater_install_paths(version);
+        assert_eq!(
+            fs::read(&paths.current_bundle).expect("current bundle should be committed"),
+            artifact_bytes
+        );
+        assert!(
+            paths.staged_bundle.exists(),
+            "staged bundle should remain for diagnostics until cleanup"
+        );
+
+        cleanup_staged_version(version);
+        let _ = fs::remove_dir_all(root);
+        reset_status();
+    }
+
+    #[test]
+    fn updater_install_and_restart_emits_preparing_restart_and_accepts_readiness() {
+        let _guard = updater_test_guard();
+        reset_status();
+        let version = "8.7.3";
+        cleanup_staged_version(version);
+        let root = test_temp_dir("install-restart");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("test root should be created");
+        let artifact_path = root.join("artifact.bin");
+        let artifact_bytes = b"verified-restart-bundle";
+        fs::write(&artifact_path, artifact_bytes).expect("artifact should be written");
+        let signed =
+            signed_manifest_with_artifact(7, version, &file_url(&artifact_path), artifact_bytes);
+        check(Some(json!({
+            "currentVersion": "1.0.0",
+            "manifestJson": signed.json,
+            "trustAnchors": [{
+                "keyVersion": 7,
+                "publicKey": signed.public_key
+            }]
+        })))
+        .expect("signed manifest check should succeed");
+        download(Some(json!({ "version": version }))).expect("download should stage");
+        let (sender, receiver) = std::sync::mpsc::channel();
+
+        let response = install_and_restart_with_event_sender(
+            Some(json!({ "version": version })),
+            Some(sender),
+        )
+        .expect("install and restart should commit");
+
+        assert_eq!(
+            response,
+            Some(json!({
+                "state": "installing",
+                "version": version,
+                "progress": 1.0,
+                "message": "signed artifact installed; preparing restart"
+            }))
+        );
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = receiver.recv().expect("preparing restart event")
+        else {
+            panic!("expected preparing restart event");
+        };
+        assert_eq!(method, host_protocol::UPDATER_PREPARING_RESTART_EVENT);
+        assert_eq!(payload.expect("payload")["deadlineMs"], 5_000);
+        ready_for_restart(None).expect("ready for restart should acknowledge pending restart");
+        assert_eq!(
+            get_status(None).expect("status should record readiness"),
+            Some(json!({
+                "state": "idle",
+                "version": version,
+                "message": "restart readiness acknowledged"
+            }))
+        );
+        let paths = super::updater_install_paths(version);
+        assert_eq!(
+            fs::read(&paths.current_bundle).expect("current bundle should be committed"),
+            artifact_bytes
+        );
+
+        cleanup_staged_version(version);
+        let _ = fs::remove_dir_all(root);
+        reset_status();
     }
 
     #[test]

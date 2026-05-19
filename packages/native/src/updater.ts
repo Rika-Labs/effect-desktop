@@ -29,6 +29,8 @@ export type UpdaterError = HostProtocolError
 const UnsupportedReason = "host-adapter-unimplemented"
 const CheckPartialSupportReason = "signed-manifest-check-only"
 const DownloadPartialSupportReason = "signed-manifest-file-artifact-only"
+const InstallPartialSupportReason = "signed-manifest-staged-install-only"
+const RestartPartialSupportReason = "signed-manifest-restart-handshake-only"
 const StatusPartialSupportReason = "signed-manifest-status-only"
 
 const UpdaterSupport = NativeSurface.support.unsupported(UnsupportedReason, {
@@ -63,6 +65,22 @@ const UpdaterDownloadSupport = NativeSurface.support.partial(DownloadPartialSupp
   ]
 })
 
+const UpdaterInstallSupport = NativeSurface.support.partial(InstallPartialSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: InstallPartialSupportReason },
+    { platform: "windows", status: "partial", reason: InstallPartialSupportReason },
+    { platform: "linux", status: "partial", reason: InstallPartialSupportReason }
+  ]
+})
+
+const UpdaterRestartSupport = NativeSurface.support.partial(RestartPartialSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: RestartPartialSupportReason },
+    { platform: "windows", status: "partial", reason: RestartPartialSupportReason },
+    { platform: "linux", status: "partial", reason: RestartPartialSupportReason }
+  ]
+})
+
 export type UpdaterCheckOptions = Schema.Schema.Type<typeof UpdaterCheckInput>
 
 export type UpdaterDownloadOptions = Schema.Schema.Type<typeof UpdaterDownloadInput>
@@ -87,13 +105,15 @@ export const UpdaterInstall = updaterRpc(
   "install",
   UpdaterInstallInput,
   UpdaterStatusResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["install"] })
+  P.nativeInvoke({ primitive: "Updater", methods: ["install"] }),
+  UpdaterInstallSupport
 )
 export const UpdaterInstallAndRestart = updaterRpc(
   "installAndRestart",
   UpdaterInstallInput,
   UpdaterStatusResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["installAndRestart"] })
+  P.nativeInvoke({ primitive: "Updater", methods: ["installAndRestart"] }),
+  UpdaterRestartSupport
 )
 export const UpdaterGetStatus = updaterRpc(
   "getStatus",
@@ -106,7 +126,8 @@ export const UpdaterReadyForRestart = updaterRpc(
   "readyForRestart",
   Schema.Void,
   Schema.Void,
-  P.nativeInvoke({ primitive: "Updater", methods: ["readyForRestart"] })
+  P.nativeInvoke({ primitive: "Updater", methods: ["readyForRestart"] }),
+  UpdaterRestartSupport
 )
 
 export const UpdaterRpcEvents = Object.freeze({

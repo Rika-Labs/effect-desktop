@@ -674,7 +674,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::UPDATER_INSTALL_AND_RESTART_METHOD,
-        HostMethodDispatcher::Payload(updater::install_and_restart),
+        HostMethodDispatcher::EventfulPayload(updater::install_and_restart_with_event_sender),
     ),
     route(
         host_protocol::UPDATER_GET_STATUS_METHOD,

@@ -3208,23 +3208,23 @@
       "method": "install",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "signed-manifest-staged-install-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-staged-install-only"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-staged-install-only"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-staged-install-only"
           }
         ]
       },
@@ -3236,23 +3236,23 @@
       "method": "installAndRestart",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "signed-manifest-restart-handshake-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-restart-handshake-only"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-restart-handshake-only"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-restart-handshake-only"
           }
         ]
       },
@@ -3264,23 +3264,23 @@
       "method": "readyForRestart",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "signed-manifest-restart-handshake-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-restart-handshake-only"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-restart-handshake-only"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "signed-manifest-restart-handshake-only"
           }
         ]
       },
@@ -4202,7 +4202,7 @@
     "routed": 239,
     "missing": 0,
     "supported": 136,
-    "partial": 52,
-    "unsupported": 51
+    "partial": 55,
+    "unsupported": 48
   }
 }

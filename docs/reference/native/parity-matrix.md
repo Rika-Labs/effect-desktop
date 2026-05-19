@@ -200,9 +200,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Updater`                   | `check`                     | `partial`     | `Updater.check`                           | `routed`    |
 | `Updater`                   | `download`                  | `partial`     | `Updater.download`                        | `routed`    |
 | `Updater`                   | `getStatus`                 | `partial`     | `Updater.getStatus`                       | `routed`    |
-| `Updater`                   | `install`                   | `unsupported` | `Updater.install`                         | `routed`    |
-| `Updater`                   | `installAndRestart`         | `unsupported` | `Updater.installAndRestart`               | `routed`    |
-| `Updater`                   | `readyForRestart`           | `unsupported` | `Updater.readyForRestart`                 | `routed`    |
+| `Updater`                   | `install`                   | `partial`     | `Updater.install`                         | `routed`    |
+| `Updater`                   | `installAndRestart`         | `partial`     | `Updater.installAndRestart`               | `routed`    |
+| `Updater`                   | `readyForRestart`           | `partial`     | `Updater.readyForRestart`                 | `routed`    |
 | `WebView`                   | `capability`                | `unsupported` | `WebView.capability`                      | `routed`    |
 | `WebView`                   | `captureScreenshot`         | `unsupported` | `WebView.captureScreenshot`               | `routed`    |
 | `WebView`                   | `create`                    | `unsupported` | `WebView.create`                          | `routed`    |

@@ -140,12 +140,12 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     ]
   })
   expect(result.updaterInstall).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
+    status: "partial",
+    reason: "signed-manifest-staged-install-only",
     platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+      { platform: "macos", status: "partial", reason: "signed-manifest-staged-install-only" },
+      { platform: "windows", status: "partial", reason: "signed-manifest-staged-install-only" },
+      { platform: "linux", status: "partial", reason: "signed-manifest-staged-install-only" }
     ]
   })
   expect(result.crashReporterStart).toEqual({
