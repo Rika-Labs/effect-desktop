@@ -14,13 +14,15 @@ The public service is Layer-first and test-substitutable. It validates Schema co
 
 ## Platform Support
 
-| Platform | Status | Reason |
-|---|---|---|
-| macOS | `unsupported` | `host-adapter-unimplemented` |
-| Windows | `unsupported` | `host-adapter-unimplemented` |
-| Linux | `unsupported` | `host-adapter-unimplemented` |
+| Platform | Status        | Reason                       |
+| -------- | ------------- | ---------------------------- |
+| macOS    | `unsupported` | `host-adapter-unimplemented` |
+| Windows  | `unsupported` | `host-adapter-unimplemented` |
+| Linux    | `unsupported` | `host-adapter-unimplemented` |
 
 Unsupported mutation methods return typed `Unsupported` failures. They do not silently no-op.
+The bridge-backed `TransientWindowRole.Event` stream also fails as typed `Unsupported` before opening
+a host subscription until the native role adapter can publish real role lifecycle events.
 
 ## Diagnostics
 

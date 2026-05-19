@@ -44,7 +44,6 @@ import {
   TransientWindowRoleSupportedResult,
   type TransientWindowRoleHandle
 } from "./contracts/transient-window-role.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
@@ -305,7 +304,7 @@ export const makeTransientWindowRoleUnsupportedClient = (): TransientWindowRoleC
       Effect.succeed(
         new TransientWindowRoleSupportedResult({ supported: false, reason: UnsupportedReason })
       ),
-    events: () => Stream.fail(unsupportedError("TransientWindowRole.events"))
+    events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies TransientWindowRoleClientApi)
 
 const makeTransientWindowRoleService = (
@@ -456,7 +455,7 @@ const dismissWithPolicy = (
 
 const transientWindowRoleClientFromRpcClient = (
   client: DesktopRpcClient<TransientWindowRoleRpc>,
-  exchange: BridgeClientExchange | undefined
+  _exchange: BridgeClientExchange | undefined
 ): TransientWindowRoleClientApi =>
   Object.freeze({
     open: (input) =>
@@ -491,10 +490,7 @@ const transientWindowRoleClientFromRpcClient = (
         client["TransientWindowRole.isSupported"](undefined),
         "TransientWindowRole.isSupported"
       ),
-    events: () =>
-      subscribeNativeEvent(exchange, EventMethod, TransientWindowRoleEvent).pipe(
-        Stream.mapError(narrowTransientWindowRoleError)
-      )
+    events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies TransientWindowRoleClientApi)
 
 function transientWindowRoleRpc<
