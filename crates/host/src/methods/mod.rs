@@ -28,6 +28,7 @@ pub(crate) mod protocol;
 mod realtime_media_session;
 mod recent_documents;
 mod resident_lifecycle;
+mod safe_storage;
 mod scoped_access_grant;
 mod screen;
 mod selection_context;
@@ -432,6 +433,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::GLOBAL_SHORTCUT_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(linux::global_shortcut_is_supported),
+    ),
+    route(
+        host_protocol::SAFE_STORAGE_SET_METHOD,
+        HostMethodDispatcher::Payload(safe_storage::set),
+    ),
+    route(
+        host_protocol::SAFE_STORAGE_GET_METHOD,
+        HostMethodDispatcher::Payload(safe_storage::get),
+    ),
+    route(
+        host_protocol::SAFE_STORAGE_DELETE_METHOD,
+        HostMethodDispatcher::Payload(safe_storage::delete),
+    ),
+    route(
+        host_protocol::SAFE_STORAGE_LIST_METHOD,
+        HostMethodDispatcher::Payload(safe_storage::list),
     ),
     route(
         host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD,
@@ -4489,6 +4506,85 @@ mod tests {
                     .is_some());
             }
             other => panic!("unexpected safe storage response: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn safe_storage_secret_methods_fail_closed_after_validation() {
+        let router = test_router();
+        for (id, method, payload) in [
+            (
+                "request-safe-storage-set",
+                host_protocol::SAFE_STORAGE_SET_METHOD,
+                serde_json::json!({ "key": "token", "value": "AAE=" }),
+            ),
+            (
+                "request-safe-storage-get",
+                host_protocol::SAFE_STORAGE_GET_METHOD,
+                serde_json::json!({ "key": "token" }),
+            ),
+            (
+                "request-safe-storage-delete",
+                host_protocol::SAFE_STORAGE_DELETE_METHOD,
+                serde_json::json!({ "key": "token" }),
+            ),
+            (
+                "request-safe-storage-list",
+                host_protocol::SAFE_STORAGE_LIST_METHOD,
+                serde_json::Value::Null,
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000112)
+                .expect("safe storage request should return response");
+
+            assert!(matches!(
+                response,
+                HostProtocolEnvelope::Response {
+                    payload: None,
+                    error: Some(HostProtocolError::Unsupported { .. }),
+                    ..
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn safe_storage_secret_methods_reject_invalid_payloads_before_unsupported() {
+        let router = test_router();
+        for (id, method, payload) in [
+            (
+                "request-safe-storage-set-invalid",
+                host_protocol::SAFE_STORAGE_SET_METHOD,
+                serde_json::json!({ "key": "bad\nkey", "value": "AAE=" }),
+            ),
+            (
+                "request-safe-storage-get-invalid",
+                host_protocol::SAFE_STORAGE_GET_METHOD,
+                serde_json::json!({ "key": "" }),
+            ),
+            (
+                "request-safe-storage-delete-invalid",
+                host_protocol::SAFE_STORAGE_DELETE_METHOD,
+                serde_json::json!({ "key": "token", "unexpected": true }),
+            ),
+            (
+                "request-safe-storage-list-invalid",
+                host_protocol::SAFE_STORAGE_LIST_METHOD,
+                serde_json::json!({}),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000113)
+                .expect("safe storage invalid request should return response");
+
+            assert!(matches!(
+                response,
+                HostProtocolEnvelope::Response {
+                    error: Some(HostProtocolError::InvalidArgument { .. }),
+                    ..
+                }
+            ));
         }
     }
 

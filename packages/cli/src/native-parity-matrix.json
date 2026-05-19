@@ -2622,7 +2622,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "SafeStorage.get",
@@ -2650,7 +2650,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "SafeStorage.isAvailable",
@@ -2688,7 +2688,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "SafeStorage.set",
@@ -2716,7 +2716,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "ScopedAccessGrant.grant",
@@ -4358,8 +4358,8 @@
   ],
   "summary": {
     "total": 232,
-    "routed": 210,
-    "missing": 22,
+    "routed": 214,
+    "missing": 18,
     "supported": 117,
     "partial": 36,
     "unsupported": 79

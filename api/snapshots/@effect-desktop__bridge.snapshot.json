@@ -1034,6 +1034,31 @@
       "signature": "export type RpcSupportStatus = \"supported\" | \"partial\" | \"unsupported\""
     },
     {
+      "name": "SAFE_STORAGE_DELETE_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_DELETE_METHOD: \"SafeStorage.delete\""
+    },
+    {
+      "name": "SAFE_STORAGE_GET_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_GET_METHOD: \"SafeStorage.get\""
+    },
+    {
+      "name": "SAFE_STORAGE_IS_AVAILABLE_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_IS_AVAILABLE_METHOD: \"SafeStorage.isAvailable\""
+    },
+    {
+      "name": "SAFE_STORAGE_LIST_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_LIST_METHOD: \"SafeStorage.list\""
+    },
+    {
+      "name": "SAFE_STORAGE_SET_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_SET_METHOD: \"SafeStorage.set\""
+    },
+    {
       "name": "SecretBytes",
       "kind": "type",
       "signature": "export type SecretBytes = Redacted.Redacted<Uint8Array>"

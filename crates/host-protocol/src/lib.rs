@@ -88,7 +88,12 @@ pub const GLOBAL_SHORTCUT_UNREGISTER_METHOD: &str = "GlobalShortcut.unregister";
 pub const GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD: &str = "GlobalShortcut.unregisterAll";
 pub const GLOBAL_SHORTCUT_IS_REGISTERED_METHOD: &str = "GlobalShortcut.isRegistered";
 pub const GLOBAL_SHORTCUT_IS_SUPPORTED_METHOD: &str = "GlobalShortcut.isSupported";
+pub const SAFE_STORAGE_SET_METHOD: &str = "SafeStorage.set";
+pub const SAFE_STORAGE_GET_METHOD: &str = "SafeStorage.get";
+pub const SAFE_STORAGE_DELETE_METHOD: &str = "SafeStorage.delete";
+pub const SAFE_STORAGE_LIST_METHOD: &str = "SafeStorage.list";
 pub const SAFE_STORAGE_IS_AVAILABLE_METHOD: &str = "SafeStorage.isAvailable";
+pub const SAFE_STORAGE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const DIALOG_OPEN_FILE_METHOD: &str = "Dialog.openFile";
 pub const DIALOG_OPEN_DIRECTORY_METHOD: &str = "Dialog.openDirectory";
 pub const DIALOG_SAVE_FILE_METHOD: &str = "Dialog.saveFile";
@@ -3663,6 +3668,62 @@ impl DockSetJumpListPayload {
 
     pub fn items(&self) -> &[DockJumpListItemPayload] {
         &self.items
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SafeStorageKeyPayload {
+    key: String,
+}
+
+impl SafeStorageKeyPayload {
+    pub fn new(key: impl Into<String>) -> Self {
+        Self { key: key.into() }
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SafeStorageSetPayload {
+    key: String,
+    value: String,
+}
+
+impl SafeStorageSetPayload {
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SafeStorageListResultPayload {
+    keys: Vec<String>,
+}
+
+impl SafeStorageListResultPayload {
+    pub fn new(keys: Vec<String>) -> Self {
+        Self { keys }
+    }
+
+    pub fn keys(&self) -> &[String] {
+        &self.keys
     }
 }
 
@@ -11548,6 +11609,7 @@ mod tests {
         ResidentLifecycleEventPayload, ResidentLifecycleEventPhase, ResidentLifecyclePolicyPayload,
         ResidentLifecycleProcessPolicy, ResidentLifecycleStatePayload,
         ResidentLifecycleSupportedPayload, ResidentLifecycleWindowPolicy, ResumeTicket,
+        SafeStorageKeyPayload, SafeStorageListResultPayload, SafeStorageSetPayload,
         ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
         ScreenDisplaysResultPayload, ScreenIsSupportedPayload, ScreenPointPayload,
         ScreenSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
@@ -13072,6 +13134,51 @@ mod tests {
         assert!(
             item_error.to_string().contains("unknown field"),
             "unexpected jump list error: {item_error}"
+        );
+    }
+
+    #[test]
+    fn safe_storage_payloads_serialize_canonically() {
+        let key = SafeStorageKeyPayload::new("token");
+        assert_eq!(key.key(), "token");
+        assert_eq!(
+            serde_json::to_string(&key).expect("safe storage key payload should encode"),
+            r#"{"key":"token"}"#
+        );
+
+        let set = SafeStorageSetPayload::new("token", "AAE=");
+        assert_eq!(set.key(), "token");
+        assert_eq!(set.value(), "AAE=");
+        assert_eq!(
+            serde_json::to_string(&set).expect("safe storage set payload should encode"),
+            r#"{"key":"token","value":"AAE="}"#
+        );
+
+        let list = SafeStorageListResultPayload::new(vec!["token".to_string()]);
+        assert_eq!(list.keys(), &["token".to_string()]);
+        assert_eq!(
+            serde_json::to_string(&list).expect("safe storage list payload should encode"),
+            r#"{"keys":["token"]}"#
+        );
+    }
+
+    #[test]
+    fn safe_storage_payloads_reject_excess_fields() {
+        let set_error = serde_json::from_str::<SafeStorageSetPayload>(
+            r#"{"key":"token","value":"AAE=","unexpected":true}"#,
+        )
+        .expect_err("safe storage set excess fields should reject");
+        assert!(
+            set_error.to_string().contains("unknown field"),
+            "unexpected safe storage set error: {set_error}"
+        );
+
+        let key_error =
+            serde_json::from_str::<SafeStorageKeyPayload>(r#"{"key":"token","unexpected":true}"#)
+                .expect_err("safe storage key excess fields should reject");
+        assert!(
+            key_error.to_string().contains("unknown field"),
+            "unexpected safe storage key error: {key_error}"
         );
     }
 
