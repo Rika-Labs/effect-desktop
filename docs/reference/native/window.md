@@ -90,22 +90,23 @@ when the OS or compositor adjusts placement. Native move and resize
 notifications are exposed as `window-bounds-event` events with the current
 logical bounds.
 
-The chrome surface is not complete. `Window.create` accepts macOS creation-time
-`titleBarStyle`, `vibrancy`, and `trafficLights` options, `setDecorations` is
-mutable through the host, and `setTrafficLights` mutates macOS traffic-light
-placement with typed unsupported behavior elsewhere. `setVibrancy` applies the
-same validated macOS vibrancy materials that `Window.create({ vibrancy })`
-accepts, and `clearVibrancy` removes the macOS `NSVisualEffectView` installed by
-the vibrancy adapter. Both return typed `Unsupported` on non-macOS hosts.
-`setTitleBarStyle` mutates macOS AppKit titlebar style state with the same
-validated style literals accepted by `Window.create({ titleBarStyle })`. Effect
-Desktop does not yet expose a `WindowChrome` service or a complete platform
-support matrix for those chrome features. `setShadow` mutates the macOS native
-window shadow through Tao and returns typed `Unsupported` on Windows and Linux.
+The chrome surface is platform-typed on the existing `Window` service rather
+than split behind a separate `WindowChrome` facade. `Window.create` accepts
+macOS creation-time `titleBarStyle`, `vibrancy`, and `trafficLights` options.
+`setDecorations` is mutable through the host on all platforms. `setTrafficLights`
+mutates macOS traffic-light placement with typed unsupported behavior elsewhere.
+`setVibrancy` applies the same validated macOS vibrancy materials that
+`Window.create({ vibrancy })` accepts, and `clearVibrancy` removes the macOS
+`NSVisualEffectView` installed by the vibrancy adapter. Both return typed
+`Unsupported` on non-macOS hosts. `setTitleBarStyle` mutates macOS AppKit
+titlebar style state with the same validated style literals accepted by
+`Window.create({ titleBarStyle })`. `setShadow` mutates the macOS native window
+shadow through Tao and returns typed `Unsupported` on Windows and Linux.
 `setTitleBarTransparent` mutates the macOS titlebar background drawing flag
 through Tao and returns typed `Unsupported` on Windows and Linux.
 `setTransparent` mutates macOS AppKit window opacity and background-color state
-and returns typed `Unsupported` on Windows and Linux.
+and returns typed `Unsupported` on Windows and Linux. The generated parity matrix
+records the per-method support status.
 
 The state surface has command, read, and command-originated state-event support
 for minimized, maximized, fullscreen, and simple-fullscreen booleans. `minimize`,
