@@ -1159,11 +1159,10 @@ const buildSpine = <RIn, E>(
         } satisfies DesktopRuntimeApi)
       )
 
-      const dependentLayer = Layer.mergeAll(
-        workflowLayer,
-        rpcLayer,
-        desktopAppLayer,
-        desktopRuntimeLayer
+      const desktopContextLayer = Layer.merge(desktopAppLayer, desktopRuntimeLayer)
+
+      const dependentLayer = Layer.mergeAll(workflowLayer, rpcLayer).pipe(
+        Layer.provideMerge(desktopContextLayer)
       ) as Layer.Layer<
         DesktopApp | DesktopRuntime,
         E,
