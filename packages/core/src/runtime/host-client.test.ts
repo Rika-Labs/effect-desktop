@@ -19,125 +19,149 @@ import {
   type TransportConnection
 } from "./transport.js"
 
-test("host protocol exchange maps oversized received frames to FrameTooLarge", async () => {
-  const exchange = createHostProtocolExchange(
-    transport({
-      receive: Stream.fail(
-        new TransportFrameTooLargeError({
-          operation: "TransportConnection.receive",
-          size: 5,
-          max: 4
+test("host protocol exchange maps oversized received frames to FrameTooLarge", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange = createHostProtocolExchange(
+        transport({
+          receive: Stream.fail(
+            new TransportFrameTooLargeError({
+              operation: "TransportConnection.receive",
+              size: 5,
+              max: 4
+            })
+          )
         })
       )
+
+      const exit = yield* Effect.exit(exchange.request(request()))
+      const failure = getFailure(exit)
+
+      expect(failure).toBeInstanceOf(HostProtocolFrameTooLargeError)
+      expect(failure).toMatchObject({
+        limitBytes: 4,
+        operation: "TransportConnection.receive",
+        sizeBytes: 5,
+        tag: "FrameTooLarge"
+      })
     })
-  )
+  ))
 
-  const exit = await Effect.runPromiseExit(exchange.request(request()))
-
-  expectFailure(exit, HostProtocolFrameTooLargeError)
-  expect(getFailure(exit)).toMatchObject({
-    limitBytes: 4,
-    operation: "TransportConnection.receive",
-    sizeBytes: 5,
-    tag: "FrameTooLarge"
-  })
-})
-
-test("host protocol exchange maps truncated received frames to BinaryDecodeError", async () => {
-  const exchange = createHostProtocolExchange(
-    transport({
-      receive: Stream.fail(
-        new TransportFrameTruncatedError({
-          operation: "TransportConnection.receive",
-          stage: "body",
-          expected: 8,
-          read: 2
+test("host protocol exchange maps truncated received frames to BinaryDecodeError", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange = createHostProtocolExchange(
+        transport({
+          receive: Stream.fail(
+            new TransportFrameTruncatedError({
+              operation: "TransportConnection.receive",
+              stage: "body",
+              expected: 8,
+              read: 2
+            })
+          )
         })
       )
+
+      const exit = yield* Effect.exit(exchange.request(request()))
+      const failure = getFailure(exit)
+
+      expect(failure).toBeInstanceOf(HostProtocolBinaryDecodeError)
+      expect(failure).toMatchObject({
+        operation: "TransportConnection.receive",
+        tag: "BinaryDecodeError"
+      })
     })
-  )
+  ))
 
-  const exit = await Effect.runPromiseExit(exchange.request(request()))
+test("host protocol exchange maps closed host transport to HostUnavailable", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange = createHostProtocolExchange(
+        transport({
+          receive: Stream.empty
+        })
+      )
 
-  expectFailure(exit, HostProtocolBinaryDecodeError)
-  expect(getFailure(exit)).toMatchObject({
-    operation: "TransportConnection.receive",
-    tag: "BinaryDecodeError"
-  })
-})
+      const exit = yield* Effect.exit(exchange.request(request()))
+      const failure = getFailure(exit)
 
-test("host protocol exchange maps closed host transport to HostUnavailable", async () => {
-  const exchange = createHostProtocolExchange(
-    transport({
-      receive: Stream.empty
+      expect(failure).toBeInstanceOf(HostProtocolHostUnavailableError)
+      expect(failure).toMatchObject({
+        operation: "TransportConnection.receive",
+        tag: "HostUnavailable"
+      })
     })
-  )
+  ))
 
-  const exit = await Effect.runPromiseExit(exchange.request(request()))
+test("host protocol exchange maps malformed JSON frames to BinaryDecodeError", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange = createHostProtocolExchange(
+        transport({
+          receive: Stream.make(new TextEncoder().encode("{"))
+        })
+      )
 
-  expectFailure(exit, HostProtocolHostUnavailableError)
-  expect(getFailure(exit)).toMatchObject({
-    operation: "TransportConnection.receive",
-    tag: "HostUnavailable"
-  })
-})
+      const exit = yield* Effect.exit(exchange.request(request()))
+      const failure = getFailure(exit)
 
-test("host protocol exchange maps malformed JSON frames to BinaryDecodeError", async () => {
-  const exchange = createHostProtocolExchange(
-    transport({
-      receive: Stream.make(new TextEncoder().encode("{"))
+      expect(failure).toBeInstanceOf(HostProtocolBinaryDecodeError)
+      expect(failure).toMatchObject({
+        operation: "host.ping",
+        tag: "BinaryDecodeError"
+      })
     })
-  )
+  ))
 
-  const exit = await Effect.runPromiseExit(exchange.request(request()))
+test("host protocol exchange rejects invalid UTF-8 in response frames", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const prefix = new TextEncoder().encode(
+        '{"kind":"response","id":"request-1","timestamp":1,"traceId":"trace-'
+      )
+      const suffix = new TextEncoder().encode('"}')
+      const frame = new Uint8Array(prefix.length + 1 + suffix.length)
+      frame.set(prefix)
+      frame[prefix.length] = 0xff
+      frame.set(suffix, prefix.length + 1)
 
-  expectFailure(exit, HostProtocolBinaryDecodeError)
-  expect(getFailure(exit)).toMatchObject({
-    operation: "host.ping",
-    tag: "BinaryDecodeError"
-  })
-})
+      const exchange = createHostProtocolExchange(
+        transport({
+          receive: Stream.make(frame)
+        })
+      )
 
-test("host protocol exchange rejects invalid UTF-8 in response frames", async () => {
-  const prefix = new TextEncoder().encode(
-    '{"kind":"response","id":"request-1","timestamp":1,"traceId":"trace-'
-  )
-  const suffix = new TextEncoder().encode('"}')
-  const frame = new Uint8Array(prefix.length + 1 + suffix.length)
-  frame.set(prefix)
-  frame[prefix.length] = 0xff
-  frame.set(suffix, prefix.length + 1)
+      const exit = yield* Effect.exit(exchange.request(request()))
+      const failure = getFailure(exit)
 
-  const exchange = createHostProtocolExchange(
-    transport({
-      receive: Stream.make(frame)
+      expect(failure).toBeInstanceOf(HostProtocolBinaryDecodeError)
+      expect(failure).toMatchObject({
+        operation: "host.ping",
+        tag: "BinaryDecodeError"
+      })
     })
-  )
+  ))
 
-  const exit = await Effect.runPromiseExit(exchange.request(request()))
+test("host protocol exchange preserves decoded envelope shape failures as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange = createHostProtocolExchange(
+        transport({
+          receive: Stream.make(new TextEncoder().encode(JSON.stringify({ kind: "response" })))
+        })
+      )
 
-  expectFailure(exit, HostProtocolBinaryDecodeError)
-  expect(getFailure(exit)).toMatchObject({
-    operation: "host.ping",
-    tag: "BinaryDecodeError"
-  })
-})
+      const exit = yield* Effect.exit(exchange.request(request()))
+      const failure = getFailure(exit)
 
-test("host protocol exchange preserves decoded envelope shape failures as InvalidOutput", async () => {
-  const exchange = createHostProtocolExchange(
-    transport({
-      receive: Stream.make(new TextEncoder().encode(JSON.stringify({ kind: "response" })))
+      expect(failure).toBeInstanceOf(HostProtocolInvalidOutputError)
+      expect(failure).toMatchObject({
+        method: "host.ping",
+        tag: "InvalidOutput"
+      })
     })
-  )
-
-  const exit = await Effect.runPromiseExit(exchange.request(request()))
-
-  expectFailure(exit, HostProtocolInvalidOutputError)
-  expect(getFailure(exit)).toMatchObject({
-    method: "host.ping",
-    tag: "InvalidOutput"
-  })
-})
+  ))
 
 test("host protocol exchange preserves semantic response mismatches as InvalidOutput", async () => {
   const exchange = createHostProtocolExchange(

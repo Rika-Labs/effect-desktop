@@ -15,8 +15,8 @@ import {
 
 const id = makeResourceId
 
-test("register returns handles and list enumerates live resources", async () => {
-  const result = await Effect.runPromise(
+test("register returns handles and list enumerates live resources", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         now: () => 1710000000000,
@@ -29,67 +29,64 @@ test("register returns handles and list enumerates live resources", async () => 
       })
       const snapshot = yield* registry.list()
 
-      return { handle, snapshot }
-    })
-  )
-
-  expect(result.handle).toMatchObject({
-    kind: "process",
-    id: "018e2f36-5800-7000-8000-000000000001",
-    generation: 0,
-    ownerScope: "scope-test",
-    state: "running"
-  })
-  expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([
-    result.snapshot.entries[0]!.handle.id
-  ])
-  expect(result.snapshot.entries[0]?.createdAt).toBe(1710000000000)
-})
-
-test("register rejects invalid registry timestamps before allocating ids", async () => {
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const registry = yield* makeResourceRegistry({
-        now: () => Number.NaN,
-        nextId: () => id("018e2f36-5800-7000-8000-0000000000ff")
-      })
-
-      yield* registry.register({
-        kind: "window",
+      expect(handle).toMatchObject({
+        kind: "process",
+        id: "018e2f36-5800-7000-8000-000000000001",
+        generation: 0,
         ownerScope: "scope-test",
-        state: "open"
+        state: "running"
       })
+      expect(snapshot.entries.map((entry) => entry.handle.id)).toEqual([
+        snapshot.entries[0]!.handle.id
+      ])
+      expect(snapshot.entries[0]?.createdAt).toBe(1710000000000)
     })
-  )
+  ))
 
-  expectFailure(exit, ResourceInvalidArgumentError)
-})
+test("register rejects invalid registry timestamps before allocating ids", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const registry = yield* makeResourceRegistry({
+            now: () => Number.NaN,
+            nextId: () => id("018e2f36-5800-7000-8000-0000000000ff")
+          })
 
-test("register rejects empty resource identity fields before allocating ids", async () => {
-  for (const input of [
-    { kind: "", ownerScope: "scope-test", state: "open" },
-    { kind: "window", ownerScope: "   ", state: "open" },
-    { kind: "window", ownerScope: "scope-test", state: "" }
-  ]) {
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
+          yield* registry.register({
+            kind: "window",
+            ownerScope: "scope-test",
+            state: "open"
+          })
+        })
+      )
+
+      expectFailure(exit, ResourceInvalidArgumentError)
+    })
+  ))
+
+test("register rejects empty resource identity fields before allocating ids", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const input of [
+        { kind: "", ownerScope: "scope-test", state: "open" },
+        { kind: "window", ownerScope: "   ", state: "open" },
+        { kind: "window", ownerScope: "scope-test", state: "" }
+      ]) {
         const registry = yield* makeResourceRegistry({
           nextId: () => id("018e2f36-5800-7000-8000-0000000000aa")
         })
         const exit = yield* Effect.exit(registry.register(input))
         const snapshot = yield* registry.list()
 
-        return { exit, snapshot }
-      })
-    )
+        expectFailure(exit, ResourceInvalidArgumentError)
+        expect(snapshot.entries).toEqual([])
+      }
+    })
+  ))
 
-    expectFailure(result.exit, ResourceInvalidArgumentError)
-    expect(result.snapshot.entries).toEqual([])
-  }
-})
-
-test("get returns the matching live resource", async () => {
-  const result = await Effect.runPromise(
+test("get returns the matching live resource", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         nextId: () => id("018e2f36-5800-7000-8000-000000000002")
@@ -99,19 +96,17 @@ test("get returns the matching live resource", async () => {
         ownerScope: "scope-window",
         state: "open"
       })
+      const result = yield* registry.get(handle.id)
 
-      return yield* registry.get(handle.id)
+      expect(Option.isSome(result)).toBe(true)
+      if (Option.isSome(result)) {
+        expect(result.value.handle.kind).toBe("window")
+      }
     })
-  )
+  ))
 
-  expect(Option.isSome(result)).toBe(true)
-  if (Option.isSome(result)) {
-    expect(result.value.handle.kind).toBe("window")
-  }
-})
-
-test("public registry reads return serializable handles without dispose", async () => {
-  const result = await Effect.runPromise(
+test("public registry reads return serializable handles without dispose", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         nextId: () => id("018e2f36-5800-7000-8000-0000000000ab")
@@ -126,31 +121,29 @@ test("public registry reads return serializable handles without dispose", async 
       const fresh = yield* registry.assertFresh(managed)
       const observed = yield* registry.observe().pipe(Stream.take(1), Stream.runCollect)
 
-      return {
-        managed,
-        listed: listed.entries[0]?.handle,
-        got: Option.isSome(got) ? got.value.handle : undefined,
-        fresh: fresh.handle,
-        observed: Array.from(observed)[0]?.entries[0]?.handle
+      const handles = [
+        listed.entries[0]?.handle,
+        Option.isSome(got) ? got.value.handle : undefined,
+        fresh.handle,
+        Array.from(observed)[0]?.entries[0]?.handle
+      ]
+
+      expect("dispose" in managed).toBe(true)
+      for (const handle of handles) {
+        expect(handle).toMatchObject({
+          kind: "window",
+          id: id("018e2f36-5800-7000-8000-0000000000ab"),
+          generation: 0,
+          ownerScope: "scope-window",
+          state: "open"
+        })
+        expect("dispose" in handle!).toBe(false)
       }
     })
-  )
+  ))
 
-  expect("dispose" in result.managed).toBe(true)
-  for (const handle of [result.listed, result.got, result.fresh, result.observed]) {
-    expect(handle).toMatchObject({
-      kind: "window",
-      id: id("018e2f36-5800-7000-8000-0000000000ab"),
-      generation: 0,
-      ownerScope: "scope-window",
-      state: "open"
-    })
-    expect("dispose" in handle!).toBe(false)
-  }
-})
-
-test("dispose runs cleanup once and removes the resource", async () => {
-  const result = await Effect.runPromise(
+test("dispose runs cleanup once and removes the resource", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       let cleanupCount = 0
       const registry = yield* makeResourceRegistry({
@@ -169,16 +162,13 @@ test("dispose runs cleanup once and removes the resource", async () => {
       yield* registry.dispose(handle.id)
       const snapshot = yield* registry.list()
 
-      return { cleanupCount, snapshot }
+      expect(cleanupCount).toBe(1)
+      expect(snapshot.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(result.cleanupCount).toBe(1)
-  expect(result.snapshot.entries).toEqual([])
-})
-
-test("dispose removes the resource when cleanup defects", async () => {
-  const snapshot = await Effect.runPromise(
+test("dispose removes the resource when cleanup defects", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         nextId: () => id("018e2f36-5800-7000-8000-0000000000b1")
@@ -193,16 +183,14 @@ test("dispose removes the resource when cleanup defects", async () => {
       })
 
       yield* registry.dispose(handle.id)
+      const snapshot = yield* registry.list()
 
-      return yield* registry.list()
+      expect(snapshot.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(snapshot.entries).toEqual([])
-})
-
-test("dispose keeps resources in the registry while cleanup is in progress", async () => {
-  const result = await Effect.runPromise(
+test("dispose keeps resources in the registry while cleanup is in progress", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const started = yield* Deferred.make<void, never>()
       const resume = yield* Deferred.make<void, never>()
@@ -243,25 +231,22 @@ test("dispose keeps resources in the registry while cleanup is in progress", asy
       yield* Fiber.join(disposal)
       const final = yield* registry.list()
 
-      return { snapshot, stale, shareStale, final }
+      expect(snapshot.entries.map((entry) => entry.handle.id)).toEqual([
+        id("018e2f36-5800-7000-8000-000000000008")
+      ])
+      expect(stale).toBeInstanceOf(StaleHandle)
+      expect(stale).toMatchObject({
+        tag: "StaleHandle",
+        kind: "stream",
+        id: "018e2f36-5800-7000-8000-000000000008"
+      })
+      expect(shareStale).toBeInstanceOf(StaleHandle)
+      expect(final.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([
-    id("018e2f36-5800-7000-8000-000000000008")
-  ])
-  expect(result.stale).toBeInstanceOf(StaleHandle)
-  expect(result.stale).toMatchObject({
-    tag: "StaleHandle",
-    kind: "stream",
-    id: "018e2f36-5800-7000-8000-000000000008"
-  })
-  expect(result.shareStale).toBeInstanceOf(StaleHandle)
-  expect(result.final.entries).toEqual([])
-})
-
-test("duplicate dispose waits for in-flight cleanup to remove the entry", async () => {
-  const result = await Effect.runPromise(
+test("duplicate dispose waits for in-flight cleanup to remove the entry", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const started = yield* Deferred.make<void, never>()
       const resume = yield* Deferred.make<void, never>()
@@ -293,16 +278,13 @@ test("duplicate dispose waits for in-flight cleanup to remove the entry", async 
       yield* Fiber.join(second)
       const final = yield* registry.list()
 
-      return { final, secondBeforeRemoval }
+      expect(Option.isNone(secondBeforeRemoval)).toBe(true)
+      expect(final.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(Option.isNone(result.secondBeforeRemoval)).toBe(true)
-  expect(result.final.entries).toEqual([])
-})
-
-test("interrupted dispose still clears the disposing entry", async () => {
-  const result = await Effect.runPromise(
+test("interrupted dispose still clears the disposing entry", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const started = yield* Deferred.make<void, never>()
       const resume = yield* Deferred.make<void, never>()
@@ -335,16 +317,13 @@ test("interrupted dispose still clears the disposing entry", async () => {
       yield* Fiber.join(second)
       const final = yield* registry.list()
 
-      return { final, secondBeforeResume }
+      expect(Option.isNone(secondBeforeResume)).toBe(true)
+      expect(final.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(Option.isNone(result.secondBeforeResume)).toBe(true)
-  expect(result.final.entries).toEqual([])
-})
-
-test("assertFresh returns StaleHandle after non-reusable disposal", async () => {
-  const error = await Effect.runPromise(
+test("assertFresh returns StaleHandle after non-reusable disposal", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         nextId: () => id("018e2f36-5800-7000-8000-000000000009")
@@ -357,7 +336,7 @@ test("assertFresh returns StaleHandle after non-reusable disposal", async () => 
 
       yield* registry.dispose(handle.id)
 
-      return yield* registry.assertFresh(handle).pipe(
+      const error = yield* registry.assertFresh(handle).pipe(
         Effect.match({
           onFailure: (stale) => stale,
           onSuccess: () => {
@@ -365,21 +344,20 @@ test("assertFresh returns StaleHandle after non-reusable disposal", async () => 
           }
         })
       )
+
+      expect(error).toBeInstanceOf(StaleHandle)
+      expect(error).toMatchObject({
+        tag: "StaleHandle",
+        kind: "process",
+        id: "018e2f36-5800-7000-8000-000000000009",
+        expectedGeneration: 0,
+        actualGeneration: -1
+      })
     })
-  )
+  ))
 
-  expect(error).toBeInstanceOf(StaleHandle)
-  expect(error).toMatchObject({
-    tag: "StaleHandle",
-    kind: "process",
-    id: "018e2f36-5800-7000-8000-000000000009",
-    expectedGeneration: 0,
-    actualGeneration: -1
-  })
-})
-
-test("assertFresh accepts reusable id only at the current generation", async () => {
-  const result = await Effect.runPromise(
+test("assertFresh accepts reusable id only at the current generation", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const reusedId = id("018e2f36-5800-7000-8000-000000000010")
@@ -410,23 +388,20 @@ test("assertFresh accepts reusable id only at the current generation", async () 
         })
       )
 
-      return { second, fresh, stale }
+      expect(second.generation).toBe(1)
+      expect(fresh.handle.generation).toBe(1)
+      expect(stale).toMatchObject({
+        tag: "StaleHandle",
+        kind: "stream",
+        id: "018e2f36-5800-7000-8000-000000000010",
+        expectedGeneration: 0,
+        actualGeneration: 1
+      })
     })
-  )
+  ))
 
-  expect(result.second.generation).toBe(1)
-  expect(result.fresh.handle.generation).toBe(1)
-  expect(result.stale).toMatchObject({
-    tag: "StaleHandle",
-    kind: "stream",
-    id: "018e2f36-5800-7000-8000-000000000010",
-    expectedGeneration: 0,
-    actualGeneration: 1
-  })
-})
-
-test("assertFresh and share reject handles with mismatched state", async () => {
-  const result = await Effect.runPromise(
+test("assertFresh and share reject handles with mismatched state", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         nextId: () => id("018e2f36-5800-7000-8000-0000000000ac")
@@ -447,25 +422,22 @@ test("assertFresh and share reject handles with mismatched state", async () => {
       const shareExit = yield* Effect.exit(registry.share(forged, "target-scope"))
       const snapshot = yield* registry.list()
 
-      return { freshExit, shareExit, snapshot }
+      expectFailure(freshExit, StaleHandle)
+      expectFailure(shareExit, StaleHandle)
+      expect(snapshot.entries.map((entry) => entry.handle)).toEqual([
+        {
+          kind: "process",
+          id: id("018e2f36-5800-7000-8000-0000000000ac"),
+          generation: 0,
+          ownerScope: "scope-process",
+          state: "running"
+        }
+      ])
     })
-  )
+  ))
 
-  expectFailure(result.freshExit, StaleHandle)
-  expectFailure(result.shareExit, StaleHandle)
-  expect(result.snapshot.entries.map((entry) => entry.handle)).toEqual([
-    {
-      kind: "process",
-      id: id("018e2f36-5800-7000-8000-0000000000ac"),
-      generation: 0,
-      ownerScope: "scope-process",
-      state: "running"
-    }
-  ])
-})
-
-test("non-reusable explicit id reuse cannot refresh a disposed handle", async () => {
-  const result = await Effect.runPromise(
+test("non-reusable explicit id reuse cannot refresh a disposed handle", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const reusedId = id("018e2f36-5800-7000-8000-000000000012")
@@ -493,22 +465,19 @@ test("non-reusable explicit id reuse cannot refresh a disposed handle", async ()
         })
       )
 
-      return { second, stale }
+      expect(second.generation).toBe(1)
+      expect(stale).toMatchObject({
+        tag: "StaleHandle",
+        kind: "process",
+        id: "018e2f36-5800-7000-8000-000000000012",
+        expectedGeneration: 0,
+        actualGeneration: -1
+      })
     })
-  )
+  ))
 
-  expect(result.second.generation).toBe(1)
-  expect(result.stale).toMatchObject({
-    tag: "StaleHandle",
-    kind: "process",
-    id: "018e2f36-5800-7000-8000-000000000012",
-    expectedGeneration: 0,
-    actualGeneration: -1
-  })
-})
-
-test("register does not overwrite a live entry with a duplicate explicit id", async () => {
-  const result = await Effect.runPromise(
+test("register does not overwrite a live entry with a duplicate explicit id", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       let cleanupCount = 0
       const duplicateId = id("018e2f36-5800-7000-8000-000000000013")
@@ -535,25 +504,25 @@ test("register does not overwrite a live entry with a duplicate explicit id", as
       yield* registry.dispose(first.id)
       const snapshot = yield* registry.list()
 
-      return { cleanupCount, first, second, snapshot }
+      expect(first.id).toBe(id("018e2f36-5800-7000-8000-000000000013"))
+      expect(second.id).toBe(id("018e2f36-5800-7000-8000-000000000014"))
+      expect(cleanupCount).toBe(1)
+      expect(snapshot.entries.map((entry) => entry.handle.id)).toEqual([second.id])
     })
-  )
+  ))
 
-  expect(result.first.id).toBe(id("018e2f36-5800-7000-8000-000000000013"))
-  expect(result.second.id).toBe(id("018e2f36-5800-7000-8000-000000000014"))
-  expect(result.cleanupCount).toBe(1)
-  expect(result.snapshot.entries.map((entry) => entry.handle.id)).toEqual([result.second.id])
-})
+test("register retries generated ids until the id is live-unique", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const originalGetRandomValues = globalThis.crypto.getRandomValues.bind(globalThis.crypto)
+      const restore = Effect.sync(() => {
+        globalThis.crypto.getRandomValues = originalGetRandomValues
+      })
 
-test("register retries generated ids until the id is live-unique", async () => {
-  const originalGetRandomValues = globalThis.crypto.getRandomValues.bind(globalThis.crypto)
-
-  try {
-    stubCryptoRandomValuesWithZeroes()
-    const now = 1710000000000
-    const collidingFallbackId = generateUuidV7(now)
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
+      const program = Effect.gen(function* () {
+        stubCryptoRandomValuesWithZeroes()
+        const now = 1710000000000
+        const collidingFallbackId = generateUuidV7(now)
         const registry = yield* makeResourceRegistry({
           now: () => now,
           nextId: () => collidingFallbackId
@@ -570,22 +539,20 @@ test("register retries generated ids until the id is live-unique", async () => {
           state: "ready"
         })
         const snapshot = yield* registry.list()
-        return { first, second, snapshot }
+
+        expect(first.id).toBe(collidingFallbackId)
+        expect(second.id).not.toBe(collidingFallbackId)
+        expect(snapshot.entries.map((entry) => entry.handle.id).sort()).toEqual(
+          [first.id, second.id].sort()
+        )
       })
-    )
 
-    expect(result.first.id).toBe(collidingFallbackId)
-    expect(result.second.id).not.toBe(collidingFallbackId)
-    expect(result.snapshot.entries.map((entry) => entry.handle.id).sort()).toEqual(
-      [result.first.id, result.second.id].sort()
-    )
-  } finally {
-    globalThis.crypto.getRandomValues = originalGetRandomValues
-  }
-})
+      yield* program.pipe(Effect.ensuring(restore))
+    })
+  ))
 
-test("closeScope disposes transitively owned resources child scopes first", async () => {
-  const disposalOrder = await Effect.runPromise(
+test("closeScope disposes transitively owned resources child scopes first", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const order: string[] = []
       const registry = yield* makeResourceRegistry()
@@ -622,16 +589,13 @@ test("closeScope disposes transitively owned resources child scopes first", asyn
       yield* registry.closeScope("window-scope")
       const snapshot = yield* registry.list()
 
-      return { order, snapshot }
+      expect(order).toEqual(["stream", "process", "window"])
+      expect(snapshot.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(disposalOrder.order).toEqual(["stream", "process", "window"])
-  expect(disposalOrder.snapshot.entries).toEqual([])
-})
-
-test("closeScope continues to close all scope resources when one disposer fails", async () => {
-  const result = await Effect.runPromise(
+test("closeScope continues to close all scope resources when one disposer fails", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const order: string[] = []
       let now = 1710000000000
@@ -663,16 +627,13 @@ test("closeScope continues to close all scope resources when one disposer fails"
       yield* registry.closeScope("scope-failure")
       const snapshot = yield* registry.list()
 
-      return { order, snapshot }
+      expect(order).toEqual(["worker", "process"])
+      expect(snapshot.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(result.order).toEqual(["worker", "process"])
-  expect(result.snapshot.entries).toEqual([])
-})
-
-test("share returns a fresh target-scope handle without closing with the source scope", async () => {
-  const result = await Effect.runPromise(
+test("share returns a fresh target-scope handle without closing with the source scope", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       let cleanupCount = 0
       const registry = yield* makeResourceRegistry({
@@ -695,27 +656,16 @@ test("share returns a fresh target-scope handle without closing with the source 
       yield* registry.closeScope("target-scope")
       const targetClosedSnapshot = yield* registry.list()
 
-      return {
-        cleanupAfterSourceClose,
-        cleanupCount,
-        shared,
-        sourceClosedSnapshot,
-        targetClosedSnapshot
-      }
+      expect(cleanupAfterSourceClose).toBe(0)
+      expect(cleanupCount).toBe(1)
+      expect(shared.ownerScope).toBe("target-scope")
+      expect(sourceClosedSnapshot.entries.map((entry) => entry.handle.id)).toEqual([shared.id])
+      expect(targetClosedSnapshot.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(result.cleanupAfterSourceClose).toBe(0)
-  expect(result.cleanupCount).toBe(1)
-  expect(result.shared.ownerScope).toBe("target-scope")
-  expect(result.sourceClosedSnapshot.entries.map((entry) => entry.handle.id)).toEqual([
-    result.shared.id
-  ])
-  expect(result.targetClosedSnapshot.entries).toEqual([])
-})
-
-test("closeScope removes a resource when its disposer exceeds disposalGraceMs", async () => {
-  const snapshot = await Effect.runPromise(
+test("closeScope removes a resource when its disposer exceeds disposalGraceMs", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       yield* registry.register({
@@ -728,16 +678,14 @@ test("closeScope removes a resource when its disposer exceeds disposalGraceMs", 
       })
 
       yield* registry.closeScope("scope-timeout")
+      const snapshot = yield* registry.list()
 
-      return yield* registry.list()
+      expect(snapshot.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(snapshot.entries).toEqual([])
-})
-
-test("closeScope handles cyclic scope declarations without hanging", async () => {
-  const snapshot = await Effect.runPromise(
+test("closeScope handles cyclic scope declarations without hanging", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       yield* registry.declareScope("scope-a", "scope-b")
@@ -750,22 +698,20 @@ test("closeScope handles cyclic scope declarations without hanging", async () =>
       })
 
       yield* registry.closeScope("scope-a")
+      const snapshot = yield* registry.list()
 
-      return yield* registry.list()
+      expect(snapshot.entries).toEqual([])
     }).pipe(Effect.timeout("100 millis"))
-  )
+  ))
 
-  expect(snapshot.entries).toEqual([])
-})
-
-test("declareScope rejects blank scope declarations before mutating parents", async () => {
-  for (const input of [
-    { scope: "", parent: "parent-scope" },
-    { scope: "   ", parent: "parent-scope" },
-    { scope: "child-scope", parent: "" }
-  ]) {
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
+test("declareScope rejects blank scope declarations before mutating parents", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const input of [
+        { scope: "", parent: "parent-scope" },
+        { scope: "   ", parent: "parent-scope" },
+        { scope: "child-scope", parent: "" }
+      ]) {
         const registry = yield* makeResourceRegistry()
         const exit = yield* Effect.exit(registry.declareScope(input.scope, input.parent))
         yield* registry.register({
@@ -777,17 +723,14 @@ test("declareScope rejects blank scope declarations before mutating parents", as
         yield* registry.closeScope("parent-scope")
         const snapshot = yield* registry.list()
 
-        return { exit, snapshot }
-      })
-    )
+        expectFailure(exit, ResourceInvalidArgumentError)
+        expect(snapshot.entries.map((entry) => entry.handle.ownerScope)).toEqual(["child-scope"])
+      }
+    })
+  ))
 
-    expectFailure(result.exit, ResourceInvalidArgumentError)
-    expect(result.snapshot.entries.map((entry) => entry.handle.ownerScope)).toEqual(["child-scope"])
-  }
-})
-
-test("handle dispose delegates to the registry", async () => {
-  const snapshot = await Effect.runPromise(
+test("handle dispose delegates to the registry", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         nextId: () => id("018e2f36-5800-7000-8000-000000000004")
@@ -799,16 +742,14 @@ test("handle dispose delegates to the registry", async () => {
       })
 
       yield* handle.dispose()
+      const snapshot = yield* registry.list()
 
-      return yield* registry.list()
+      expect(snapshot.entries).toEqual([])
     })
-  )
+  ))
 
-  expect(snapshot.entries).toEqual([])
-})
-
-test("observe emits the current snapshot", async () => {
-  const snapshots = await Effect.runPromise(
+test("observe emits the current snapshot", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         nextId: () => id("018e2f36-5800-7000-8000-000000000005")
@@ -819,15 +760,16 @@ test("observe emits the current snapshot", async () => {
         state: "ready"
       })
 
-      return yield* registry.observe().pipe(Stream.take(1), Stream.runCollect)
+      const snapshots = yield* registry.observe().pipe(Stream.take(1), Stream.runCollect)
+
+      expect(Array.from(snapshots)[0]?.entries.map((entry) => entry.handle.kind)).toEqual([
+        "runtime"
+      ])
     })
-  )
+  ))
 
-  expect(Array.from(snapshots)[0]?.entries.map((entry) => entry.handle.kind)).toEqual(["runtime"])
-})
-
-test("observe emits subsequent registry changes", async () => {
-  const snapshots = await Effect.runPromise(
+test("observe emits subsequent registry changes", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         nextId: () => id("018e2f36-5800-7000-8000-000000000006")
@@ -842,15 +784,14 @@ test("observe emits subsequent registry changes", async () => {
         state: "ready"
       })
 
-      return yield* Fiber.join(fiber)
+      const snapshots = yield* Fiber.join(fiber)
+
+      expect(Array.from(snapshots).map((snapshot) => snapshot.entries.length)).toEqual([0, 1])
     })
-  )
+  ))
 
-  expect(Array.from(snapshots).map((snapshot) => snapshot.entries.length)).toEqual([0, 1])
-})
-
-test("observeLifecycle streams resource, scope, and stale-handle events", async () => {
-  const events = await Effect.runPromise(
+test("observeLifecycle streams resource, scope, and stale-handle events", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry({
         nextId: () => id("018e2f36-5800-7000-8000-0000000000af")
@@ -869,60 +810,58 @@ test("observeLifecycle streams resource, scope, and stale-handle events", async 
       yield* registry.closeScope("scope-parent")
       yield* Effect.exit(registry.assertFresh(handle))
 
-      return yield* Fiber.join(fiber)
+      const events = yield* Fiber.join(fiber)
+
+      expect(Array.from(events).map((event) => event._tag)).toEqual([
+        "ScopeDeclared",
+        "ScopeDeclared",
+        "ResourceRegistered",
+        "ScopeClosing",
+        "ResourceDisposed",
+        "ScopeClosed",
+        "ResourceStale"
+      ])
     })
-  )
+  ))
 
-  expect(Array.from(events).map((event) => event._tag)).toEqual([
-    "ScopeDeclared",
-    "ScopeDeclared",
-    "ResourceRegistered",
-    "ScopeClosing",
-    "ResourceDisposed",
-    "ScopeClosed",
-    "ResourceStale"
-  ])
-})
-
-test("live layer provides the resource registry service", async () => {
-  const snapshot = await Effect.runPromise(
+test("live layer provides the resource registry service", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* Effect.service(ResourceRegistry)
+      const snapshot = yield* registry.list()
 
-      return yield* registry.list()
+      expect(snapshot.entries).toEqual([])
     }).pipe(Effect.provide(ResourceRegistryLive))
-  )
+  ))
 
-  expect(snapshot.entries).toEqual([])
-})
+test("live layer finalization closes leaked registered resources", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      let cleanupCount = 0
 
-test("live layer finalization closes leaked registered resources", async () => {
-  let cleanupCount = 0
-
-  const snapshot = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const registry = yield* Effect.service(ResourceRegistry)
-        yield* registry.register({
-          kind: "runtime",
-          id: id("018e2f36-5800-7000-8000-0000000000ae"),
-          ownerScope: "scope-runtime",
-          state: "ready",
-          dispose: Effect.sync(() => {
-            cleanupCount += 1
+      const snapshot = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const registry = yield* Effect.service(ResourceRegistry)
+          yield* registry.register({
+            kind: "runtime",
+            id: id("018e2f36-5800-7000-8000-0000000000ae"),
+            ownerScope: "scope-runtime",
+            state: "ready",
+            dispose: Effect.sync(() => {
+              cleanupCount += 1
+            })
           })
-        })
 
-        return yield* registry.list()
-      }).pipe(Effect.provide(ResourceRegistryLive))
-    )
-  )
+          return yield* registry.list()
+        }).pipe(Effect.provide(ResourceRegistryLive))
+      )
 
-  expect(snapshot.entries.map((entry) => entry.handle.id)).toEqual([
-    id("018e2f36-5800-7000-8000-0000000000ae")
-  ])
-  expect(cleanupCount).toBe(1)
-})
+      expect(snapshot.entries.map((entry) => entry.handle.id)).toEqual([
+        id("018e2f36-5800-7000-8000-0000000000ae")
+      ])
+      expect(cleanupCount).toBe(1)
+    })
+  ))
 
 test("resource handle schema matches the serializable handle shape", () => {
   const decodeHandle = Schema.decodeUnknownSync(ResourceHandleShape)
