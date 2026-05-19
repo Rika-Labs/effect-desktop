@@ -4164,7 +4164,12 @@ mod tests {
                     id: id.to_string(),
                     timestamp: 1710000000113,
                     trace_id: format!("trace-{id}"),
-                    payload: None,
+                    payload: Some(serde_json::json!({
+                        "minimized": false,
+                        "maximized": false,
+                        "fullscreen": false,
+                        "simpleFullscreen": false
+                    })),
                     error: None,
                 }
             );
@@ -7709,52 +7714,71 @@ mod tests {
             Ok(())
         }
 
-        fn minimize(&self, window_id: &str) -> Result<(), HostProtocolError> {
+        fn minimize(
+            &self,
+            window_id: &str,
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
             self.minimized
                 .lock()
                 .expect("fake minimized requests should lock")
                 .push(window_id.to_string());
-            Ok(())
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
-        fn maximize(&self, window_id: &str) -> Result<(), HostProtocolError> {
+        fn maximize(
+            &self,
+            window_id: &str,
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
             self.maximized
                 .lock()
                 .expect("fake maximized requests should lock")
                 .push(window_id.to_string());
-            Ok(())
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
-        fn restore(&self, window_id: &str) -> Result<(), HostProtocolError> {
+        fn restore(
+            &self,
+            window_id: &str,
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
             self.restored
                 .lock()
                 .expect("fake restored requests should lock")
                 .push(window_id.to_string());
-            Ok(())
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
         fn set_fullscreen(
             &self,
             window_id: &str,
             fullscreen: bool,
-        ) -> Result<(), HostProtocolError> {
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
             self.fullscreen
                 .lock()
                 .expect("fake fullscreen requests should lock")
                 .push((window_id.to_string(), fullscreen));
-            Ok(())
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
         fn set_simple_fullscreen(
             &self,
             window_id: &str,
             simple_fullscreen: bool,
-        ) -> Result<(), HostProtocolError> {
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
             self.simple_fullscreen
                 .lock()
                 .expect("fake simple fullscreen requests should lock")
                 .push((window_id.to_string(), simple_fullscreen));
-            Ok(())
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
         fn get_state(

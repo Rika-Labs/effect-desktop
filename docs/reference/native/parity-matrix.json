@@ -3833,25 +3833,7 @@
       "method": "getState",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "host-tracked-state-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -3881,25 +3863,7 @@
       "method": "maximize",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "host-tracked-state-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -3909,25 +3873,7 @@
       "method": "minimize",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "host-tracked-state-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -3947,25 +3893,7 @@
       "method": "restore",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "host-tracked-state-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4015,25 +3943,7 @@
       "method": "setFullscreen",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "host-tracked-state-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "host-tracked-state-only"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4348,8 +4258,8 @@
     "total": 239,
     "routed": 239,
     "missing": 0,
-    "supported": 128,
-    "partial": 54,
+    "supported": 133,
+    "partial": 49,
     "unsupported": 57
   }
 }

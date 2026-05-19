@@ -233,23 +233,32 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
 
     fn cancel_attention(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
-    fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+    fn minimize(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
-    fn maximize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+    fn maximize(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
-    fn restore(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+    fn restore(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
     fn set_fullscreen(
         &self,
         window_id: &str,
         fullscreen: bool,
-    ) -> std::result::Result<(), HostProtocolError>;
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
     fn set_simple_fullscreen(
         &self,
         window_id: &str,
         simple_fullscreen: bool,
-    ) -> std::result::Result<(), HostProtocolError>;
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
     fn get_state(
         &self,
@@ -650,7 +659,6 @@ struct NativeTrayResources {
 
 struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
-    window_states: HashMap<String, WindowStatePayload>,
     window_id_by_native_id: HashMap<WindowId, String>,
     window_order: Vec<String>,
     focused_window_id: Option<String>,
@@ -758,6 +766,38 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenPoint(_)
             | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "window lifecycle command received unrelated response",
+                operation,
+            )),
+        }
+    }
+
+    fn expect_window_state_response(
+        &self,
+        reply: Receiver<WindowCommandReply>,
+        operation: &'static str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
+        match self.recv_reply(reply)? {
+            WindowCommandResponse::WindowState(state) => Ok(state),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
+            | WindowCommandResponse::WindowParent(_)
+            | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+                "window state command received unrelated response",
                 operation,
             )),
         }
@@ -1391,41 +1431,50 @@ impl WindowMethodHandler for WindowMethodPort {
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CANCEL_ATTENTION_METHOD)
     }
 
-    fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn minimize(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::Minimize {
             window_id: window_id.to_string(),
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_MINIMIZE_METHOD)
+        self.expect_window_state_response(reply_rx, host_protocol::WINDOW_MINIMIZE_METHOD)
     }
 
-    fn maximize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn maximize(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::Maximize {
             window_id: window_id.to_string(),
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_MAXIMIZE_METHOD)
+        self.expect_window_state_response(reply_rx, host_protocol::WINDOW_MAXIMIZE_METHOD)
     }
 
-    fn restore(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn restore(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::Restore {
             window_id: window_id.to_string(),
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_RESTORE_METHOD)
+        self.expect_window_state_response(reply_rx, host_protocol::WINDOW_RESTORE_METHOD)
     }
 
     fn set_fullscreen(
         &self,
         window_id: &str,
         fullscreen: bool,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::SetFullscreen {
             window_id: window_id.to_string(),
@@ -1433,14 +1482,14 @@ impl WindowMethodHandler for WindowMethodPort {
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_FULLSCREEN_METHOD)
+        self.expect_window_state_response(reply_rx, host_protocol::WINDOW_SET_FULLSCREEN_METHOD)
     }
 
     fn set_simple_fullscreen(
         &self,
         window_id: &str,
         simple_fullscreen: bool,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::SetSimpleFullscreen {
             window_id: window_id.to_string(),
@@ -1448,7 +1497,7 @@ impl WindowMethodHandler for WindowMethodPort {
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(
+        self.expect_window_state_response(
             reply_rx,
             host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
         )
@@ -2033,7 +2082,6 @@ impl WindowRegistry {
     fn new() -> Self {
         Self {
             windows: HashMap::new(),
-            window_states: HashMap::new(),
             window_id_by_native_id: HashMap::new(),
             window_order: Vec::new(),
             focused_window_id: None,
@@ -2085,7 +2133,6 @@ impl WindowRegistry {
             "host window opened"
         );
 
-        let initial_state = tao_window_state(&window);
         let webview = webview::attach_app_webview(&window).map_err(|error| *error)?;
         let native_window_id = window.id();
         self.windows.insert(
@@ -2095,7 +2142,6 @@ impl WindowRegistry {
                 _webview: webview,
             },
         );
-        self.window_states.insert(window_id.clone(), initial_state);
         self.track_window_opened(&window_id, native_window_id);
         if let Some(parent_window_id) = parent_window_id {
             self.child_window_ids_by_parent_id
@@ -2202,7 +2248,6 @@ impl WindowRegistry {
         if let Some(resources) = self.windows.remove(window_id) {
             self.window_id_by_native_id.remove(&resources._window.id());
         }
-        self.window_states.remove(window_id);
         self.forget_window_id(window_id);
         if let Some(parent_window_id) = self.parent_window_id_by_child_id.remove(window_id) {
             if let Some(siblings) = self
@@ -2785,7 +2830,10 @@ impl WindowRegistry {
         Ok(())
     }
 
-    fn minimize(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn minimize(
+        &mut self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2794,18 +2842,20 @@ impl WindowRegistry {
         };
 
         resources._window.set_minimized(true);
-        self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(
-                true,
-                state.maximized(),
-                state.fullscreen(),
-                state.simple_fullscreen(),
-            )
-        });
-        Ok(())
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            observed.minimized(),
+            "minimized=true",
+            host_protocol::WINDOW_MINIMIZE_METHOD,
+        )?;
+        Ok(observed)
     }
 
-    fn maximize(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn maximize(
+        &mut self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2814,18 +2864,20 @@ impl WindowRegistry {
         };
 
         resources._window.set_maximized(true);
-        self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(
-                state.minimized(),
-                true,
-                state.fullscreen(),
-                state.simple_fullscreen(),
-            )
-        });
-        Ok(())
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            observed.maximized(),
+            "maximized=true",
+            host_protocol::WINDOW_MAXIMIZE_METHOD,
+        )?;
+        Ok(observed)
     }
 
-    fn restore(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn restore(
+        &mut self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2837,18 +2889,24 @@ impl WindowRegistry {
         resources._window.set_maximized(false);
         resources._window.set_fullscreen(None);
         clear_simple_fullscreen(&resources._window)?;
-        self.window_states.insert(
-            window_id.to_string(),
-            WindowStatePayload::new(false, false, false, false),
-        );
-        Ok(())
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            !observed.minimized()
+                && !observed.maximized()
+                && !observed.fullscreen()
+                && !observed.simple_fullscreen(),
+            "restored",
+            host_protocol::WINDOW_RESTORE_METHOD,
+        )?;
+        Ok(observed)
     }
 
     fn set_fullscreen(
         &mut self,
         window_id: &str,
         fullscreen: bool,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2861,22 +2919,25 @@ impl WindowRegistry {
         } else {
             None
         });
-        self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(
-                state.minimized(),
-                state.maximized(),
-                fullscreen,
-                state.simple_fullscreen(),
-            )
-        });
-        Ok(())
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            observed.fullscreen() == fullscreen,
+            if fullscreen {
+                "fullscreen=true"
+            } else {
+                "fullscreen=false"
+            },
+            host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+        )?;
+        Ok(observed)
     }
 
     fn set_simple_fullscreen(
         &mut self,
         window_id: &str,
         simple_fullscreen: bool,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2889,15 +2950,18 @@ impl WindowRegistry {
             simple_fullscreen,
             host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
         )?;
-        self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(
-                state.minimized(),
-                state.maximized(),
-                state.fullscreen(),
-                simple_fullscreen,
-            )
-        });
-        Ok(())
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            observed.simple_fullscreen() == simple_fullscreen,
+            if simple_fullscreen {
+                "simpleFullscreen=true"
+            } else {
+                "simpleFullscreen=false"
+            },
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        )?;
+        Ok(observed)
     }
 
     fn get_state(
@@ -2912,10 +2976,6 @@ impl WindowRegistry {
         window_id: &str,
         operation: &'static str,
     ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
-        if let Some(state) = self.window_states.get(window_id) {
-            return Ok(state.clone());
-        }
-
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2926,45 +2986,14 @@ impl WindowRegistry {
         Ok(tao_window_state(&resources._window))
     }
 
-    fn update_window_state(
-        &mut self,
-        window_id: &str,
-        update: impl FnOnce(&WindowStatePayload) -> WindowStatePayload,
-    ) {
-        let current = self
-            .window_states
-            .get(window_id)
-            .cloned()
-            .or_else(|| {
-                self.windows
-                    .get(window_id)
-                    .map(|resources| tao_window_state(&resources._window))
-            })
-            .unwrap_or_else(|| WindowStatePayload::new(false, false, false, false));
-        self.window_states
-            .insert(window_id.to_string(), update(&current));
-    }
-
-    fn emit_window_state_snapshot(&self, window_id: &str, operation: &'static str) {
-        match self.window_state(window_id, operation) {
-            Ok(state) => {
-                if let Err(error) = emit_window_state_event(window_id, state) {
-                    warn!(
-                        event = "host.window.event_emit_failed",
-                        error = ?error,
-                        window_id,
-                        "failed to emit window state event"
-                    );
-                }
-            }
-            Err(error) => {
-                warn!(
-                    event = "host.window.state_event_failed",
-                    error = ?error,
-                    window_id,
-                    "failed to read window state for event"
-                );
-            }
+    fn emit_observed_window_state(&self, window_id: &str, state: &WindowStatePayload) {
+        if let Err(error) = emit_window_state_event(window_id, state.clone()) {
+            warn!(
+                event = "host.window.event_emit_failed",
+                error = ?error,
+                window_id,
+                "failed to emit window state event"
+            );
         }
     }
 
@@ -3760,42 +3789,27 @@ impl WindowRegistry {
                 WindowLifecycleEvent::Other
             }
             WindowCommand::Minimize { window_id, reply } => {
-                let result = self
-                    .minimize(&window_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
-                if result.is_ok() {
-                    self.emit_window_state_snapshot(
-                        &window_id,
-                        host_protocol::WINDOW_MINIMIZE_METHOD,
-                    );
+                let result = self.minimize(&window_id);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
                 }
-                send_window_command_reply(reply, result);
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
                 WindowLifecycleEvent::Other
             }
             WindowCommand::Maximize { window_id, reply } => {
-                let result = self
-                    .maximize(&window_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
-                if result.is_ok() {
-                    self.emit_window_state_snapshot(
-                        &window_id,
-                        host_protocol::WINDOW_MAXIMIZE_METHOD,
-                    );
+                let result = self.maximize(&window_id);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
                 }
-                send_window_command_reply(reply, result);
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
                 WindowLifecycleEvent::Other
             }
             WindowCommand::Restore { window_id, reply } => {
-                let result = self
-                    .restore(&window_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
-                if result.is_ok() {
-                    self.emit_window_state_snapshot(
-                        &window_id,
-                        host_protocol::WINDOW_RESTORE_METHOD,
-                    );
+                let result = self.restore(&window_id);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
                 }
-                send_window_command_reply(reply, result);
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
                 WindowLifecycleEvent::Other
             }
             WindowCommand::SetFullscreen {
@@ -3803,16 +3817,11 @@ impl WindowRegistry {
                 fullscreen,
                 reply,
             } => {
-                let result = self
-                    .set_fullscreen(&window_id, fullscreen)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
-                if result.is_ok() {
-                    self.emit_window_state_snapshot(
-                        &window_id,
-                        host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
-                    );
+                let result = self.set_fullscreen(&window_id, fullscreen);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
                 }
-                send_window_command_reply(reply, result);
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
                 WindowLifecycleEvent::Other
             }
             WindowCommand::SetSimpleFullscreen {
@@ -3820,16 +3829,11 @@ impl WindowRegistry {
                 simple_fullscreen,
                 reply,
             } => {
-                let result = self
-                    .set_simple_fullscreen(&window_id, simple_fullscreen)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
-                if result.is_ok() {
-                    self.emit_window_state_snapshot(
-                        &window_id,
-                        host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
-                    );
+                let result = self.set_simple_fullscreen(&window_id, simple_fullscreen);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
                 }
-                send_window_command_reply(reply, result);
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
                 WindowLifecycleEvent::Other
             }
             WindowCommand::GetState { window_id, reply } => {
@@ -4232,6 +4236,40 @@ fn tao_window_state(window: &Window) -> WindowStatePayload {
         window.is_maximized(),
         window.fullscreen().is_some(),
         simple_fullscreen(window),
+    )
+}
+
+fn ensure_window_state(
+    observed: &WindowStatePayload,
+    accepted: bool,
+    attempted: &'static str,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    if accepted {
+        return Ok(());
+    }
+
+    Err(HostProtocolError::InvalidState {
+        current: format_window_state(observed),
+        attempted: attempted.to_string(),
+        message: "window state transition was not confirmed by host-observed state".to_string(),
+        operation: operation.to_string(),
+        platform: None,
+        code: None,
+        cause: None,
+        recoverable: HostProtocolError::recoverable_default("InvalidState").expect("known tag"),
+        remediation: Some("retry after reading Window.getState, or treat the transition as unsupported on this compositor".to_string()),
+        docs_url: None,
+    })
+}
+
+fn format_window_state(state: &WindowStatePayload) -> String {
+    format!(
+        "minimized={},maximized={},fullscreen={},simpleFullscreen={}",
+        state.minimized(),
+        state.maximized(),
+        state.fullscreen(),
+        state.simple_fullscreen()
     )
 }
 
@@ -6127,29 +6165,33 @@ mod tests {
     }
 
     #[test]
-    fn window_state_reads_from_host_tracked_command_state() {
-        let mut registry = WindowRegistry::new();
-        registry.window_states.insert(
-            "window-1".to_string(),
-            host_protocol::WindowStatePayload::new(false, false, false, false),
-        );
+    fn unconfirmed_window_state_transition_is_invalid_state() {
+        let observed = host_protocol::WindowStatePayload::new(false, false, false, false);
+        let error = super::ensure_window_state(
+            &observed,
+            observed.fullscreen(),
+            "fullscreen=true",
+            host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+        )
+        .expect_err("unconfirmed transition should fail");
 
-        registry.update_window_state("window-1", |state| {
-            host_protocol::WindowStatePayload::new(
-                true,
-                state.maximized(),
-                state.fullscreen(),
-                state.simple_fullscreen(),
-            )
-        });
-
-        let state = registry
-            .window_state("window-1", host_protocol::WINDOW_GET_STATE_METHOD)
-            .expect("tracked window state should read");
-        assert!(state.minimized());
-        assert!(!state.maximized());
-        assert!(!state.fullscreen());
-        assert!(!state.simple_fullscreen());
+        assert_eq!(error.tag(), "InvalidState");
+        if let HostProtocolError::InvalidState {
+            current,
+            attempted,
+            operation,
+            ..
+        } = error
+        {
+            assert_eq!(
+                current,
+                "minimized=false,maximized=false,fullscreen=false,simpleFullscreen=false"
+            );
+            assert_eq!(attempted, "fullscreen=true");
+            assert_eq!(operation, host_protocol::WINDOW_SET_FULLSCREEN_METHOD);
+        } else {
+            panic!("expected InvalidState");
+        }
     }
 
     #[test]

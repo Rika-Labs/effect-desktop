@@ -98,6 +98,12 @@ test("WindowPersistence saves and restores stale display state onto the current 
               Effect.sync(() => {
                 calls.fullscreen.push(fullscreen)
                 hostFullscreen = fullscreen
+                return new WindowState({
+                  minimized: false,
+                  maximized: false,
+                  fullscreen,
+                  simpleFullscreen: false
+                })
               })
           }),
           screenClient: () => ({
@@ -584,23 +590,21 @@ const makeWindowClient = (
   setProgress: () => Effect.void,
   requestAttention: () => Effect.void,
   cancelAttention: () => Effect.void,
-  minimize: () => Effect.void,
-  maximize: () => Effect.void,
-  restore: () => Effect.void,
+  minimize: () => Effect.succeed(defaultWindowState()),
+  maximize: () => Effect.succeed(defaultWindowState()),
+  restore: () => Effect.succeed(defaultWindowState()),
   setFullscreen: (_window, fullscreen) =>
     Effect.sync(() => {
       calls.fullscreen.push(fullscreen)
-    }),
-  setSimpleFullscreen: () => Effect.void,
-  getState: () =>
-    Effect.succeed(
-      new WindowState({
+      return new WindowState({
         minimized: false,
         maximized: false,
-        fullscreen: false,
+        fullscreen,
         simpleFullscreen: false
       })
-    ),
+    }),
+  setSimpleFullscreen: () => Effect.succeed(defaultWindowState()),
+  getState: () => Effect.succeed(defaultWindowState()),
   events: () => Stream.empty,
   ...overrides
 })
@@ -614,6 +618,14 @@ const makeScreenClient = (overrides: Partial<ScreenClientApi>): ScreenClientApi 
   isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: true })),
   ...overrides
 })
+
+const defaultWindowState = (): WindowState =>
+  new WindowState({
+    minimized: false,
+    maximized: false,
+    fullscreen: false,
+    simpleFullscreen: false
+  })
 
 const primaryDisplay = (): ScreenDisplay =>
   new ScreenDisplay({

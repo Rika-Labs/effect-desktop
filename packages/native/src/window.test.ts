@@ -94,15 +94,7 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
     "Window.setFullscreen",
     "Window.getState"
   ]) {
-    expect(rpcSupport(request(method))).toMatchObject({
-      status: "partial",
-      reason: "host-tracked-state-only",
-      platforms: [
-        { platform: "macos", status: "partial", reason: "host-tracked-state-only" },
-        { platform: "windows", status: "partial", reason: "host-tracked-state-only" },
-        { platform: "linux", status: "partial", reason: "host-tracked-state-only" }
-      ]
-    })
+    expect(rpcSupport(request(method))).toEqual({ status: "supported" })
   }
   expect(rpcSupport(request("Window.setSimpleFullscreen"))).toMatchObject({
     status: "partial",

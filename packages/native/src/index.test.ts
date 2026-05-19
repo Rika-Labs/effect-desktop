@@ -8708,12 +8708,51 @@ test("Window service delegates through a substitutable WindowClient port", async
     requestAttention: (_window, requestType) =>
       recordVoid(calls, `requestAttention:${requestType}`),
     cancelAttention: () => recordVoid(calls, "cancelAttention"),
-    minimize: () => recordVoid(calls, "minimize"),
-    maximize: () => recordVoid(calls, "maximize"),
-    restore: () => recordVoid(calls, "restore"),
-    setFullscreen: (_window, fullscreen) => recordVoid(calls, `setFullscreen:${fullscreen}`),
+    minimize: () =>
+      recordVoid(calls, "minimize").pipe(
+        Effect.as(
+          new WindowState({
+            minimized: true,
+            maximized: false,
+            fullscreen: false,
+            simpleFullscreen: false
+          })
+        )
+      ),
+    maximize: () =>
+      recordVoid(calls, "maximize").pipe(
+        Effect.as(
+          new WindowState({
+            minimized: false,
+            maximized: true,
+            fullscreen: false,
+            simpleFullscreen: false
+          })
+        )
+      ),
+    restore: () => recordVoid(calls, "restore").pipe(Effect.as(defaultWindowState())),
+    setFullscreen: (_window, fullscreen) =>
+      recordVoid(calls, `setFullscreen:${fullscreen}`).pipe(
+        Effect.as(
+          new WindowState({
+            minimized: false,
+            maximized: true,
+            fullscreen,
+            simpleFullscreen: false
+          })
+        )
+      ),
     setSimpleFullscreen: (_window, simpleFullscreen) =>
-      recordVoid(calls, `setSimpleFullscreen:${simpleFullscreen}`),
+      recordVoid(calls, `setSimpleFullscreen:${simpleFullscreen}`).pipe(
+        Effect.as(
+          new WindowState({
+            minimized: false,
+            maximized: true,
+            fullscreen: true,
+            simpleFullscreen
+          })
+        )
+      ),
     getState: () =>
       Effect.sync(() => {
         calls.push("getState")
@@ -12359,22 +12398,22 @@ const noopWindowClient: WindowClientApi = {
   setProgress: () => Effect.void,
   requestAttention: () => Effect.void,
   cancelAttention: () => Effect.void,
-  minimize: () => Effect.void,
-  maximize: () => Effect.void,
-  restore: () => Effect.void,
-  setFullscreen: () => Effect.void,
-  setSimpleFullscreen: () => Effect.void,
-  getState: () =>
-    Effect.succeed(
-      new WindowState({
-        minimized: false,
-        maximized: false,
-        fullscreen: false,
-        simpleFullscreen: false
-      })
-    ),
+  minimize: () => Effect.succeed(defaultWindowState()),
+  maximize: () => Effect.succeed(defaultWindowState()),
+  restore: () => Effect.succeed(defaultWindowState()),
+  setFullscreen: () => Effect.succeed(defaultWindowState()),
+  setSimpleFullscreen: () => Effect.succeed(defaultWindowState()),
+  getState: () => Effect.succeed(defaultWindowState()),
   events: () => Stream.empty
 }
+
+const defaultWindowState = (): WindowState =>
+  new WindowState({
+    minimized: false,
+    maximized: false,
+    fullscreen: false,
+    simpleFullscreen: false
+  })
 
 const handleFor = (id: string): WindowHandle => ({
   kind: "window",
@@ -12409,7 +12448,12 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                       request.method === WINDOW_CENTER_METHOD ||
                       request.method === WINDOW_CENTER_ON_DISPLAY_METHOD
                     ? { payload: hostWindowBoundsResponseForRequest(request) }
-                    : request.method === WINDOW_GET_STATE_METHOD
+                    : request.method === WINDOW_GET_STATE_METHOD ||
+                        request.method === WINDOW_MINIMIZE_METHOD ||
+                        request.method === WINDOW_MAXIMIZE_METHOD ||
+                        request.method === WINDOW_RESTORE_METHOD ||
+                        request.method === WINDOW_SET_FULLSCREEN_METHOD ||
+                        request.method === WINDOW_SET_SIMPLE_FULLSCREEN_METHOD
                       ? {
                           payload: {
                             minimized: false,

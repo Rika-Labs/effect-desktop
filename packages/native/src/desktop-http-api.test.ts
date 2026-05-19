@@ -4,7 +4,7 @@ import { Effect, Layer, Schema, Stream } from "effect"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { HttpApiClient } from "effect/unstable/httpapi"
 
-import { WindowResource } from "./contracts/window.js"
+import { WindowResource, WindowState } from "./contracts/window.js"
 import {
   DesktopHttpApi,
   DesktopHttpApiRoutes,
@@ -52,20 +52,22 @@ const windowClient: WindowClientApi = {
   setProgress: () => Effect.void,
   requestAttention: () => Effect.void,
   cancelAttention: () => Effect.void,
-  minimize: () => Effect.void,
-  maximize: () => Effect.void,
-  restore: () => Effect.void,
-  setFullscreen: () => Effect.void,
-  setSimpleFullscreen: () => Effect.void,
-  getState: () =>
-    Effect.succeed({
-      minimized: false,
-      maximized: false,
-      fullscreen: false,
-      simpleFullscreen: false
-    }),
+  minimize: () => Effect.succeed(defaultWindowState()),
+  maximize: () => Effect.succeed(defaultWindowState()),
+  restore: () => Effect.succeed(defaultWindowState()),
+  setFullscreen: () => Effect.succeed(defaultWindowState()),
+  setSimpleFullscreen: () => Effect.succeed(defaultWindowState()),
+  getState: () => Effect.succeed(defaultWindowState()),
   events: () => Stream.empty
 }
+
+const defaultWindowState = (): WindowState =>
+  new WindowState({
+    minimized: false,
+    maximized: false,
+    fullscreen: false,
+    simpleFullscreen: false
+  })
 
 const makeHandler = (permissions: Layer.Layer<PermissionRegistry>) =>
   HttpRouter.toWebHandler(

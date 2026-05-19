@@ -460,23 +460,30 @@ const makeWindowScenario = (
     requestAttention: (_window, _requestType): Effect.Effect<void, WindowError, never> =>
       Effect.void,
     cancelAttention: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    minimize: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    maximize: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    restore: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    setFullscreen: (_window, _fullscreen): Effect.Effect<void, WindowError, never> => Effect.void,
-    setSimpleFullscreen: (_window, _simpleFullscreen): Effect.Effect<void, WindowError, never> =>
-      Effect.void,
+    minimize: (_window): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(defaultWindowState()),
+    maximize: (_window): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(defaultWindowState()),
+    restore: (_window): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(defaultWindowState()),
+    setFullscreen: (_window, _fullscreen): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(defaultWindowState()),
+    setSimpleFullscreen: (
+      _window,
+      _simpleFullscreen
+    ): Effect.Effect<WindowState, WindowError, never> => Effect.succeed(defaultWindowState()),
     getState: (_window): Effect.Effect<WindowState, WindowError, never> =>
-      Effect.succeed(
-        new WindowState({
-          minimized: false,
-          maximized: false,
-          fullscreen: false,
-          simpleFullscreen: false
-        })
-      ),
+      Effect.succeed(defaultWindowState()),
     events: () => Stream.empty
   } satisfies WindowServiceApi)
+
+const defaultWindowState = (): WindowState =>
+  new WindowState({
+    minimized: false,
+    maximized: false,
+    fullscreen: false,
+    simpleFullscreen: false
+  })
 
 const notFoundWindow = (windowId: string, operation: string): WindowError =>
   new HostProtocolNotFoundError({

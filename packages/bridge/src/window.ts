@@ -446,17 +446,23 @@ export interface HostWindowClient {
     requestType: WindowAttentionTypeInput
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
-  readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
-  readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
-  readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly minimize: (
+    windowId: string
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
+  readonly maximize: (
+    windowId: string
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
+  readonly restore: (
+    windowId: string
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
   readonly setFullscreen: (
     windowId: string,
     fullscreen: boolean
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
   readonly setSimpleFullscreen: (
     windowId: string,
     simpleFullscreen: boolean
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
   readonly getState: (
     windowId: string
   ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
@@ -706,26 +712,28 @@ export const makeHostWindowClient = (
     cancelAttention: (windowId) =>
       sendWindowLifecycleCommand(windowId, WINDOW_CANCEL_ATTENTION_METHOD, exchange, resolved),
     minimize: (windowId) =>
-      sendWindowLifecycleCommand(windowId, WINDOW_MINIMIZE_METHOD, exchange, resolved),
+      sendWindowStateCommand(windowId, WINDOW_MINIMIZE_METHOD, exchange, resolved),
     maximize: (windowId) =>
-      sendWindowLifecycleCommand(windowId, WINDOW_MAXIMIZE_METHOD, exchange, resolved),
+      sendWindowStateCommand(windowId, WINDOW_MAXIMIZE_METHOD, exchange, resolved),
     restore: (windowId) =>
-      sendWindowLifecycleCommand(windowId, WINDOW_RESTORE_METHOD, exchange, resolved),
+      sendWindowStateCommand(windowId, WINDOW_RESTORE_METHOD, exchange, resolved),
     setFullscreen: (windowId, fullscreen) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetFullscreenPayload(windowId, fullscreen)
         const request = yield* makeRequest(WINDOW_SET_FULLSCREEN_METHOD, resolved, payload)
-        yield* requireSuccess(
+        const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
+        return yield* decodeStateResponse(response.payload, WINDOW_SET_FULLSCREEN_METHOD)
       }),
     setSimpleFullscreen: (windowId, simpleFullscreen) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetSimpleFullscreenPayload(windowId, simpleFullscreen)
         const request = yield* makeRequest(WINDOW_SET_SIMPLE_FULLSCREEN_METHOD, resolved, payload)
-        yield* requireSuccess(
+        const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
+        return yield* decodeStateResponse(response.payload, WINDOW_SET_SIMPLE_FULLSCREEN_METHOD)
       }),
     getState: (windowId) =>
       Effect.gen(function* () {
@@ -758,6 +766,21 @@ const sendWindowLifecycleCommand = (
     const payload = yield* encodeWindowIdPayload(windowId, method)
     const request = yield* makeRequest(method, options, payload)
     yield* requireSuccess(yield* requireMatchingResponse(request, yield* exchange.request(request)))
+  })
+
+const sendWindowStateCommand = (
+  windowId: string,
+  method: string,
+  exchange: HostWindowExchange,
+  options: ResolvedHostWindowClientOptions
+): Effect.Effect<WindowStatePayload, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    const payload = yield* encodeWindowIdPayload(windowId, method)
+    const request = yield* makeRequest(method, options, payload)
+    const response = yield* requireSuccess(
+      yield* requireMatchingResponse(request, yield* exchange.request(request))
+    )
+    return yield* decodeStateResponse(response.payload, method)
   })
 
 const requireMatchingResponse = (

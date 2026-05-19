@@ -729,7 +729,12 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                         ...base,
                         payload: boundsResponseForRequest(request)
                       }
-                    : request.method === WINDOW_GET_STATE_METHOD
+                    : request.method === WINDOW_GET_STATE_METHOD ||
+                        request.method === WINDOW_MINIMIZE_METHOD ||
+                        request.method === WINDOW_MAXIMIZE_METHOD ||
+                        request.method === WINDOW_RESTORE_METHOD ||
+                        request.method === WINDOW_SET_FULLSCREEN_METHOD ||
+                        request.method === WINDOW_SET_SIMPLE_FULLSCREEN_METHOD
                       ? {
                           ...base,
                           payload: {

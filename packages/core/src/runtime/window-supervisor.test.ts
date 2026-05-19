@@ -502,21 +502,22 @@ const makeHostWindowClient = (overrides: Partial<HostWindowClient> = {}): HostWi
   setProgress: () => Effect.void,
   requestAttention: () => Effect.void,
   cancelAttention: () => Effect.void,
-  minimize: () => Effect.void,
-  maximize: () => Effect.void,
-  restore: () => Effect.void,
-  setFullscreen: () => Effect.void,
-  setSimpleFullscreen: () => Effect.void,
-  getState: () =>
-    Effect.succeed({
-      minimized: false,
-      maximized: false,
-      fullscreen: false,
-      simpleFullscreen: false
-    }),
+  minimize: () => Effect.succeed(defaultWindowState()),
+  maximize: () => Effect.succeed(defaultWindowState()),
+  restore: () => Effect.succeed(defaultWindowState()),
+  setFullscreen: () => Effect.succeed(defaultWindowState()),
+  setSimpleFullscreen: () => Effect.succeed(defaultWindowState()),
+  getState: () => Effect.succeed(defaultWindowState()),
   events: () => Stream.empty,
   destroy: () => Effect.void,
   ...overrides
+})
+
+const defaultWindowState = () => ({
+  minimized: false,
+  maximized: false,
+  fullscreen: false,
+  simpleFullscreen: false
 })
 
 const getFailure = <E>(exit: Exit.Exit<unknown, E>): E | undefined => {

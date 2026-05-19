@@ -168,15 +168,7 @@ const WindowSimpleFullscreenSupport = NativeSurface.support.partial(
     ]
   }
 ) satisfies RpcSupportMetadata
-const WindowStateHostTrackedOnlyReason = "host-tracked-state-only"
-
-const WindowStateSupport = NativeSurface.support.partial(WindowStateHostTrackedOnlyReason, {
-  platforms: [
-    { platform: "macos", status: "partial", reason: WindowStateHostTrackedOnlyReason },
-    { platform: "windows", status: "partial", reason: WindowStateHostTrackedOnlyReason },
-    { platform: "linux", status: "partial", reason: WindowStateHostTrackedOnlyReason }
-  ]
-}) satisfies RpcSupportMetadata
+const WindowStateSupport = NativeSurface.support.supported satisfies RpcSupportMetadata
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type WindowError = HostProtocolError
 
@@ -383,35 +375,35 @@ export const WindowCancelAttention = windowRpc(
 export const WindowMinimize = windowRpc(
   "minimize",
   WindowHandleInput,
-  Schema.Void,
+  WindowState,
   P.nativeInvoke({ primitive: "Window", methods: ["minimize"] }),
   WindowStateSupport
 )
 export const WindowMaximize = windowRpc(
   "maximize",
   WindowHandleInput,
-  Schema.Void,
+  WindowState,
   P.nativeInvoke({ primitive: "Window", methods: ["maximize"] }),
   WindowStateSupport
 )
 export const WindowRestore = windowRpc(
   "restore",
   WindowHandleInput,
-  Schema.Void,
+  WindowState,
   P.nativeInvoke({ primitive: "Window", methods: ["restore"] }),
   WindowStateSupport
 )
 export const WindowSetFullscreen = windowRpc(
   "setFullscreen",
   WindowFullscreenInput,
-  Schema.Void,
+  WindowState,
   P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] }),
   WindowStateSupport
 )
 export const WindowSetSimpleFullscreen = windowRpc(
   "setSimpleFullscreen",
   WindowSimpleFullscreenInput,
-  Schema.Void,
+  WindowState,
   P.nativeInvoke({ primitive: "Window", methods: ["setSimpleFullscreen"] }),
   WindowSimpleFullscreenSupport
 )
@@ -615,17 +607,17 @@ export interface WindowClientApi {
     requestType: WindowAttentionType
   ) => Effect.Effect<void, WindowError, never>
   readonly cancelAttention: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
-  readonly minimize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
-  readonly maximize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
-  readonly restore: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly minimize: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
+  readonly maximize: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
+  readonly restore: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
   readonly setFullscreen: (
     window: WindowHandle,
     fullscreen: boolean
-  ) => Effect.Effect<void, WindowError, never>
+  ) => Effect.Effect<WindowState, WindowError, never>
   readonly setSimpleFullscreen: (
     window: WindowHandle,
     simpleFullscreen: boolean
-  ) => Effect.Effect<void, WindowError, never>
+  ) => Effect.Effect<WindowState, WindowError, never>
   readonly getState: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
   readonly events: () => Stream.Stream<WindowEvent, WindowError, never>
 }
@@ -839,27 +831,27 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
   "Window.minimize": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.minimize(input.window)
+      return yield* window.minimize(input.window)
     }),
   "Window.maximize": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.maximize(input.window)
+      return yield* window.maximize(input.window)
     }),
   "Window.restore": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.restore(input.window)
+      return yield* window.restore(input.window)
     }),
   "Window.setFullscreen": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.setFullscreen(input.window, input.fullscreen)
+      return yield* window.setFullscreen(input.window, input.fullscreen)
     }),
   "Window.setSimpleFullscreen": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.setSimpleFullscreen(input.window, input.simpleFullscreen)
+      return yield* window.setSimpleFullscreen(input.window, input.simpleFullscreen)
     }),
   "Window.getState": (input) =>
     Effect.gen(function* () {
@@ -1198,9 +1190,9 @@ function windowClientFromRpcClient(
         yield* runWindowRpc(client["Window.requestAttention"](decoded), "Window.requestAttention")
       }),
     cancelAttention: (window) => runWindowHandleRpc(client, "Window.cancelAttention", window),
-    minimize: (window) => runWindowHandleRpc(client, "Window.minimize", window),
-    maximize: (window) => runWindowHandleRpc(client, "Window.maximize", window),
-    restore: (window) => runWindowHandleRpc(client, "Window.restore", window),
+    minimize: (window) => runWindowStateHandleRpc(client, "Window.minimize", window),
+    maximize: (window) => runWindowStateHandleRpc(client, "Window.maximize", window),
+    restore: (window) => runWindowStateHandleRpc(client, "Window.restore", window),
     setFullscreen: (window, fullscreen) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowFullscreenInput(
@@ -1208,7 +1200,11 @@ function windowClientFromRpcClient(
           fullscreen,
           "Window.setFullscreen"
         )
-        yield* runWindowRpc(client["Window.setFullscreen"](decoded), "Window.setFullscreen")
+        const state = yield* runWindowRpc(
+          client["Window.setFullscreen"](decoded),
+          "Window.setFullscreen"
+        )
+        return yield* decodeWindowState(state, "Window.setFullscreen")
       }),
     setSimpleFullscreen: (window, simpleFullscreen) =>
       Effect.gen(function* () {
@@ -1217,10 +1213,11 @@ function windowClientFromRpcClient(
           simpleFullscreen,
           "Window.setSimpleFullscreen"
         )
-        yield* runWindowRpc(
+        const state = yield* runWindowRpc(
           client["Window.setSimpleFullscreen"](decoded),
           "Window.setSimpleFullscreen"
         )
+        return yield* decodeWindowState(state, "Window.setSimpleFullscreen")
       }),
     getState: (window) =>
       Effect.gen(function* () {
@@ -1254,6 +1251,17 @@ const runWindowHandleRpc = (
   Effect.gen(function* () {
     const decoded = yield* decodeWindowHandleInput(window, operation)
     yield* runWindowRpc(client[operation](decoded), operation)
+  })
+
+const runWindowStateHandleRpc = (
+  client: WindowRpcClient,
+  operation: "Window.minimize" | "Window.maximize" | "Window.restore",
+  window: WindowHandle
+): Effect.Effect<WindowState, WindowError, never> =>
+  Effect.gen(function* () {
+    const decoded = yield* decodeWindowHandleInput(window, operation)
+    const state = yield* runWindowRpc(client[operation](decoded), operation)
+    return yield* decodeWindowState(state, operation)
   })
 
 const decodeWindowHandleInput = (
@@ -2117,17 +2125,20 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
     "Window.minimize": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.minimize")
-        yield* host.minimize(window.id)
+        const state = yield* host.minimize(window.id)
+        return yield* decodeWindowState(state, "Window.minimize")
       }),
     "Window.maximize": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.maximize")
-        yield* host.maximize(window.id)
+        const state = yield* host.maximize(window.id)
+        return yield* decodeWindowState(state, "Window.maximize")
       }),
     "Window.restore": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.restore")
-        yield* host.restore(window.id)
+        const state = yield* host.restore(window.id)
+        return yield* decodeWindowState(state, "Window.restore")
       }),
     "Window.setFullscreen": (input: WindowFullscreenInput) =>
       Effect.gen(function* () {
@@ -2136,7 +2147,8 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           knownWindowIds,
           "Window.setFullscreen"
         )
-        yield* host.setFullscreen(window.id, input.fullscreen)
+        const state = yield* host.setFullscreen(window.id, input.fullscreen)
+        return yield* decodeWindowState(state, "Window.setFullscreen")
       }),
     "Window.setSimpleFullscreen": (input: WindowSimpleFullscreenInput) =>
       Effect.gen(function* () {
@@ -2145,7 +2157,8 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           knownWindowIds,
           "Window.setSimpleFullscreen"
         )
-        yield* host.setSimpleFullscreen(window.id, input.simpleFullscreen)
+        const state = yield* host.setSimpleFullscreen(window.id, input.simpleFullscreen)
+        return yield* decodeWindowState(state, "Window.setSimpleFullscreen")
       }),
     "Window.getState": (input: WindowHandleInput) =>
       Effect.gen(function* () {

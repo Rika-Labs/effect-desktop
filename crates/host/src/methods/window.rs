@@ -354,9 +354,12 @@ pub(crate) fn minimize(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_MINIMIZE_METHOD)?;
-    handler.minimize(payload.window_id())?;
+    let response = handler.minimize(payload.window_id())?;
 
-    Ok(None)
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_MINIMIZE_METHOD,
+    )?))
 }
 
 pub(crate) fn maximize(
@@ -364,9 +367,12 @@ pub(crate) fn maximize(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_MAXIMIZE_METHOD)?;
-    handler.maximize(payload.window_id())?;
+    let response = handler.maximize(payload.window_id())?;
 
-    Ok(None)
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_MAXIMIZE_METHOD,
+    )?))
 }
 
 pub(crate) fn restore(
@@ -374,9 +380,12 @@ pub(crate) fn restore(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_RESTORE_METHOD)?;
-    handler.restore(payload.window_id())?;
+    let response = handler.restore(payload.window_id())?;
 
-    Ok(None)
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_RESTORE_METHOD,
+    )?))
 }
 
 pub(crate) fn set_fullscreen(
@@ -384,9 +393,12 @@ pub(crate) fn set_fullscreen(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_fullscreen_payload(payload)?;
-    handler.set_fullscreen(payload.window_id(), payload.fullscreen())?;
+    let response = handler.set_fullscreen(payload.window_id(), payload.fullscreen())?;
 
-    Ok(None)
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+    )?))
 }
 
 pub(crate) fn set_simple_fullscreen(
@@ -394,9 +406,13 @@ pub(crate) fn set_simple_fullscreen(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_simple_fullscreen_payload(payload)?;
-    handler.set_simple_fullscreen(payload.window_id(), payload.simple_fullscreen())?;
+    let response =
+        handler.set_simple_fullscreen(payload.window_id(), payload.simple_fullscreen())?;
 
-    Ok(None)
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+    )?))
 }
 
 pub(crate) fn get_state(
@@ -406,7 +422,10 @@ pub(crate) fn get_state(
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_GET_STATE_METHOD)?;
     let response = handler.get_state(payload.window_id())?;
 
-    Ok(Some(encode_state_response(response)?))
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_GET_STATE_METHOD,
+    )?))
 }
 
 fn decode_optional_create_payload(
@@ -1294,14 +1313,14 @@ fn decode_set_simple_fullscreen_payload(
     Ok(payload)
 }
 
-fn encode_state_response(payload: WindowStatePayload) -> Result<Value, HostProtocolError> {
+fn encode_state_response(
+    payload: WindowStatePayload,
+    operation: &'static str,
+) -> Result<Value, HostProtocolError> {
     serde_json::to_value(payload).map_err(|error| {
         HostProtocolError::internal(
-            format!(
-                "failed to encode {} response payload: {error}",
-                host_protocol::WINDOW_GET_STATE_METHOD
-            ),
-            host_protocol::WINDOW_GET_STATE_METHOD,
+            format!("failed to encode {operation} response payload: {error}"),
+            operation,
         )
     })
 }

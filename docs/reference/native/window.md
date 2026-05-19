@@ -62,11 +62,11 @@ import {
 | `setProgress`            | `WindowProgressInput`            | `void`               | Set host task progress state for the window.                         |
 | `requestAttention`       | `WindowRequestAttentionInput`    | `void`               | Ask the OS to draw attention to a window.                            |
 | `cancelAttention`        | `WindowHandle`                   | `void`               | Cancel a pending attention request where possible.                   |
-| `minimize`               | `WindowHandle`                   | `void`               | Minimize a window.                                                   |
-| `maximize`               | `WindowHandle`                   | `void`               | Maximize a window.                                                   |
-| `restore`                | `WindowHandle`                   | `void`               | Clear minimized, maximized, and fullscreen state.                    |
-| `setFullscreen`          | `WindowFullscreenInput`          | `void`               | Enter or exit borderless fullscreen.                                 |
-| `setSimpleFullscreen`    | `WindowSimpleFullscreenInput`    | `void`               | Enter or exit macOS simple fullscreen.                               |
+| `minimize`               | `WindowHandle`                   | `WindowState`        | Minimize a window and return the host-observed state.                |
+| `maximize`               | `WindowHandle`                   | `WindowState`        | Maximize a window and return the host-observed state.                |
+| `restore`                | `WindowHandle`                   | `WindowState`        | Clear minimized, maximized, and fullscreen state.                    |
+| `setFullscreen`          | `WindowFullscreenInput`          | `WindowState`        | Enter or exit borderless fullscreen.                                 |
+| `setSimpleFullscreen`    | `WindowSimpleFullscreenInput`    | `WindowState`        | Enter or exit macOS simple fullscreen.                               |
 | `getState`               | `WindowHandle`                   | `WindowState`        | Read minimized, maximized, fullscreen, and simple-fullscreen state.  |
 | `close`                  | `WindowHandle`                   | `void`               | Compatibility name for `destroy`.                                    |
 | `destroy`                | `WindowHandle`                   | `void`               | Destroy a native window and close its scope.                         |
@@ -107,19 +107,19 @@ through Tao and returns typed `Unsupported` on Windows and Linux.
 `setTransparent` mutates macOS AppKit window opacity and background-color state
 and returns typed `Unsupported` on Windows and Linux.
 
-The state surface has command, read, and state-event support for host-tracked
-minimized, maximized, fullscreen, and simple-fullscreen booleans. `minimize`,
+The state surface has command, read, and command-originated state-event support
+for minimized, maximized, fullscreen, and simple-fullscreen booleans. `minimize`,
 `maximize`, `restore`, `setFullscreen`, `setSimpleFullscreen`, and `getState`
 are host-routed. `setFullscreen` uses Tao borderless fullscreen on all hosts.
 `setSimpleFullscreen` uses Tao's macOS simple fullscreen primitive and returns
 typed `Unsupported` with reason `simple-fullscreen-macos-only` on Windows and
-Linux. After a successful state command, the Rust host updates its state source
-and publishes a `Window.Event` state snapshot with the same shape as `getState`,
-so renderer subscribers can compare the event payload with a follow-up read.
-This is `partial` support with reason `host-tracked-state-only`: the event/read
-agreement covers host-commanded state, but the adapter does not yet confirm
-that an OS or compositor accepted the requested transition when the platform can
-silently refuse it.
+Linux. State mutation commands return the host-observed `WindowState` after the
+native call. If the immediate observed state does not match the requested
+transition, the host fails the command with typed `InvalidState` instead of
+acknowledging a desired state. After a successful state command, the Rust host
+publishes a `Window.Event` state snapshot with the same observed state returned
+to the caller. `getState` reads the current Tao window state at call time; the
+host does not synthesize a cached desired state.
 
 The z-order and attention surface is intentionally narrower than Electron-style
 window chrome. Effect Desktop exposes explicit window-scoped z-order,
