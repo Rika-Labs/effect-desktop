@@ -479,33 +479,30 @@ const makeHandle = (
 
     return Object.freeze({
       exit,
-      kill: (signal?: unknown) =>
-        Effect.gen(function* kill() {
-          const decodedSignal =
-            signal === undefined ? undefined : yield* decodeSignalInput(signal, "Process.kill")
-          yield* assertProcessHandleFresh(registry, resource, "Process.kill")
-          const killSignal = decodedSignal ?? "SIGTERM"
-          yield* child
-            .kill({ killSignal })
-            .pipe(Effect.mapError((error) => mapPlatformError(error, command, "Process.kill")))
-          yield* inspector.publish(
-            new ExecutionEvent({
-              kind: "process",
-              status: "interruption",
-              operation: "Process.kill",
-              command,
-              resourceId: resource.id,
-              pid: Number(child.pid),
-              signal: killSignal,
-              timestamp: now()
-            })
-          )
-          yield* exit
-        }).pipe(
-          Effect.withSpan("Process.kill", {
-            attributes: { command, pid: Number(child.pid) }
+      kill: Effect.fn("Process.kill", {
+        attributes: { command, pid: Number(child.pid) }
+      })(function* (signal?: unknown) {
+        const decodedSignal =
+          signal === undefined ? undefined : yield* decodeSignalInput(signal, "Process.kill")
+        yield* assertProcessHandleFresh(registry, resource, "Process.kill")
+        const killSignal = decodedSignal ?? "SIGTERM"
+        yield* child
+          .kill({ killSignal })
+          .pipe(Effect.mapError((error) => mapPlatformError(error, command, "Process.kill")))
+        yield* inspector.publish(
+          new ExecutionEvent({
+            kind: "process",
+            status: "interruption",
+            operation: "Process.kill",
+            command,
+            resourceId: resource.id,
+            pid: Number(child.pid),
+            signal: killSignal,
+            timestamp: now()
           })
-        ),
+        )
+        yield* exit
+      }),
       pid: Number(child.pid),
       resource,
       stderr,

@@ -48,8 +48,6 @@ export const HealthSingletonLayer = Singleton.make(
 export const AutoUpdateCronLayer = ClusterCron.make({
   name: "AutoUpdateCheck",
   cron: Cron.parseUnsafe("0 * * * *"),
-  execute: Effect.gen(function* () {
-    yield* Effect.log("[AutoUpdateCheck] checking for updates")
-  }),
+  execute: Effect.log("[AutoUpdateCheck] checking for updates"),
   skipIfOlderThan: Duration.minutes(30)
 })
