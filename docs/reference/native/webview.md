@@ -66,6 +66,11 @@ declared in the event phase contract but are not emitted by the current Wry host
 adapter because Wry does not expose portable public callbacks for them on all
 desktop targets.
 
+`Download` now exposes typed start, pause, resume, cancel, list, and event
+contracts scoped to `SessionProfileHandle`, but the host adapter is still
+validation-first unsupported until profile-bound WebViews can route provider
+download callbacks through retained native resources.
+
 `setAudioMuted` and `respondToPermission` are permission-gated and
 handle-validated, but return typed unsupported. `setAudioMuted` uses
 `host-runtime-media-control-unavailable`; `respondToPermission` uses

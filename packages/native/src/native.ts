@@ -18,6 +18,7 @@ import { CrashReporterSurface } from "./crash-reporter.js"
 import { DiagnosticsBundleSurface } from "./diagnostics-bundle.js"
 import { DistributionParitySurface } from "./distribution-parity.js"
 import { DisplayCaptureSurface } from "./display-capture.js"
+import { DownloadSurface } from "./download.js"
 import { DialogSurface } from "./dialog.js"
 import { EgressPolicySurface } from "./egress-policy.js"
 import { ExecutionSandboxSurface } from "./execution-sandbox.js"
@@ -69,6 +70,7 @@ const BuiltInSurfaces = Object.freeze([
   DiagnosticsBundleSurface,
   DistributionParitySurface,
   DisplayCaptureSurface,
+  DownloadSurface,
   DialogSurface,
   EgressPolicySurface,
   ExecutionSandboxSurface,
@@ -126,6 +128,7 @@ const CrashReporter = CrashReporterSurface.selection
 const DiagnosticsBundle = DiagnosticsBundleSurface.selection
 const DistributionParity = DistributionParitySurface.selection
 const DisplayCapture = DisplayCaptureSurface.selection
+const Download = DownloadSurface.selection
 const Dialog = DialogSurface.selection
 const EgressPolicy = EgressPolicySurface.selection
 const ExecutionSandbox = ExecutionSandboxSurface.selection
@@ -183,6 +186,7 @@ export const Permissions = Object.freeze({
   diagnosticsBundle: DiagnosticsBundleSurface.permissions,
   distributionParity: DistributionParitySurface.permissions,
   displayCapture: DisplayCaptureSurface.permissions,
+  download: DownloadSurface.permissions,
   dialog: DialogSurface.permissions,
   egressPolicy: EgressPolicySurface.permissions,
   executionSandbox: ExecutionSandboxSurface.permissions,
@@ -235,6 +239,7 @@ export const Native = Object.freeze({
   DiagnosticsBundle,
   DistributionParity,
   DisplayCapture,
+  Download,
   Dialog,
   EgressPolicy,
   ExecutionSandbox,

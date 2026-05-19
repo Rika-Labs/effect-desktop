@@ -1139,6 +1139,156 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Download.cancel",
+      "surface": "Download",
+      "method": "cancel",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-download-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Download.isSupported",
+      "surface": "Download",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Download.list",
+      "surface": "Download",
+      "method": "list",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-download-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Download.pause",
+      "surface": "Download",
+      "method": "pause",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-download-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Download.resume",
+      "surface": "Download",
+      "method": "resume",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-download-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "Download.start",
+      "surface": "Download",
+      "method": "start",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-download-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-download-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "EgressPolicy.decide",
       "surface": "EgressPolicy",
       "method": "decide",
@@ -4949,11 +5099,11 @@
     }
   ],
   "summary": {
-    "total": 271,
-    "routed": 271,
+    "total": 277,
+    "routed": 277,
     "missing": 0,
-    "supported": 144,
+    "supported": 145,
     "partial": 70,
-    "unsupported": 57
+    "unsupported": 62
   }
 }

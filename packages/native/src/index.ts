@@ -408,6 +408,29 @@ export {
   type DialogServiceApi
 } from "./dialog.js"
 export {
+  Download,
+  DownloadClient,
+  DownloadHandlersLive,
+  DownloadLive,
+  DownloadMethodNames,
+  DownloadRpcEvents,
+  DownloadRpcs,
+  DownloadSurface,
+  makeDownloadBridgeClientLayer,
+  makeDownloadClientLayer,
+  makeDownloadMemoryClient,
+  makeDownloadServiceLayer,
+  makeDownloadUnsupportedClient,
+  makeHostDownloadRpcRuntime,
+  type DownloadClientApi,
+  type DownloadError,
+  type DownloadMemoryClientOptions,
+  type DownloadRpc,
+  type DownloadRpcHandlers,
+  type DownloadServiceApi,
+  type DownloadServiceOptions
+} from "./download.js"
+export {
   EgressPolicy,
   EgressPolicyClient,
   EgressPolicyHandlersLive,

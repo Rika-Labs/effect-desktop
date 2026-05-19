@@ -357,6 +357,13 @@ pub const SESSION_PERMISSION_DECIDE_METHOD: &str = "SessionPermission.decide";
 pub const SESSION_PERMISSION_LIST_DECISIONS_METHOD: &str = "SessionPermission.listDecisions";
 pub const SESSION_PERMISSION_IS_SUPPORTED_METHOD: &str = "SessionPermission.isSupported";
 pub const SESSION_PERMISSION_EVENT: &str = "SessionPermission.Event";
+pub const DOWNLOAD_START_METHOD: &str = "Download.start";
+pub const DOWNLOAD_PAUSE_METHOD: &str = "Download.pause";
+pub const DOWNLOAD_RESUME_METHOD: &str = "Download.resume";
+pub const DOWNLOAD_CANCEL_METHOD: &str = "Download.cancel";
+pub const DOWNLOAD_LIST_METHOD: &str = "Download.list";
+pub const DOWNLOAD_IS_SUPPORTED_METHOD: &str = "Download.isSupported";
+pub const DOWNLOAD_EVENT: &str = "Download.Event";
 pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
@@ -10206,6 +10213,235 @@ impl SessionPermissionEventPayload {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl DownloadResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "download".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum DownloadStatePayload {
+    Running,
+    Paused,
+    Completed,
+    Canceled,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum DownloadEventPhasePayload {
+    Started,
+    Progressed,
+    Paused,
+    Resumed,
+    Completed,
+    Canceled,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadStartPayload {
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DownloadStartPayload {
+    pub fn new(profile: SessionProfileResourcePayload, url: impl Into<String>) -> Self {
+        Self {
+            profile,
+            url: url.into(),
+            destination: None,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_destination(mut self, destination: impl Into<String>) -> Self {
+        self.destination = Some(destination.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadHandlePayload {
+    download: DownloadResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DownloadHandlePayload {
+    pub fn new(download: DownloadResourcePayload) -> Self {
+        Self {
+            download,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadListPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    profile: Option<SessionProfileResourcePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DownloadListPayload {
+    pub fn all() -> Self {
+        Self {
+            profile: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn for_profile(profile: SessionProfileResourcePayload) -> Self {
+        Self {
+            profile: Some(profile),
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadSnapshotPayload {
+    download: DownloadResourcePayload,
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
+    state: DownloadStatePayload,
+    received_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl DownloadSnapshotPayload {
+    pub fn new(
+        download: DownloadResourcePayload,
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        state: DownloadStatePayload,
+        received_bytes: u64,
+    ) -> Self {
+        Self {
+            download,
+            profile,
+            url: url.into(),
+            destination: None,
+            state,
+            received_bytes,
+            total_bytes: None,
+            message: None,
+        }
+    }
+
+    pub fn with_total_bytes(mut self, total_bytes: u64) -> Self {
+        self.total_bytes = Some(total_bytes);
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadListResultPayload {
+    downloads: Vec<DownloadSnapshotPayload>,
+}
+
+impl DownloadListResultPayload {
+    pub fn new(downloads: Vec<DownloadSnapshotPayload>) -> Self {
+        Self { downloads }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl DownloadSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: DownloadEventPhasePayload,
+    download: DownloadResourcePayload,
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
+    received_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl DownloadEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: DownloadEventPhasePayload,
+        download: DownloadResourcePayload,
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        received_bytes: u64,
+    ) -> Self {
+        Self {
+            r#type: "download-event".to_string(),
+            timestamp,
+            phase,
+            download,
+            profile,
+            url: url.into(),
+            destination: None,
+            received_bytes,
+            total_bytes: None,
+            message: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceIndexEventPayload {
     r#type: String,
     timestamp: u64,
@@ -12665,26 +12901,29 @@ mod tests {
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
         DistributionParityVerifyResultPayload, DockJumpListItemPayload, DockProgressState,
         DockSetJumpListPayload, DockSetProgressOptionsPayload, DockSetProgressPayload,
-        EgressPolicyActorKind, EgressPolicyActorPayload, EgressPolicyDecisionPayload,
-        EgressPolicyDecisionRecordedEventPayload, EgressPolicyDecisionResultPayload,
-        EgressPolicyDestinationPayload, EgressPolicyOutcome, EgressPolicyProtocol,
-        EgressPolicyRecordPayload, EgressPolicyRecordResultPayload, EgressPolicyRuleEffect,
-        EgressPolicyRulePayload, EgressPolicySupportedPayload, ExecutionSandboxActorKind,
-        ExecutionSandboxActorPayload, ExecutionSandboxBudgetPolicyPayload,
-        ExecutionSandboxCleanupPolicyPayload, ExecutionSandboxCreatePayload,
-        ExecutionSandboxEnvironmentEntryPayload, ExecutionSandboxEventPayload,
-        ExecutionSandboxEventPhase, ExecutionSandboxFilesystemPolicyPayload,
-        ExecutionSandboxNetworkPolicyPayload, ExecutionSandboxPolicyPayload,
-        ExecutionSandboxRunPayload, ExecutionSandboxRunStatus, ExecutionSandboxSupportedPayload,
-        ExtensionConfigActorKind, ExtensionConfigActorPayload, ExtensionConfigEventPayload,
-        ExtensionConfigEventPhase, ExtensionConfigExportPolicy, ExtensionConfigFieldPayload,
-        ExtensionConfigReadPayload, ExtensionConfigRedactResultPayload,
-        ExtensionConfigRedactionEvidencePayload, ExtensionConfigResetResultPayload,
-        ExtensionConfigSupportedPayload, ExtensionConfigValueEntryPayload,
-        ExtensionConfigValueType, ExtensionConfigWritePayload, ExtensionPackageActorKind,
-        ExtensionPackageActorPayload, ExtensionPackageCapabilityDeclarationPayload,
-        ExtensionPackageCompatibilityPayload, ExtensionPackageEventPayload,
-        ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
+        DownloadEventPayload, DownloadEventPhasePayload, DownloadHandlePayload,
+        DownloadListPayload, DownloadListResultPayload, DownloadResourcePayload,
+        DownloadSnapshotPayload, DownloadStartPayload, DownloadStatePayload,
+        DownloadSupportedPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
+        EgressPolicyDecisionPayload, EgressPolicyDecisionRecordedEventPayload,
+        EgressPolicyDecisionResultPayload, EgressPolicyDestinationPayload, EgressPolicyOutcome,
+        EgressPolicyProtocol, EgressPolicyRecordPayload, EgressPolicyRecordResultPayload,
+        EgressPolicyRuleEffect, EgressPolicyRulePayload, EgressPolicySupportedPayload,
+        ExecutionSandboxActorKind, ExecutionSandboxActorPayload,
+        ExecutionSandboxBudgetPolicyPayload, ExecutionSandboxCleanupPolicyPayload,
+        ExecutionSandboxCreatePayload, ExecutionSandboxEnvironmentEntryPayload,
+        ExecutionSandboxEventPayload, ExecutionSandboxEventPhase,
+        ExecutionSandboxFilesystemPolicyPayload, ExecutionSandboxNetworkPolicyPayload,
+        ExecutionSandboxPolicyPayload, ExecutionSandboxRunPayload, ExecutionSandboxRunStatus,
+        ExecutionSandboxSupportedPayload, ExtensionConfigActorKind, ExtensionConfigActorPayload,
+        ExtensionConfigEventPayload, ExtensionConfigEventPhase, ExtensionConfigExportPolicy,
+        ExtensionConfigFieldPayload, ExtensionConfigReadPayload,
+        ExtensionConfigRedactResultPayload, ExtensionConfigRedactionEvidencePayload,
+        ExtensionConfigResetResultPayload, ExtensionConfigSupportedPayload,
+        ExtensionConfigValueEntryPayload, ExtensionConfigValueType, ExtensionConfigWritePayload,
+        ExtensionPackageActorKind, ExtensionPackageActorPayload,
+        ExtensionPackageCapabilityDeclarationPayload, ExtensionPackageCompatibilityPayload,
+        ExtensionPackageEventPayload, ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
         ExtensionPackageInstallResultPayload, ExtensionPackageManifestPayload,
         ExtensionPackageRemoveResultPayload, ExtensionPackageSourceKind,
         ExtensionPackageSourcePayload, ExtensionPackageSupportedPayload,
@@ -15933,6 +16172,67 @@ mod tests {
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-session-permission-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn download_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let download = DownloadResourcePayload::new("download:1", 0, "workspace:1");
+        assert_eq!(
+            serde_json::to_string(
+                &DownloadStartPayload::new(profile.clone(), "https://example.test/file.zip")
+                    .with_destination("/tmp/file.zip")
+            )
+            .expect("start payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","destination":"/tmp/file.zip"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadHandlePayload::new(download.clone()))
+                .expect("handle payload should encode"),
+            r#"{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadListPayload::for_profile(profile.clone()))
+                .expect("list payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        let snapshot = DownloadSnapshotPayload::new(
+            download.clone(),
+            profile.clone(),
+            "https://example.test/file.zip",
+            DownloadStatePayload::Running,
+            128,
+        )
+        .with_total_bytes(1024);
+        assert_eq!(
+            serde_json::to_string(&snapshot).expect("snapshot should encode"),
+            r#"{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","state":"running","receivedBytes":128,"totalBytes":1024}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadListResultPayload::new(vec![snapshot]))
+                .expect("list result should encode"),
+            r#"{"downloads":[{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","state":"running","receivedBytes":128,"totalBytes":1024}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadEventPayload::new(
+                1710000000000,
+                DownloadEventPhasePayload::Canceled,
+                download,
+                profile,
+                "https://example.test/file.zip",
+                128
+            ))
+            .expect("event should encode"),
+            r#"{"type":"download-event","timestamp":1710000000000,"phase":"canceled","download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","receivedBytes":128}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadSupportedPayload::unsupported(
+                "host-download-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-download-unavailable"}"#
         );
     }
 
