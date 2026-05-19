@@ -15,6 +15,8 @@ import {
 } from "effect"
 import { TestClock } from "effect/testing"
 
+const encodeJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
 class WaitForEntriesTimeout extends Schema.TaggedErrorClass<WaitForEntriesTimeout>()(
   "WaitForEntriesTimeout",
   { count: Schema.Number }
@@ -32,11 +34,6 @@ class MockHostCallMissing extends Schema.TaggedErrorClass<MockHostCallMissing>()
 
 class MockBridgeCallMissing extends Schema.TaggedErrorClass<MockBridgeCallMissing>()(
   "MockBridgeCallMissing",
-  {}
-) {}
-
-class MockBridgeStreamMissing extends Schema.TaggedErrorClass<MockBridgeStreamMissing>()(
-  "MockBridgeStreamMissing",
   {}
 ) {}
 
@@ -402,7 +399,7 @@ test("public native subpath exposes a composed desktop test layer with inspectab
         const opened = yield* SubpathTestDesktop.windows
         const first = opened[0]
         if (first === undefined) {
-          return yield* Effect.fail(new TestWindowMissing())
+          return yield* new TestWindowMissing()
         }
         yield* window.close(first.window)
         yield* SubpathTestDesktop.expectNoLeakedResources
@@ -431,7 +428,7 @@ test("public native subpath desktop test layer reports leaked windows", () => {
       )
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        expect(JSON.stringify(exit.cause.toJSON())).toContain("ResourceLeakError")
+        expect(encodeJsonString(exit.cause.toJSON())).toContain("ResourceLeakError")
       }
     })
   )
@@ -460,7 +457,7 @@ test("public native subpath desktop test layer can simulate denied permissions",
       )
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        expect(JSON.stringify(exit.cause.toJSON())).toContain("PermissionDenied")
+        expect(encodeJsonString(exit.cause.toJSON())).toContain("PermissionDenied")
       }
     })
   )
@@ -728,12 +725,12 @@ test("MockHost calls returns immutable request snapshots", () =>
       const first = host.calls()
       const firstCall = first[0]
       if (firstCall === undefined) {
-        return yield* Effect.fail(new MockHostCallMissing())
+        return yield* new MockHostCallMissing()
       }
       expectFrozenPathPayload(firstCall.request.payload)
       const storedCall = host.calls()[0]
       if (storedCall === undefined) {
-        return yield* Effect.fail(new MockHostCallMissing())
+        return yield* new MockHostCallMissing()
       }
       expect(response.timestamp).toBe(timestamp)
       expectFrozenPathPayload(storedCall.request.payload)
@@ -823,12 +820,12 @@ test("MockBridge calls returns immutable payload snapshots", () =>
       const first = bridge.calls()
       const firstCall = first[0]
       if (firstCall === undefined) {
-        return yield* Effect.fail(new MockBridgeCallMissing())
+        return yield* new MockBridgeCallMissing()
       }
       expectFrozenPathPayload(firstCall.payload)
       const storedCall = bridge.calls()[0]
       if (storedCall === undefined) {
-        return yield* Effect.fail(new MockBridgeCallMissing())
+        return yield* new MockBridgeCallMissing()
       }
       expectFrozenPathPayload(storedCall.payload)
     })
@@ -1109,7 +1106,7 @@ test("MemoryFilesystem watcher emits contract events and closes its registry res
         if (Option.isSome(collected)) {
           return collected.value
         }
-        return yield* Effect.fail(new WatchEventsMissing())
+        return yield* new WatchEventsMissing()
       }).pipe(
         Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(50)))),
         Effect.catch(() => Fiber.join(fiber))
@@ -1157,7 +1154,7 @@ test("MemoryFilesystem preserves symlink escape failures through the real servic
 
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        expect(JSON.stringify(exit.cause.toJSON())).toContain("SymlinkEscapesRoot")
+        expect(encodeJsonString(exit.cause.toJSON())).toContain("SymlinkEscapesRoot")
       }
     })
   ))
@@ -1267,10 +1264,10 @@ test("MemoryFilesystem rejects directory targets for writes and atomic renames",
       expect(Exit.isFailure(atomicExit)).toBe(true)
       expect(stat.kind).toBe("directory")
       if (Exit.isFailure(writeExit)) {
-        expect(JSON.stringify(writeExit.cause.toJSON())).toContain("InvalidArgument")
+        expect(encodeJsonString(writeExit.cause.toJSON())).toContain("InvalidArgument")
       }
       if (Exit.isFailure(atomicExit)) {
-        expect(JSON.stringify(atomicExit.cause.toJSON())).toContain("InvalidArgument")
+        expect(encodeJsonString(atomicExit.cause.toJSON())).toContain("InvalidArgument")
       }
     })
   ))
@@ -1298,10 +1295,12 @@ test("MemoryFilesystem mkdir preserves existing nodes instead of clobbering them
       expect(Exit.isFailure(recursiveThroughFileExit)).toBe(true)
       expect(text(file)).toBe("file")
       if (Exit.isFailure(existingDirectoryExit)) {
-        expect(JSON.stringify(existingDirectoryExit.cause.toJSON())).toContain("InvalidArgument")
+        expect(encodeJsonString(existingDirectoryExit.cause.toJSON())).toContain("InvalidArgument")
       }
       if (Exit.isFailure(recursiveThroughFileExit)) {
-        expect(JSON.stringify(recursiveThroughFileExit.cause.toJSON())).toContain("InvalidArgument")
+        expect(encodeJsonString(recursiveThroughFileExit.cause.toJSON())).toContain(
+          "InvalidArgument"
+        )
       }
     })
   ))
@@ -1453,8 +1452,8 @@ test("Sidecar reports typed readiness failure instead of polling a port", () =>
 
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        expect(JSON.stringify(exit.cause.toJSON())).toContain("SidecarError")
-        expect(JSON.stringify(exit.cause.toJSON())).toContain("readiness")
+        expect(encodeJsonString(exit.cause.toJSON())).toContain("SidecarError")
+        expect(encodeJsonString(exit.cause.toJSON())).toContain("readiness")
       }
     })
   ))
@@ -1471,7 +1470,7 @@ test("MockProcess fails loudly when a command has no fixture", () =>
 
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        expect(JSON.stringify(exit.cause.toJSON())).toContain("InvalidArgument")
+        expect(encodeJsonString(exit.cause.toJSON())).toContain("InvalidArgument")
       }
     })
   ))
@@ -1590,7 +1589,7 @@ test("MockPTY fails loudly when a command has no fixture", () =>
 
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
-        expect(JSON.stringify(exit.cause.toJSON())).toContain("InvalidArgument")
+        expect(encodeJsonString(exit.cause.toJSON())).toContain("InvalidArgument")
       }
     })
   ))
@@ -1722,225 +1721,240 @@ test("HeadlessRuntime layer composes mocks with real registry telemetry and perm
   )
 })
 
-test("HeadlessRuntime run fails when scoped resources leak", async () => {
-  const exit = await Effect.runPromiseExit(
-    HeadlessRuntime.run(
-      Effect.gen(function* () {
-        const process = yield* Process
-        yield* process.spawn("sleep", ["10"])
-      }),
-      {
-        process: {
-          processes: [{ command: "sleep", args: ["10"], exit: false }],
-          permissions: { spawn: ["sleep"] },
-          gracefulShutdownMs: 1
-        }
-      }
-    )
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    expect(JSON.stringify(exit.cause.toJSON())).toContain("ResourceLeakError")
-  }
-})
-
-test("runHeadless fails when a headless window is left open", async () => {
-  let error: unknown
-
-  try {
-    await Effect.runPromise(
-      runHeadless(
-        (runtime) =>
+test("HeadlessRuntime run fails when scoped resources leak", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        HeadlessRuntime.run(
           Effect.gen(function* () {
-            yield* runtime.window.create({ title: "Leaked" })
+            const process = yield* Process
+            yield* process.spawn("sleep", ["10"])
           }),
-        {
+          {
+            process: {
+              processes: [{ command: "sleep", args: ["10"], exit: false }],
+              permissions: { spawn: ["sleep"] },
+              gracefulShutdownMs: 1
+            }
+          }
+        )
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        expect(encodeJsonString(exit.cause.toJSON())).toContain("ResourceLeakError")
+      }
+    })
+  ))
+
+test("runHeadless fails when a headless window is left open", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        runHeadless((runtime) => runtime.window.create({ title: "Leaked" }), {
           nextRequestId: nextSequence("request"),
           nextTraceId: nextSequence("trace"),
           now: () => 1710000000200
+        })
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+        const error = fail?.error
+        expect(error).toBeInstanceOf(ResourceLeakError)
+        if (error instanceof ResourceLeakError) {
+          expect(error.message).toContain("kind: window")
+          expect(error.message).toContain("ownerScope: headless")
+        }
+      }
+    })
+  ))
+
+test("runHeadless preserves typed destroy errors from the mock host", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* runHeadless(
+        (runtime) =>
+          Effect.gen(function* () {
+            const window = yield* runtime.window.create({ title: "Destroy failure" })
+            const destroyExit = yield* Effect.exit(runtime.window.destroy(window.windowId))
+            yield* runtime.registry.closeScope("headless")
+
+            return destroyExit
+          }),
+        {
+          fixtures: {
+            [WINDOW_DESTROY_METHOD]: () =>
+              Effect.fail(makeHostProtocolNotFoundError("headless-window", WINDOW_DESTROY_METHOD))
+          },
+          nextRequestId: nextSequence("request"),
+          nextTraceId: nextSequence("trace"),
+          now: () => 1710000000300
         }
       )
-    )
-  } catch (caught) {
-    error = caught
-  }
 
-  expect(error).toBeInstanceOf(ResourceLeakError)
-  if (error instanceof ResourceLeakError) {
-    expect(error.message).toContain("kind: window")
-    expect(error.message).toContain("ownerScope: headless")
-  }
-})
-
-test("runHeadless preserves typed destroy errors from the mock host", async () => {
-  const result = await Effect.runPromise(
-    runHeadless(
-      (runtime) =>
-        Effect.gen(function* () {
-          const window = yield* runtime.window.create({ title: "Destroy failure" })
-          const destroyExit = yield* Effect.exit(runtime.window.destroy(window.windowId))
-          yield* runtime.registry.closeScope("headless")
-
-          return destroyExit
-        }),
-      {
-        fixtures: {
-          [WINDOW_DESTROY_METHOD]: () =>
-            Effect.fail(makeHostProtocolNotFoundError("headless-window", WINDOW_DESTROY_METHOD))
-        },
-        nextRequestId: nextSequence("request"),
-        nextTraceId: nextSequence("trace"),
-        now: () => 1710000000300
+      expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") {
+        expect(encodeJsonString(result.cause.toJSON())).toContain("NotFound")
       }
-    )
-  )
-
-  expect(result._tag).toBe("Failure")
-  if (result._tag === "Failure") {
-    expect(JSON.stringify(result.cause.toJSON())).toContain("NotFound")
-  }
-})
-
-test("makeMemorySecretsSafeStorage backs Secrets with copied in-memory values", async () => {
-  const storage = makeMemorySecretsSafeStorage()
-  const secrets = await Effect.runPromise(
-    makeSecrets(storage, {
-      appId: "com.rika.test",
-      permissions: { read: ["auth"], write: ["auth"] }
     })
-  )
-  const original = makeSecretBytesFromUtf8("refresh-token")
+  ))
 
-  await Effect.runPromise(secrets.set("auth", "token", original))
-  await Effect.runPromise(wipeSecretBytes(original))
-  const stored = await Effect.runPromise(secrets.get("auth", "token"))
-  const snapshot = await Effect.runPromise(storage.snapshot())
-  await Effect.runPromise(secrets.delete("auth", "token"))
-  const missing = await Effect.runPromiseExit(secrets.get("auth", "token"))
-
-  expect(new TextDecoder().decode(unsafeSecretBytes(stored))).toBe("refresh-token")
-  expect([...snapshot.keys()]).toEqual(["com.rika.test/auth/token"])
-  expect(Exit.isFailure(missing)).toBe(true)
-  if (Exit.isFailure(missing)) {
-    expect(JSON.stringify(missing.cause.toJSON())).toContain("SecretNotFound")
-  }
-})
-
-test("makeMemorySecretsSafeStorage models unavailable platform storage as typed values", async () => {
-  const secrets = await Effect.runPromise(
-    makeSecrets(makeMemorySecretsSafeStorage({ available: false }), {
-      appId: "com.rika.test",
-      permissions: { read: ["auth"], write: ["auth"] }
-    })
-  )
-
-  const unavailable = await Effect.runPromiseExit(
-    secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
-  )
-
-  expect(Exit.isFailure(unavailable)).toBe(true)
-  if (Exit.isFailure(unavailable)) {
-    expect(JSON.stringify(unavailable.cause.toJSON())).toContain("SafeStorageUnavailable")
-  }
-})
-
-test("FailureAssertions matches tagged failures through Exit", async () => {
-  const exit = await Effect.runPromiseExit(
+test("makeMemorySecretsSafeStorage backs Secrets with copied in-memory values", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const clipboard = yield* Clipboard
-      yield* clipboard.writeText("blocked")
-    }).pipe(Effect.provide(makeClipboardServiceLayer(makeUnavailableClipboardClient())))
-  )
+      const storage = makeMemorySecretsSafeStorage()
+      const secrets = yield* makeSecrets(storage, {
+        appId: "com.rika.test",
+        permissions: { read: ["auth"], write: ["auth"] }
+      })
+      const original = makeSecretBytesFromUtf8("refresh-token")
 
-  FailureAssertions.expectFailureTag(exit, "Unsupported")
+      yield* secrets.set("auth", "token", original)
+      yield* wipeSecretBytes(original)
+      const stored = yield* secrets.get("auth", "token")
+      const snapshot = yield* storage.snapshot()
+      yield* secrets.delete("auth", "token")
+      const missing = yield* Effect.exit(secrets.get("auth", "token"))
+
+      expect(new TextDecoder().decode(unsafeSecretBytes(stored))).toBe("refresh-token")
+      expect([...snapshot.keys()]).toEqual(["com.rika.test/auth/token"])
+      expect(Exit.isFailure(missing)).toBe(true)
+      if (Exit.isFailure(missing)) {
+        expect(encodeJsonString(missing.cause.toJSON())).toContain("SecretNotFound")
+      }
+    })
+  ))
+
+test("makeMemorySecretsSafeStorage models unavailable platform storage as typed values", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const secrets = yield* makeSecrets(makeMemorySecretsSafeStorage({ available: false }), {
+        appId: "com.rika.test",
+        permissions: { read: ["auth"], write: ["auth"] }
+      })
+
+      const unavailable = yield* Effect.exit(
+        secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
+      )
+
+      expect(Exit.isFailure(unavailable)).toBe(true)
+      if (Exit.isFailure(unavailable)) {
+        expect(encodeJsonString(unavailable.cause.toJSON())).toContain("SafeStorageUnavailable")
+      }
+    })
+  ))
+
+test("FailureAssertions matches tagged failures through Exit", () => {
+  const runtime = ManagedRuntime.make(makeClipboardServiceLayer(makeUnavailableClipboardClient()))
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const clipboard = yield* Clipboard
+          yield* clipboard.writeText("blocked")
+        })
+      )
+      FailureAssertions.expectFailureTag(exit, "Unsupported")
+    })
+  )
 })
 
-test("Clipboard unavailable platform layer reports unsupported selection capability", async () => {
-  const result = await Effect.runPromise(
+test("Clipboard unavailable platform layer reports unsupported selection capability", () => {
+  const runtime = ManagedRuntime.make(makeClipboardClientLayer(makeUnavailableClipboardClient()))
+  return runtime.runPromise(
     Effect.gen(function* () {
       const client = yield* ClipboardClient
-      return yield* client.isSupported("selection")
-    }).pipe(Effect.provide(makeClipboardClientLayer(makeUnavailableClipboardClient())))
-  )
+      const result = yield* client.isSupported("selection")
 
-  expect(result).toEqual(
-    new ClipboardSupportedResult({
-      supported: false,
-      reason: "test clipboard client is unavailable"
-    })
-  )
-})
-
-test("Clipboard bridge layer propagates host failures through the service", async () => {
-  const bridge = makeMockBridge()
-  await Effect.runPromise(
-    bridge.fail("Clipboard.readText", {
-      tag: "Unsupported",
-      reason: "host failure",
-      message: "clipboard host failed",
-      operation: "Clipboard.readText",
-      recoverable: false
-    })
-  )
-
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const clipboard = yield* Clipboard
-      return yield* clipboard.readText()
-    }).pipe(
-      Effect.provide(
-        Layer.provide(ClipboardLive, ClipboardSurface.bridgeClientLayer(bridge.exchange))
+      expect(result).toEqual(
+        new ClipboardSupportedResult({
+          supported: false,
+          reason: "test clipboard client is unavailable"
+        })
       )
-    )
-  )
-
-  FailureAssertions.expectFailureTag(exit, "Unsupported")
-})
-
-test("DialogTest represents save cancellation as data", async () => {
-  const savePath = await Effect.runPromise(
-    Effect.gen(function* () {
-      const dialog = yield* Dialog
-      return yield* dialog.saveFile({ defaultPath: "/tmp/cancel.txt" })
-    }).pipe(Effect.provide(DialogTest({ saveFilePath: null })))
-  )
-
-  expect(savePath).toBeUndefined()
-})
-
-test("Dialog unavailable platform layer returns typed Unsupported failures", async () => {
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const dialog = yield* Dialog
-      yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
-    }).pipe(Effect.provide(makeDialogServiceLayer(makeUnavailableDialogClient())))
-  )
-
-  FailureAssertions.expectFailureTag(exit, "Unsupported")
-})
-
-test("Dialog bridge layer propagates host failures through the service", async () => {
-  const bridge = makeMockBridge()
-  await Effect.runPromise(
-    bridge.fail("Dialog.openFile", {
-      tag: "HostUnavailable",
-      message: "host is unavailable",
-      operation: "Dialog.openFile",
-      recoverable: true
     })
   )
+})
 
-  const exit = await Effect.runPromiseExit(
+test("Clipboard bridge layer propagates host failures through the service", () => {
+  const bridge = makeMockBridge()
+  const runtime = ManagedRuntime.make(
+    Layer.provide(ClipboardLive, ClipboardSurface.bridgeClientLayer(bridge.exchange))
+  )
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      yield* bridge.fail("Clipboard.readText", {
+        tag: "Unsupported",
+        reason: "host failure",
+        message: "clipboard host failed",
+        operation: "Clipboard.readText",
+        recoverable: false
+      })
+
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const clipboard = yield* Clipboard
+          return yield* clipboard.readText()
+        })
+      )
+
+      FailureAssertions.expectFailureTag(exit, "Unsupported")
+    })
+  )
+})
+
+test("DialogTest represents save cancellation as data", () => {
+  const runtime = ManagedRuntime.make(DialogTest({ saveFilePath: null }))
+  return runtime.runPromise(
     Effect.gen(function* () {
       const dialog = yield* Dialog
-      return yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
-    }).pipe(
-      Effect.provide(Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(bridge.exchange)))
-    )
+      const savePath = yield* dialog.saveFile({ defaultPath: "/tmp/cancel.txt" })
+      expect(savePath).toBeUndefined()
+    })
   )
+})
 
-  FailureAssertions.expectFailureTag(exit, "HostUnavailable")
+test("Dialog unavailable platform layer returns typed Unsupported failures", () => {
+  const runtime = ManagedRuntime.make(makeDialogServiceLayer(makeUnavailableDialogClient()))
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const dialog = yield* Dialog
+          yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
+        })
+      )
+      FailureAssertions.expectFailureTag(exit, "Unsupported")
+    })
+  )
+})
+
+test("Dialog bridge layer propagates host failures through the service", () => {
+  const bridge = makeMockBridge()
+  const runtime = ManagedRuntime.make(
+    Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(bridge.exchange))
+  )
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      yield* bridge.fail("Dialog.openFile", {
+        tag: "HostUnavailable",
+        message: "host is unavailable",
+        operation: "Dialog.openFile",
+        recoverable: true
+      })
+
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const dialog = yield* Dialog
+          return yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
+        })
+      )
+
+      FailureAssertions.expectFailureTag(exit, "HostUnavailable")
+    })
+  )
 })
 
 const makeUnavailableClipboardClient = (): ClipboardClientApi => {
@@ -1996,43 +2010,44 @@ const makeUnavailableDialogClient = (): DialogClientApi => {
   }
 }
 
-test("LayerMatrix interruption closes scoped capability layers", async () => {
-  class InterruptibleService extends Context.Service<
-    InterruptibleService,
-    { readonly wait: Effect.Effect<never, never, never> }
-  >()("@effect-desktop/test/InterruptibleService") {}
+test("LayerMatrix interruption closes scoped capability layers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      class InterruptibleService extends Context.Service<
+        InterruptibleService,
+        { readonly wait: Effect.Effect<never, never, never> }
+      >()("@effect-desktop/test/index.test/InterruptibleService") {}
 
-  let acquired = 0
-  let released = 0
-  const layer = Layer.effectContext(
-    Effect.acquireRelease(
-      Effect.sync(() => {
-        acquired += 1
-        return Context.make(InterruptibleService, { wait: Effect.never })
-      }),
-      () =>
-        Effect.sync(() => {
-          released += 1
+      let acquired = 0
+      let released = 0
+      const layer = Layer.effectContext(
+        Effect.acquireRelease(
+          Effect.sync(() => {
+            acquired += 1
+            return Context.make(InterruptibleService, { wait: Effect.never })
+          }),
+          () =>
+            Effect.sync(() => {
+              released += 1
+            })
+        )
+      )
+
+      const exit = yield* LayerMatrix.interrupt(
+        layer,
+        Effect.gen(function* () {
+          const service = yield* InterruptibleService
+          return yield* service.wait
         })
-    )
-  )
+      )
 
-  const exit = await Effect.runPromise(
-    LayerMatrix.interrupt(
-      layer,
-      Effect.gen(function* () {
-        const service = yield* InterruptibleService
-        return yield* service.wait
-      })
-    )
-  )
+      FailureAssertions.expectInterrupted(exit)
+      expect(acquired).toBe(1)
+      expect(released).toBe(1)
+    })
+  ))
 
-  FailureAssertions.expectInterrupted(exit)
-  expect(acquired).toBe(1)
-  expect(released).toBe(1)
-})
-
-test("native capability programs run unchanged through Live, Client, and Test layers", async () => {
+test("native capability programs run unchanged through Live, Client, and Test layers", () => {
   const screenProgram: Effect.Effect<string, ScreenError, Screen> = Effect.gen(function* () {
     const screen = yield* Screen
     const display = yield* screen.getPrimaryDisplay()
@@ -2054,7 +2069,25 @@ test("native capability programs run unchanged through Live, Client, and Test la
     isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
   })
   const screenBridge = makeMockBridge()
-  await Effect.runPromise(screenBridge.succeed("Screen.getPrimaryDisplay", screenDisplayPayload))
+  const screenLiveRuntime = ManagedRuntime.make(
+    Layer.provide(ScreenLive, makeScreenClientLayer(screenLiveClient))
+  )
+  const screenClientRuntime = ManagedRuntime.make(
+    Layer.provide(ScreenLive, ScreenSurface.bridgeClientLayer(screenBridge.exchange))
+  )
+  const screenTestRuntime = ManagedRuntime.make(
+    ScreenTest({
+      displays: [
+        {
+          id: "primary",
+          bounds: { width: 1440, height: 900 },
+          workArea: { y: 24, width: 1440, height: 876 },
+          scaleFactor: 2,
+          primary: true
+        }
+      ]
+    })
+  )
 
   const dialogProgram: Effect.Effect<string, DialogError, Dialog> = Effect.gen(function* () {
     const dialog = yield* Dialog
@@ -2079,94 +2112,61 @@ test("native capability programs run unchanged through Live, Client, and Test la
       Effect.succeed(new DialogConfirmResult({ confirmed: dialogOptions.confirmResult }))
   })
   const dialogBridge = makeMockBridge()
-  await Effect.runPromise(
-    Effect.all([
-      dialogBridge.succeed("Dialog.openFile", { paths: ["/tmp/input.txt"] }),
-      dialogBridge.succeed("Dialog.saveFile", { path: "/tmp/output.txt" }),
-      dialogBridge.succeed("Dialog.message", undefined),
-      dialogBridge.succeed("Dialog.confirm", { confirmed: true })
-    ])
+  const dialogLiveRuntime = ManagedRuntime.make(makeDialogServiceLayer(dialogLiveClient))
+  const dialogClientRuntime = ManagedRuntime.make(
+    Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(dialogBridge.exchange))
   )
+  const dialogTestRuntime = ManagedRuntime.make(DialogTest(dialogOptions))
 
-  const cases = [
-    {
-      name: "Screen",
-      expected: "primary",
-      calls: () => screenBridge.calls().map((call) => call.method),
-      expectedCalls: ["Screen.getPrimaryDisplay"],
-      runLive: () =>
-        Effect.runPromise(
-          screenProgram.pipe(
-            Effect.provide(Layer.provide(ScreenLive, makeScreenClientLayer(screenLiveClient)))
-          )
-        ),
-      runClient: () =>
-        Effect.runPromise(
-          screenProgram.pipe(
-            Effect.provide(
-              Layer.provide(ScreenLive, ScreenSurface.bridgeClientLayer(screenBridge.exchange))
-            )
-          )
-        ),
-      runTest: () =>
-        Effect.runPromise(
-          screenProgram.pipe(
-            Effect.provide(
-              ScreenTest({
-                displays: [
-                  {
-                    id: "primary",
-                    bounds: { width: 1440, height: 900 },
-                    workArea: { y: 24, width: 1440, height: 876 },
-                    scaleFactor: 2,
-                    primary: true
-                  }
-                ]
-              })
-            )
-          )
-        )
-    },
-    {
-      name: "Dialog",
-      expected: "/tmp/input.txt:/tmp/output.txt:confirmed",
-      calls: () => dialogBridge.calls().map((call) => call.method),
-      expectedCalls: ["Dialog.openFile", "Dialog.saveFile", "Dialog.message", "Dialog.confirm"],
-      runLive: () =>
-        Effect.runPromise(
-          dialogProgram.pipe(Effect.provide(makeDialogServiceLayer(dialogLiveClient)))
-        ),
-      runClient: () =>
-        Effect.runPromise(
-          dialogProgram.pipe(
-            Effect.provide(
-              Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(dialogBridge.exchange))
-            )
-          )
-        ),
-      runTest: () =>
-        Effect.runPromise(dialogProgram.pipe(Effect.provide(DialogTest(dialogOptions))))
-    }
-  ] as const
-
-  for (const capability of cases) {
-    const [live, client, test] = await Promise.all([
-      capability.runLive(),
-      capability.runClient(),
-      capability.runTest()
-    ])
-
-    expect({ name: capability.name, live, client, test }).toEqual({
-      name: capability.name,
-      live: capability.expected,
-      client: capability.expected,
-      test: capability.expected
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      yield* screenBridge.succeed("Screen.getPrimaryDisplay", screenDisplayPayload)
+      yield* Effect.all([
+        dialogBridge.succeed("Dialog.openFile", { paths: ["/tmp/input.txt"] }),
+        dialogBridge.succeed("Dialog.saveFile", { path: "/tmp/output.txt" }),
+        dialogBridge.succeed("Dialog.message", undefined),
+        dialogBridge.succeed("Dialog.confirm", { confirmed: true })
+      ])
     })
-    expect(capability.calls()).toEqual(Array.from(capability.expectedCalls))
-  }
+  ).then(() =>
+    Promise.all([
+      screenLiveRuntime.runPromise(screenProgram),
+      screenClientRuntime.runPromise(screenProgram),
+      screenTestRuntime.runPromise(screenProgram),
+      dialogLiveRuntime.runPromise(dialogProgram),
+      dialogClientRuntime.runPromise(dialogProgram),
+      dialogTestRuntime.runPromise(dialogProgram)
+    ]).then(([screenLive, screenClient, screenTest, dialogLive, dialogClient, dialogTest]) => {
+      expect({
+        name: "Screen",
+        live: screenLive,
+        client: screenClient,
+        test: screenTest
+      }).toEqual({ name: "Screen", live: "primary", client: "primary", test: "primary" })
+      expect(screenBridge.calls().map((call) => call.method)).toEqual(["Screen.getPrimaryDisplay"])
+      const dialogExpected = "/tmp/input.txt:/tmp/output.txt:confirmed"
+      expect({
+        name: "Dialog",
+        live: dialogLive,
+        client: dialogClient,
+        test: dialogTest
+      }).toEqual({
+        name: "Dialog",
+        live: dialogExpected,
+        client: dialogExpected,
+        test: dialogExpected
+      })
+      expect(dialogBridge.calls().map((call) => call.method)).toEqual([
+        "Dialog.openFile",
+        "Dialog.saveFile",
+        "Dialog.message",
+        "Dialog.confirm"
+      ])
+    })
+  )
 })
 
-test("native test layers are derived from DesktopRpc surfaces", async () => {
+test("native test layers are derived from DesktopRpc surfaces", () => {
   expect(TestNativeSurfaces.map((surface) => surface.tag)).toEqual([
     "ActivationRegistry",
     "AppMetadata",
@@ -2222,24 +2222,31 @@ test("native test layers are derived from DesktopRpc surfaces", async () => {
     "Window"
   ])
 
-  for (const surface of TestNativeSurfaces) {
-    for (const law of surface.contractLaws) {
-      await Effect.runPromise(law.check)
-    }
-  }
-
-  const malformedWrite = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const clipboard = yield* ClipboardClient
-      // @ts-expect-error Runtime schema rejection is the contract under test.
-      yield* clipboard.writeText(123)
-    }).pipe(
-      Effect.provide(ClipboardSurface.testClientLayer),
-      Effect.provide(makeClipboardScenarioLayer({}))
-    )
+  const malformedRuntime = ManagedRuntime.make(
+    Layer.provide(ClipboardSurface.testClientLayer, makeClipboardScenarioLayer({}))
   )
 
-  expect(Exit.isFailure(malformedWrite)).toBe(true)
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      for (const surface of TestNativeSurfaces) {
+        for (const law of surface.contractLaws) {
+          yield* law.check
+        }
+      }
+    })
+  ).then(() =>
+    malformedRuntime
+      .runPromiseExit(
+        Effect.gen(function* () {
+          const clipboard = yield* ClipboardClient
+          // @ts-expect-error Runtime schema rejection is the contract under test.
+          yield* clipboard.writeText(123)
+        })
+      )
+      .then((malformedWrite) => {
+        expect(Exit.isFailure(malformedWrite)).toBe(true)
+      })
+  )
 })
 
 const nextSequence = (prefix: string): (() => string) => {
