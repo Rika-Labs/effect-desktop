@@ -9251,6 +9251,25 @@ test("Window.events registers host-originated opened events in ResourceRegistry"
             new HostProtocolEventEnvelope({
               kind: "event",
               method,
+              timestamp: 1_710_000_002_674,
+              traceId: "host-window-close-requested-unknown-event",
+              payload: {
+                type: "window-registry-event",
+                phase: "closeRequested",
+                windowId: "host-close-requested-window",
+                window: {
+                  kind: "window",
+                  id: "host-close-requested-window",
+                  generation: 0,
+                  ownerScope: "window:host-close-requested-window",
+                  state: "open"
+                },
+                terminal: false
+              }
+            }),
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
               timestamp: 1_710_000_002_600,
               traceId: "host-window-opened-event",
               payload: {
@@ -9395,7 +9414,7 @@ test("Window.events strips handles for host-originated events without local reso
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const window = yield* Window
-      const events = yield* window.events().pipe(Stream.take(2), Stream.runCollect)
+      const events = yield* window.events().pipe(Stream.take(3), Stream.runCollect)
       const snapshot = yield* registry.list()
       return { events, snapshot }
     }).pipe(
@@ -9403,7 +9422,11 @@ test("Window.events strips handles for host-originated events without local reso
     )
   )
 
-  expect(Array.from(result.events).map((event) => event.window)).toEqual([undefined, undefined])
+  expect(Array.from(result.events).map((event) => event.window)).toEqual([
+    undefined,
+    undefined,
+    undefined
+  ])
   expect(result.snapshot.entries).toEqual([])
 })
 

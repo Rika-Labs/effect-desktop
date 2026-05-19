@@ -3255,6 +3255,7 @@ pub enum WindowRegistryEventPhase {
     Shown,
     Hidden,
     Focused,
+    CloseRequested,
     Closed,
 }
 
@@ -13139,6 +13140,15 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&hidden).expect("window hidden event should encode"),
             r#"{"type":"window-registry-event","phase":"hidden","windowId":"window-1","terminal":false}"#
+        );
+
+        let close_requested =
+            WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::CloseRequested);
+        assert!(!close_requested.terminal());
+        assert_eq!(
+            serde_json::to_string(&close_requested)
+                .expect("window close-requested event should encode"),
+            r#"{"type":"window-registry-event","phase":"closeRequested","windowId":"window-1","terminal":false}"#
         );
 
         let closed = WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::Closed);

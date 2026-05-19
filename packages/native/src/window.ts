@@ -1302,7 +1302,12 @@ const reconcileWindowEvent = (
       return eventWithWindow(event, window)
     }
 
-    if (event.phase === "focused" || event.phase === "shown" || event.phase === "hidden") {
+    if (
+      event.phase === "focused" ||
+      event.phase === "shown" ||
+      event.phase === "hidden" ||
+      event.phase === "closeRequested"
+    ) {
       const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
       return Option.isNone(window)
         ? eventWithoutWindow(event)

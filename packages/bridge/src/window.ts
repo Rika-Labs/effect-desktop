@@ -76,7 +76,14 @@ const WindowTrafficLights = Schema.Struct({
 })
 const WindowProgressState = Schema.Literals(["none", "normal", "indeterminate", "paused", "error"])
 const WindowAttentionType = Schema.Literals(["critical", "informational"])
-const WindowRegistryEventPhase = Schema.Literals(["opened", "shown", "hidden", "focused", "closed"])
+const WindowRegistryEventPhase = Schema.Literals([
+  "opened",
+  "shown",
+  "hidden",
+  "focused",
+  "closeRequested",
+  "closed"
+])
 const UInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const WindowResourcePayload = Schema.Struct({
   kind: Schema.Literal("window"),

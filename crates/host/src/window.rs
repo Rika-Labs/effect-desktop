@@ -2128,6 +2128,22 @@ impl WindowRegistry {
         }
     }
 
+    fn emit_native_window_close_requested(&self, native_window_id: WindowId) {
+        let Some(window_id) = self.window_id_by_native_id.get(&native_window_id).cloned() else {
+            return;
+        };
+        if let Err(error) =
+            emit_window_registry_event(&window_id, WindowRegistryEventPhase::CloseRequested)
+        {
+            warn!(
+                event = "host.window.event_emit_failed",
+                error = ?error,
+                window_id,
+                "failed to emit native window close-requested event"
+            );
+        }
+    }
+
     #[cfg_attr(test, allow(dead_code))]
     fn native_window_close_requested_to_background(&mut self, native_window_id: WindowId) {
         let Some(window_id) = self.window_id_by_native_id.get(&native_window_id).cloned() else {
@@ -4929,6 +4945,7 @@ fn handle_native_window_close_requested(
     registry: &mut WindowRegistry,
     native_window_id: WindowId,
 ) -> WindowLifecycleEvent {
+    registry.emit_native_window_close_requested(native_window_id);
     match resident_lifecycle::window_close_action() {
         ResidentWindowCloseAction::DestroyAndExit => {
             registry.native_window_close_requested(native_window_id);
@@ -5579,7 +5596,10 @@ mod tests {
             .contains_key(&native_window_id));
         assert!(registry.window_order.is_empty());
         assert_eq!(registry.focused_window_id, None);
-        let event = receiver
+        let close_requested_event = receiver
+            .recv()
+            .expect("window event receiver should receive close-requested event");
+        let closed_event = receiver
             .recv()
             .expect("window event receiver should receive close event");
         assert!(receiver.try_recv().is_err());
@@ -5589,7 +5609,28 @@ mod tests {
             window_id,
             payload,
             ..
-        } = event
+        } = close_requested_event
+        else {
+            panic!("expected window registry event envelope");
+        };
+        assert_eq!(method, host_protocol::WINDOW_EVENT);
+        assert_eq!(window_id.as_deref(), Some("window-1"));
+        assert_eq!(
+            payload.expect("window event should include payload"),
+            serde_json::json!({
+                "type": "window-registry-event",
+                "phase": "closeRequested",
+                "windowId": "window-1",
+                "terminal": false
+            })
+        );
+
+        let HostProtocolEnvelope::Event {
+            method,
+            window_id,
+            payload,
+            ..
+        } = closed_event
         else {
             panic!("expected window registry event envelope");
         };

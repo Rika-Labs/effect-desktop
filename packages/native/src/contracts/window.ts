@@ -38,7 +38,14 @@ const WindowProgressStateLiteral = Schema.Literals([
   "error"
 ])
 const WindowAttentionTypeLiteral = Schema.Literals(["critical", "informational"])
-const WindowRegistryEventPhase = Schema.Literals(["opened", "shown", "hidden", "focused", "closed"])
+const WindowRegistryEventPhase = Schema.Literals([
+  "opened",
+  "shown",
+  "hidden",
+  "focused",
+  "closeRequested",
+  "closed"
+])
 
 export const WindowResource = ResourceHandleSchema("window", "open")
 export type WindowHandle = ResourceHandle<"window", "open">
