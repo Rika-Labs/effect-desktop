@@ -764,6 +764,29 @@ export {
   type MenuServiceApi
 } from "./menu.js"
 export {
+  makeHostNetworkAuthRpcRuntime,
+  makeNetworkAuthBridgeClientLayer,
+  makeNetworkAuthClientLayer,
+  makeNetworkAuthMemoryClient,
+  makeNetworkAuthServiceLayer,
+  makeNetworkAuthUnsupportedClient,
+  NetworkAuth,
+  NetworkAuthClient,
+  NetworkAuthHandlersLive,
+  NetworkAuthLive,
+  NetworkAuthMethodNames,
+  NetworkAuthRpcEvents,
+  NetworkAuthRpcs,
+  NetworkAuthSurface,
+  type NetworkAuthClientApi,
+  type NetworkAuthError,
+  type NetworkAuthMemoryClientOptions,
+  type NetworkAuthRpc,
+  type NetworkAuthRpcHandlers,
+  type NetworkAuthServiceApi,
+  type NetworkAuthServiceOptions
+} from "./network-auth.js"
+export {
   Notification,
   NotificationClient,
   NotificationHandlersLive,

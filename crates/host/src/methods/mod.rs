@@ -24,6 +24,7 @@ mod job;
 mod local_tool_runtime;
 mod menu;
 mod native_file_system;
+mod network_auth;
 mod notification;
 mod open_intent;
 mod path;
@@ -1317,6 +1318,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::DOWNLOAD_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(download::is_supported),
+    ),
+    route(
+        host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+        HostMethodDispatcher::Payload(network_auth::set_proxy),
+    ),
+    route(
+        host_protocol::NETWORK_AUTH_HANDLE_AUTH_METHOD,
+        HostMethodDispatcher::Payload(network_auth::handle_auth),
+    ),
+    route(
+        host_protocol::NETWORK_AUTH_HANDLE_CERTIFICATE_METHOD,
+        HostMethodDispatcher::Payload(network_auth::handle_certificate),
+    ),
+    route(
+        host_protocol::NETWORK_AUTH_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(network_auth::is_supported),
     ),
 ];
 

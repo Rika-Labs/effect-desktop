@@ -2159,6 +2159,100 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "NetworkAuth.handleAuth",
+      "surface": "NetworkAuth",
+      "method": "handleAuth",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-network-auth-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-network-auth-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-network-auth-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-network-auth-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "NetworkAuth.handleCertificate",
+      "surface": "NetworkAuth",
+      "method": "handleCertificate",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-network-auth-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-network-auth-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-network-auth-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-network-auth-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "NetworkAuth.isSupported",
+      "surface": "NetworkAuth",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "NetworkAuth.setProxy",
+      "surface": "NetworkAuth",
+      "method": "setProxy",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-network-auth-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-network-auth-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-network-auth-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-network-auth-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Notification.close",
       "surface": "Notification",
       "method": "close",
@@ -5099,11 +5193,11 @@
     }
   ],
   "summary": {
-    "total": 277,
-    "routed": 277,
+    "total": 281,
+    "routed": 281,
     "missing": 0,
-    "supported": 145,
+    "supported": 146,
     "partial": 70,
-    "unsupported": 62
+    "unsupported": 65
   }
 }

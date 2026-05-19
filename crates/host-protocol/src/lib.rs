@@ -364,6 +364,11 @@ pub const DOWNLOAD_CANCEL_METHOD: &str = "Download.cancel";
 pub const DOWNLOAD_LIST_METHOD: &str = "Download.list";
 pub const DOWNLOAD_IS_SUPPORTED_METHOD: &str = "Download.isSupported";
 pub const DOWNLOAD_EVENT: &str = "Download.Event";
+pub const NETWORK_AUTH_SET_PROXY_METHOD: &str = "NetworkAuth.setProxy";
+pub const NETWORK_AUTH_HANDLE_AUTH_METHOD: &str = "NetworkAuth.handleAuth";
+pub const NETWORK_AUTH_HANDLE_CERTIFICATE_METHOD: &str = "NetworkAuth.handleCertificate";
+pub const NETWORK_AUTH_IS_SUPPORTED_METHOD: &str = "NetworkAuth.isSupported";
+pub const NETWORK_AUTH_EVENT: &str = "NetworkAuth.Event";
 pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
@@ -10440,6 +10445,262 @@ impl DownloadEventPayload {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum NetworkAuthProxyModePayload {
+    Direct,
+    System,
+    Fixed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum NetworkAuthDecisionPayload {
+    Allow,
+    Deny,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum NetworkAuthDecisionKindPayload {
+    HttpAuth,
+    Certificate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum NetworkAuthEventPhasePayload {
+    ProxyUpdated,
+    AuthDecided,
+    CertificateDecided,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthSetProxyPayload {
+    profile: SessionProfileResourcePayload,
+    mode: NetworkAuthProxyModePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    bypass: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NetworkAuthSetProxyPayload {
+    pub fn new(profile: SessionProfileResourcePayload, mode: NetworkAuthProxyModePayload) -> Self {
+        Self {
+            profile,
+            mode,
+            server: None,
+            bypass: Vec::new(),
+            trace_id: None,
+        }
+    }
+
+    pub fn with_server(mut self, server: impl Into<String>) -> Self {
+        self.server = Some(server.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthProxyResultPayload {
+    profile: SessionProfileResourcePayload,
+    mode: NetworkAuthProxyModePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server: Option<String>,
+    bypass: Vec<String>,
+}
+
+impl NetworkAuthProxyResultPayload {
+    pub fn new(profile: SessionProfileResourcePayload, mode: NetworkAuthProxyModePayload) -> Self {
+        Self {
+            profile,
+            mode,
+            server: None,
+            bypass: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthHttpAuthPayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    origin: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    realm: Option<String>,
+    decision: NetworkAuthDecisionPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NetworkAuthHttpAuthPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        decision: NetworkAuthDecisionPayload,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            origin: origin.into(),
+            realm: None,
+            decision,
+            username: None,
+            password: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_credentials(
+        mut self,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
+        self.username = Some(username.into());
+        self.password = Some(password.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthCertificatePayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    origin: String,
+    fingerprint_sha256: String,
+    decision: NetworkAuthDecisionPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NetworkAuthCertificatePayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        fingerprint_sha256: impl Into<String>,
+        decision: NetworkAuthDecisionPayload,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            origin: origin.into(),
+            fingerprint_sha256: fingerprint_sha256.into(),
+            decision,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthDecisionRecordPayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    origin: String,
+    kind: NetworkAuthDecisionKindPayload,
+    decision: NetworkAuthDecisionPayload,
+    decided_at: u64,
+}
+
+impl NetworkAuthDecisionRecordPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        kind: NetworkAuthDecisionKindPayload,
+        decision: NetworkAuthDecisionPayload,
+        decided_at: u64,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            origin: origin.into(),
+            kind,
+            decision,
+            decided_at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl NetworkAuthSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: NetworkAuthEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<NetworkAuthDecisionPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl NetworkAuthEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: NetworkAuthEventPhasePayload,
+        profile: SessionProfileResourcePayload,
+    ) -> Self {
+        Self {
+            r#type: "network-auth-event".to_string(),
+            timestamp,
+            phase,
+            profile,
+            request_id: None,
+            origin: None,
+            decision: None,
+            message: None,
+        }
+    }
+
+    pub fn with_decision(
+        mut self,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        decision: NetworkAuthDecisionPayload,
+    ) -> Self {
+        self.request_id = Some(request_id.into());
+        self.origin = Some(origin.into());
+        self.decision = Some(decision);
+        self
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceIndexEventPayload {
@@ -12950,23 +13211,26 @@ mod tests {
         NativeFileSystemStatPayload, NativeFileSystemStopWatchingPayload,
         NativeFileSystemStopWatchingResultPayload, NativeFileSystemSupportedPayload,
         NativeFileSystemWatchPayload, NativeFileSystemWatchResultPayload,
-        NotificationActionEventPayload, NotificationActionPayload, NotificationClickEventPayload,
-        NotificationPermissionPayload, NotificationPermissionStatePayload,
-        NotificationResourcePayload, NotificationShowPayload, NotificationSupportedPayload,
-        PowerMonitorIsSupportedPayload, PowerMonitorMethodPayload, PowerMonitorReasonEventPayload,
-        PowerMonitorSourceChangedEventPayload, PowerMonitorSourcePayload,
-        PowerMonitorSupportedPayload, ProtocolDenyPayload, ProtocolRegisterAppProtocolPayload,
-        ProtocolServeAssetPayload, ProtocolServeRoutePayload, RealtimeMediaDeviceKind,
-        RealtimeMediaDeviceStateEventPayload, RealtimeMediaDeviceStatePayload,
-        RealtimeMediaInterruptionEventPayload, RealtimeMediaInterruptionReason,
-        RealtimeMediaPermissionState, RealtimeMediaPermissionStateEventPayload,
-        RealtimeMediaSessionIdentityPayload, RealtimeMediaSessionInterruptPayload,
-        RealtimeMediaSessionSelectDevicePayload, RealtimeMediaSessionState,
-        RealtimeMediaSessionStateEventPayload, RealtimeMediaSessionSupportedPayload,
-        RecentDocumentPayload, RecentDocumentsAddPayload, RecentDocumentsEventPayload,
-        RecentDocumentsEventPhasePayload, RecentDocumentsListResultPayload,
-        RendererResumeDeniedPayload, RendererResumeDeniedReason, RendererResumePayload,
-        RendererResumedPayload, ResidentLifecycleBackgroundAvailability,
+        NetworkAuthCertificatePayload, NetworkAuthDecisionKindPayload, NetworkAuthDecisionPayload,
+        NetworkAuthDecisionRecordPayload, NetworkAuthEventPayload, NetworkAuthEventPhasePayload,
+        NetworkAuthHttpAuthPayload, NetworkAuthProxyModePayload, NetworkAuthProxyResultPayload,
+        NetworkAuthSetProxyPayload, NetworkAuthSupportedPayload, NotificationActionEventPayload,
+        NotificationActionPayload, NotificationClickEventPayload, NotificationPermissionPayload,
+        NotificationPermissionStatePayload, NotificationResourcePayload, NotificationShowPayload,
+        NotificationSupportedPayload, PowerMonitorIsSupportedPayload, PowerMonitorMethodPayload,
+        PowerMonitorReasonEventPayload, PowerMonitorSourceChangedEventPayload,
+        PowerMonitorSourcePayload, PowerMonitorSupportedPayload, ProtocolDenyPayload,
+        ProtocolRegisterAppProtocolPayload, ProtocolServeAssetPayload, ProtocolServeRoutePayload,
+        RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
+        RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
+        RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
+        RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
+        RealtimeMediaSessionInterruptPayload, RealtimeMediaSessionSelectDevicePayload,
+        RealtimeMediaSessionState, RealtimeMediaSessionStateEventPayload,
+        RealtimeMediaSessionSupportedPayload, RecentDocumentPayload, RecentDocumentsAddPayload,
+        RecentDocumentsEventPayload, RecentDocumentsEventPhasePayload,
+        RecentDocumentsListResultPayload, RendererResumeDeniedPayload, RendererResumeDeniedReason,
+        RendererResumePayload, RendererResumedPayload, ResidentLifecycleBackgroundAvailability,
         ResidentLifecycleDisablePayload, ResidentLifecycleEnablePayload,
         ResidentLifecycleEventPayload, ResidentLifecycleEventPhase, ResidentLifecyclePolicyPayload,
         ResidentLifecycleProcessPolicy, ResidentLifecycleStatePayload,
@@ -16233,6 +16497,91 @@ mod tests {
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-download-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn network_auth_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        assert_eq!(
+            serde_json::to_string(
+                &NetworkAuthSetProxyPayload::new(
+                    profile.clone(),
+                    NetworkAuthProxyModePayload::Fixed
+                )
+                .with_server("http://proxy.example.test:8080")
+            )
+            .expect("set proxy payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"mode":"fixed","server":"http://proxy.example.test:8080"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NetworkAuthProxyResultPayload::new(
+                profile.clone(),
+                NetworkAuthProxyModePayload::System
+            ))
+            .expect("proxy result should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"mode":"system","bypass":[]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NetworkAuthHttpAuthPayload::new(
+                    profile.clone(),
+                    "auth-request-1",
+                    "https://example.test",
+                    NetworkAuthDecisionPayload::Allow
+                )
+                .with_credentials("user", "secret")
+            )
+            .expect("http auth payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"auth-request-1","origin":"https://example.test","decision":"allow","username":"user","password":"secret"}"#
+        );
+        let fingerprint = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert_eq!(
+            serde_json::to_string(&NetworkAuthCertificatePayload::new(
+                profile.clone(),
+                "cert-request-1",
+                "https://example.test",
+                fingerprint,
+                NetworkAuthDecisionPayload::Deny
+            ))
+            .expect("certificate payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"cert-request-1","origin":"https://example.test","fingerprintSha256":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","decision":"deny"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NetworkAuthDecisionRecordPayload::new(
+                profile.clone(),
+                "cert-request-1",
+                "https://example.test",
+                NetworkAuthDecisionKindPayload::Certificate,
+                NetworkAuthDecisionPayload::Allow,
+                1710000000000
+            ))
+            .expect("decision record should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"cert-request-1","origin":"https://example.test","kind":"certificate","decision":"allow","decidedAt":1710000000000}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NetworkAuthEventPayload::new(
+                    1710000000001,
+                    NetworkAuthEventPhasePayload::CertificateDecided,
+                    profile
+                )
+                .with_decision(
+                    "cert-request-1",
+                    "https://example.test",
+                    NetworkAuthDecisionPayload::Allow
+                )
+            )
+            .expect("event should encode"),
+            r#"{"type":"network-auth-event","timestamp":1710000000001,"phase":"certificate-decided","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"cert-request-1","origin":"https://example.test","decision":"allow"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NetworkAuthSupportedPayload::unsupported(
+                "host-network-auth-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-network-auth-unavailable"}"#
         );
     }
 

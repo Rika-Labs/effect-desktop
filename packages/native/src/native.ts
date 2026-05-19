@@ -34,6 +34,7 @@ import { WorkspaceIndexSurface } from "./workspace-index.js"
 import { DockSurface } from "./dock.js"
 import { GlobalShortcutSurface } from "./global-shortcut.js"
 import { MenuSurface } from "./menu.js"
+import { NetworkAuthSurface } from "./network-auth.js"
 import { NotificationSurface } from "./notification.js"
 import { PathSurface } from "./path.js"
 import { PowerMonitorSurface } from "./power-monitor.js"
@@ -86,6 +87,7 @@ const BuiltInSurfaces = Object.freeze([
   DockSurface,
   GlobalShortcutSurface,
   MenuSurface,
+  NetworkAuthSurface,
   NotificationSurface,
   PathSurface,
   PowerMonitorSurface,
@@ -144,6 +146,7 @@ const WorkspaceIndex = WorkspaceIndexSurface.selection
 const Dock = DockSurface.selection
 const GlobalShortcut = GlobalShortcutSurface.selection
 const Menu = MenuSurface.selection
+const NetworkAuth = NetworkAuthSurface.selection
 const Notification = NotificationSurface.selection
 const Path = PathSurface.selection
 const PowerMonitor = PowerMonitorSurface.selection
@@ -202,6 +205,7 @@ export const Permissions = Object.freeze({
   dock: DockSurface.permissions,
   globalShortcut: GlobalShortcutSurface.permissions,
   menu: MenuSurface.permissions,
+  networkAuth: NetworkAuthSurface.permissions,
   notification: NotificationSurface.permissions,
   path: PathSurface.permissions,
   powerMonitor: PowerMonitorSurface.permissions,
@@ -255,6 +259,7 @@ export const Native = Object.freeze({
   Dock,
   GlobalShortcut,
   Menu,
+  NetworkAuth,
   Notification,
   Path,
   PowerMonitor,

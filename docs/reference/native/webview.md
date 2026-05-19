@@ -104,8 +104,11 @@ This is not a full isolated-world implementation; platform WebView engines still
 own the native JavaScript context model.
 
 Proxy configuration, HTTP authentication challenges, and certificate decisions
-are also not part of `WebView`. Those hooks are absent; adding them would
-require a new network-auth service and host adapter.
+are also not part of `WebView`. `NetworkAuth` now exposes typed proxy,
+HTTP-auth, certificate-decision, and event contracts scoped to
+`SessionProfileHandle`, but the host adapter is still validation-first
+unsupported until profile-bound WebViews can route provider network-auth
+callbacks through retained native resources.
 
 Browser permission prompts are not handled by `WebView` today. Camera,
 microphone, notifications, geolocation, clipboard, and display-capture
