@@ -108,6 +108,35 @@ fn host_binary_verifies_resident_lifecycle_close_to_background() {
     );
 }
 
+#[test]
+fn host_binary_verifies_app_quit_lifecycle_exit() {
+    let output = Command::new(env!("CARGO_BIN_EXE_host"))
+        .arg("--app-quit-smoke-test")
+        .output()
+        .expect("host binary should execute app quit smoke");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let process_output = format!("{stdout}{stderr}");
+
+    assert!(
+        output.status.success(),
+        "host exited with status {:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        output.status.code()
+    );
+    assert!(
+        process_output.contains("event=\"host.app_lifecycle.quit_smoke_verified\""),
+        "process output did not contain app quit smoke event\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("event=\"host.window.exit_requested\""),
+        "process output did not contain window exit event\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("source=\"app-quit\""),
+        "process output did not contain app quit exit source\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn host_binary_verifies_system_appearance_on_main_thread() {

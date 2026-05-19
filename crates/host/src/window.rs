@@ -53,13 +53,16 @@ pub(crate) enum RunMode {
     WindowSmokeTest,
     ResidentLifecycleSmokeTest,
     SystemAppearanceSmokeTest,
+    AppQuitSmokeTest,
 }
 
 impl RunMode {
     pub(crate) fn is_smoke_test(self) -> bool {
         matches!(
             self,
-            RunMode::WindowSmokeTest | RunMode::ResidentLifecycleSmokeTest
+            RunMode::WindowSmokeTest
+                | RunMode::ResidentLifecycleSmokeTest
+                | RunMode::AppQuitSmokeTest
         )
     }
 }
@@ -3111,6 +3114,9 @@ impl WindowRegistry {
                     Ok(created) if matches!(mode, RunMode::ResidentLifecycleSmokeTest) => {
                         self.run_resident_lifecycle_smoke(created.window_id())
                     }
+                    Ok(created) if matches!(mode, RunMode::AppQuitSmokeTest) => {
+                        self.run_app_quit_smoke(created.window_id())
+                    }
                     _ => lifecycle_for_create_result(
                         &result.clone().map(WindowCommandResponse::Created),
                     ),
@@ -3592,6 +3598,26 @@ impl WindowRegistry {
             "resident lifecycle close-to-background smoke verified"
         );
         WindowLifecycleEvent::SmokeExitRequested
+    }
+
+    fn run_app_quit_smoke(&self, window_id: &str) -> WindowLifecycleEvent {
+        if !self.windows.contains_key(window_id) {
+            warn!(
+                event = "host.app_lifecycle.quit_smoke_failed",
+                window_id,
+                reason = "missing-window",
+                "app quit smoke could not find created window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        }
+
+        info!(
+            event = "host.app_lifecycle.quit_smoke_verified",
+            window_id,
+            exit_code = 0,
+            "app quit smoke verified"
+        );
+        WindowLifecycleEvent::AppQuitRequested(0)
     }
 }
 

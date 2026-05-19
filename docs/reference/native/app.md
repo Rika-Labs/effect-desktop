@@ -16,6 +16,8 @@ The Rust host implements `App.quit` by requesting event-loop exit and
 `App.focus` by focusing the current native window. The Rust host also
 implements `App.requestSingleInstanceLock` with a process-held OS file lock and
 returns the primary process id when another process already owns the lock.
+The host binary includes `--app-quit-smoke-test` to verify the live startup
+window can exit through the app-quit lifecycle path.
 Process restart, second-instance handoff, and native lifecycle event sources
 are still unsupported until the host owns those lifecycle controls.
 `Association` owns OS-level protocol and file association contracts.
