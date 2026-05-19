@@ -110,6 +110,12 @@ Pick these first as one foundation batch:
 
 This batch creates the invariant. The rest of the roadmap should be implemented against it.
 
+## Architecture Debt Follow-Ups
+
+| Issue | Status | Why here |
+| ----: | ------ | -------- |
+| #1421 Remove Window `windowRpc` helper | Open | Removes a shallow `NativeSurface.rpc` wrapper that spans the Window parity surface and will simplify later Window lifecycle, bounds, chrome, and state tickets. |
+
 ## Execution Progress
 
 | Issue                                                          | Status      | Evidence                                                                                                                                                                                             |
