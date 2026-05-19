@@ -134,11 +134,15 @@ Window lookup is backed by host-routed native methods. `getCurrent` returns the 
 
 `Window.events()` exposes the typed runtime-router window event stream to renderer clients through `Window.Event`. Events are ordered by router publication order and use the router's sliding drop-oldest buffer with no replay. Registry events use `type: "window-registry-event"`: `opened`, `shown`, `hidden`, `focused`, and `closeRequested` are non-terminal, and `closed` is terminal for that window id. State events use `type: "window-state-event"` and carry `{ minimized, maximized, fullscreen, simpleFullscreen }`. Bounds events use `type: "window-bounds-event"` and carry the current logical `{ x, y, width, height }`. Event subscription is gated by the internal `Window.subscribeEvents` native permission before the bridge opens the stream, so denial is observable and audit-backed through `PermissionRegistry`. Host-originated `opened` events register a live `ResourceRegistry` window handle when one is not already known, host-originated non-terminal visibility/focus/close-request events attach a live handle when one is still registered, host-originated terminal `closed` events close the live window scope when one exists, and host-originated state and bounds events attach the fresh handle when the window is still registered. The Rust host publishes `Window.Event` for native open, explicit show/hide commands, OS-confirmed focus, native close requests, destroy transitions, native move/resize notifications, and state snapshots after successful state commands; it queues `closeRequested` events before applying the existing close policy.
 
-The lifecycle surface is not complete. `show`, `hide`, `focus`, `destroy`, and
-compatibility `close` are host-routed, and `Window.Event` reports opened,
-shown, hidden, focused, `closeRequested`, and closed registry phases. Effect
-Desktop does not yet expose a portable `blur` command or an OS close-request
-veto/confirm contract.
+The lifecycle surface is complete for the portable Tao primitives Effect
+Desktop can route today. `show`, `hide`, `focus`, `destroy`, and compatibility
+`close` are host-routed, and `Window.Event` reports opened, shown, hidden,
+focused, `closeRequested`, and closed registry phases. Installed Tao 0.35.2
+exposes `set_visible`, `set_focus`, focus observation, and `CloseRequested`
+events; it does not expose a portable `blur` command or a close-request
+veto/confirm decision API. Effect Desktop therefore does not add a `blur`
+method or a close-request confirmation facade that would promise unsupported
+host behavior.
 
 `Window.create({ parent })` creates a child or owned window at host creation time. The parent must be a fresh `WindowHandle` from the same runtime; stale or unknown handles fail before host transport. The bridge sends the host `parentWindowId`, and the native host applies Tao's creation-time ownership where supported: macOS uses the parent `NSWindow`; Windows uses an owned window relationship. Hosts without a Tao parent/owner primitive return `Unsupported` when a parent is requested. `Window.getParent(child)` returns the fresh parent handle when the host still tracks one and `undefined` for root windows. `Window.getChildren(parent)` returns fresh child handles that are still open and registered. Destroying a known parent through `Window.destroy` or compatibility `Window.close` closes registered children before destroying the parent so resource scopes and `windowClosed` events are deterministic in tests and host-backed runtimes.
 
@@ -153,9 +157,9 @@ core operations it names.
 
 Dynamic parent changes, a separate modal flag, host-backed ownership-specific
 events, portable traffic-light placement beyond macOS, non-macOS shadow and
-transparency controls, macOS skip-taskbar behavior, blur, OS-originated
-simple-fullscreen change events, and a separate close-vs-destroy host lifecycle
-remain reserved for later phases.
+transparency controls, macOS skip-taskbar behavior, host-specific blur,
+OS-originated simple-fullscreen change events, and a separate close-vs-destroy
+host lifecycle remain reserved for later phases.
 
 ## Errors
 
