@@ -514,7 +514,7 @@ const RuntimeProviders = [
     id: "bun" as const,
     budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
     layer: Effect.tryPromise({
-      try: async () => (await import("../providers/bun.js")).BunRuntimeProviderLayer,
+      try: () => import("../providers/bun.js").then((mod) => mod.BunRuntimeProviderLayer),
       catch: (cause) => runtimeProviderLoadError("bun", cause)
     }),
     label: "Bun runtime provider"
@@ -523,7 +523,7 @@ const RuntimeProviders = [
     id: "node" as const,
     budget: providerBudget("node", "@effect/platform-node", "@effect-desktop/core/providers/node"),
     layer: Effect.tryPromise({
-      try: async () => (await import("../providers/node.js")).NodeRuntimeProviderLayer,
+      try: () => import("../providers/node.js").then((mod) => mod.NodeRuntimeProviderLayer),
       catch: (cause) => runtimeProviderLoadError("node", cause)
     }),
     label: "Node runtime provider"
@@ -532,7 +532,7 @@ const RuntimeProviders = [
     id: "test" as const,
     budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
     layer: Effect.tryPromise({
-      try: async () => (await import("../providers/test.js")).TestRuntimeProviderLayer,
+      try: () => import("../providers/test.js").then((mod) => mod.TestRuntimeProviderLayer),
       catch: (cause) => runtimeProviderLoadError("test", cause)
     }),
     label: "Test runtime provider"
