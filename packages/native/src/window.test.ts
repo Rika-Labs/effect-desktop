@@ -34,6 +34,14 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
       { platform: "linux", status: "unsupported" }
     ]
   })
+  expect(rpcSupport(request("Window.setShadow"))).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
   expect(rpcSupport(request("Window.setAlwaysOnTop"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setSkipTaskbar"))).toMatchObject({
     status: "partial",
@@ -51,7 +59,6 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   expect(rpcSupport(request("Window.restore"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.setFullscreen"))).toEqual({ status: "supported" })
   expect(rpcSupport(request("Window.getState"))).toEqual({ status: "supported" })
-  expect(WindowRpcs.requests.has("Window.setShadow")).toBe(false)
 })
 
 const request = (tag: string): Rpc.Any => {

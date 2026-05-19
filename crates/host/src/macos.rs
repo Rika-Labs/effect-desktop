@@ -161,6 +161,13 @@ pub(crate) fn set_vibrancy(
     platform::set_vibrancy(window, material)
 }
 
+pub(crate) fn set_shadow(
+    window: &Window,
+    has_shadow: bool,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_shadow(window, has_shadow)
+}
+
 pub(crate) fn set_dock_badge_label(
     window: &Window,
     label: Option<String>,
@@ -278,6 +285,14 @@ mod platform {
                 host_protocol::WINDOW_SET_VIBRANCY_METHOD,
             )
         })
+    }
+
+    pub(super) fn set_shadow(
+        window: &Window,
+        has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        WindowExtMacOS::set_has_shadow(window, has_shadow);
+        Ok(())
     }
 
     pub(super) fn set_dock_badge_label(
@@ -469,6 +484,16 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "window vibrancy is only supported on macOS",
             host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        ))
+    }
+
+    pub(super) fn set_shadow(
+        _window: &Window,
+        _has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window shadow control is only supported on macOS",
+            host_protocol::WINDOW_SET_SHADOW_METHOD,
         ))
     }
 

@@ -344,6 +344,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::set_vibrancy),
     ),
     route(
+        host_protocol::WINDOW_SET_SHADOW_METHOD,
+        HostMethodDispatcher::Window(window::set_shadow),
+    ),
+    route(
         host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
         HostMethodDispatcher::Window(window::set_always_on_top),
     ),
@@ -3818,6 +3822,11 @@ mod tests {
                 host_protocol::WINDOW_SET_VIBRANCY_METHOD,
                 serde_json::json!({ "windowId": "window-1", "material": "windowBackground" }),
             ),
+            (
+                "request-window-set-shadow",
+                host_protocol::WINDOW_SET_SHADOW_METHOD,
+                serde_json::json!({ "windowId": "window-1", "hasShadow": false }),
+            ),
         ] {
             let response = router
                 .dispatch_at(request_with_payload(id, method, payload), 1710000000112)
@@ -3841,6 +3850,7 @@ mod tests {
         );
         assert_eq!(fake.resizable(), vec![("window-1".to_string(), false)]);
         assert_eq!(fake.decorations(), vec![("window-1".to_string(), true)]);
+        assert_eq!(fake.shadows(), vec![("window-1".to_string(), false)]);
     }
 
     #[test]
@@ -7024,6 +7034,7 @@ mod tests {
         titles: Mutex<Vec<(String, String)>>,
         resizable: Mutex<Vec<(String, bool)>>,
         decorations: Mutex<Vec<(String, bool)>>,
+        shadows: Mutex<Vec<(String, bool)>>,
         always_on_top: Mutex<Vec<(String, bool)>>,
         skip_taskbar: Mutex<Vec<(String, bool)>>,
         progress: Mutex<Vec<host_protocol::WindowSetProgressPayload>>,
@@ -7052,6 +7063,7 @@ mod tests {
                 titles: Mutex::new(Vec::new()),
                 resizable: Mutex::new(Vec::new()),
                 decorations: Mutex::new(Vec::new()),
+                shadows: Mutex::new(Vec::new()),
                 always_on_top: Mutex::new(Vec::new()),
                 skip_taskbar: Mutex::new(Vec::new()),
                 progress: Mutex::new(Vec::new()),
@@ -7125,6 +7137,13 @@ mod tests {
             self.decorations
                 .lock()
                 .expect("fake decorations requests should lock")
+                .clone()
+        }
+
+        fn shadows(&self) -> Vec<(String, bool)> {
+            self.shadows
+                .lock()
+                .expect("fake shadow requests should lock")
                 .clone()
         }
 
@@ -7334,6 +7353,14 @@ mod tests {
         }
 
         fn set_vibrancy(&self, _window_id: &str, _material: &str) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_shadow(&self, window_id: &str, has_shadow: bool) -> Result<(), HostProtocolError> {
+            self.shadows
+                .lock()
+                .expect("fake shadow requests should lock")
+                .push((window_id.to_string(), has_shadow));
             Ok(())
         }
 

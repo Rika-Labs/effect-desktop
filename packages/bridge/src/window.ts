@@ -29,6 +29,7 @@ import {
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_SHADOW_METHOD,
   WINDOW_SET_SKIP_TASKBAR_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
@@ -216,6 +217,13 @@ export class WindowSetVibrancyPayload extends Schema.Class<WindowSetVibrancyPayl
   material: WindowVibrancyMaterial
 }) {}
 
+export class WindowSetShadowPayload extends Schema.Class<WindowSetShadowPayload>(
+  "WindowSetShadowPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  hasShadow: Schema.Boolean
+}) {}
+
 export class WindowSetAlwaysOnTopPayload extends Schema.Class<WindowSetAlwaysOnTopPayload>(
   "WindowSetAlwaysOnTopPayload"
 )({
@@ -339,6 +347,10 @@ export interface HostWindowClient {
   readonly setVibrancy: (
     windowId: string,
     material: WindowVibrancyInput
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setShadow: (
+    windowId: string,
+    hasShadow: boolean
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly setAlwaysOnTop: (
     windowId: string,
@@ -516,6 +528,14 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
+    setShadow: (windowId, hasShadow) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetShadowPayload(windowId, hasShadow)
+        const request = yield* makeRequest(WINDOW_SET_SHADOW_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     setAlwaysOnTop: (windowId, alwaysOnTop) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetAlwaysOnTopPayload(windowId, alwaysOnTop)
@@ -652,6 +672,7 @@ const decodeUnknownWindowSetTrafficLightsPayload = Schema.decodeUnknownSync(
   WindowSetTrafficLightsPayload
 )
 const decodeUnknownWindowSetVibrancyPayload = Schema.decodeUnknownSync(WindowSetVibrancyPayload)
+const decodeUnknownWindowSetShadowPayload = Schema.decodeUnknownSync(WindowSetShadowPayload)
 const decodeUnknownWindowSetAlwaysOnTopPayload = Schema.decodeUnknownSync(
   WindowSetAlwaysOnTopPayload
 )
@@ -754,6 +775,15 @@ const encodeSetVibrancyPayload = (
   Effect.try({
     try: () => decodeUnknownWindowSetVibrancyPayload({ windowId, material }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_VIBRANCY_METHOD)
+  })
+
+const encodeSetShadowPayload = (
+  windowId: string,
+  hasShadow: boolean
+): Effect.Effect<WindowSetShadowPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowSetShadowPayload({ windowId, hasShadow }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_SHADOW_METHOD)
   })
 
 const encodeSetAlwaysOnTopPayload = (

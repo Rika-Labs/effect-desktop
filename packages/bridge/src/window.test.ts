@@ -32,6 +32,7 @@ import {
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_SHADOW_METHOD,
   WINDOW_SET_SKIP_TASKBAR_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
@@ -326,17 +327,20 @@ test("host window client requests mutable chrome commands", async () => {
       "request-window-set-resizable",
       "request-window-set-decorations",
       "request-window-set-traffic-lights",
-      "request-window-set-vibrancy"
+      "request-window-set-vibrancy",
+      "request-window-set-shadow"
     ]),
     nextTraceId: nextId([
       "trace-window-set-title",
       "trace-window-set-resizable",
       "trace-window-set-decorations",
       "trace-window-set-traffic-lights",
-      "trace-window-set-vibrancy"
+      "trace-window-set-vibrancy",
+      "trace-window-set-shadow"
     ]),
     now: nextNumber([
-      1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019, 1_710_000_000_020
+      1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019, 1_710_000_000_020,
+      1_710_000_000_021
     ])
   })
 
@@ -347,6 +351,7 @@ test("host window client requests mutable chrome commands", async () => {
       yield* client.setDecorations("window-1", true)
       yield* client.setTrafficLights("window-1", { x: 12, y: 13 })
       yield* client.setVibrancy("window-1", "windowBackground")
+      yield* client.setShadow("window-1", false)
     })
   )
 
@@ -355,7 +360,8 @@ test("host window client requests mutable chrome commands", async () => {
     [WINDOW_SET_RESIZABLE_METHOD, { windowId: "window-1", resizable: false }],
     [WINDOW_SET_DECORATIONS_METHOD, { windowId: "window-1", decorations: true }],
     [WINDOW_SET_TRAFFIC_LIGHTS_METHOD, { windowId: "window-1", trafficLights: { x: 12, y: 13 } }],
-    [WINDOW_SET_VIBRANCY_METHOD, { windowId: "window-1", material: "windowBackground" }]
+    [WINDOW_SET_VIBRANCY_METHOD, { windowId: "window-1", material: "windowBackground" }],
+    [WINDOW_SET_SHADOW_METHOD, { windowId: "window-1", hasShadow: false }]
   ])
 })
 

@@ -8,9 +8,9 @@ use host_protocol::{
     WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
     WindowParentResponse, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
     WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
-    WindowSetProgressPayload, WindowSetResizablePayload, WindowSetSkipTaskbarPayload,
-    WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowSetVibrancyPayload,
-    WindowStatePayload,
+    WindowSetProgressPayload, WindowSetResizablePayload, WindowSetShadowPayload,
+    WindowSetSkipTaskbarPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
+    WindowSetVibrancyPayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -213,6 +213,16 @@ pub(crate) fn set_vibrancy(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_vibrancy_payload(payload)?;
     handler.set_vibrancy(payload.window_id(), payload.material())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_shadow(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_shadow_payload(payload)?;
+    handler.set_shadow(payload.window_id(), payload.has_shadow())?;
 
     Ok(None)
 }
@@ -668,6 +678,40 @@ fn decode_set_vibrancy_payload(
             "payload",
             "material must be non-empty",
             host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_shadow_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetShadowPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_shadow_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_SHADOW_METHOD
+            ),
+            host_protocol::WINDOW_SET_SHADOW_METHOD,
+        )),
+    }
+}
+
+fn decode_set_shadow_payload(payload: Value) -> Result<WindowSetShadowPayload, HostProtocolError> {
+    let payload: WindowSetShadowPayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_SET_SHADOW_METHOD,
+        )
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_SHADOW_METHOD,
         ));
     }
     Ok(payload)

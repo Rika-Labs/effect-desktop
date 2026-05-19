@@ -32,6 +32,7 @@ import {
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_SHADOW_METHOD,
   WINDOW_SET_SKIP_TASKBAR_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
@@ -747,6 +748,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "setDecorations",
   "setTrafficLights",
   "setVibrancy",
+  "setShadow",
   "setAlwaysOnTop",
   "setSkipTaskbar",
   "setProgress",
@@ -8194,6 +8196,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setDecorations",
     "Window.setTrafficLights",
     "Window.setVibrancy",
+    "Window.setShadow",
     "Window.setAlwaysOnTop",
     "Window.setSkipTaskbar",
     "Window.setProgress",
@@ -8230,6 +8233,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.setDecorations"]
     void client["Window.setTrafficLights"]
     void client["Window.setVibrancy"]
+    void client["Window.setShadow"]
     void client["Window.setAlwaysOnTop"]
     void client["Window.setSkipTaskbar"]
     void client["Window.setProgress"]
@@ -8264,6 +8268,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setDecorations",
     "Window.setTrafficLights",
     "Window.setVibrancy",
+    "Window.setShadow",
     "Window.setAlwaysOnTop",
     "Window.setSkipTaskbar",
     "Window.setProgress",
@@ -8380,6 +8385,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     setTrafficLights: (_window, trafficLights) =>
       recordVoid(calls, `setTrafficLights:${trafficLights.x},${trafficLights.y}`),
     setVibrancy: (_window, material) => recordVoid(calls, `setVibrancy:${material}`),
+    setShadow: (_window, hasShadow) => recordVoid(calls, `setShadow:${hasShadow}`),
     setAlwaysOnTop: (_window, alwaysOnTop) => recordVoid(calls, `setAlwaysOnTop:${alwaysOnTop}`),
     setSkipTaskbar: (_window, skipTaskbar) => recordVoid(calls, `setSkipTaskbar:${skipTaskbar}`),
     setProgress: (_window, input) => recordVoid(calls, `setProgress:${input.progress ?? ""}`),
@@ -8431,6 +8437,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.setDecorations(created, true)
       yield* window.setTrafficLights(created, { x: 12, y: 13 })
       yield* window.setVibrancy(created, "windowBackground")
+      yield* window.setShadow(created, false)
       yield* window.setAlwaysOnTop(created, true)
       yield* window.setSkipTaskbar(created, true)
       yield* window.setProgress(created, { state: "normal", progress: 42 })
@@ -8484,6 +8491,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "setDecorations:true",
     "setTrafficLights:12,13",
     "setVibrancy:windowBackground",
+    "setShadow:false",
     "setAlwaysOnTop:true",
     "setSkipTaskbar:true",
     "setProgress:42",
@@ -8539,6 +8547,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-decorations-request",
       "set-traffic-lights-request",
       "set-vibrancy-request",
+      "set-shadow-request",
       "set-always-on-top-request",
       "set-skip-taskbar-request",
       "set-progress-request",
@@ -8565,6 +8574,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-decorations-trace",
       "set-traffic-lights-trace",
       "set-vibrancy-trace",
+      "set-shadow-trace",
       "set-always-on-top-trace",
       "set-skip-taskbar-trace",
       "set-progress-trace",
@@ -8582,7 +8592,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       1_710_000_000_005, 1_710_000_000_006, 1_710_000_000_007, 1_710_000_000_008, 1_710_000_000_009,
       1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
       1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019,
-      1_710_000_000_020, 1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023
+      1_710_000_000_020, 1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024
     ])
   })
   const program = Effect.gen(function* () {
@@ -8611,6 +8621,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     yield* window.setDecorations(created, true)
     yield* window.setTrafficLights(created, { x: 12, y: 13 })
     yield* window.setVibrancy(created, "windowBackground")
+    yield* window.setShadow(created, false)
     yield* window.setAlwaysOnTop(created, true)
     yield* window.setSkipTaskbar(created, true)
     yield* window.setProgress(created, {
@@ -8745,6 +8756,13 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       {
         windowId: "host-window-1",
         material: "windowBackground"
+      }
+    ],
+    [
+      WINDOW_SET_SHADOW_METHOD,
+      {
+        windowId: "host-window-1",
+        hasShadow: false
       }
     ],
     [
@@ -10568,6 +10586,7 @@ test("host WindowClient adapter exposes only supported callable methods", async 
   expect("center" in client).toBe(true)
   expect("centerOnDisplay" in client).toBe(true)
   expect("setVibrancy" in client).toBe(true)
+  expect("setShadow" in client).toBe(true)
 })
 
 test("Window bridge client rejects invalid chrome inputs before crossing the host boundary", async () => {
@@ -11793,6 +11812,7 @@ const noopWindowClient: WindowClientApi = {
   setDecorations: () => Effect.void,
   setTrafficLights: () => Effect.void,
   setVibrancy: () => Effect.void,
+  setShadow: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
   setSkipTaskbar: () => Effect.void,
   setProgress: () => Effect.void,

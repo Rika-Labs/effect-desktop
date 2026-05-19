@@ -64,6 +64,7 @@ pub const WINDOW_SET_RESIZABLE_METHOD: &str = "Window.setResizable";
 pub const WINDOW_SET_DECORATIONS_METHOD: &str = "Window.setDecorations";
 pub const WINDOW_SET_TRAFFIC_LIGHTS_METHOD: &str = "Window.setTrafficLights";
 pub const WINDOW_SET_VIBRANCY_METHOD: &str = "Window.setVibrancy";
+pub const WINDOW_SET_SHADOW_METHOD: &str = "Window.setShadow";
 pub const WINDOW_SET_ALWAYS_ON_TOP_METHOD: &str = "Window.setAlwaysOnTop";
 pub const WINDOW_SET_SKIP_TASKBAR_METHOD: &str = "Window.setSkipTaskbar";
 pub const WINDOW_SET_PROGRESS_METHOD: &str = "Window.setProgress";
@@ -3491,6 +3492,30 @@ impl WindowSetVibrancyPayload {
 
     pub fn material(&self) -> &str {
         &self.material
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetShadowPayload {
+    window_id: String,
+    has_shadow: bool,
+}
+
+impl WindowSetShadowPayload {
+    pub fn new(window_id: impl Into<String>, has_shadow: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            has_shadow,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn has_shadow(&self) -> bool {
+        self.has_shadow
     }
 }
 
@@ -11700,12 +11725,13 @@ mod tests {
         WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
         WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
         WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
-        WindowSetResizablePayload, WindowSetSkipTaskbarPayload, WindowSetTitlePayload,
-        WindowSetTrafficLightsPayload, WindowSetVibrancyPayload, WindowStateEventPayload,
-        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
-        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
-        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
-        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSkipTaskbarPayload,
+        WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowSetVibrancyPayload,
+        WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
+        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
+        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
         CRASH_REPORTER_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS,
@@ -13050,6 +13076,14 @@ mod tests {
             serde_json::to_string(&set_vibrancy)
                 .expect("window set vibrancy payload should encode"),
             r#"{"windowId":"window-1","material":"windowBackground"}"#
+        );
+
+        let set_shadow = WindowSetShadowPayload::new("window-1", false);
+        assert_eq!(set_shadow.window_id(), "window-1");
+        assert!(!set_shadow.has_shadow());
+        assert_eq!(
+            serde_json::to_string(&set_shadow).expect("window set shadow payload should encode"),
+            r#"{"windowId":"window-1","hasShadow":false}"#
         );
 
         let set_always_on_top = WindowSetAlwaysOnTopPayload::new("window-1", true);

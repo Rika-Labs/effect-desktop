@@ -41,6 +41,7 @@ const windowClient: WindowClientApi = {
   setDecorations: () => Effect.void,
   setTrafficLights: () => Effect.void,
   setVibrancy: () => Effect.void,
+  setShadow: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
   setSkipTaskbar: () => Effect.void,
   setProgress: () => Effect.void,

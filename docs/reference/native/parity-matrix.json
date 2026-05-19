@@ -4133,6 +4133,33 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setShadow",
+      "surface": "Window",
+      "method": "setShadow",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "shadow-macos-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "shadow-macos-only"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "shadow-macos-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.setSkipTaskbar",
       "surface": "Window",
       "method": "setSkipTaskbar",
@@ -4285,11 +4312,11 @@
     }
   ],
   "summary": {
-    "total": 232,
-    "routed": 232,
+    "total": 233,
+    "routed": 233,
     "missing": 0,
     "supported": 121,
-    "partial": 36,
+    "partial": 37,
     "unsupported": 75
   }
 }

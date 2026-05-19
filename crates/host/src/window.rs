@@ -142,6 +142,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         material: &str,
     ) -> std::result::Result<(), HostProtocolError>;
 
+    fn set_shadow(
+        &self,
+        window_id: &str,
+        has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
     fn set_always_on_top(
         &self,
         window_id: &str,
@@ -363,6 +369,11 @@ enum WindowCommand {
     SetVibrancy {
         window_id: String,
         material: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetShadow {
+        window_id: String,
+        has_shadow: bool,
         reply: Sender<WindowCommandReply>,
     },
     SetAlwaysOnTop {
@@ -1036,6 +1047,21 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_VIBRANCY_METHOD)
+    }
+
+    fn set_shadow(
+        &self,
+        window_id: &str,
+        has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetShadow {
+            window_id: window_id.to_string(),
+            has_shadow,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_SHADOW_METHOD)
     }
 
     fn set_always_on_top(
@@ -2223,6 +2249,21 @@ impl WindowRegistry {
         macos::set_vibrancy(&resources._window, material)
     }
 
+    fn set_shadow(
+        &self,
+        window_id: &str,
+        has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_SHADOW_METHOD,
+            ));
+        };
+
+        macos::set_shadow(&resources._window, has_shadow)
+    }
+
     fn set_always_on_top(
         &self,
         window_id: &str,
@@ -3030,6 +3071,17 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_vibrancy(&window_id, &material)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetShadow {
+                window_id,
+                has_shadow,
+                reply,
+            } => {
+                let result = self
+                    .set_shadow(&window_id, has_shadow)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
