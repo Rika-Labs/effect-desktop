@@ -114,11 +114,13 @@ agreement covers host-commanded state, but the adapter does not yet confirm
 that an OS or compositor accepted the requested transition when the platform can
 silently refuse it.
 
-The z-order and attention surface is not complete Electron-style window chrome.
-Effect Desktop exposes `setSkipTaskbar` on Windows and Linux, but does not yet
-expose macOS skip-taskbar behavior, window-scoped badge, flash, or attention
-lifecycle events. Existing progress and attention controls must be treated as
-host-routed best-effort operations with platform-specific scope limits.
+The z-order and attention surface is intentionally narrower than Electron-style
+window chrome. Effect Desktop exposes explicit window-scoped z-order,
+skip-taskbar, progress, and attention commands where the host can route them.
+Badge controls live on the app/taskbar-scoped `Dock` surface rather than on
+individual `Window` handles. There is no separate flash command: the portable
+host primitive is `requestAttention`, and cancellation remains best-effort with
+platform-specific scope limits.
 
 Window lookup is backed by host-routed native methods. `getCurrent` returns the focused tracked window, `getById` returns a tracked open window by id, `list` returns tracked open windows in host creation order, `getParent` returns the tracked parent window for a child created with `Window.create({ parent })`, and `getChildren` returns the tracked child windows for a parent. The runtime validates host lookup results against its live `ResourceRegistry` handles, so a destroyed window is removed from lookup before `Window.destroy` or compatibility `Window.close` completes.
 
@@ -136,7 +138,7 @@ This is not a complete modal ownership API. Effect Desktop does not yet expose a
 `WindowOwnership` service, runtime `setParent`, modal enable/disable, owner
 lookup, or a host event stream dedicated to ownership changes.
 
-Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, portable traffic-light placement beyond macOS, non-macOS shadow and transparency controls, macOS skip-taskbar behavior, badge, flash, blur, OS-originated simple-fullscreen change events, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
+Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, portable traffic-light placement beyond macOS, non-macOS shadow and transparency controls, macOS skip-taskbar behavior, blur, OS-originated simple-fullscreen change events, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
 
 ## Errors
 
