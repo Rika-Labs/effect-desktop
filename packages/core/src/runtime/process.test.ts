@@ -1,7 +1,4 @@
 import { expect, test } from "bun:test"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 
 import {
   HostProtocolBackpressureOverflowError,
@@ -19,9 +16,11 @@ import {
   Effect,
   Exit,
   Fiber,
+  FileSystem,
   Layer,
   ManagedRuntime,
   Option,
+  Path,
   PlatformError,
   Schedule,
   Schema,
@@ -1055,10 +1054,10 @@ if (process.platform !== "win32") {
     Effect.runPromise(
       runScoped(
         Effect.gen(function* () {
-          const directory = yield* Effect.promise(() =>
-            mkdtemp(join(tmpdir(), "effect-desktop-process-"))
-          )
-          const pidFile = join(directory, "children.txt")
+          const fs = yield* FileSystem.FileSystem
+          const pathService = yield* Path.Path
+          const directory = yield* fs.makeTempDirectory({ prefix: "effect-desktop-process-" })
+          const pidFile = pathService.join(directory, "children.txt")
           const fixture = yield* makeFixture(undefined, { gracefulShutdownMs: 50 })
           try {
             yield* fixture.service.spawn(
@@ -1078,7 +1077,7 @@ if (process.platform !== "win32") {
 
             expect(childPids).toHaveLength(2)
           } finally {
-            yield* Effect.promise(() => rm(directory, { force: true, recursive: true }))
+            yield* fs.remove(directory, { force: true, recursive: true })
           }
         }),
         BunServices.layer
@@ -1373,10 +1372,11 @@ const fixedClock = (timestamp: number): Clock.Clock => ({
 
 const waitForChildPids = (
   path: string
-): Effect.Effect<readonly number[], ProcessWaitUntilTimeout> =>
+): Effect.Effect<readonly number[], ProcessWaitUntilTimeout, FileSystem.FileSystem> =>
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
     let pids: readonly number[] = []
-    const readPids = Effect.tryPromise(() => readFile(path, "utf-8")).pipe(
+    const readPids = fs.readFileString(path, "utf8").pipe(
       Effect.map((contents) => {
         pids = contents
           .trim()
@@ -1386,7 +1386,7 @@ const waitForChildPids = (
         return pids.length === 2 && pids.every(Number.isSafeInteger)
       }),
       Effect.catch((error) =>
-        isNodeErrorCode((error as { cause?: unknown }).cause, "ENOENT")
+        error._tag === "PlatformError" && error.reason._tag === "NotFound"
           ? Effect.succeed(false)
           : Effect.die(error)
       )

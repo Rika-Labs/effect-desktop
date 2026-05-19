@@ -1,12 +1,10 @@
 import { expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
 import { spawn } from "node:child_process"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { Effect, Schema } from "effect"
+import { BunServices } from "@effect/platform-bun"
+import { Effect, FileSystem, ManagedRuntime, Path, Schema } from "effect"
 import {
   decodeHostProtocolFrame,
   HOST_PING_METHOD,
@@ -24,7 +22,18 @@ import {
   WINDOW_SMOKE_TEST_ENV
 } from "./window-supervisor.js"
 
-const PACKAGE_ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)))
+const BunServicesRuntime = ManagedRuntime.make(BunServices.layer)
+
+const runWithBun = <A, E>(
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>
+): Effect.Effect<A, E, never> =>
+  Effect.promise(() => BunServicesRuntime.runPromise(effect)) as Effect.Effect<A, E, never>
+
+const pathService = BunServicesRuntime.runSync(Path.Path.asEffect())
+
+const join = (...segments: readonly string[]): string => pathService.join(...segments)
+
+const PACKAGE_ROOT = pathService.resolve(fileURLToPath(new URL("../..", import.meta.url)))
 
 const RuntimeReadyEvent = Schema.Struct({
   event: Schema.Literal("runtime.ready"),
@@ -115,22 +124,27 @@ test("runtime normal launch rejects launch when no startup windows are declared"
 test("runtime entry can open startup windows from the Desktop app module", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-runtime-"))
+      const directory = yield* runWithBun(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          return yield* fs.makeTempDirectory({ prefix: "effect-desktop-runtime-" })
+        }).pipe(Effect.orDie)
       )
       const modulePath = join(directory, "app.ts")
-      const coreSpecifier = pathToFileURL(resolve(PACKAGE_ROOT, "src/index.ts")).href
-      yield* Effect.promise(() =>
-        writeFile(
-          modulePath,
-          [
-            `import { Desktop } from ${encodeUnknownJson(coreSpecifier)}`,
-            "export default Desktop.make({",
-            '  windows: Desktop.window("main", { title: "Module Notes", width: 960, height: 640, renderer: "/" })',
-            "})"
-          ].join("\n"),
-          "utf8"
-        )
+      const coreSpecifier = pathToFileURL(pathService.resolve(PACKAGE_ROOT, "src/index.ts")).href
+      yield* runWithBun(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          yield* fs.writeFileString(
+            modulePath,
+            [
+              `import { Desktop } from ${encodeUnknownJson(coreSpecifier)}`,
+              "export default Desktop.make({",
+              '  windows: Desktop.window("main", { title: "Module Notes", width: 960, height: 640, renderer: "/" })',
+              "})"
+            ].join("\n")
+          )
+        }).pipe(Effect.orDie)
       )
 
       try {
@@ -150,7 +164,12 @@ test("runtime entry can open startup windows from the Desktop app module", () =>
           WINDOW_DESTROY_METHOD
         ])
       } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        yield* runWithBun(
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem
+            yield* fs.remove(directory, { recursive: true, force: true })
+          }).pipe(Effect.orDie)
+        )
       }
     })
   ))
@@ -158,8 +177,11 @@ test("runtime entry can open startup windows from the Desktop app module", () =>
 test("runtime entry runs from a Node-targeted build", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-runtime-node-"))
+      const directory = yield* runWithBun(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          return yield* fs.makeTempDirectory({ prefix: "effect-desktop-runtime-node-" })
+        }).pipe(Effect.orDie)
       )
       const outfile = join(directory, "runtime-main.js")
 
@@ -195,7 +217,12 @@ test("runtime entry runs from a Node-targeted build", () =>
           WINDOW_DESTROY_METHOD
         ])
       } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        yield* runWithBun(
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem
+            yield* fs.remove(directory, { recursive: true, force: true })
+          }).pipe(Effect.orDie)
+        )
       }
     })
   ))

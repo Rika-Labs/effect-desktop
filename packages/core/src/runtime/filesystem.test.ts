@@ -1,17 +1,4 @@
-import {
-  link as hardLink,
-  lstat as nodeLstat,
-  mkdir as mkdirOnDisk,
-  mkdtemp,
-  readFile,
-  realpath,
-  stat as nodeStat,
-  symlink
-} from "node:fs/promises"
-import { join } from "node:path"
-import { tmpdir } from "node:os"
-
-import { BunFileSystem } from "@effect/platform-bun"
+import { BunFileSystem, BunPath, BunServices } from "@effect/platform-bun"
 import {
   HostProtocolPermissionDeniedError,
   type HostProtocolSymlinkEscapesRootError
@@ -27,12 +14,20 @@ import {
   Layer,
   ManagedRuntime,
   Option,
+  Path,
   Queue,
   Schedule,
   Schema,
   Stream
 } from "effect"
 import * as PlatformError from "effect/PlatformError"
+
+const BunServicesRuntime = ManagedRuntime.make(BunServices.layer)
+
+const runWithBun = <A, E>(
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>
+): Effect.Effect<A, E, never> =>
+  Effect.promise(() => BunServicesRuntime.runPromise(effect)) as Effect.Effect<A, E, never>
 
 import {
   FilesystemStatResult,
@@ -64,7 +59,7 @@ test("Filesystem reads and writes bytes through typed Effects", () =>
       const bytes = yield* service.read(path)
 
       expect(new TextDecoder().decode(bytes)).toBe("hello")
-      expect(yield* Effect.promise(() => readFile(path, "utf8"))).toBe("hello")
+      expect(yield* readFileString(path)).toBe("hello")
     })
   ))
 
@@ -79,7 +74,7 @@ test("Filesystem writeAtomic roundtrips a large payload", () =>
 
       yield* service.writeAtomic(path, bytes)
 
-      expect(yield* Effect.promise(() => readFile(path))).toEqual(Buffer.from(bytes))
+      expect(yield* readFileBytes(path)).toEqual(bytes)
     })
   ))
 
@@ -186,7 +181,7 @@ test("Filesystem stat preserves symlink identity", () =>
       const service = yield* makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
       yield* Effect.promise(() => Bun.write(target, "target"))
-      yield* Effect.promise(() => symlink(target, link))
+      yield* symlink(target, link)
       const result = yield* service.stat(link)
 
       expect(result.path).toMatch(/link$/)
@@ -204,7 +199,7 @@ test("Filesystem stat does not follow symlink targets outside the root", () =>
       const service = yield* makeTestFilesystem({ permissions: { readRoots: [allowed] } })
 
       yield* Effect.promise(() => Bun.write(target, "outside-target"))
-      yield* Effect.promise(() => symlink(target, link))
+      yield* symlink(target, link)
       const result = yield* service.stat(link)
 
       expect(result.path).toMatch(/link$/)
@@ -222,7 +217,7 @@ test("Filesystem mkdir and remove perform basic directory operations", () =>
       const service = yield* makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
       yield* service.mkdir(path)
-      expect((yield* Effect.promise(() => nodeStat(path))).isDirectory()).toBe(true)
+      expect((yield* statInfo(path)).type).toBe("Directory")
 
       yield* service.remove(path)
       const exit = yield* Effect.exit(service.stat(path))
@@ -239,7 +234,7 @@ test("Filesystem recursive mkdir authorizes nested missing paths under an allowe
 
       yield* service.mkdir(path, { recursive: true })
 
-      expect((yield* Effect.promise(() => nodeStat(path))).isDirectory()).toBe(true)
+      expect((yield* statInfo(path)).type).toBe("Directory")
     })
   ))
 
@@ -252,13 +247,13 @@ test("Filesystem remove deletes directory symlinks without following them", () =
       const service = yield* makeTestFilesystem({ permissions: allowFilesystemRoot(directory) })
 
       yield* service.mkdir(target)
-      yield* Effect.promise(() => symlink(target, link))
+      yield* symlink(target, link)
 
       yield* service.remove(link)
 
       const linkExit = yield* Effect.exit(service.stat(link))
       expectFailureTag(linkExit, "FileNotFound")
-      expect((yield* Effect.promise(() => nodeStat(target))).isDirectory()).toBe(true)
+      expect((yield* statInfo(target)).type).toBe("Directory")
     })
   ))
 
@@ -271,12 +266,12 @@ test("Filesystem remove authorizes the directory entry being deleted", () =>
       const link = join(outside, "link.txt")
       const service = yield* makeTestFilesystem({ permissions: { deleteRoots: [allowed] } })
       yield* Effect.promise(() => Bun.write(target, "target"))
-      yield* Effect.promise(() => symlink(target, link))
+      yield* symlink(target, link)
 
       const exit = yield* Effect.exit(service.remove(link))
 
       expectFailureTag(exit, "PermissionDenied")
-      expect((yield* Effect.promise(() => nodeLstat(link))).isSymbolicLink()).toBe(true)
+      expect(yield* isSymlink(link)).toBe(true)
     })
   ))
 
@@ -469,7 +464,7 @@ test("Filesystem allows writes inside configured write roots", () =>
 
       yield* service.write(path, new TextEncoder().encode("allowed"))
 
-      expect(yield* Effect.promise(() => readFile(path, "utf8"))).toBe("allowed")
+      expect(yield* readFileString(path)).toBe("allowed")
     })
   ))
 
@@ -494,7 +489,7 @@ test("Filesystem denies recursive remove without the recursive delete capability
       const directory = yield* tempDirectory()
       const path = join(directory, "nested")
       const service = yield* makeTestFilesystem({ permissions: { deleteRoots: [directory] } })
-      yield* Effect.promise(() => mkdirOnDisk(path))
+      yield* mkdirOnDisk(path)
 
       const exit = yield* Effect.exit(service.remove(path, { recursive: true }))
 
@@ -510,7 +505,7 @@ test("Filesystem allows recursive remove with delete root and recursive capabili
       const service = yield* makeTestFilesystem({
         permissions: { deleteRoots: [directory], allowRecursiveRemove: true }
       })
-      yield* Effect.promise(() => mkdirOnDisk(path))
+      yield* mkdirOnDisk(path)
 
       yield* service.remove(path, { recursive: true })
 
@@ -527,14 +522,14 @@ test("Filesystem canonicalizes symlink targets before permission checks", () =>
       const target = join(denied, "target.txt")
       const link = join(allowed, "link.txt")
       yield* Effect.promise(() => Bun.write(target, "secret"))
-      yield* Effect.promise(() => symlink(target, link))
+      yield* symlink(target, link)
       const service = yield* makeTestFilesystem({ permissions: { readRoots: [allowed] } })
 
       const exit = yield* Effect.exit(service.read(link))
 
       expectFailureTag(exit, "SymlinkEscapesRoot")
-      const resolved1 = yield* Effect.promise(() => realpath(target))
-      const allowedReal1 = yield* Effect.promise(() => realpath(allowed))
+      const resolved1 = yield* realpath(target)
+      const allowedReal1 = yield* realpath(allowed)
       yield* expectSymlinkEscapesRoot(exit, {
         requested: link,
         resolved: resolved1,
@@ -553,15 +548,15 @@ test("Filesystem reports SymlinkEscapesRoot for intermediate symlink escapes", (
       const linkDirectory = join(allowed, "linkdir")
       const linkPath = join(linkDirectory, "secret.txt")
       const service = yield* makeTestFilesystem({ permissions: { readRoots: [allowed] } })
-      yield* Effect.promise(() => mkdirOnDisk(targetDirectory))
+      yield* mkdirOnDisk(targetDirectory)
       yield* Effect.promise(() => Bun.write(target, "secret"))
-      yield* Effect.promise(() => symlink(targetDirectory, linkDirectory))
+      yield* symlink(targetDirectory, linkDirectory)
 
       const exit = yield* Effect.exit(service.read(linkPath))
 
       expectFailureTag(exit, "SymlinkEscapesRoot")
-      const resolved2 = yield* Effect.promise(() => realpath(target))
-      const allowedReal2 = yield* Effect.promise(() => realpath(allowed))
+      const resolved2 = yield* realpath(target)
+      const allowedReal2 = yield* realpath(allowed)
       yield* expectSymlinkEscapesRoot(exit, {
         requested: linkPath,
         resolved: resolved2,
@@ -578,11 +573,11 @@ test("Filesystem realpath returns the authorized canonical path", () =>
       const link = join(directory, "link.txt")
       const service = yield* makeTestFilesystem({ permissions: { readRoots: [directory] } })
       yield* Effect.promise(() => Bun.write(target, "target"))
-      yield* Effect.promise(() => symlink(target, link))
+      yield* symlink(target, link)
 
       const resolved = yield* service.realpath(link)
 
-      const realTarget = yield* Effect.promise(() => realpath(target))
+      const realTarget = yield* realpath(target)
       yield* expectSameFilesystemEntry(resolved, realTarget)
     })
   ))
@@ -596,7 +591,7 @@ test("Filesystem realpath returns SymlinkEscapesRoot for symlink escapes", () =>
       const link = join(allowed, "link.txt")
       const service = yield* makeTestFilesystem({ permissions: { readRoots: [allowed] } })
       yield* Effect.promise(() => Bun.write(target, "secret"))
-      yield* Effect.promise(() => symlink(target, link))
+      yield* symlink(target, link)
 
       const exit = yield* Effect.exit(service.realpath(link))
 
@@ -625,7 +620,7 @@ test("Filesystem denies hard-linked files with SymlinkEscapesRoot", () =>
       const linked = join(allowed, "linked.txt")
       const service = yield* makeTestFilesystem({ permissions: { readRoots: [allowed] } })
       yield* Effect.promise(() => Bun.write(target, "secret"))
-      yield* Effect.promise(() => hardLink(target, linked))
+      yield* hardLink(target, linked)
 
       const exit = yield* Effect.exit(service.read(linked))
 
@@ -786,7 +781,86 @@ test("Filesystem watch registers a scope-bound resource and closes on scope clos
   ))
 
 const tempDirectory = (): Effect.Effect<string> =>
-  Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-fs-")))
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.makeTempDirectory({ prefix: "effect-desktop-fs-" })
+    }).pipe(Effect.orDie)
+  )
+
+const BunPathRuntime = ManagedRuntime.make(BunPath.layer)
+const pathService = BunPathRuntime.runSync(Path.Path.asEffect())
+
+const join = (...segments: readonly string[]): string => pathService.join(...segments)
+
+const symlink = (target: string, path: string): Effect.Effect<void> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      yield* fs.symlink(target, path)
+    }).pipe(Effect.orDie)
+  )
+
+const hardLink = (from: string, to: string): Effect.Effect<void> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      yield* fs.link(from, to)
+    }).pipe(Effect.orDie)
+  )
+
+const realpath = (path: string): Effect.Effect<string> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.realPath(path)
+    }).pipe(Effect.orDie)
+  )
+
+const readFileBytes = (path: string): Effect.Effect<Uint8Array> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.readFile(path)
+    }).pipe(Effect.orDie)
+  )
+
+const readFileString = (path: string): Effect.Effect<string> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.readFileString(path, "utf8")
+    }).pipe(Effect.orDie)
+  )
+
+const mkdirOnDisk = (path: string): Effect.Effect<void> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      yield* fs.makeDirectory(path)
+    }).pipe(Effect.orDie)
+  )
+
+const statInfo = (path: string): Effect.Effect<FileSystem.File.Info> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.stat(path)
+    }).pipe(Effect.orDie)
+  )
+
+const isSymlink = (path: string): Effect.Effect<boolean> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.readLink(path).pipe(
+        Effect.match({
+          onFailure: () => false,
+          onSuccess: () => true
+        })
+      )
+    })
+  )
 
 const mockWorkspaceRoot = (): string =>
   process.platform === "win32" ? "C:\\workspace" : "/workspace"
@@ -1138,14 +1212,11 @@ const waitUntil = (predicate: () => boolean): Effect.Effect<void, WaitUntilTimeo
   )
 
 const pathExists = (path: string): Effect.Effect<boolean> =>
-  Effect.tryPromise({
-    try: () => nodeStat(path),
-    catch: () => null
-  }).pipe(
-    Effect.match({
-      onFailure: () => false,
-      onSuccess: () => true
-    })
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.exists(path)
+    }).pipe(Effect.orDie)
   )
 
 function expectFailureTag(exit: Exit.Exit<unknown, unknown>, tag: string): void {
@@ -1206,11 +1277,11 @@ const expectSymlinkEscapesRoot = (
   })
 
 const expectSameFilesystemEntry = (actual: string, expected: string): Effect.Effect<void> =>
-  Effect.promise(() => Promise.all([nodeStat(actual), nodeStat(expected)])).pipe(
+  Effect.all([statInfo(actual), statInfo(expected)]).pipe(
     Effect.tap(([actualStat, expectedStat]) =>
       Effect.sync(() => {
         expect(actualStat.dev).toBe(expectedStat.dev)
-        expect(actualStat.ino).toBe(expectedStat.ino)
+        expect(actualStat.ino).toEqual(expectedStat.ino)
       })
     ),
     Effect.asVoid
