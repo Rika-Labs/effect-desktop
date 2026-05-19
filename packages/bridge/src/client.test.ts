@@ -52,47 +52,52 @@ const ProcessHandle = Schema.Struct({
   state: Schema.Literal("running")
 })
 
-test("makeUnaryDesktopTransportFromBridgeClientExchange adapts unary bridge exchange to Effect RpcClient protocol", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const requests: HostProtocolRequestEnvelope[] = []
-      const Open = Rpc.make("ProjectRpcs.Transport.open", {
-        payload: ProjectOpenInput,
-        success: ProjectOpenOutput,
-        error: ProjectOpenError
-      })
-      const ProjectRpcs = RpcGroup.make(Open)
-      const transport = yield* makeUnaryDesktopTransportFromBridgeClientExchange(
-        responseExchange(requests, { id: "project-1" }),
-        {
-          now: () => 41,
-          nextTraceId: () => "trace-transport"
-        }
-      )
-      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+test("makeUnaryDesktopTransportFromBridgeClientExchange adapts unary bridge exchange to Effect RpcClient protocol", () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const Open = Rpc.make("ProjectRpcs.Transport.open", {
+    payload: ProjectOpenInput,
+    success: ProjectOpenOutput,
+    error: ProjectOpenError
+  })
+  const ProjectRpcs = RpcGroup.make(Open)
+  const setup = makeUnaryDesktopTransportFromBridgeClientExchange(
+    responseExchange(requests, { id: "project-1" }),
+    {
+      now: () => 41,
+      nextTraceId: () => "trace-transport"
+    }
+  ).pipe(
+    Effect.map((transport) =>
+      Layer.effect(RpcClient.Protocol)(
         makeDesktopClientProtocol(transport, { now: () => 42, nextTraceId: () => "trace-rpc" })
       )
+    )
+  )
 
-      const output = yield* Effect.scoped(
-        Effect.gen(function* () {
+  return Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const protocolLayer = yield* setup
+        const output = yield* Effect.gen(function* () {
           const client = yield* RpcClient.make(ProjectRpcs)
           return yield* client["ProjectRpcs.Transport.open"](
             new ProjectOpenInput({ path: "/tmp/project" })
           )
         }).pipe(Effect.provide(protocolLayer))
-      )
 
-      expect(output).toEqual(new ProjectOpenOutput({ id: "project-1" }))
-      expect(requests).toHaveLength(1)
-      expect(requests[0]).toMatchObject({
-        kind: "request",
-        method: "ProjectRpcs.Transport.open",
-        timestamp: 42,
-        payload: { path: "/tmp/project" }
+        expect(output).toEqual(new ProjectOpenOutput({ id: "project-1" }))
+        expect(requests).toHaveLength(1)
+        expect(requests[0]).toMatchObject({
+          kind: "request",
+          method: "ProjectRpcs.Transport.open",
+          timestamp: 42,
+          payload: { path: "/tmp/project" }
+        })
+        expect(requests[0]?.traceId).toBeString()
       })
-      expect(requests[0]?.traceId).toBeString()
-    })
-  ))
+    )
+  )
+})
 
 test("makeUnaryDesktopTransportFromBridgeClientExchange uses the Effect Clock by default", () =>
   Effect.runPromise(
