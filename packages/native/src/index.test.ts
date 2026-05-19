@@ -1906,7 +1906,7 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const webview = yield* WebView
-      const created = yield* webview.create()
+      const created = yield* webview.create(windowHandle)
       yield* webview.loadRoute(created, "/settings")
       yield* webview.loadUrl(created, "https://example.com")
       yield* webview.reload(created)
@@ -1976,7 +1976,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const webview = yield* WebView
-      const created = yield* webview.create({
+      const created = yield* webview.create(windowHandle, {
         url: "app://localhost/settings",
         originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
       })
@@ -2014,6 +2014,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
     [
       "WebView.create",
       {
+        window: windowHandle,
         url: "app://localhost/settings",
         originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
       }
@@ -2041,7 +2042,7 @@ test("WebView captureScreenshot rejects empty byte payloads", async () => {
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
       const client = yield* WebView
-      const created = yield* client.create()
+      const created = yield* client.create(windowHandle)
       return yield* Effect.exit(client.captureScreenshot(created))
     }).pipe(
       Effect.provide(
@@ -2068,6 +2069,7 @@ test("WebView captureScreenshot rejects empty byte payloads", async () => {
     [
       "WebView.create",
       {
+        window: windowHandle,
         url: "app://localhost/",
         originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
       }
@@ -2081,7 +2083,7 @@ test("WebView getNavigationState rejects malformed host output", async () => {
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
       const client = yield* WebView
-      const created = yield* client.create()
+      const created = yield* client.create(windowHandle)
       return yield* Effect.exit(client.getNavigationState(created))
     }).pipe(
       Effect.provide(
@@ -2108,6 +2110,7 @@ test("WebView getNavigationState rejects malformed host output", async () => {
     [
       "WebView.create",
       {
+        window: windowHandle,
         url: "app://localhost/",
         originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
       }
@@ -2144,7 +2147,7 @@ test("WebView bridge client rejects control-byte navigation-blocked reasons", as
   const exit = await runScopedPromiseExit(
     Effect.gen(function* () {
       const webview = yield* WebView
-      yield* webview.create()
+      yield* webview.create(windowHandle)
       return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
     }).pipe(
       Effect.provide(
@@ -2187,7 +2190,7 @@ test("WebView bridge client rejects invalid navigation-blocked event URLs", asyn
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       const webview = yield* WebView
-      yield* webview.create()
+      yield* webview.create(windowHandle)
       return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
     }).pipe(
       Effect.provide(
@@ -2215,7 +2218,7 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
   )
 
   const javascriptCreateExit = await Effect.runPromiseExit(
-    client.create({
+    client.create(windowHandle, {
       url: "javascript:alert(1)",
       originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
     })
@@ -2225,13 +2228,13 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
   )
   const traversalExit = await Effect.runPromiseExit(client.loadRoute(webviewHandle, "../secret"))
   const emptyOriginExit = await Effect.runPromiseExit(
-    client.create({
+    client.create(windowHandle, {
       url: "app://localhost/",
       originPolicy: { allowedOrigins: [""], onDisallowed: "block" }
     })
   )
   const javascriptOriginExit = await Effect.runPromiseExit(
-    client.create({
+    client.create(windowHandle, {
       url: "app://localhost/",
       originPolicy: { allowedOrigins: ["javascript:"], onDisallowed: "block" }
     })

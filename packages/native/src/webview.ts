@@ -21,6 +21,7 @@ import {
   WebViewCapabilityResult,
   WebViewCapabilityInput,
   type WebViewCapabilityOptions,
+  type WebViewCreateNavigationOptions,
   type WebViewCreateOptions,
   WebViewCreateInput,
   type WebViewHandle,
@@ -36,6 +37,7 @@ import {
   WebViewSetNavigationPolicyInput,
   WebViewScreenshot
 } from "./contracts/webview.js"
+import type { WindowHandle } from "./contracts/window.js"
 import { isSupportedImageHeader } from "./contracts/image.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
@@ -216,7 +218,8 @@ export class WebViewClient extends Context.Service<WebViewClient, WebViewClientA
 
 export interface WebViewServiceApi extends Omit<WebViewClientApi, "create" | "capability"> {
   readonly create: (
-    input?: WebViewCreateOptions
+    window: WindowHandle,
+    input?: WebViewCreateNavigationOptions
   ) => Effect.Effect<WebViewHandle, WebViewError, never>
   readonly capability: (
     name: WebViewCapabilityName,
@@ -256,7 +259,10 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
   "WebView.create": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
-      return yield* webview.create(input)
+      return yield* webview.create(input.window, {
+        url: input.url,
+        originPolicy: input.originPolicy
+      })
     }),
   "WebView.loadRoute": (input) =>
     Effect.gen(function* () {
@@ -343,7 +349,8 @@ export const webViewCapability = (
 
 const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
   const service: WebViewServiceApi = {
-    create: (input) => client.create(input ?? defaultWebViewCreateOptions()),
+    create: (window, input) =>
+      client.create({ window: toWindowHandle(window), ...defaultWebViewCreateOptions(input) }),
     loadRoute: (webview, route) => client.loadRoute(webview, route),
     loadUrl: (webview, url) => client.loadUrl(webview, url),
     reload: (webview) => client.reload(webview),
@@ -460,13 +467,24 @@ const subscribeWebViewEvent = (
 ): Stream.Stream<WebViewNavigationBlockedEvent, WebViewError, never> =>
   subscribeNativeEvent(exchange, method, WebViewNavigationBlockedEvent)
 
-const defaultWebViewCreateOptions = (): WebViewCreateOptions => ({
-  url: "app://localhost/",
-  originPolicy: {
+const defaultWebViewCreateOptions = (
+  input?: WebViewCreateNavigationOptions
+): WebViewCreateNavigationOptions => ({
+  url: input?.url ?? "app://localhost/",
+  originPolicy: input?.originPolicy ?? {
     allowedOrigins: ["app://localhost"],
     onDisallowed: "block"
   }
 })
+
+const toWindowHandle = (handle: WindowHandle): WindowHandle =>
+  Object.freeze({
+    kind: handle.kind,
+    id: handle.id,
+    generation: handle.generation,
+    ownerScope: handle.ownerScope,
+    state: handle.state
+  })
 
 const toWebViewHandle = (handle: WebViewHandle): WebViewHandle =>
   Object.freeze({

@@ -4833,11 +4833,19 @@ mod tests {
             "ownerScope": "window:window-1",
             "state": "open"
         });
+        let window = serde_json::json!({
+            "kind": "window",
+            "id": "window-1",
+            "generation": 0,
+            "ownerScope": "runtime:test",
+            "state": "open"
+        });
         for (id, method, payload) in [
             (
                 "request-webview-create",
                 host_protocol::WEBVIEW_CREATE_METHOD,
                 serde_json::json!({
+                    "window": window,
                     "url": "app://localhost/settings",
                     "originPolicy": {
                         "allowedOrigins": ["app://localhost"],
@@ -4901,11 +4909,19 @@ mod tests {
             "ownerScope": "window:window-1",
             "state": "open"
         });
+        let window = serde_json::json!({
+            "kind": "window",
+            "id": "window-1",
+            "generation": 0,
+            "ownerScope": "runtime:test",
+            "state": "open"
+        });
         for (id, method, payload) in [
             (
                 "request-webview-create-invalid-url",
                 host_protocol::WEBVIEW_CREATE_METHOD,
                 serde_json::json!({
+                    "window": window,
                     "url": "file://localhost/secret",
                     "originPolicy": {
                         "allowedOrigins": ["app://localhost"],

@@ -5,7 +5,7 @@
 use host_protocol::HostProtocolError;
 use serde_json::{Map, Value};
 
-const ALLOWED_CREATE_FIELDS: &[&str] = &["url", "originPolicy"];
+const ALLOWED_CREATE_FIELDS: &[&str] = &["window", "url", "originPolicy"];
 const ALLOWED_HANDLE_FIELDS: &[&str] = &["webview"];
 const ALLOWED_LOAD_ROUTE_FIELDS: &[&str] = &["webview", "route"];
 const ALLOWED_LOAD_URL_FIELDS: &[&str] = &["webview", "url"];
@@ -13,6 +13,7 @@ const ALLOWED_POLICY_FIELDS: &[&str] = &["webview", "policy"];
 const ALLOWED_CAPABILITY_FIELDS: &[&str] = &["name", "platform", "mode"];
 const ALLOWED_ORIGIN_POLICY_FIELDS: &[&str] = &["allowedOrigins", "onDisallowed"];
 const ALLOWED_WEBVIEW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
+const ALLOWED_WINDOW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
 
 pub(crate) fn create(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     let payload = required_object(payload, host_protocol::WEBVIEW_CREATE_METHOD)?;
@@ -21,6 +22,7 @@ pub(crate) fn create(payload: Option<Value>) -> Result<Option<Value>, HostProtoc
         ALLOWED_CREATE_FIELDS,
         host_protocol::WEBVIEW_CREATE_METHOD,
     )?;
+    validate_window_handle_field(&payload, host_protocol::WEBVIEW_CREATE_METHOD)?;
     validate_url_field(&payload, "url", host_protocol::WEBVIEW_CREATE_METHOD)?;
     validate_policy_field(
         &payload,
@@ -150,6 +152,47 @@ fn validate_handle_payload(
     let payload = required_object(payload, operation)?;
     validate_allowed_fields(&payload, ALLOWED_HANDLE_FIELDS, operation)?;
     validate_webview_handle_field(&payload, operation)
+}
+
+fn validate_window_handle_field(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    let handle = payload
+        .get("window")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument("window", "must be an object", operation)
+        })?;
+    validate_allowed_fields(handle, ALLOWED_WINDOW_HANDLE_FIELDS, operation)?;
+
+    let kind = handle.get("kind").and_then(Value::as_str).ok_or_else(|| {
+        HostProtocolError::invalid_argument("window.kind", "must be a string", operation)
+    })?;
+    if kind != "window" {
+        return Err(HostProtocolError::invalid_argument(
+            "window.kind",
+            "must be window",
+            operation,
+        ));
+    }
+
+    validate_printable_object_string(handle, "id", "window.id", operation)?;
+    validate_u64_field(handle, "generation", "window.generation", operation)?;
+    validate_printable_object_string(handle, "ownerScope", "window.ownerScope", operation)?;
+
+    let state = handle.get("state").and_then(Value::as_str).ok_or_else(|| {
+        HostProtocolError::invalid_argument("window.state", "must be a string", operation)
+    })?;
+    if state != "open" {
+        return Err(HostProtocolError::invalid_argument(
+            "window.state",
+            "must be open",
+            operation,
+        ));
+    }
+
+    Ok(())
 }
 
 fn validate_webview_handle_field(
@@ -540,9 +583,20 @@ mod tests {
         })
     }
 
+    fn window_handle() -> serde_json::Value {
+        json!({
+            "kind": "window",
+            "id": "window-1",
+            "generation": 0,
+            "ownerScope": "runtime:test",
+            "state": "open"
+        })
+    }
+
     #[test]
     fn create_validates_payload_then_fails_closed() {
         let error = create(Some(json!({
+            "window": window_handle(),
             "url": "app://localhost/settings",
             "originPolicy": {
                 "allowedOrigins": ["app://localhost"],
@@ -557,6 +611,7 @@ mod tests {
     #[test]
     fn create_rejects_blocked_url_schemes_before_unsupported() {
         let error = create(Some(json!({
+            "window": window_handle(),
             "url": "file://localhost/secret",
             "originPolicy": {
                 "allowedOrigins": ["app://localhost"],
@@ -564,6 +619,20 @@ mod tests {
             }
         })))
         .expect_err("dangerous URL should fail");
+
+        assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
+    }
+
+    #[test]
+    fn create_rejects_missing_window_before_unsupported() {
+        let error = create(Some(json!({
+            "url": "app://localhost/settings",
+            "originPolicy": {
+                "allowedOrigins": ["app://localhost"],
+                "onDisallowed": "block"
+            }
+        })))
+        .expect_err("missing window should fail");
 
         assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
     }

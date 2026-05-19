@@ -3,6 +3,7 @@ import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString, BridgeSafeString } from "./strings.js"
 import { ImageMime } from "./image.js"
+import { WindowResource } from "./window.js"
 
 export const WebViewResource = ResourceHandleSchema("webview", "open")
 const WebViewPlatform = Schema.Literals(["macos", "windows", "linux"])
@@ -43,11 +44,13 @@ export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolic
 export type WebViewNavigationPolicyOptions = Schema.Schema.Type<typeof WebViewNavigationPolicy>
 
 export class WebViewCreateInput extends Schema.Class<WebViewCreateInput>("WebViewCreateInput")({
+  window: WindowResource,
   url: WebViewNavigationUrl,
   originPolicy: WebViewNavigationPolicy
 }) {}
 
 export type WebViewCreateOptions = Schema.Schema.Type<typeof WebViewCreateInput>
+export type WebViewCreateNavigationOptions = Omit<WebViewCreateOptions, "window">
 
 export class WebViewHandleInput extends Schema.Class<WebViewHandleInput>("WebViewHandleInput")({
   webview: WebViewResource

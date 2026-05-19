@@ -4246,7 +4246,7 @@
     {
       "name": "WebViewServiceApi",
       "kind": "interface",
-      "signature": "export interface WebViewServiceApi extends Omit<WebViewClientApi, \"create\" | \"capability\"> { readonly create: ( input?: WebViewCreateOptions ) => Effect.Effect<WebViewHandle, WebViewError, never> readonly capability: ( name: WebViewCapabilityName, options?: { readonly mode?: WebViewRuntimeMode; readonly platform?: WebViewPlatform } ) => Effect.Effect<boolean, WebViewError, never> }"
+      "signature": "export interface WebViewServiceApi extends Omit<WebViewClientApi, \"create\" | \"capability\"> { readonly create: ( window: WindowHandle, input?: WebViewCreateNavigationOptions ) => Effect.Effect<WebViewHandle, WebViewError, never> readonly capability: ( name: WebViewCapabilityName, options?: { readonly mode?: WebViewRuntimeMode; readonly platform?: WebViewPlatform } ) => Effect.Effect<boolean, WebViewError, never> }"
     },
     {
       "name": "WebViewSurface",

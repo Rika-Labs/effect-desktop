@@ -11,14 +11,15 @@ effect_version: 4
 Embedded browser views inside desktop windows.
 
 The Rust host currently attaches the application WebView during `Window.create`.
-It does not expose routed `WebView.*` RPC methods yet, so the public `WebView`
-RPC surface is declared but fail-closed in capability metadata until a host
-adapter owns those methods.
+It routes direct `WebView.*` RPC methods through validation-first fail-closed
+handlers, so the public `WebView` RPC surface is declared but remains
+unsupported in capability metadata until a host adapter owns those methods.
 
-Session/profile handles are not exposed today. `WebView.create` has no
-profile/session input, and the host does not retain a browser `WebContext`
-registry that can bind WebViews, cookies, cache, permissions, storage,
-downloads, or requests to a partition.
+`WebView.create` requires an explicit `WindowHandle` owner. Session/profile
+handles are not exposed today; `WebView.create` has no profile/session input,
+and the host does not retain a browser `WebContext` registry that can bind
+WebViews, cookies, cache, permissions, storage, downloads, or requests to a
+partition.
 
 `WebView.NavigationBlocked` is a navigation-policy event, not request/response
 interception. There is no `WebRequest` service yet for ordered interceptors,
@@ -27,14 +28,15 @@ request audit.
 
 Navigation controls are not host-backed today. The TypeScript bridge declares
 `create`, `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, `goForward`, and
-`getNavigationState`, but the Rust host has no routed `WebView.*` navigation
-methods, scoped WebView resource registry, or typed navigation lifecycle event
-stream.
+`getNavigationState`, and the Rust host validates those routed payloads before
+returning typed unsupported errors. The host still has no scoped WebView
+resource registry or typed navigation lifecycle event stream.
 
 Navigation and popup policy is not host-backed today. `setNavigationPolicy` is
-declared in the TypeScript bridge contract, but the Rust host does not route
-`WebView.setNavigationPolicy`, install a native navigation handler, install a
-new-window handler, or connect WebView-originated external opens to
+declared in the TypeScript bridge contract, but the Rust host only validates
+the routed payload before returning unsupported. It does not install a native
+navigation handler, install a new-window handler, or connect WebView-originated
+external opens to
 `Shell.openExternal` policy before a popup is created.
 
 Subframe identity is not exposed today. Effect Desktop has no `WebViewFrames`
@@ -49,10 +51,10 @@ The installed WebView provider exposes some callback ingredients, but they are
 not wired into typed Effect streams or permission decisions.
 
 Document output controls are not host-backed today. `captureScreenshot` exists
-as a declared TypeScript bridge contract, but the Rust host has no
-`WebView.captureScreenshot` route, and Effect Desktop has no `WebViewDocument`
-service for capture-page, print-to-PDF, find-in-page, zoom, or user-agent
-controls.
+as a declared TypeScript bridge contract, but the Rust host only validates the
+routed payload before returning unsupported. Effect Desktop has no
+`WebViewDocument` service for capture-page, print-to-PDF, find-in-page, zoom,
+or user-agent controls.
 
 Inspection controls are not host-backed today. `devtools open` is capability
 metadata only; Effect Desktop has no `WebViewInspection` service,
@@ -92,20 +94,20 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 
 ## Methods
 
-| Method                | Payload                      | Success                  |
-| --------------------- | ---------------------------- | ------------------------ |
-| `create`              | `{ id?, window?, route? }`   | `{ id, window }`         |
-| `loadRoute`           | `{ webview, route }`         | `void`                   |
-| `loadUrl`             | `{ webview, url }`           | `void`                   |
-| `reload`              | `{ webview }`                | `void`                   |
-| `stop`                | `{ webview }`                | `void`                   |
-| `goBack`              | `{ webview }`                | `void`                   |
-| `goForward`           | `{ webview }`                | `void`                   |
-| `getNavigationState`  | `{ webview }`                | navigation state         |
-| `captureScreenshot`   | `{ webview }`                | screenshot data          |
-| `setNavigationPolicy` | `{ webview, policy }`        | `void`                   |
-| `capability`          | `{ name, platform?, mode? }` | `{ supported: boolean }` |
-| `destroy`             | `{ webview }`                | `void`                   |
+| Method                | Payload                         | Success                  |
+| --------------------- | ------------------------------- | ------------------------ |
+| `create`              | `{ window, url, originPolicy }` | webview handle           |
+| `loadRoute`           | `{ webview, route }`            | `void`                   |
+| `loadUrl`             | `{ webview, url }`              | `void`                   |
+| `reload`              | `{ webview }`                   | `void`                   |
+| `stop`                | `{ webview }`                   | `void`                   |
+| `goBack`              | `{ webview }`                   | `void`                   |
+| `goForward`           | `{ webview }`                   | `void`                   |
+| `getNavigationState`  | `{ webview }`                   | navigation state         |
+| `captureScreenshot`   | `{ webview }`                   | screenshot data          |
+| `setNavigationPolicy` | `{ webview, policy }`           | `void`                   |
+| `capability`          | `{ name, platform?, mode? }`    | `{ supported: boolean }` |
+| `destroy`             | `{ webview }`                   | `void`                   |
 
 ## App composition
 
@@ -129,9 +131,11 @@ Desktop.make({
 
 The contract is declared through `WebViewRpcs`. Runtime WebView attachment is
 currently owned by `Window.create`; direct `WebView.*` bridge methods are
-unsupported with `host-adapter-unimplemented` until explicit host routes exist.
+routed through validation-first host handlers and return
+`host-adapter-unimplemented` until explicit host-backed resource ownership
+exists.
 `webViewCapability(...)` remains a local platform and runtime-mode feature
-helper; it does not prove that the direct WebView RPC host path is routed.
+helper; it does not prove that the direct WebView RPC host path is executable.
 Request/response interception is also not part of this surface yet; it requires
 a separate native host adapter.
 Proxy/auth/certificate hooks are likewise absent from the current host-backed
