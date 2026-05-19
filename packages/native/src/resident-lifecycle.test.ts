@@ -12,7 +12,17 @@ import {
   makeResourceRegistry,
   P
 } from "@effect-desktop/core"
-import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
+import {
+  Cause,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  type Layer,
+  ManagedRuntime,
+  Schema,
+  Stream
+} from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 
 import {
@@ -36,7 +46,7 @@ test("ResidentLifecycle enables a scoped resident policy", () =>
       const runtime = yield* configuredRuntime(rows)
       const client = yield* makeResidentLifecycleMemoryClient()
 
-      const result = yield* Effect.provide(
+      const result = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           const state = yield* resident.enable(enableRequest())
@@ -105,13 +115,15 @@ test("ResidentLifecycle bridge client validates before transport and decodes eve
         subscribe: () => Stream.fromIterable([event])
       }
 
-      const result = yield* Effect.provide(
+      const result = yield* runScoped(
         Effect.gen(function* () {
           const client = yield* ResidentLifecycleClient
-          const invalid = JSON.parse(
+          const invalid = yield* decodeJsonString(
             '{"policy":{"process":"keep-running","windows":"close-to-background","background":"assistant"}}'
           )
-          const invalidExit = yield* Effect.exit(client.enable(invalid))
+          const invalidExit = yield* Effect.exit(
+            client.enable(invalid as ResidentLifecycleEnableRequest)
+          )
           const enabled = yield* client.enable(enableRequest())
           const events = yield* client.events().pipe(Stream.take(1), Stream.runCollect)
           return { enabled, events, invalidExit }
@@ -158,13 +170,13 @@ test("ResidentLifecycle rejects malformed policy before client side effects", ()
           }).pipe(Effect.andThen(baseClient.enable(input)))
       }
 
-      const exit = yield* Effect.provide(
+      const exit = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
-          const invalid = JSON.parse(
+          const invalid = yield* decodeJsonString(
             '{"policy":{"process":"keep-running","windows":"close-to-background","background":"assistant","launchAtLogin":true}}'
           )
-          return yield* Effect.exit(resident.enable(invalid))
+          return yield* Effect.exit(resident.enable(invalid as ResidentLifecycleEnableRequest))
         }),
         makeResidentLifecycleServiceLayer(client, runtime)
       )
@@ -194,13 +206,13 @@ test("ResidentLifecycle rejects control-byte trace ids before permission and cli
           }).pipe(Effect.andThen(baseClient.enable(input)))
       }
 
-      const exit = yield* Effect.provide(
+      const exit = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
-          const invalid = JSON.parse(
+          const invalid = yield* decodeJsonString(
             '{"policy":{"process":"keep-running","windows":"close-to-background","background":"tray","launchAtLogin":true},"traceId":"trace\\nforged"}'
           )
-          return yield* Effect.exit(resident.enable(invalid))
+          return yield* Effect.exit(resident.enable(invalid as ResidentLifecycleEnableRequest))
         }),
         makeResidentLifecycleServiceLayer(client, runtime)
       )
@@ -230,13 +242,13 @@ test("ResidentLifecycle rejects invalid resource ownership before client side ef
           }).pipe(Effect.andThen(baseClient.enable(input)))
       }
 
-      const exit = yield* Effect.provide(
+      const exit = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
-          const invalid = JSON.parse(
+          const invalid = yield* decodeJsonString(
             '{"policy":{"process":"keep-running","windows":"close-to-background","background":"tray","launchAtLogin":true},"ownerScope":"   ","traceId":"enable-1"}'
           )
-          return yield* Effect.exit(resident.enable(invalid))
+          return yield* Effect.exit(resident.enable(invalid as ResidentLifecycleEnableRequest))
         }),
         makeResidentLifecycleServiceLayer(client, runtime)
       )
@@ -268,7 +280,7 @@ test("ResidentLifecycle denies before resource registration and client calls", (
           }).pipe(Effect.andThen(baseClient.enable(input)))
       }
 
-      const exit = yield* Effect.provide(
+      const exit = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           return yield* Effect.exit(resident.enable(enableRequest()))
@@ -294,7 +306,7 @@ test("ResidentLifecycle returns typed unsupported failures", () =>
     Effect.gen(function* () {
       const runtime = yield* configuredRuntime([])
 
-      const result = yield* Effect.provide(
+      const result = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           const enable = yield* Effect.exit(resident.enable(enableRequest()))
@@ -323,7 +335,7 @@ test("ResidentLifecycle rejects repeated enable without creating duplicate resou
       const runtime = yield* configuredRuntime([])
       const client = yield* makeResidentLifecycleMemoryClient()
 
-      const result = yield* Effect.provide(
+      const result = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           yield* resident.enable(enableRequest())
@@ -363,7 +375,7 @@ test("ResidentLifecycle concurrent enable creates one resource and one host call
           })
       }
 
-      const result = yield* Effect.provide(
+      const result = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           const fiber = yield* Effect.all(
@@ -408,7 +420,7 @@ test("ResidentLifecycle disable reaches host without a local handle", () =>
           }).pipe(Effect.andThen(baseClient.disable(input)))
       }
 
-      const resources = yield* Effect.provide(
+      const resources = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           yield* resident.enable(enableRequest())
@@ -443,7 +455,7 @@ test("ResidentLifecycle concurrent disable serializes cleanup and reaches host f
           })
       }
 
-      const result = yield* Effect.provide(
+      const result = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           yield* resident.enable(enableRequest())
@@ -483,7 +495,7 @@ test("ResidentLifecycle audit failure rolls back enabled host state", () =>
           }).pipe(Effect.andThen(baseClient.disable(input)))
       }
 
-      const result = yield* Effect.provide(
+      const result = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           const exit = yield* Effect.exit(resident.enable(enableRequest()))
@@ -519,7 +531,7 @@ test("ResidentLifecycle cleans resource on host failure and scope disposal", () 
       })
       const failing = yield* makeResidentLifecycleMemoryClient({ failure: { enable: failure } })
 
-      const failed = yield* Effect.provide(
+      const failed = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           return yield* Effect.exit(resident.enable(enableRequest()))
@@ -542,7 +554,7 @@ test("ResidentLifecycle cleans resource on host failure and scope disposal", () 
             disableCalls += 1
           }).pipe(Effect.andThen(baseClient.disable(input)))
       }
-      const enabled = yield* Effect.provide(
+      const enabled = yield* runScoped(
         Effect.gen(function* () {
           const resident = yield* ResidentLifecycle
           yield* resident.enable(enableRequest())
@@ -612,6 +624,19 @@ const enableRequest = () =>
     }),
     traceId: "enable-1"
   })
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
+  })
+
+const decodeJsonString = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))
 
 const expectExitFailure = <A>(exit: Exit.Exit<A, unknown>, assert: (error: unknown) => void) => {
   expect(Exit.isFailure(exit)).toBe(true)

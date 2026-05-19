@@ -23,9 +23,9 @@ const makeUpdateLayer = (
   httpLayer: Layer.Layer<HttpClient.HttpClient>,
   updaterLayer: ReturnType<typeof makeUpdaterServiceLayer>
 ) =>
-  Layer.mergeAll(
-    UpdateWorkflowLayer.pipe(Layer.provide(Layer.mergeAll(httpLayer, updaterLayer))),
-    WorkflowEngine.layerMemory
+  UpdateWorkflowLayer.pipe(
+    Layer.provide(Layer.mergeAll(httpLayer, updaterLayer)),
+    Layer.provideMerge(WorkflowEngine.layerMemory)
   )
 
 const runScopedExit = <A, E, R>(

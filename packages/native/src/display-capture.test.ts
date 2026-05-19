@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange, HostProtocolInternalError } from "@effect-desktop/bridge"
 import { type AuditEvent, makePermissionRegistry, P } from "@effect-desktop/core"
-import { Cause, Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
+import { Cause, Effect, Exit, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import {
   DisplayCapture,

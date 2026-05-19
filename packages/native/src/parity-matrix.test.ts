@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises"
-import { join } from "node:path"
-
 import { expect, test } from "bun:test"
 import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
 import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
@@ -23,18 +20,22 @@ import {
 } from "./parity-matrix.js"
 import { Native } from "./native.js"
 
-const repoRoot = join(import.meta.dir, "../../..")
-const hostProtocolPath = join(repoRoot, "crates/host-protocol/src/lib.rs")
-const hostRouterPath = join(repoRoot, "crates/host/src/methods/mod.rs")
+const repoRoot = `${import.meta.dir}/../../..`
+const hostProtocolPath = `${repoRoot}/crates/host-protocol/src/lib.rs`
+const hostRouterPath = `${repoRoot}/crates/host/src/methods/mod.rs`
 
 const readRoutedHostMethods = (): Effect.Effect<ReadonlySet<string>, never, never> =>
   Effect.gen(function* () {
-    const protocolSource = yield* Effect.promise(() => readFile(hostProtocolPath, "utf8"))
-    const routerSource = yield* Effect.promise(() => readFile(hostRouterPath, "utf8"))
+    const protocolSource = yield* Effect.promise(() => Bun.file(hostProtocolPath).text())
+    const routerSource = yield* Effect.promise(() => Bun.file(hostRouterPath).text())
     return routedHostMethodsFromSource(protocolSource, routerSource)
   })
 
-const buildNativeParityMatrix = (): Effect.Effect<NativeParityMatrixResultType, never, never> =>
+const buildNativeParityMatrix = (): Effect.Effect<
+  NativeParityMatrixResultType,
+  NativeParityMatrixError,
+  never
+> =>
   Effect.gen(function* () {
     const hostMethods = yield* readRoutedHostMethods()
     return yield* makeNativeParityMatrixResult(Native.all.surfaces, hostMethods)
@@ -46,7 +47,8 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
       const hostMethods = yield* readRoutedHostMethods()
       const result = yield* makeNativeParityMatrixResult(Native.all.surfaces, hostMethods)
 
-      expect(Schema.decodeUnknownSync(NativeParityMatrixResult)(result)).toEqual(result)
+      const decoded = yield* Schema.decodeUnknownEffect(NativeParityMatrixResult)(result)
+      expect(decoded).toEqual(result)
       expect(result.summary.total).toBeGreaterThan(0)
       expect(result.summary.routed).toBeGreaterThan(0)
       expect(result.summary.missing).toBe(0)
@@ -208,9 +210,8 @@ test("NativeHostMethodInventory exposes a schema-typed snapshot", () =>
         makeNativeHostMethodInventoryLayer(["Example.method"])
       )
 
-      expect(Schema.decodeUnknownSync(NativeHostMethodInventorySnapshot)(snapshot)).toEqual(
-        snapshot
-      )
+      const decoded = yield* Schema.decodeUnknownEffect(NativeHostMethodInventorySnapshot)(snapshot)
+      expect(decoded).toEqual(snapshot)
     })
   ))
 
@@ -303,17 +304,22 @@ test("native parity docs and CLI artifact are generated from current source", ()
     Effect.gen(function* () {
       const matrix = yield* buildNativeParityMatrix()
       const committedJson = yield* Effect.promise(() =>
-        readFile(join(repoRoot, "docs/reference/native/parity-matrix.json"), "utf8")
+        Bun.file(`${repoRoot}/docs/reference/native/parity-matrix.json`).text()
       )
       const committedCliJson = yield* Effect.promise(() =>
-        readFile(join(repoRoot, "packages/cli/src/native-parity-matrix.json"), "utf8")
+        Bun.file(`${repoRoot}/packages/cli/src/native-parity-matrix.json`).text()
       )
       const committedMarkdown = yield* Effect.promise(() =>
-        readFile(join(repoRoot, "docs/reference/native/parity-matrix.md"), "utf8")
+        Bun.file(`${repoRoot}/docs/reference/native/parity-matrix.md`).text()
       )
 
-      expect(JSON.parse(committedJson)).toEqual(JSON.parse(JSON.stringify(matrix)))
-      expect(JSON.parse(committedCliJson)).toEqual(JSON.parse(JSON.stringify(matrix)))
+      const JsonString = Schema.fromJsonString(Schema.Unknown)
+      const serializedJson = yield* Schema.encodeEffect(JsonString)(matrix)
+      const serializedMatrix = yield* Schema.decodeEffect(JsonString)(serializedJson)
+      const committedJsonValue = yield* Schema.decodeEffect(JsonString)(committedJson)
+      const committedCliJsonValue = yield* Schema.decodeEffect(JsonString)(committedCliJson)
+      expect(committedJsonValue).toEqual(serializedMatrix)
+      expect(committedCliJsonValue).toEqual(serializedMatrix)
       expect(committedMarkdown).toBe(formatNativeParityMatrixMarkdown(matrix))
     })
   ))
@@ -370,15 +376,15 @@ const testNativeLayer = (
     )
   )
 
-const runScoped = <A, E, R>(
+const runScoped = <A, E, ELayer, R>(
   effect: Effect.Effect<A, E, R>,
-  layer: Layer.Layer<R, never, never>
-): Effect.Effect<A, E, never> =>
+  layer: Layer.Layer<R, ELayer, never>
+): Effect.Effect<A, E | ELayer, never> =>
   Effect.gen(function* () {
     const runtime = ManagedRuntime.make(layer)
     const result = yield* Effect.promise(() => runtime.runPromise(effect))
     yield* Effect.promise(() => runtime.dispose())
-    return result
+    return result as A
   })
 
 const runScopedExit = <A, E, ELayer, R>(
