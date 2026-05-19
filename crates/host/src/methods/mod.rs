@@ -213,7 +213,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::APP_RESTART_METHOD,
-        HostMethodDispatcher::Payload(app::restart),
+        HostMethodDispatcher::Window(app::restart),
     ),
     route(
         host_protocol::APP_FOCUS_METHOD,
@@ -2976,6 +2976,39 @@ mod tests {
             }
         );
         assert_eq!(window.quit(), vec![0]);
+    }
+
+    #[test]
+    fn app_restart_routes_to_window_handler() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-restart",
+                    host_protocol::APP_RESTART_METHOD,
+                    serde_json::json!({ "args": ["--restarted", "safe"] }),
+                ),
+                1710000000125,
+            )
+            .expect("app restart should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-restart".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-restart".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(
+            window.restarts(),
+            vec![vec!["--restarted".to_string(), "safe".to_string()]]
+        );
     }
 
     #[test]
@@ -7086,10 +7119,11 @@ mod tests {
         }
     }
 
-    struct FakeWindowHandler {
+    pub(crate) struct FakeWindowHandler {
         create_result: Result<WindowCreateResponse, HostProtocolError>,
         destroy_result: Result<(), HostProtocolError>,
         quit: Mutex<Vec<u8>>,
+        restarts: Mutex<Vec<Vec<String>>>,
         created: Mutex<Vec<WindowCreateRequest>>,
         shown: Mutex<Vec<String>>,
         hidden: Mutex<Vec<String>>,
@@ -7122,6 +7156,7 @@ mod tests {
                 create_result,
                 destroy_result,
                 quit: Mutex::new(Vec::new()),
+                restarts: Mutex::new(Vec::new()),
                 created: Mutex::new(Vec::new()),
                 shown: Mutex::new(Vec::new()),
                 hidden: Mutex::new(Vec::new()),
@@ -7157,6 +7192,13 @@ mod tests {
             self.quit
                 .lock()
                 .expect("fake quit requests should lock")
+                .clone()
+        }
+
+        pub(crate) fn restarts(&self) -> Vec<Vec<String>> {
+            self.restarts
+                .lock()
+                .expect("fake restart requests should lock")
                 .clone()
         }
 
@@ -7301,12 +7343,26 @@ mod tests {
         }
     }
 
+    impl Default for FakeWindowHandler {
+        fn default() -> Self {
+            Self::new(Ok(WindowCreateResponse::new("window-test")), Ok(()))
+        }
+    }
+
     impl WindowMethodHandler for FakeWindowHandler {
         fn quit(&self, exit_code: u8) -> Result<(), HostProtocolError> {
             self.quit
                 .lock()
                 .expect("fake quit requests should lock")
                 .push(exit_code);
+            Ok(())
+        }
+
+        fn restart(&self, args: &[String]) -> Result<(), HostProtocolError> {
+            self.restarts
+                .lock()
+                .expect("fake restart requests should lock")
+                .push(args.to_vec());
             Ok(())
         }
 

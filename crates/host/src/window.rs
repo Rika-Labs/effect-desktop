@@ -17,6 +17,8 @@ use host_protocol::{
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    fs,
+    process::{Command, Stdio},
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc, LazyLock, Mutex,
@@ -45,6 +47,8 @@ const WINDOW_EXIT_REQUESTED_EVENT: &str = "host.window.exit_requested";
 const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(120);
 const WINDOW_COMMAND_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const WINDOW_SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(150);
+pub(crate) const APP_RESTART_CHILD_SMOKE_TEST_ARG: &str = "--app-restart-child-smoke-test";
+pub(crate) const APP_RESTART_SMOKE_MARKER_ENV: &str = "EFFECT_DESKTOP_APP_RESTART_SMOKE_MARKER";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RunMode {
@@ -55,6 +59,8 @@ pub(crate) enum RunMode {
     SystemAppearanceSmokeTest,
     AppQuitSmokeTest,
     AppFocusSmokeTest,
+    AppRestartSmokeTest,
+    AppRestartChildSmokeTest,
     SingleInstanceLockSmokeTest,
 }
 
@@ -66,6 +72,7 @@ impl RunMode {
                 | RunMode::ResidentLifecycleSmokeTest
                 | RunMode::AppQuitSmokeTest
                 | RunMode::AppFocusSmokeTest
+                | RunMode::AppRestartSmokeTest
         )
     }
 }
@@ -82,6 +89,8 @@ struct WindowMethodPortState {
 
 pub(crate) trait WindowMethodHandler: Send + Sync {
     fn quit(&self, exit_code: u8) -> std::result::Result<(), HostProtocolError>;
+
+    fn restart(&self, args: &[String]) -> std::result::Result<(), HostProtocolError>;
 
     fn create(
         &self,
@@ -322,6 +331,10 @@ enum HostEvent {}
 enum WindowCommand {
     Quit {
         exit_code: u8,
+        reply: Sender<WindowCommandReply>,
+    },
+    Restart {
+        args: Vec<String>,
         reply: Sender<WindowCommandReply>,
     },
     Create {
@@ -704,6 +717,16 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::APP_QUIT_METHOD)
+    }
+
+    fn restart(&self, args: &[String]) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Restart {
+            args: args.to_vec(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::APP_RESTART_METHOD)
     }
 
     fn create(
@@ -3111,6 +3134,16 @@ impl WindowRegistry {
                 send_window_command_reply(reply, Ok(WindowCommandResponse::WindowUpdated));
                 WindowLifecycleEvent::AppQuitRequested(exit_code)
             }
+            WindowCommand::Restart { args, reply } => match restart_current_process(&args) {
+                Ok(()) => {
+                    send_window_command_reply(reply, Ok(WindowCommandResponse::WindowUpdated));
+                    WindowLifecycleEvent::AppQuitRequested(0)
+                }
+                Err(error) => {
+                    send_window_command_reply(reply, Err(error));
+                    WindowLifecycleEvent::Other
+                }
+            },
             WindowCommand::Create { request, reply } => {
                 let result = self.create(target, request, mode);
                 let lifecycle = match &result {
@@ -3122,6 +3155,9 @@ impl WindowRegistry {
                     }
                     Ok(created) if matches!(mode, RunMode::AppFocusSmokeTest) => {
                         self.run_app_focus_smoke(created.window_id())
+                    }
+                    Ok(created) if matches!(mode, RunMode::AppRestartSmokeTest) => {
+                        self.run_app_restart_smoke(created.window_id())
                     }
                     _ => lifecycle_for_create_result(
                         &result.clone().map(WindowCommandResponse::Created),
@@ -3646,6 +3682,85 @@ impl WindowRegistry {
             }
         }
     }
+
+    fn run_app_restart_smoke(&self, window_id: &str) -> WindowLifecycleEvent {
+        if !self.windows.contains_key(window_id) {
+            warn!(
+                event = "host.app_lifecycle.restart_smoke_failed",
+                window_id,
+                reason = "missing-window",
+                "app restart smoke could not find created window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        }
+
+        let args = vec![APP_RESTART_CHILD_SMOKE_TEST_ARG.to_string()];
+        match restart_current_process(&args) {
+            Ok(()) => {
+                info!(
+                    event = "host.app_lifecycle.restart_smoke_verified",
+                    window_id,
+                    args = ?args,
+                    "app restart smoke verified"
+                );
+                WindowLifecycleEvent::AppQuitRequested(0)
+            }
+            Err(error) => {
+                warn!(
+                    event = "host.app_lifecycle.restart_smoke_failed",
+                    window_id,
+                    error = ?error,
+                    "app restart smoke could not launch replacement process"
+                );
+                WindowLifecycleEvent::WindowCreateFailed
+            }
+        }
+    }
+}
+
+pub(crate) fn run_app_restart_child_smoke() -> Result<()> {
+    let marker = std::env::var_os(APP_RESTART_SMOKE_MARKER_ENV).ok_or_else(|| {
+        anyhow::anyhow!("{APP_RESTART_SMOKE_MARKER_ENV} is required for restart child smoke")
+    })?;
+    let marker = std::path::PathBuf::from(marker);
+    fs::write(&marker, "restarted\n").map_err(|error| {
+        anyhow::anyhow!(
+            "failed to write app restart child smoke marker {}: {error}",
+            marker.display()
+        )
+    })?;
+    info!(
+        event = "host.app_lifecycle.restart_child_smoke_verified",
+        marker = %marker.display(),
+        "app restart child smoke verified"
+    );
+    Ok(())
+}
+
+fn restart_current_process(args: &[String]) -> std::result::Result<(), HostProtocolError> {
+    let executable = std::env::current_exe().map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to resolve current executable for restart: {error}"),
+            host_protocol::APP_RESTART_METHOD,
+        )
+    })?;
+
+    Command::new(&executable)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| {
+            HostProtocolError::internal(
+                format!(
+                    "failed to launch restart process {}: {error}",
+                    executable.display()
+                ),
+                host_protocol::APP_RESTART_METHOD,
+            )
+        })
 }
 
 fn lifecycle_for_create_result(result: &WindowCommandReply) -> WindowLifecycleEvent {

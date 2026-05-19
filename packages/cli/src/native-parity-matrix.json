@@ -76,25 +76,7 @@
       "method": "restart",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4162,8 +4144,8 @@
     "total": 234,
     "routed": 234,
     "missing": 0,
-    "supported": 131,
+    "supported": 132,
     "partial": 38,
-    "unsupported": 65
+    "unsupported": 64
   }
 }

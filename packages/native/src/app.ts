@@ -52,7 +52,8 @@ export const AppRestart = appRpc(
   "restart",
   AppRestartInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["restart"] })
+  P.nativeInvoke({ primitive: "App", methods: ["restart"] }),
+  AppSupported
 )
 export const AppFocus = appRpc(
   "focus",

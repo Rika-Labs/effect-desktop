@@ -12,16 +12,19 @@ App-level lifecycle and host-operation service. `AppMetadata` owns app identity,
 paths, launch context, and environment-shape reads.
 
 The TypeScript surface is present for contract and bridge-client validation.
-The Rust host implements `App.quit` by requesting event-loop exit and
-`App.focus` by focusing the current native window. The Rust host also
+The Rust host implements `App.quit` by requesting event-loop exit, `App.restart`
+by launching the current executable with validated restart args before
+requesting event-loop exit, and `App.focus` by focusing the current native
+window. The Rust host also
 implements `App.requestSingleInstanceLock` with a process-held OS file lock and
 returns the primary process id when another process already owns the lock.
 `--single-instance-lock-smoke-test` verifies this lock across host processes.
-The host binary includes `--app-quit-smoke-test` and
-`--app-focus-smoke-test` to verify live startup windows can exit through the
-app-quit lifecycle path and focus through the native window-manager path.
-Process restart, second-instance handoff, and native lifecycle event sources
-are still unsupported until the host owns those lifecycle controls.
+The host binary includes `--app-quit-smoke-test`, `--app-focus-smoke-test`, and
+`--app-restart-smoke-test` to verify live startup windows can exit through the
+app-quit lifecycle path, focus through the native window-manager path, and
+launch a smoke-only replacement process. Second-instance handoff and native
+lifecycle event sources are still unsupported until the host owns those
+lifecycle controls.
 `Association` owns OS-level protocol and file association contracts.
 `Autostart` owns open-at-login and login-item operations.
 
@@ -30,7 +33,7 @@ are still unsupported until the host owns those lifecycle controls.
 | Method                      | Success                   | Runtime support |
 | --------------------------- | ------------------------- | --------------- |
 | `quit`                      | `void`                    | supported       |
-| `restart`                   | `void`                    | unsupported     |
+| `restart`                   | `void`                    | supported       |
 | `focus`                     | `void`                    | supported       |
 | `requestSingleInstanceLock` | `AppSingleInstanceResult` | supported       |
 

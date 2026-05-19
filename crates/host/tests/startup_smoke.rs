@@ -1,4 +1,6 @@
 use std::{
+    fs,
+    path::Path,
     process::{Command, Stdio},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -171,6 +173,44 @@ fn host_binary_verifies_app_focus_lifecycle_path() {
 }
 
 #[test]
+fn host_binary_verifies_app_restart_lifecycle_path() {
+    let marker = unique_marker_path("app-restart-smoke");
+    let output = Command::new(env!("CARGO_BIN_EXE_host"))
+        .arg("--app-restart-smoke-test")
+        .env("EFFECT_DESKTOP_APP_RESTART_SMOKE_MARKER", &marker)
+        .output()
+        .expect("host binary should execute app restart smoke");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let process_output = format!("{stdout}{stderr}");
+
+    assert!(
+        output.status.success(),
+        "host exited with status {:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        output.status.code()
+    );
+    assert!(
+        process_output.contains("event=\"host.app_lifecycle.restart_smoke_verified\""),
+        "process output did not contain app restart smoke event\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("event=\"host.window.exit_requested\""),
+        "process output did not contain window exit event\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("source=\"app-quit\""),
+        "process output did not contain app quit exit source\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        wait_for_marker(&marker),
+        "restart child did not write marker at {}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        marker.display()
+    );
+
+    let _ = fs::remove_file(marker);
+}
+
+#[test]
 fn host_binary_verifies_single_instance_lock_between_processes() {
     let lock_path = unique_lock_path("single-instance-lock-smoke");
     let primary = Command::new(env!("CARGO_BIN_EXE_host"))
@@ -259,12 +299,30 @@ fn host_binary_verifies_system_appearance_on_main_thread() {
 }
 
 fn unique_lock_path(name: &str) -> std::path::PathBuf {
+    unique_temp_path(name, "lock")
+}
+
+fn unique_marker_path(name: &str) -> std::path::PathBuf {
+    unique_temp_path(name, "marker")
+}
+
+fn unique_temp_path(name: &str, extension: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time should be after Unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!(
-        "effect-desktop-{name}-{}-{nanos}.lock",
-        std::process::id()
+        "effect-desktop-{name}-{}-{nanos}.{extension}",
+        std::process::id(),
     ))
+}
+
+fn wait_for_marker(path: &Path) -> bool {
+    for _ in 0..40 {
+        if path.is_file() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    false
 }

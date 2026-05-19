@@ -54,11 +54,15 @@ pub(crate) fn quit(
     Ok(None)
 }
 
-pub(crate) fn restart(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+pub(crate) fn restart(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
     reject_null_field(payload.as_ref(), "args", host_protocol::APP_RESTART_METHOD)?;
     let input = decode_payload::<AppRestartPayload>(payload, host_protocol::APP_RESTART_METHOD)?;
     validate_args(input.args(), host_protocol::APP_RESTART_METHOD)?;
-    Err(unsupported(host_protocol::APP_RESTART_METHOD))
+    handler.restart(input.args().unwrap_or(&[]))?;
+    Ok(None)
 }
 
 pub(crate) fn focus(
@@ -178,10 +182,6 @@ fn validate_args(
         }
     }
     Ok(())
-}
-
-fn unsupported(operation: &'static str) -> HostProtocolError {
-    HostProtocolError::unsupported(host_protocol::APP_UNSUPPORTED_REASON, operation)
 }
 
 struct SingleInstanceLock {
@@ -457,6 +457,7 @@ mod tests {
     use super::{
         request_single_instance_lock, restart, SINGLE_INSTANCE_LOCK, SINGLE_INSTANCE_LOCK_PATH_ENV,
     };
+    use crate::methods::tests::FakeWindowHandler;
     use host_protocol::HostProtocolError;
     use serde_json::{json, Value};
     use std::path::PathBuf;
@@ -553,20 +554,32 @@ mod tests {
     }
 
     #[test]
-    fn app_payload_requests_decode_before_unsupported() {
+    fn app_restart_routes_valid_payloads_to_window_handler() {
+        let window = FakeWindowHandler::default();
+        let result = restart(&window, Some(json!({ "args": ["--restarted", "safe"] })))
+            .expect("restart should route");
+
+        assert_eq!(result, None);
         assert_eq!(
-            restart(Some(json!({ "args": ["--restarted"] }))).expect_err("restart"),
-            HostProtocolError::unsupported(
-                host_protocol::APP_UNSUPPORTED_REASON,
-                host_protocol::APP_RESTART_METHOD,
-            )
+            window.restarts(),
+            vec![vec!["--restarted".to_string(), "safe".to_string()]]
         );
     }
 
     #[test]
-    fn app_payload_requests_reject_malformed_inputs_before_unsupported() {
+    fn app_restart_accepts_omitted_args() {
+        let window = FakeWindowHandler::default();
+        let result = restart(&window, Some(json!({}))).expect("restart should route");
+
+        assert_eq!(result, None);
+        assert_eq!(window.restarts(), vec![Vec::<String>::new()]);
+    }
+
+    #[test]
+    fn app_payload_requests_reject_malformed_inputs_before_restart() {
+        let window = FakeWindowHandler::default();
         assert_eq!(
-            restart(Some(json!({ "args": null }))).expect_err("args null"),
+            restart(&window, Some(json!({ "args": null }))).expect_err("args null"),
             HostProtocolError::invalid_argument(
                 "args",
                 "must be omitted instead of null",
@@ -574,10 +587,23 @@ mod tests {
             )
         );
         assert_eq!(
-            restart(Some(json!({ "args": ["bad\0arg"] })))
+            restart(&window, Some(json!({ "args": ["bad\0arg"] })))
                 .expect_err("args")
                 .tag(),
             "InvalidArgument"
+        );
+        assert!(window.restarts().is_empty());
+    }
+
+    #[test]
+    fn app_void_requests_reject_malformed_inputs_before_lock() {
+        assert_eq!(
+            request_single_instance_lock(Some(json!({}))).expect_err("object payload"),
+            HostProtocolError::invalid_argument(
+                "payload",
+                "must be omitted",
+                host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
+            )
         );
     }
 
