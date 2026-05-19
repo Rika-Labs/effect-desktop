@@ -88,6 +88,33 @@ const decodePackageMissingBuildArtifactJsonError = Schema.decodeUnknownSync(
 )
 const JsonObject = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
 const decodeJsonObject = Schema.decodeUnknownSync(JsonObject)
+const JsonUnknown = Schema.fromJsonString(Schema.Unknown)
+const encodeJsonUnknown = Schema.encodeSync(JsonUnknown)
+const stringifyJson = (value: unknown, indent?: number): string => {
+  const encoded = encodeJsonUnknown(value)
+  return indent === undefined ? encoded : JSON.stringify(JSON.parse(encoded), null, indent)
+}
+const parseJsonObject = Schema.decodeUnknownSync(JsonObject)
+
+class ExpectedPromiseRejection extends Schema.TaggedErrorClass<ExpectedPromiseRejection>()(
+  "ExpectedPromiseRejection",
+  {}
+) {}
+
+const expectEffectPromiseRejects = (
+  promise: Promise<unknown>
+): Effect.Effect<void, ExpectedPromiseRejection> =>
+  Effect.matchEffect(Effect.tryPromise({ try: () => promise, catch: () => undefined }), {
+    onFailure: () => Effect.void,
+    onSuccess: () => Effect.fail(new ExpectedPromiseRejection())
+  })
+
+class TryPromiseError extends Schema.TaggedErrorClass<TryPromiseError>()("TryPromiseError", {
+  message: Schema.String
+}) {}
+
+const toTryPromiseError = (cause: unknown): TryPromiseError =>
+  new TryPromiseError({ message: cause instanceof Error ? cause.message : String(cause) })
 const SignReportJson = Schema.fromJsonString(
   Schema.Struct({
     artifacts: Schema.Array(
@@ -412,16 +439,6 @@ const packageFixtureError = (
     exitCode: undefined,
     message: cause instanceof Error ? cause.message : String(cause)
   })
-
-const expectPromiseRejects = async (promise: Promise<unknown>): Promise<void> => {
-  let rejected = false
-  try {
-    await promise
-  } catch {
-    rejected = true
-  }
-  expect(rejected).toBe(true)
-}
 
 test("doctor report renders selected layer providers", () => {
   const output = formatDoctorReport({
@@ -1253,11 +1270,11 @@ test("desktop doctor reports native capability truth from the generated parity m
         )
         yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
         const stdout: string[] = []
-        const matrix = JSON.parse(
+        const matrix = parseJsonObject(
           yield* Effect.promise(() =>
             readFile(join(REPO_ROOT, "packages/cli/src/native-parity-matrix.json"), "utf8")
           )
-        ) as {
+        ) as unknown as {
           readonly summary: {
             readonly total: number
             readonly routed: number
@@ -1908,11 +1925,11 @@ test("desktop check --repro rejects target drift between passes", () =>
               Effect.gen(function* () {
                 yield* Effect.tryPromise({
                   try: () => mkdir(packageRoot, { recursive: true }),
-                  catch: (cause) => cause
+                  catch: toTryPromiseError
                 })
                 yield* Effect.tryPromise({
                   try: () => writeFile(join(packageRoot, "app.deb"), "identical\n"),
-                  catch: (cause) => cause
+                  catch: toTryPromiseError
                 })
                 return {
                   outputPath: packageRoot
@@ -2333,7 +2350,7 @@ test("desktop check --api rejects snapshots for the wrong package", () =>
         yield* Effect.promise(() =>
           writeFile(
             snapshotPath,
-            `${JSON.stringify({ ...snapshot, packageName: "@effect-desktop/other" }, null, 2)}\n`
+            `${stringifyJson({ ...snapshot, packageName: "@effect-desktop/other" }, 2)}\n`
           )
         )
 
@@ -2402,7 +2419,7 @@ test("desktop check --api rejects invalid package names", () =>
         yield* Effect.promise(() =>
           writeFile(
             join(directory, "packages", "fixture", "package.json"),
-            JSON.stringify(
+            stringifyJson(
               {
                 name: "../../escape",
                 type: "module",
@@ -2413,7 +2430,6 @@ test("desktop check --api rejects invalid package names", () =>
                   }
                 }
               },
-              null,
               2
             )
           )
@@ -2668,7 +2684,7 @@ test("desktop check --docs rejects an incomplete spec manifest even with the req
         yield* Effect.promise(() =>
           writeFile(
             join(directory, "docs", "docs-manifest.json"),
-            JSON.stringify(
+            stringifyJson(
               {
                 schemaVersion: 1,
                 source: "engineering/SPEC.md §25.3",
@@ -2678,7 +2694,6 @@ test("desktop check --docs rejects an incomplete spec manifest even with the req
                   path: `docs/page-${index}.md`
                 }))
               },
-              null,
               2
             )
           )
@@ -2796,7 +2811,7 @@ test("desktop check --docs rejects placeholder examples on required pages", () =
                   "# Page",
                   "",
                   "```ts run",
-                  `const coverage = ${JSON.stringify(coverageTokens)}`,
+                  `const coverage = ${stringifyJson(coverageTokens)}`,
                   "void coverage",
                   "```"
                 ].join("\n")
@@ -4273,7 +4288,7 @@ test("semver guard rejects verification matrices outside the repo", () =>
         }
         const outsideMatrix = join(outsideDirectory, "verification-matrix.json")
         yield* Effect.promise(() =>
-          writeFile(outsideMatrix, JSON.stringify(semverMatrixFixture(), null, 2))
+          writeFile(outsideMatrix, stringifyJson(semverMatrixFixture(), 2))
         )
         yield* Effect.promise(() =>
           writeSemverFixture(directory, {
@@ -5062,7 +5077,7 @@ test("desktop sign rejects Linux signable artifacts without linuxIntegration met
         }
         delete artifactJson["linuxIntegration"]
         yield* Effect.promise(() =>
-          writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
         )
         const calls: string[] = []
         const runner: SignCommandRunner = (invocation) => {
@@ -5085,7 +5100,7 @@ test("desktop sign rejects Linux signable artifacts without linuxIntegration met
         expect(calls).toEqual([])
         expect(stderr.join("")).toContain("SignConfigError")
         expect(stderr.join("")).toContain("linuxIntegration")
-        yield* Effect.promise(() => expectPromiseRejects(stat(`${artifactPath}.asc`)))
+        yield* expectEffectPromiseRejects(stat(`${artifactPath}.asc`))
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -5123,7 +5138,7 @@ test("desktop sign rejects artifact fileName that escapes the metadata directory
           yield* Effect.promise(() =>
             writeFile(
               join(artifactRoot, "artifact.json"),
-              `${JSON.stringify(
+              `${stringifyJson(
                 {
                   appId: "dev.effect-desktop.inspector",
                   appName: "Effect Desktop Playground",
@@ -5134,7 +5149,6 @@ test("desktop sign rejects artifact fileName that escapes the metadata directory
                   sizeBytes: 0,
                   sha256: "0".repeat(64)
                 },
-                null,
                 2
               )}\n`
             )
@@ -5164,7 +5178,7 @@ test("desktop sign rejects artifact fileName that escapes the metadata directory
           expect(stderr.join("")).toContain("SignConfigError")
           expect(stderr.join("")).toContain("#fileName")
           expect(calls).toEqual([])
-          yield* Effect.promise(() => expectPromiseRejects(stat(`${outsidePath}.asc`)))
+          yield* expectEffectPromiseRejects(stat(`${outsidePath}.asc`))
         } finally {
           yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
         }
@@ -5195,7 +5209,7 @@ test("desktop sign rejects path-shaped app.id before writing Linux sidecars", ()
         const calls: string[] = []
         const runner: SignCommandRunner = (invocation) => {
           calls.push(invocation.step)
-          return Effect.succeed(undefined)
+          return Effect.void
         }
         const stderr: string[] = []
         const exitCode = yield* runCli({
@@ -5216,8 +5230,8 @@ test("desktop sign rejects path-shaped app.id before writing Linux sidecars", ()
         expect(calls).toEqual([])
         expect(stderr.join("")).toContain("SignConfigError")
         expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
-        yield* Effect.promise(() => expectPromiseRejects(stat(escapedDesktop)))
-        yield* Effect.promise(() => expectPromiseRejects(stat(escapedMetainfo)))
+        yield* expectEffectPromiseRejects(stat(escapedDesktop))
+        yield* expectEffectPromiseRejects(stat(escapedMetainfo))
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -5247,7 +5261,7 @@ test("desktop sign skips artifacts whose metadata target does not match the requ
         }
         artifactJson["target"] = "linux-x64"
         yield* Effect.promise(() =>
-          writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
         )
 
         const calls: string[] = []
@@ -5345,7 +5359,7 @@ test("desktop notarize skips artifacts whose metadata target does not match the 
         }
         artifactJson["target"] = "macos-x64"
         yield* Effect.promise(() =>
-          writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
         )
 
         const calls: string[] = []
@@ -5443,7 +5457,7 @@ test("desktop notarize submits staples and assesses unstapled macOS artifacts", 
           }
           if (invocation.step === "notarytool-submit") {
             return Effect.succeed({
-              stdout: JSON.stringify({ id: "submission-1", status: "Accepted" }),
+              stdout: stringifyJson({ id: "submission-1", status: "Accepted" }),
               stderr: "",
               exitCode: 0
             })
@@ -5652,7 +5666,7 @@ test("desktop notarize rejects artifact file names outside the metadata director
           yield* Effect.promise(() =>
             writeFile(
               join(artifactRoot, "artifact.json"),
-              `${JSON.stringify(
+              `${stringifyJson(
                 {
                   appId: "dev.effect-desktop.inspector",
                   appName: "Effect Desktop Playground",
@@ -5661,7 +5675,6 @@ test("desktop notarize rejects artifact file names outside the metadata director
                   target: "macos-arm64",
                   fileName
                 },
-                null,
                 2
               )}\n`
             )
@@ -5718,7 +5731,7 @@ test("desktop notarize accepts contained artifact file names with consecutive do
         yield* Effect.promise(() =>
           writeFile(
             join(artifactRoot, "artifact.json"),
-            `${JSON.stringify(
+            `${stringifyJson(
               {
                 appId: "dev.effect-desktop.inspector",
                 appName: "Effect Desktop Playground",
@@ -5728,7 +5741,6 @@ test("desktop notarize accepts contained artifact file names with consecutive do
                 fileName,
                 ...digest
               },
-              null,
               2
             )}\n`
           )
@@ -5841,7 +5853,7 @@ test("desktop notarize redacts Apple ID password credentials in the persisted re
           }
           if (invocation.step === "notarytool-submit") {
             return Effect.succeed({
-              stdout: JSON.stringify({ id: "submission-1", status: "Accepted" }),
+              stdout: stringifyJson({ id: "submission-1", status: "Accepted" }),
               stderr: "",
               exitCode: 0
             })
@@ -5914,7 +5926,7 @@ test("desktop notarize surfaces rejected notarytool output", () =>
           }
           if (invocation.step === "notarytool-submit") {
             return Effect.succeed({
-              stdout: JSON.stringify({ id: "submission-1", status: "Rejected" }),
+              stdout: stringifyJson({ id: "submission-1", status: "Rejected" }),
               stderr: "LogFileURL: https://example.invalid/notary-log.json",
               exitCode: 0
             })
@@ -6120,7 +6132,7 @@ test("desktop publish rejects invalid publish timestamps before writing manifest
           expect(exitCode).toBe(1)
           expect(payload.tag).toBe("PublishConfigError")
           expect(payload.message).toContain("publish timestamp")
-          yield* Effect.promise(() => expectPromiseRejects(readFile(manifestPath, "utf8")))
+          yield* expectEffectPromiseRejects(readFile(manifestPath, "utf8"))
         } finally {
           if (previousPrivateKey === undefined) {
             delete process.env[privateKeyEnv]
@@ -6321,7 +6333,7 @@ test("desktop publish rejects stale package metadata before signing the manifest
         yield* Effect.promise(() =>
           writeFile(
             join(dirname(artifactPath), "artifact.json"),
-            `${JSON.stringify(
+            `${stringifyJson(
               {
                 appId: "dev.effect-desktop.inspector",
                 appName: "Effect Desktop Playground",
@@ -6332,7 +6344,6 @@ test("desktop publish rejects stale package metadata before signing the manifest
                 sizeBytes: 1,
                 sha256: "0".repeat(64)
               },
-              null,
               2
             )}\n`
           )
@@ -6402,7 +6413,7 @@ test("desktop publish rejects invalid app ids before writing manifests", () =>
         expect(exitCode).toBe(1)
         expect(error.tag).toBe("PublishConfigError")
         expect(error.message).toContain("app.id must be a reverse-DNS ASCII identifier")
-        yield* Effect.promise(() => expectPromiseRejects(stat(manifestPath)))
+        yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6459,7 +6470,7 @@ test("desktop publish rejects non-SemVer app versions before writing manifests",
         expect(exitCode).toBe(1)
         expect(error.tag).toBe("PublishConfigError")
         expect(error.message).toContain("app.version must be a SemVer X.Y.Z string")
-        yield* Effect.promise(() => expectPromiseRejects(stat(manifestPath)))
+        yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
           delete process.env[privateKeyEnv]
@@ -6665,7 +6676,7 @@ test("desktop publish rejects stale artifacts from a different app identity", ()
         expect(error.tag).toBe("PublishConfigError")
         expect(error.message).toContain("artifact.json#appId")
         expect(error.message).toContain("dev.effect-desktop.other")
-        yield* Effect.promise(() => expectPromiseRejects(stat(manifestPath)))
+        yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
           delete process.env[privateKeyEnv]
@@ -6708,7 +6719,7 @@ test("desktop publish rejects artifact target mismatching platform directory", (
         }
         artifactJson["target"] = "linux-x64"
         yield* Effect.promise(() =>
-          writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
         )
 
         const stderr: string[] = []
@@ -6769,7 +6780,7 @@ test("desktop publish rejects artifact fileName that escapes the metadata direct
         yield* Effect.promise(() =>
           writeFile(
             join(artifactRoot, "artifact.json"),
-            `${JSON.stringify(
+            `${stringifyJson(
               {
                 appId: "dev.effect-desktop.inspector",
                 appName: "Effect Desktop Playground",
@@ -6780,7 +6791,6 @@ test("desktop publish rejects artifact fileName that escapes the metadata direct
                 sizeBytes: outsideBytes.byteLength,
                 sha256: createHash("sha256").update(outsideBytes).digest("hex")
               },
-              null,
               2
             )}\n`
           )
@@ -6807,7 +6817,7 @@ test("desktop publish rejects artifact fileName that escapes the metadata direct
         expect(exitCode).toBe(1)
         expect(stderr.join("")).toContain("PublishConfigError")
         expect(stderr.join("")).toContain("#fileName")
-        yield* Effect.promise(() => expectPromiseRejects(stat(manifestPath)))
+        yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
           delete process.env[privateKeyEnv]
@@ -6870,7 +6880,7 @@ test("desktop publish rejects update.minVersion greater than app.version", () =>
         expect(exitCode).toBe(1)
         expect(stderr.join("")).toContain("update.minVersion")
         expect(stderr.join("")).toContain("must not exceed app.version")
-        yield* Effect.promise(() => expectPromiseRejects(stat(manifestPath)))
+        yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
           delete process.env[privateKeyEnv]
@@ -6933,7 +6943,7 @@ test("desktop publish rejects rollback manifests without maxVersion", () =>
         expect(exitCode).toBe(1)
         expect(stderr.join("")).toContain("update.maxVersion")
         expect(stderr.join("")).toContain("update.rollback is true")
-        yield* Effect.promise(() => expectPromiseRejects(stat(manifestPath)))
+        yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
           delete process.env[privateKeyEnv]
@@ -6983,7 +6993,7 @@ test("desktop publish accepts rollback manifests with maxVersion", () =>
         }
         artifactJson["appVersion"] = "1.2.3"
         yield* Effect.promise(() =>
-          writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
         )
         const manifestPath = join(
           directory,
@@ -7104,7 +7114,7 @@ test("desktop publish accepts update.minVersion equal to app.version", () =>
         }
         artifactJson["appVersion"] = "1.2.3"
         yield* Effect.promise(() =>
-          writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
         )
         const exitCode = yield* runCli({
           argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
@@ -7234,7 +7244,7 @@ test("desktop publish rejects symbolic links inside directory artifacts", () =>
         artifactJson["sizeBytes"] = digest.sizeBytes
         artifactJson["sha256"] = digest.sha256
         yield* Effect.promise(() =>
-          writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
         )
 
         const manifestPath = join(
@@ -7265,7 +7275,7 @@ test("desktop publish rejects symbolic links inside directory artifacts", () =>
         expect(exitCode).toBe(1)
         expect(stderr.join("")).toContain("PublishFileError")
         expect(stderr.join("")).toContain("symbolic links")
-        yield* Effect.promise(() => expectPromiseRejects(stat(manifestPath)))
+        yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
           delete process.env[privateKeyEnv]
@@ -8207,7 +8217,7 @@ test("desktop build rejects renderer.dist outside the app root before running bu
         expect(calls).toBe(0)
         expect(stderr.join("")).toContain("BuildConfigError")
         expect(stderr.join("")).toContain("renderer.dist")
-        yield* Effect.promise(() => expectPromiseRejects(stat(stagedRenderer)))
+        yield* expectEffectPromiseRejects(stat(stagedRenderer))
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -8259,7 +8269,7 @@ test("desktop build refuses renderer dist symlinks that escape dist", () =>
         expect(exitCode).toBe(1)
         expect(stderr.join("")).toContain("BuildFileError")
         expect(stderr.join("")).toContain("points outside")
-        yield* Effect.promise(() => expectPromiseRejects(stat(stagedSecret)))
+        yield* expectEffectPromiseRejects(stat(stagedSecret))
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -8608,14 +8618,13 @@ test("desktop package rejects malformed build manifests as typed package errors"
         yield* Effect.promise(() =>
           writeFile(
             join(layout, "app-manifest.json"),
-            JSON.stringify(
+            stringifyJson(
               {
                 id: "dev.effect-desktop.inspector",
                 name: "Effect Desktop Playground",
                 version: "0.0.0",
                 target: "macos-arm64"
               },
-              null,
               2
             )
           )
@@ -8673,7 +8682,7 @@ test("desktop package rejects malformed runtime launch manifests", () =>
         yield* Effect.promise(() =>
           writeFile(
             join(layout, "app-manifest.json"),
-            JSON.stringify(
+            stringifyJson(
               {
                 id: "dev.effect-desktop.inspector",
                 name: "Effect Desktop Playground",
@@ -8689,7 +8698,6 @@ test("desktop package rejects malformed runtime launch manifests", () =>
                 },
                 nativeHost: { binary: `native/${hostBinary}` }
               },
-              null,
               2
             )
           )
@@ -8807,7 +8815,7 @@ test("desktop package rejects runtime launch contract drift and path escapes", (
             ...decodeJsonObject(yield* Effect.promise(() => readFile(manifestPath, "utf8")))
           }
           testCase.mutate(manifest)
-          yield* Effect.promise(() => writeFile(manifestPath, JSON.stringify(manifest, null, 2)))
+          yield* Effect.promise(() => writeFile(manifestPath, stringifyJson(manifest, 2)))
           const stderr: string[] = []
 
           const exitCode = yield* runCli({
@@ -9367,9 +9375,7 @@ test("desktop package rejects build manifest app name drift", () =>
           ...decodeJsonObject(yield* Effect.promise(() => readFile(manifestPath, "utf8")))
         }
         manifest["name"] = "Different App"
-        yield* Effect.promise(() =>
-          writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
-        )
+        yield* Effect.promise(() => writeFile(manifestPath, `${stringifyJson(manifest, 2)}\n`))
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -9560,7 +9566,7 @@ test("desktop package rejects build layout symlinks that escape the layout", () 
         expect(calls).toEqual([])
         expect(stderr.join("")).toContain("PackageFileError")
         expect(stderr.join("")).toContain("points outside")
-        yield* Effect.promise(() => expectPromiseRejects(stat(stagedSecret)))
+        yield* expectEffectPromiseRejects(stat(stagedSecret))
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -9730,7 +9736,7 @@ const writePlaygroundFixture = async (
   await mkdir(join(appRoot, "src", "renderer"), { recursive: true })
   await writeFile(
     join(appRoot, "desktop.config.ts"),
-    `export default ${JSON.stringify(config, null, 2)} as const\n`
+    `export default ${stringifyJson(config, 2)} as const\n`
   )
   await writeFile(join(appRoot, "package.json"), '{"type":"module"}\n')
   await writeFile(join(appRoot, "runtime.ts"), "console.log('runtime')\n")
@@ -9753,7 +9759,7 @@ const writeBuildLayoutFixture = async (
   await writeFile(join(layout, "native", hostBinary), "host")
   await writeFile(
     join(layout, "app-manifest.json"),
-    `${JSON.stringify(
+    `${stringifyJson(
       {
         id: "dev.effect-desktop.inspector",
         name: "Effect Desktop Playground",
@@ -9769,13 +9775,12 @@ const writeBuildLayoutFixture = async (
         },
         nativeHost: { binary: `native/${hostBinary}` }
       },
-      null,
       2
     )}\n`
   )
   await writeFile(
     join(layout, "build-report.json"),
-    `${JSON.stringify(
+    `${stringifyJson(
       {
         appId: "dev.effect-desktop.inspector",
         appName: "Effect Desktop Playground",
@@ -9798,7 +9803,6 @@ const writeBuildLayoutFixture = async (
         ],
         providerMeasurements: []
       },
-      null,
       2
     )}\n`
   )
@@ -9944,7 +9948,7 @@ const writePackagedArtifactFixture = async (
       : {}
   await writeFile(
     join(root, "artifact.json"),
-    `${JSON.stringify(
+    `${stringifyJson(
       {
         appId: "dev.effect-desktop.inspector",
         appName: "Effect Desktop Playground",
@@ -9955,7 +9959,6 @@ const writePackagedArtifactFixture = async (
         ...digest,
         ...linuxIntegration
       },
-      null,
       2
     )}\n`
   )
@@ -10056,7 +10059,7 @@ const writeApiFixturePackage = async (root: string, source: string): Promise<voi
   await mkdir(join(packageRoot, "src"), { recursive: true })
   await writeFile(
     join(packageRoot, "package.json"),
-    JSON.stringify(
+    stringifyJson(
       {
         name: "@effect-desktop/fixture",
         type: "module",
@@ -10067,13 +10070,12 @@ const writeApiFixturePackage = async (root: string, source: string): Promise<voi
           }
         }
       },
-      null,
       2
     )
   )
   await writeFile(
     join(packageRoot, "tsconfig.json"),
-    JSON.stringify(
+    stringifyJson(
       {
         compilerOptions: {
           target: "ESNext",
@@ -10086,7 +10088,6 @@ const writeApiFixturePackage = async (root: string, source: string): Promise<voi
         },
         include: ["src"]
       },
-      null,
       2
     )
   )
@@ -10119,13 +10120,12 @@ const writeDocsManifest = async (
   await mkdir(join(root, "docs"), { recursive: true })
   await writeFile(
     join(root, "docs", "docs-manifest.json"),
-    JSON.stringify(
+    stringifyJson(
       {
         schemaVersion: 1,
         source,
         pages
       },
-      null,
       2
     )
   )
@@ -10146,7 +10146,7 @@ const writeReleaseFixture = async (
   await mkdir(join(root, "engineering", "security"), { recursive: true })
   await writeFile(
     join(root, "release", "checklist.json"),
-    JSON.stringify(overrides.checklist ?? releaseChecklistFixture(), null, 2)
+    stringifyJson(overrides.checklist ?? releaseChecklistFixture(), 2)
   )
   await writeFile(
     join(root, ".github", "workflows", "ci.yml"),
@@ -10186,7 +10186,7 @@ const writeAccessibilityFixture = async (
   await mkdir(sourceRoot, { recursive: true })
   await writeFile(
     join(root, "release", "accessibility.json"),
-    JSON.stringify(overrides.manifest ?? accessibilityManifestFixture(), null, 2)
+    stringifyJson(overrides.manifest ?? accessibilityManifestFixture(), 2)
   )
   await writeFile(join(sourceRoot, "App.tsx"), overrides.appSource ?? accessibilityAppFixture())
   await writeFile(join(sourceRoot, "styles.css"), overrides.styles ?? accessibilityStylesFixture())
@@ -10202,11 +10202,11 @@ const writeAccessibilityFixture = async (
   for (const mode of ["light-ltr", "dark-ltr", "light-rtl", "dark-rtl"]) {
     await writeFile(
       join(auditRoot, `axe.${mode}.json`),
-      JSON.stringify(axeAuditFixture(mode, overrides.axePasses, overrides.axeUrlForMode), null, 2)
+      stringifyJson(axeAuditFixture(mode, overrides.axePasses, overrides.axeUrlForMode), 2)
     )
     await writeFile(
       join(auditRoot, `pa11y.${mode}.json`),
-      JSON.stringify(pa11yAuditFixture(mode, overrides.pa11yUrlForMode), null, 2)
+      stringifyJson(pa11yAuditFixture(mode, overrides.pa11yUrlForMode), 2)
     )
   }
 }
@@ -10359,16 +10359,16 @@ const writeSemverFixture = async (
   await mkdir(join(root, "packages", "core"), { recursive: true })
   await writeFile(
     join(root, "release", "semver.json"),
-    JSON.stringify(overrides.manifest ?? semverManifestFixture(), null, 2)
+    stringifyJson(overrides.manifest ?? semverManifestFixture(), 2)
   )
   await writeFile(
     join(root, "engineering", "verification-matrix.json"),
-    JSON.stringify(overrides.matrix ?? semverMatrixFixture(), null, 2)
+    stringifyJson(overrides.matrix ?? semverMatrixFixture(), 2)
   )
   const packageVersion = overrides.packageVersion ?? "0.0.0"
   await writeFile(
     join(root, "packages", "core", "package.json"),
-    JSON.stringify({ name: "@effect-desktop/core", version: packageVersion }, null, 2)
+    stringifyJson({ name: "@effect-desktop/core", version: packageVersion }, 2)
   )
 }
 

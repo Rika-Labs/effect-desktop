@@ -7,7 +7,7 @@ import {
   HostProtocolResourceBusyError,
   HostProtocolStaleHandleError
 } from "@effect-desktop/bridge"
-import { Cause, Deferred, Effect, Exit, Option, Schedule, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Option, Schedule, Schema, Stream } from "effect"
 
 import { PermissionActor } from "./permission-registry.js"
 import {
@@ -993,17 +993,20 @@ const decodeChunks = (chunks: readonly Uint8Array[]): string => {
   return textDecoder.decode(bytes)
 }
 
+class PtyWaitUntilTimeout extends Schema.TaggedErrorClass<PtyWaitUntilTimeout>()(
+  "PtyWaitUntilTimeout",
+  { cause: Schema.optionalKey(Schema.Unknown) }
+) {}
+
 const waitUntil = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
   await Effect.runPromise(
     Effect.tryPromise({
       try: async () => await predicate(),
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+      catch: (cause) => new PtyWaitUntilTimeout({ cause })
     }).pipe(
-      Effect.flatMap((ready) =>
-        ready ? Effect.void : Effect.fail(new Error("timed out waiting for condition"))
-      ),
+      Effect.flatMap((ready) => (ready ? Effect.void : Effect.fail(new PtyWaitUntilTimeout()))),
       Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(200)))),
-      Effect.mapError(() => new Error("timed out waiting for condition"))
+      Effect.mapError(() => new PtyWaitUntilTimeout())
     )
   )
 }

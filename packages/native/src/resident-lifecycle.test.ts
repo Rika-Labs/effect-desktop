@@ -12,7 +12,7 @@ import {
   makeResourceRegistry,
   P
 } from "@effect-desktop/core"
-import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 
 import {

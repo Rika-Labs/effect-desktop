@@ -1,9 +1,7 @@
 import { randomBytes } from "node:crypto"
-import { mkdir, rm, chmod, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
 
 import { makeInspectorSafetyPolicy } from "@effect-desktop/core"
-import { Context, Data, Effect, Layer, Option, Schema } from "effect"
+import { Context, Data, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 
 const NonEmptyString = Schema.NonEmptyString
 const LoopbackHost = "127.0.0.1"
@@ -105,13 +103,17 @@ export class DevtoolsShell extends Context.Service<DevtoolsShell, DevtoolsShellA
   "@effect-desktop/devtools/shell/DevtoolsShell"
 ) {}
 
-export const DevtoolsShellLive = (options: DevtoolsShellOptions = {}): Layer.Layer<DevtoolsShell> =>
+export const DevtoolsShellLive = (
+  options: DevtoolsShellOptions = {}
+): Layer.Layer<DevtoolsShell, never, FileSystem.FileSystem | Path.Path> =>
   Layer.effect(DevtoolsShell)(makeDevtoolsShell(options))
 
 export const makeDevtoolsShell = (
   options: DevtoolsShellOptions = {}
-): Effect.Effect<DevtoolsShellApi, never, never> =>
-  Effect.sync(() => {
+): Effect.Effect<DevtoolsShellApi, never, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
     const transport = options.transport ?? BunLoopbackDevtoolsTransport
     const shellWindow = options.shellWindow ?? UnavailableDevtoolsShellWindow
     const tokenName = options.tokenName ?? "devtools-token"
@@ -127,12 +129,12 @@ export const makeDevtoolsShell = (
           yield* assertDevtoolsCapturePolicy(input)
 
           const token = mintToken()
-          const tokenPath = join(input.stateDir, tokenName)
-          yield* writeToken(tokenPath, token)
+          const tokenPath = path.join(input.stateDir, tokenName)
+          yield* writeToken(fs, path, tokenPath, token)
           const listener = yield* transport
             .listen({ host: LoopbackHost, token })
-            .pipe(Effect.tapError(() => removeToken(tokenPath)))
-          const cleanup = listener.close.pipe(Effect.andThen(removeToken(tokenPath)))
+            .pipe(Effect.tapError(() => removeToken(fs, tokenPath)))
+          const cleanup = listener.close.pipe(Effect.andThen(removeToken(fs, tokenPath)))
           if (input.openShell !== false) {
             yield* shellWindow
               .open({ url: listener.url, tokenPath })
@@ -170,9 +172,7 @@ export const BunLoopbackDevtoolsTransport: DevtoolsLoopbackTransport = Object.fr
         return {
           url: `http://${input.host}:${server.port}`,
           close: Effect.tryPromise({
-            try: async () => {
-              await server.stop(true)
-            },
+            try: () => server.stop(true).then(() => undefined),
             catch: (cause) =>
               new DevtoolsCleanupError({
                 operation: "Devtools.listen.close",

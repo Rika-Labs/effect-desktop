@@ -22,6 +22,7 @@ import {
   Option,
   PlatformError,
   Schedule,
+  Schema,
   Sink,
   Stream
 } from "effect"
@@ -1161,17 +1162,20 @@ const decodeChunks = (chunks: readonly Uint8Array[]): string => {
   return textDecoder.decode(bytes)
 }
 
+class ProcessWaitUntilTimeout extends Schema.TaggedErrorClass<ProcessWaitUntilTimeout>()(
+  "ProcessWaitUntilTimeout",
+  { cause: Schema.optionalKey(Schema.Unknown) }
+) {}
+
 const waitUntil = async (predicate: () => boolean | Promise<boolean>): Promise<void> => {
   await Effect.runPromise(
     Effect.tryPromise({
       try: async () => await predicate(),
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause)))
+      catch: (cause) => new ProcessWaitUntilTimeout({ cause })
     }).pipe(
-      Effect.flatMap((ready) =>
-        ready ? Effect.void : Effect.fail(new Error("condition was not met"))
-      ),
+      Effect.flatMap((ready) => (ready ? Effect.void : Effect.fail(new ProcessWaitUntilTimeout()))),
       Effect.retry(Schedule.spaced("10 millis").pipe(Schedule.both(Schedule.recurs(50)))),
-      Effect.mapError(() => new Error("condition was not met"))
+      Effect.mapError(() => new ProcessWaitUntilTimeout())
     )
   )
 }

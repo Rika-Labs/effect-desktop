@@ -848,95 +848,95 @@ test("MockBridge rejects pinned stream chunks that are not JSON-serializable", a
   expect(Exit.isFailure(chunks)).toBe(true)
 })
 
-test("MockBridge returns pinned contract errors through the typed error channel", async () => {
-  const Failure = Schema.Struct({ tag: Schema.Literal("Denied"), reason: Schema.String })
-  const ProjectRpcs = bridgeContractFromRpcGroup(
-    "Test.MockBridge.Failure",
-    RpcGroup.make(
-      Rpc.make("Test.MockBridge.Failure.open", {
-        payload: Schema.Struct({ path: Schema.String }),
-        success: Schema.Struct({ id: Schema.String }),
-        error: Failure
-      })
-    )
-  )
-  const bridge = makeMockBridge()
-  await Effect.runPromise(
-    bridge.fail("Test.MockBridge.Failure.open", { tag: "Denied", reason: "not allowed" })
-  )
-  const client = bridge.client(
-    { project: ProjectRpcs },
-    {
-      nextRequestId: nextSequence("request"),
-      nextTraceId: nextSequence("trace")
-    }
-  )
+test("MockBridge returns pinned contract errors through the typed error channel", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const Failure = Schema.Struct({ tag: Schema.Literal("Denied"), reason: Schema.String })
+      const ProjectRpcs = bridgeContractFromRpcGroup(
+        "Test.MockBridge.Failure",
+        RpcGroup.make(
+          Rpc.make("Test.MockBridge.Failure.open", {
+            payload: Schema.Struct({ path: Schema.String }),
+            success: Schema.Struct({ id: Schema.String }),
+            error: Failure
+          })
+        )
+      )
+      const bridge = makeMockBridge()
+      yield* bridge.fail("Test.MockBridge.Failure.open", { tag: "Denied", reason: "not allowed" })
+      const client = bridge.client(
+        { project: ProjectRpcs },
+        {
+          nextRequestId: nextSequence("request"),
+          nextTraceId: nextSequence("trace")
+        }
+      )
 
-  const exit = await Effect.runPromiseExit(client.project.open({ path: "/tmp/project" }))
+      const exit = yield* Effect.exit(client.project.open({ path: "/tmp/project" }))
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
-    expect(fail?.error).toEqual({ tag: "Denied", reason: "not allowed" })
-  }
-})
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+        expect(fail?.error).toEqual({ tag: "Denied", reason: "not allowed" })
+      }
+    })
+  ))
 
-test("MockBridge replays pinned stream chunks in order", async () => {
-  const timestamp = 1_710_000_005_000
-  const ProjectRpcs = bridgeContractFromRpcGroup(
-    "Test.MockBridge.Stream",
-    RpcGroup.make(
-      Rpc.make("Test.MockBridge.Stream.watch", {
-        payload: Schema.Struct({ path: Schema.String }),
-        success: Schema.String,
-        error: Schema.Never,
-        stream: true
-      })
-    )
-  )
-  const bridge = makeMockBridge()
-  await Effect.runPromise(bridge.streamChunks("Test.MockBridge.Stream.watch", ["a", "b"]))
-  const client = bridge.client(
-    { project: ProjectRpcs },
-    {
-      nextRequestId: nextSequence("request"),
-      nextTraceId: nextSequence("trace")
-    }
-  )
+test("MockBridge replays pinned stream chunks in order", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const timestamp = 1_710_000_005_000
+      const ProjectRpcs = bridgeContractFromRpcGroup(
+        "Test.MockBridge.Stream",
+        RpcGroup.make(
+          Rpc.make("Test.MockBridge.Stream.watch", {
+            payload: Schema.Struct({ path: Schema.String }),
+            success: Schema.String,
+            error: Schema.Never,
+            stream: true
+          })
+        )
+      )
+      const bridge = makeMockBridge()
+      yield* bridge.streamChunks("Test.MockBridge.Stream.watch", ["a", "b"])
+      const client = bridge.client(
+        { project: ProjectRpcs },
+        {
+          nextRequestId: nextSequence("request"),
+          nextTraceId: nextSequence("trace")
+        }
+      )
 
-  const chunks = await Effect.runPromise(
-    client.project
-      .watch({ path: "/tmp/project" })
-      .pipe(Stream.runCollect, Effect.provideService(Clock.Clock, fixedClock(timestamp)))
-  )
-  const stream = bridge.exchange.stream
-  if (stream === undefined) {
-    throw new Error("expected MockBridge stream")
-  }
-  const envelopes = await Effect.runPromise(
-    stream(
-      new HostProtocolRequestEnvelope({
-        kind: "request",
-        id: "request-stream-clock",
+      const chunks = yield* client.project
+        .watch({ path: "/tmp/project" })
+        .pipe(Stream.runCollect, Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+      const stream = bridge.exchange.stream
+      if (stream === undefined) {
+        return yield* Effect.die(new Error("expected MockBridge stream"))
+      }
+      const envelopes = yield* stream(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-stream-clock",
+          timestamp,
+          traceId: "trace-stream-clock",
+          method: "Test.MockBridge.Stream.watch",
+          payload: { path: "/tmp/project" }
+        })
+      ).pipe(Stream.runCollect, Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+
+      expect(Array.from(chunks)).toEqual(["a", "b"])
+      expect(Array.from(envelopes).map((envelope) => envelope.timestamp)).toEqual([
         timestamp,
-        traceId: "trace-stream-clock",
-        method: "Test.MockBridge.Stream.watch",
-        payload: { path: "/tmp/project" }
-      })
-    ).pipe(Stream.runCollect, Effect.provideService(Clock.Clock, fixedClock(timestamp)))
-  )
-
-  expect(Array.from(chunks)).toEqual(["a", "b"])
-  expect(Array.from(envelopes).map((envelope) => envelope.timestamp)).toEqual([
-    timestamp,
-    timestamp,
-    timestamp
-  ])
-  expect(bridge.calls().map((call) => call.method)).toEqual([
-    "Test.MockBridge.Stream.watch",
-    "Test.MockBridge.Stream.watch"
-  ])
-})
+        timestamp,
+        timestamp
+      ])
+      expect(bridge.calls().map((call) => call.method)).toEqual([
+        "Test.MockBridge.Stream.watch",
+        "Test.MockBridge.Stream.watch"
+      ])
+    })
+  ))
 
 test("MockBridge returns resource handles through the method schema", async () => {
   const ProcessApi = bridgeContractFromRpcGroup(

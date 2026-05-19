@@ -27,6 +27,7 @@ import {
   Option,
   Queue,
   Schedule,
+  Schema,
   Stream
 } from "effect"
 import * as PlatformError from "effect/PlatformError"
@@ -981,13 +982,16 @@ function makePermissionDeniedError(): PlatformError.PlatformError {
   })
 }
 
+class WaitUntilTimeout extends Schema.TaggedErrorClass<WaitUntilTimeout>()(
+  "WaitUntilTimeout",
+  {}
+) {}
+
 async function waitUntil(predicate: () => boolean): Promise<void> {
   await Effect.runPromise(
-    Effect.suspend(() =>
-      predicate() ? Effect.void : Effect.fail(new Error("condition was not met"))
-    ).pipe(
+    Effect.suspend(() => (predicate() ? Effect.void : Effect.fail(new WaitUntilTimeout()))).pipe(
       Effect.retry(Schedule.spaced("10 millis").pipe(Schedule.both(Schedule.recurs(50)))),
-      Effect.mapError(() => new Error("condition was not met"))
+      Effect.mapError(() => new WaitUntilTimeout())
     )
   )
 }
@@ -1016,13 +1020,19 @@ const expectFailurePermissionDenied = (
   if (Exit.isFailure(exit)) {
     const fail = exit.cause.reasons.find((reason) => reason._tag === "Fail")
     const error = fail?.error
-    expect(error instanceof HostProtocolPermissionDeniedError).toBe(true)
-    if (error instanceof HostProtocolPermissionDeniedError) {
+    const isPermissionDenied = Schema.is(HostProtocolPermissionDeniedError)
+    expect(isPermissionDenied(error)).toBe(true)
+    if (isPermissionDenied(error)) {
       return error
     }
   }
-  throw new Error("expected permission denied error")
+  throw new ExpectedPermissionDeniedMissing()
 }
+
+class ExpectedPermissionDeniedMissing extends Schema.TaggedErrorClass<ExpectedPermissionDeniedMissing>()(
+  "ExpectedPermissionDeniedMissing",
+  {}
+) {}
 
 async function expectSymlinkEscapesRoot(
   exit: Exit.Exit<unknown, unknown>,
