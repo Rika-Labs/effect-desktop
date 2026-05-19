@@ -940,6 +940,29 @@ export {
   type UpdaterServiceApi
 } from "./updater.js"
 export {
+  makeHostSessionProfileRpcRuntime,
+  makeSessionProfileBridgeClientLayer,
+  makeSessionProfileClientLayer,
+  makeSessionProfileMemoryClient,
+  makeSessionProfileServiceLayer,
+  makeSessionProfileUnsupportedClient,
+  SessionProfile,
+  SessionProfileClient,
+  SessionProfileHandlersLive,
+  SessionProfileLive,
+  SessionProfileMethodNames,
+  SessionProfileRpcEvents,
+  SessionProfileRpcs,
+  SessionProfileSurface,
+  type SessionProfileClientApi,
+  type SessionProfileError,
+  type SessionProfileMemoryClientOptions,
+  type SessionProfileRpc,
+  type SessionProfileRpcHandlers,
+  type SessionProfileServiceApi,
+  type SessionProfileServiceOptions
+} from "./session-profile.js"
+export {
   WebView,
   WebViewClient,
   WebViewHandlersLive,

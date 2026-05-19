@@ -1109,6 +1109,31 @@
       "signature": "export type SecretString = Redacted.Redacted<string>"
     },
     {
+      "name": "SESSION_PROFILE_DESTROY_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PROFILE_DESTROY_METHOD: \"SessionProfile.destroy\""
+    },
+    {
+      "name": "SESSION_PROFILE_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PROFILE_EVENT_METHOD: \"SessionProfile.Event\""
+    },
+    {
+      "name": "SESSION_PROFILE_FROM_PARTITION_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PROFILE_FROM_PARTITION_METHOD: \"SessionProfile.fromPartition\""
+    },
+    {
+      "name": "SESSION_PROFILE_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PROFILE_IS_SUPPORTED_METHOD: \"SessionProfile.isSupported\""
+    },
+    {
+      "name": "SESSION_PROFILE_LIST_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PROFILE_LIST_METHOD: \"SessionProfile.list\""
+    },
+    {
       "name": "UnaryDesktopTransportFromBridgeClientExchangeOptions",
       "kind": "interface",
       "signature": "export interface UnaryDesktopTransportFromBridgeClientExchangeOptions extends Pick< BridgeClientOptions, \"nextTraceId\" | \"now\" | \"normalizeRequest\" > {}"

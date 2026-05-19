@@ -18,11 +18,11 @@ port. Capability metadata marks those methods `partial` because history state is
 tracked from Wry navigation/page-load callbacks and host-issued commands rather
 than a portable browser history API.
 
-`WebView.create` requires an explicit `WindowHandle` owner. Session/profile
-handles are not exposed today; `WebView.create` has no profile/session input,
-and the host does not retain a browser `WebContext` registry that can bind
-WebViews, cookies, cache, permissions, storage, downloads, or requests to a
-partition.
+`WebView.create` requires an explicit `WindowHandle` owner. `SessionProfile`
+now exposes typed profile handles, but `WebView.create` has no profile/session
+input yet, and the host does not retain a browser `WebContext` registry that
+can bind WebViews, cookies, cache, permissions, storage, downloads, or requests
+to a partition.
 
 `WebView.NavigationBlocked` is a navigation-policy event, not request/response
 interception. `WebView.ApiCall` is a preload-isolation event emitted only for
@@ -108,10 +108,11 @@ decisions still need explicit profile/session-partitioned host wiring. Calls to
 `respondToPermission` fail as typed unsupported after permission and handle
 validation.
 
-Browsing data is not managed by `WebView` today. Cache, cookies, local storage,
-IndexedDB, and history cannot be cleared by profile, session, or data type
-because the current host WebView attachment has no partitioned browser data
-store contract.
+Browsing data is not managed by `WebView` today. `SessionProfile` defines the
+typed resource identity for future partitioned browser state, but cache,
+cookies, local storage, IndexedDB, and history cannot be cleared by profile,
+session, or data type because the current host WebView attachment has no
+partitioned browser data store contract.
 
 Cookies are not exposed as a native Effect Desktop service today. The installed
 WebView provider has low-level cookie read, write, and delete primitives, but

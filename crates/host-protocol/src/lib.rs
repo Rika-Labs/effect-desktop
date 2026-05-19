@@ -337,6 +337,11 @@ pub const WEBVIEW_NAVIGATION_BLOCKED_EVENT: &str = "WebView.NavigationBlocked";
 pub const WEBVIEW_API_CALL_EVENT: &str = "WebView.ApiCall";
 pub const WEBVIEW_RUNTIME_EVENT: &str = "WebView.RuntimeEvent";
 pub const WEBVIEW_FRAME_EVENT: &str = "WebView.FrameEvent";
+pub const SESSION_PROFILE_FROM_PARTITION_METHOD: &str = "SessionProfile.fromPartition";
+pub const SESSION_PROFILE_DESTROY_METHOD: &str = "SessionProfile.destroy";
+pub const SESSION_PROFILE_LIST_METHOD: &str = "SessionProfile.list";
+pub const SESSION_PROFILE_IS_SUPPORTED_METHOD: &str = "SessionProfile.isSupported";
+pub const SESSION_PROFILE_EVENT: &str = "SessionProfile.Event";
 pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
@@ -9539,6 +9544,130 @@ impl ScopedAccessGrantEventPayload {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl SessionProfileResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "session-profile".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn owner_scope(&self) -> &str {
+        &self.owner_scope
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileFromPartitionPayload {
+    partition: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionProfileFromPartitionPayload {
+    pub fn new(partition: impl Into<String>) -> Self {
+        Self {
+            partition: partition.into(),
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_owner_scope(mut self, owner_scope: impl Into<String>) -> Self {
+        self.owner_scope = Some(owner_scope.into());
+        self
+    }
+
+    pub fn partition(&self) -> &str {
+        &self.partition
+    }
+
+    pub fn owner_scope(&self) -> Option<&str> {
+        self.owner_scope.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileHandlePayload {
+    profile: SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionProfileHandlePayload {
+    pub fn new(profile: SessionProfileResourcePayload) -> Self {
+        Self {
+            profile,
+            trace_id: None,
+        }
+    }
+
+    pub fn profile(&self) -> &SessionProfileResourcePayload {
+        &self.profile
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileListPayload {
+    profiles: Vec<SessionProfileResourcePayload>,
+}
+
+impl SessionProfileListPayload {
+    pub fn new(profiles: Vec<SessionProfileResourcePayload>) -> Self {
+        Self { profiles }
+    }
+
+    pub fn profiles(&self) -> &[SessionProfileResourcePayload] {
+        &self.profiles
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl SessionProfileSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceIndexEventPayload {
     r#type: String,
     timestamp: u64,
@@ -12063,11 +12192,13 @@ mod tests {
         SafeStorageKeyPayload, SafeStorageListResultPayload, SafeStorageSetPayload,
         ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
         ScreenDisplaysResultPayload, ScreenIsSupportedPayload, ScreenPointPayload,
-        ScreenSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
-        ShellShowItemInFolderPayload, ShellTrashItemPayload, SystemAppearanceAccentColorPayload,
-        SystemAppearanceBooleanPayload, SystemAppearanceChangedPayload,
-        SystemAppearanceColorPayload, SystemAppearanceIsSupportedPayload,
-        SystemAppearanceMethodPayload, SystemAppearanceModePayload, SystemAppearanceResultPayload,
+        ScreenSupportedPayload, SessionProfileFromPartitionPayload, SessionProfileHandlePayload,
+        SessionProfileListPayload, SessionProfileResourcePayload, SessionProfileSupportedPayload,
+        ShellOpenExternalPayload, ShellOpenPathPayload, ShellShowItemInFolderPayload,
+        ShellTrashItemPayload, SystemAppearanceAccentColorPayload, SystemAppearanceBooleanPayload,
+        SystemAppearanceChangedPayload, SystemAppearanceColorPayload,
+        SystemAppearanceIsSupportedPayload, SystemAppearanceMethodPayload,
+        SystemAppearanceModePayload, SystemAppearanceResultPayload,
         SystemAppearanceSupportedPayload, TransactionalFileMutationActorKind,
         TransactionalFileMutationActorPayload, TransactionalFileMutationCommitPayload,
         TransactionalFileMutationCommitResultPayload, TransactionalFileMutationDiffPayload,
@@ -15020,6 +15151,49 @@ mod tests {
     fn reconnect_defaults_match_spec_values() {
         assert_eq!(DEFAULT_RECONNECT_WINDOW_MS, 30_000);
         assert_eq!(DEFAULT_MAX_BACKFILL_EVENTS, 1_024);
+    }
+
+    #[test]
+    fn session_profile_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        assert_eq!(profile.id(), "session-profile:workspace-1");
+        assert_eq!(profile.owner_scope(), "workspace:1");
+        assert_eq!(
+            serde_json::to_string(&profile).expect("profile handle should encode"),
+            r#"{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}"#
+        );
+
+        let from_partition =
+            SessionProfileFromPartitionPayload::new("workspace-1").with_owner_scope("workspace:1");
+        assert_eq!(from_partition.partition(), "workspace-1");
+        assert_eq!(from_partition.owner_scope(), Some("workspace:1"));
+        assert_eq!(
+            serde_json::to_string(&from_partition).expect("partition payload should encode"),
+            r#"{"partition":"workspace-1","ownerScope":"workspace:1"}"#
+        );
+
+        let destroy = SessionProfileHandlePayload::new(profile.clone());
+        assert_eq!(destroy.profile().id(), "session-profile:workspace-1");
+        assert_eq!(
+            serde_json::to_string(&destroy).expect("destroy payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+
+        let list = SessionProfileListPayload::new(vec![profile]);
+        assert_eq!(list.profiles().len(), 1);
+        assert_eq!(
+            serde_json::to_string(&list).expect("list payload should encode"),
+            r#"{"profiles":[{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}]}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&SessionProfileSupportedPayload::unsupported(
+                "host-session-profile-routing-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-session-profile-routing-unavailable"}"#
+        );
     }
 
     #[test]
