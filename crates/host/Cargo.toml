@@ -38,6 +38,7 @@ gtk = "0.18.2"
 notify-rust = "4.17.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10.1"
 muda = "0.19.1"
 objc2.workspace = true
 objc2-app-kit.workspace = true

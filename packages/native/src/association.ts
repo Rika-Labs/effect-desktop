@@ -20,6 +20,7 @@ import {
   type AssociationProtocolOptions,
   AssociationProtocolStatus
 } from "./contracts/association.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
@@ -27,9 +28,9 @@ export * from "./contracts/association.js"
 
 const Surface = "Association"
 const UnsupportedReason = "host-adapter-unimplemented"
-const AssociationSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const AssociationSupport = NativeSurface.support.partial("macos-association-only", {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "macos", status: "supported" },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
@@ -164,7 +165,7 @@ export const makeHostAssociationRpcRuntime = (
 
 const associationClientFromRpcClient = (
   client: DesktopRpcClient<AssociationRpc>,
-  _exchange?: BridgeClientExchange
+  exchange?: BridgeClientExchange
 ): AssociationClientApi =>
   Object.freeze({
     isDefaultProtocolClient: (input) =>
@@ -194,7 +195,7 @@ const associationClientFromRpcClient = (
           )
         )
       ),
-    events: () => unsupportedAssociationEvents()
+    events: () => subscribeNativeEvent(exchange, "Association.Event", AssociationEvent)
   } satisfies AssociationClientApi)
 
 const decodeAssociationProtocolInput = (
@@ -208,20 +209,6 @@ const decodeAssociationFileAssociationsInput = (
   operation: string
 ): Effect.Effect<AssociationFileAssociationsInput, AssociationError, never> =>
   decodeNativeInput(AssociationFileAssociationsInput, input, operation)
-
-const unsupportedAssociationEvents = (): Stream.Stream<AssociationEvent, AssociationError, never> =>
-  Stream.fail(unsupportedAssociationEventError())
-
-const unsupportedAssociationEventError = (): AssociationError => ({
-  tag: "Unsupported",
-  get _tag() {
-    return this.tag
-  },
-  reason: UnsupportedReason,
-  message: "unsupported Association.Event",
-  operation: "Association.Event",
-  recoverable: false
-})
 
 function associationRpc<
   const Method extends string,

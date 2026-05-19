@@ -11,10 +11,10 @@ effect_version: 4
 Declare and query OS-level protocol and file associations through the native
 host boundary.
 
-The TypeScript surface is present for contract and bridge-client validation
-work, but the Rust host Association adapter is not implemented. The native
-surface reports `unsupported` on macOS, Windows, and Linux until the host owns
-platform-specific default-protocol and file-association APIs.
+The Rust host owns the platform query or mutation. macOS routes through
+LaunchServices for default protocol clients and file-extension default handlers.
+Windows and Linux remain explicit typed unsupported paths until those platform
+adapters exist.
 
 `Association` is separate from [`Protocol`](protocol.md). `Protocol` owns
 in-app custom protocol serving for WebViews. `Association` owns OS default
@@ -25,17 +25,22 @@ extensions are associated with this app?"
 
 | Method                     | Success                             | Runtime support |
 | -------------------------- | ----------------------------------- | --------------- |
-| `isDefaultProtocolClient`  | `AssociationProtocolStatus`         | unsupported     |
-| `setDefaultProtocolClient` | `void`                              | unsupported     |
-| `getFileAssociations`      | `AssociationFileAssociationsResult` | unsupported     |
+| `isDefaultProtocolClient`  | `AssociationProtocolStatus`         | partial         |
+| `setDefaultProtocolClient` | `void`                              | partial         |
+| `getFileAssociations`      | `AssociationFileAssociationsResult` | partial         |
+
+| Platform | Runtime support | Mechanism      |
+| -------- | --------------- | -------------- |
+| macOS    | supported       | LaunchServices |
+| Windows  | unsupported     | none           |
+| Linux    | unsupported     | none           |
 
 ## Events
 
 The current event stream is `events()`. Event phases are
 `protocol-checked`, `protocol-updated`, `file-associations-checked`, and
-`failed`. The bridge client fails `events()` as typed `Unsupported` with reason
-`host-adapter-unimplemented` before opening a subscription because native event
-delivery is currently unsupported until the host adapter exists.
+`failed`. The host emits an event after supported association queries and
+mutations when a runtime event sink is installed.
 
 ## Validation
 
@@ -51,8 +56,8 @@ character after the dot, and may contain ASCII letters, digits, `.`, `_`, and
 
 `AssociationError` is the host protocol error union. Malformed schemes and file
 extensions return `InvalidArgument`. Host transport failure returns
-`HostUnavailable`. Until a platform adapter exists, decoded Association methods
-fail closed as typed `Unsupported` with reason `host-adapter-unimplemented`.
+`HostUnavailable`. Windows, Linux, and platforms without an adapter fail closed
+as typed `Unsupported` with reason `host-adapter-unimplemented`.
 
 ## Related
 

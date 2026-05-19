@@ -238,15 +238,19 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::ASSOCIATION_IS_DEFAULT_PROTOCOL_CLIENT_METHOD,
-        HostMethodDispatcher::Payload(association::is_default_protocol_client),
+        HostMethodDispatcher::EventfulPayload(
+            association::is_default_protocol_client_with_event_sender,
+        ),
     ),
     route(
         host_protocol::ASSOCIATION_SET_DEFAULT_PROTOCOL_CLIENT_METHOD,
-        HostMethodDispatcher::Payload(association::set_default_protocol_client),
+        HostMethodDispatcher::EventfulPayload(
+            association::set_default_protocol_client_with_event_sender,
+        ),
     ),
     route(
         host_protocol::ASSOCIATION_GET_FILE_ASSOCIATIONS_METHOD,
-        HostMethodDispatcher::Payload(association::get_file_associations),
+        HostMethodDispatcher::EventfulPayload(association::get_file_associations_with_event_sender),
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_ADD_METHOD,

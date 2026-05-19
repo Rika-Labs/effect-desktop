@@ -116,13 +116,12 @@
       "method": "getFileAssociations",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-association-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -144,13 +143,12 @@
       "method": "isDefaultProtocolClient",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-association-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -172,13 +170,12 @@
       "method": "setDefaultProtocolClient",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-association-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -4205,7 +4202,7 @@
     "routed": 239,
     "missing": 0,
     "supported": 136,
-    "partial": 49,
-    "unsupported": 54
+    "partial": 52,
+    "unsupported": 51
   }
 }

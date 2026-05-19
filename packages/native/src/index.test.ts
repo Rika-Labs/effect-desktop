@@ -4783,7 +4783,7 @@ test("Association bridge client sends typed host envelopes and decodes events an
   ])
 })
 
-test("Association bridge client fails event stream as unsupported before subscribing", async () => {
+test("Association bridge client subscribes to native association events", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const subscriptions: string[] = []
   const exchange: BridgeClientExchange = {
@@ -4799,36 +4799,23 @@ test("Association bridge client fails event stream as unsupported before subscri
           timestamp: 1710000000100,
           traceId: "event-trace",
           method,
-          payload: { phase: "enabled", mechanism: "linux-xdg-autostart" }
+          payload: { phase: "protocol-updated" }
         })
       )
     }
   }
-  const exit = await Effect.runPromise(
+  const events = await runScopedPromise(
     Effect.gen(function* () {
       const association = yield* Association
-      return yield* Effect.exit(association.events().pipe(Stream.take(1), Stream.runCollect))
+      return yield* association.events().pipe(Stream.take(1), Stream.runCollect)
     }).pipe(
       Effect.provide(Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange)))
     )
   )
 
-  expectExitFailure(exit, (error) => {
-    const unsupported =
-      hasErrorTag(error, "Unsupported") &&
-      typeof error === "object" &&
-      error !== null &&
-      "reason" in error &&
-      "operation" in error
-    expect(unsupported).toBe(true)
-    if (unsupported) {
-      expect(error.reason).toBe("host-adapter-unimplemented")
-      expect(error.operation).toBe("Association.Event")
-    }
-    return unsupported
-  })
+  expect(Array.from(events)).toEqual([new AssociationEvent({ phase: "protocol-updated" })])
   expect(requests).toEqual([])
-  expect(subscriptions).toEqual([])
+  expect(subscriptions).toEqual(["Association.Event"])
 })
 
 test("Association bridge client rejects invalid schemes and file extensions before transport", async () => {

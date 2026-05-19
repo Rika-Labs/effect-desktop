@@ -29,9 +29,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `AppMetadata`               | `getInfo`                   | `supported`   | `AppMetadata.getInfo`                     | `routed`    |
 | `AppMetadata`               | `getLaunchContext`          | `supported`   | `AppMetadata.getLaunchContext`            | `routed`    |
 | `AppMetadata`               | `getPaths`                  | `supported`   | `AppMetadata.getPaths`                    | `routed`    |
-| `Association`               | `getFileAssociations`       | `unsupported` | `Association.getFileAssociations`         | `routed`    |
-| `Association`               | `isDefaultProtocolClient`   | `unsupported` | `Association.isDefaultProtocolClient`     | `routed`    |
-| `Association`               | `setDefaultProtocolClient`  | `unsupported` | `Association.setDefaultProtocolClient`    | `routed`    |
+| `Association`               | `getFileAssociations`       | `partial`     | `Association.getFileAssociations`         | `routed`    |
+| `Association`               | `isDefaultProtocolClient`   | `partial`     | `Association.isDefaultProtocolClient`     | `routed`    |
+| `Association`               | `setDefaultProtocolClient`  | `partial`     | `Association.setDefaultProtocolClient`    | `routed`    |
 | `AttachmentIntake`          | `dispose`                   | `supported`   | `AttachmentIntake.dispose`                | `routed`    |
 | `AttachmentIntake`          | `ingest`                    | `supported`   | `AttachmentIntake.ingest`                 | `routed`    |
 | `AttachmentIntake`          | `inspect`                   | `supported`   | `AttachmentIntake.inspect`                | `routed`    |
