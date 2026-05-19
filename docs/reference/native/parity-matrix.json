@@ -622,7 +622,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "ContextMenu.buildFromTemplate",
@@ -650,7 +650,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "ContextMenu.show",
@@ -678,7 +678,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "CrashReporter.flush",
@@ -1835,7 +1835,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Menu.capability",
@@ -1863,7 +1863,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Menu.clear",
@@ -1891,7 +1891,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Menu.setApplicationMenu",
@@ -4358,8 +4358,8 @@
   ],
   "summary": {
     "total": 232,
-    "routed": 214,
-    "missing": 18,
+    "routed": 220,
+    "missing": 12,
     "supported": 117,
     "partial": 36,
     "unsupported": 79

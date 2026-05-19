@@ -264,6 +264,26 @@
       "signature": "const Client: <Contracts extends Readonly<Record<string, BridgeContract>>>(contracts: Contracts, exchange: BridgeClientExchange, options?: BridgeClientOptions) => BridgeClient<Contracts>"
     },
     {
+      "name": "CONTEXT_MENU_ACTIVATED_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const CONTEXT_MENU_ACTIVATED_EVENT_METHOD: \"ContextMenu.Activated\""
+    },
+    {
+      "name": "CONTEXT_MENU_BIND_COMMAND_METHOD",
+      "kind": "value",
+      "signature": "const CONTEXT_MENU_BIND_COMMAND_METHOD: \"ContextMenu.bindCommand\""
+    },
+    {
+      "name": "CONTEXT_MENU_BUILD_FROM_TEMPLATE_METHOD",
+      "kind": "value",
+      "signature": "const CONTEXT_MENU_BUILD_FROM_TEMPLATE_METHOD: \"ContextMenu.buildFromTemplate\""
+    },
+    {
+      "name": "CONTEXT_MENU_SHOW_METHOD",
+      "kind": "value",
+      "signature": "const CONTEXT_MENU_SHOW_METHOD: \"ContextMenu.show\""
+    },
+    {
       "name": "decodeHostProtocolEnvelope",
       "kind": "value",
       "signature": "const decodeHostProtocolEnvelope: (input: unknown) => HostProtocolEnvelope"
@@ -792,6 +812,26 @@
       "name": "makeUnaryDesktopTransportFromBridgeClientExchange",
       "kind": "value",
       "signature": "const makeUnaryDesktopTransportFromBridgeClientExchange: (exchange: BridgeClientExchange, options?: UnaryDesktopTransportFromBridgeClientExchangeOptions) => Effect.Effect<DesktopTransportSend & DesktopTransportRun>"
+    },
+    {
+      "name": "MENU_ACTIVATED_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const MENU_ACTIVATED_EVENT_METHOD: \"Menu.Activated\""
+    },
+    {
+      "name": "MENU_BIND_COMMAND_METHOD",
+      "kind": "value",
+      "signature": "const MENU_BIND_COMMAND_METHOD: \"Menu.bindCommand\""
+    },
+    {
+      "name": "MENU_CAPABILITY_METHOD",
+      "kind": "value",
+      "signature": "const MENU_CAPABILITY_METHOD: \"Menu.capability\""
+    },
+    {
+      "name": "MENU_CLEAR_METHOD",
+      "kind": "value",
+      "signature": "const MENU_CLEAR_METHOD: \"Menu.clear\""
     },
     {
       "name": "MENU_SET_APPLICATION_MENU_METHOD",

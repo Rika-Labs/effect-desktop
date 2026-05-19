@@ -1054,6 +1054,30 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         host_protocol::MENU_SET_WINDOW_MENU_METHOD,
         HostMethodDispatcher::Window(menu::set_window_menu),
     ),
+    route(
+        host_protocol::MENU_CLEAR_METHOD,
+        HostMethodDispatcher::Payload(menu::clear),
+    ),
+    route(
+        host_protocol::MENU_BIND_COMMAND_METHOD,
+        HostMethodDispatcher::Payload(menu::bind_command),
+    ),
+    route(
+        host_protocol::MENU_CAPABILITY_METHOD,
+        HostMethodDispatcher::Payload(menu::capability),
+    ),
+    route(
+        host_protocol::CONTEXT_MENU_SHOW_METHOD,
+        HostMethodDispatcher::Payload(menu::show_context_menu),
+    ),
+    route(
+        host_protocol::CONTEXT_MENU_BUILD_FROM_TEMPLATE_METHOD,
+        HostMethodDispatcher::Payload(menu::build_context_menu_from_template),
+    ),
+    route(
+        host_protocol::CONTEXT_MENU_BIND_COMMAND_METHOD,
+        HostMethodDispatcher::Payload(menu::bind_context_menu_command),
+    ),
 ];
 
 const fn route(method: &'static str, dispatcher: HostMethodDispatcher) -> HostMethodRoute {

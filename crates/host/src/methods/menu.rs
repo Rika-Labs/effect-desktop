@@ -45,6 +45,77 @@ pub(crate) fn set_window_menu(
     Ok(None)
 }
 
+pub(crate) fn clear(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    validate_clear_payload(payload)?;
+
+    Err(unsupported(host_protocol::MENU_CLEAR_METHOD))
+}
+
+pub(crate) fn bind_command(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_payload(payload, host_protocol::MENU_BIND_COMMAND_METHOD)?;
+    validate_command_binding(&payload, host_protocol::MENU_BIND_COMMAND_METHOD)?;
+
+    Err(unsupported(host_protocol::MENU_BIND_COMMAND_METHOD))
+}
+
+pub(crate) fn capability(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_payload(payload, host_protocol::MENU_CAPABILITY_METHOD)?;
+    validate_capability_payload(&payload)?;
+
+    Err(unsupported(host_protocol::MENU_CAPABILITY_METHOD))
+}
+
+pub(crate) fn show_context_menu(
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_payload(payload, host_protocol::CONTEXT_MENU_SHOW_METHOD)?;
+    validate_window_id(&payload, host_protocol::CONTEXT_MENU_SHOW_METHOD)?;
+    let template = payload.get("template").ok_or_else(|| {
+        HostProtocolError::invalid_argument(
+            "template",
+            "is required",
+            host_protocol::CONTEXT_MENU_SHOW_METHOD,
+        )
+    })?;
+    validate_any_menu_template(template, host_protocol::CONTEXT_MENU_SHOW_METHOD)?;
+    validate_position(&payload)?;
+
+    Err(unsupported(host_protocol::CONTEXT_MENU_SHOW_METHOD))
+}
+
+pub(crate) fn build_context_menu_from_template(
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_payload(
+        payload,
+        host_protocol::CONTEXT_MENU_BUILD_FROM_TEMPLATE_METHOD,
+    )?;
+    let template = payload.get("template").ok_or_else(|| {
+        HostProtocolError::invalid_argument(
+            "template",
+            "is required",
+            host_protocol::CONTEXT_MENU_BUILD_FROM_TEMPLATE_METHOD,
+        )
+    })?;
+    validate_any_menu_template(
+        template,
+        host_protocol::CONTEXT_MENU_BUILD_FROM_TEMPLATE_METHOD,
+    )?;
+
+    Err(unsupported(
+        host_protocol::CONTEXT_MENU_BUILD_FROM_TEMPLATE_METHOD,
+    ))
+}
+
+pub(crate) fn bind_context_menu_command(
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = required_payload(payload, host_protocol::CONTEXT_MENU_BIND_COMMAND_METHOD)?;
+    validate_command_binding(&payload, host_protocol::CONTEXT_MENU_BIND_COMMAND_METHOD)?;
+
+    Err(unsupported(host_protocol::CONTEXT_MENU_BIND_COMMAND_METHOD))
+}
+
 fn decode_template(payload: Option<Value>, operation: &str) -> Result<Value, HostProtocolError> {
     let payload = required_payload(payload, operation)?;
     let template = payload
@@ -54,6 +125,14 @@ fn decode_template(payload: Option<Value>, operation: &str) -> Result<Value, Hos
     validate_template(&template, operation)?;
 
     Ok(template)
+}
+
+fn validate_clear_payload(payload: Option<Value>) -> Result<(), HostProtocolError> {
+    match payload {
+        None | Some(Value::Null) => Ok(()),
+        Some(Value::Object(ref object)) if object.is_empty() => Ok(()),
+        Some(payload) => validate_window_id(&payload, host_protocol::MENU_CLEAR_METHOD),
+    }
 }
 
 fn validate_template(template: &Value, operation: &str) -> Result<(), HostProtocolError> {
@@ -87,13 +166,140 @@ fn validate_template(template: &Value, operation: &str) -> Result<(), HostProtoc
     Ok(())
 }
 
+fn validate_any_menu_template(template: &Value, operation: &str) -> Result<(), HostProtocolError> {
+    if template.get("items").and_then(Value::as_array).is_none() {
+        return Err(HostProtocolError::invalid_argument(
+            "template.items",
+            "must be an array",
+            operation,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_command_binding(payload: &Value, operation: &str) -> Result<(), HostProtocolError> {
+    validate_printable_field(payload, "itemId", operation)?;
+    validate_printable_field(payload, "commandId", operation)?;
+    Ok(())
+}
+
+fn validate_capability_payload(payload: &Value) -> Result<(), HostProtocolError> {
+    let name = payload.get("name").and_then(Value::as_str).ok_or_else(|| {
+        HostProtocolError::invalid_argument(
+            "name",
+            "must be a string",
+            host_protocol::MENU_CAPABILITY_METHOD,
+        )
+    })?;
+    if !matches!(name, "application menu" | "window menu" | "command binding") {
+        return Err(HostProtocolError::invalid_argument(
+            "name",
+            "must be a known Menu capability",
+            host_protocol::MENU_CAPABILITY_METHOD,
+        ));
+    }
+    match payload.get("platform") {
+        None => Ok(()),
+        Some(Value::String(platform))
+            if matches!(platform.as_str(), "macos" | "windows" | "linux") =>
+        {
+            Ok(())
+        }
+        Some(_) => Err(HostProtocolError::invalid_argument(
+            "platform",
+            "must be macos, windows, or linux",
+            host_protocol::MENU_CAPABILITY_METHOD,
+        )),
+    }
+}
+
+fn validate_window_id(payload: &Value, operation: &str) -> Result<(), HostProtocolError> {
+    let window = payload
+        .get("window")
+        .and_then(|window| window.get("id"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument("window.id", "must be a string", operation)
+        })?;
+    validate_printable_value("window.id", window, operation)
+}
+
+fn validate_position(payload: &Value) -> Result<(), HostProtocolError> {
+    let Some(position) = payload.get("position") else {
+        return Err(HostProtocolError::invalid_argument(
+            "position",
+            "is required",
+            host_protocol::CONTEXT_MENU_SHOW_METHOD,
+        ));
+    };
+    for field in ["x", "y"] {
+        let Some(value) = position.get(field).and_then(Value::as_f64) else {
+            return Err(HostProtocolError::invalid_argument(
+                format!("position.{field}"),
+                "must be a finite non-negative number",
+                host_protocol::CONTEXT_MENU_SHOW_METHOD,
+            ));
+        };
+        if !value.is_finite() || value < 0.0 {
+            return Err(HostProtocolError::invalid_argument(
+                format!("position.{field}"),
+                "must be a finite non-negative number",
+                host_protocol::CONTEXT_MENU_SHOW_METHOD,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_printable_field(
+    payload: &Value,
+    field: &'static str,
+    operation: &str,
+) -> Result<(), HostProtocolError> {
+    let value = payload
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| HostProtocolError::invalid_argument(field, "must be a string", operation))?;
+    validate_printable_value(field, value, operation)
+}
+
+fn validate_printable_value(
+    field: &str,
+    value: &str,
+    operation: &str,
+) -> Result<(), HostProtocolError> {
+    if value.is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must not be empty",
+            operation,
+        ));
+    }
+    if value.bytes().any(|byte| matches!(byte, 0x00..=0x1f | 0x7f)) {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must not include control characters",
+            operation,
+        ));
+    }
+    Ok(())
+}
+
 fn required_payload(payload: Option<Value>, operation: &str) -> Result<Value, HostProtocolError> {
     payload.ok_or_else(|| HostProtocolError::invalid_argument("payload", "is required", operation))
 }
 
+fn unsupported(operation: &'static str) -> HostProtocolError {
+    HostProtocolError::unsupported(host_protocol::MENU_UNSUPPORTED_REASON, operation)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::decode_template;
+    use super::{
+        bind_command, build_context_menu_from_template, capability, clear, decode_template,
+        show_context_menu,
+    };
+    use host_protocol::HostProtocolError;
     use serde_json::json;
 
     #[test]
@@ -131,5 +337,64 @@ mod tests {
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
         )
         .is_err());
+    }
+
+    #[test]
+    fn unsupported_menu_methods_validate_payloads_first() {
+        assert!(matches!(
+            clear(Some(json!({ "window": { "id": "window-1" } }))),
+            Err(HostProtocolError::Unsupported { .. })
+        ));
+        assert!(matches!(
+            bind_command(Some(
+                json!({ "itemId": "file.open", "commandId": "app.open" })
+            )),
+            Err(HostProtocolError::Unsupported { .. })
+        ));
+        assert!(matches!(
+            capability(Some(
+                json!({ "name": "command binding", "platform": "macos" })
+            )),
+            Err(HostProtocolError::Unsupported { .. })
+        ));
+    }
+
+    #[test]
+    fn unsupported_context_menu_methods_validate_payloads_first() {
+        let template = json!({ "items": [{ "type": "item", "id": "open", "label": "Open" }] });
+        assert!(matches!(
+            show_context_menu(Some(json!({
+                "window": { "id": "window-1" },
+                "template": template,
+                "position": { "x": 1.0, "y": 2.0 }
+            }))),
+            Err(HostProtocolError::Unsupported { .. })
+        ));
+        assert!(matches!(
+            build_context_menu_from_template(Some(json!({
+                "template": { "items": [] }
+            }))),
+            Err(HostProtocolError::Unsupported { .. })
+        ));
+    }
+
+    #[test]
+    fn unsupported_menu_methods_reject_invalid_payloads_before_unsupported() {
+        assert!(matches!(
+            bind_command(Some(json!({ "itemId": "bad\n", "commandId": "app.open" }))),
+            Err(HostProtocolError::InvalidArgument { .. })
+        ));
+        assert!(matches!(
+            capability(Some(json!({ "name": "unknown" }))),
+            Err(HostProtocolError::InvalidArgument { .. })
+        ));
+        assert!(matches!(
+            show_context_menu(Some(json!({
+                "window": { "id": "window-1" },
+                "template": { "items": [] },
+                "position": { "x": -1, "y": 2 }
+            }))),
+            Err(HostProtocolError::InvalidArgument { .. })
+        ));
     }
 }
