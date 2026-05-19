@@ -168,6 +168,13 @@ pub(crate) fn set_shadow(
     platform::set_shadow(window, has_shadow)
 }
 
+pub(crate) fn set_title_bar_transparent(
+    window: &Window,
+    title_bar_transparent: bool,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_title_bar_transparent(window, title_bar_transparent)
+}
+
 pub(crate) fn set_dock_badge_label(
     window: &Window,
     label: Option<String>,
@@ -334,6 +341,14 @@ mod platform {
         has_shadow: bool,
     ) -> std::result::Result<(), HostProtocolError> {
         WindowExtMacOS::set_has_shadow(window, has_shadow);
+        Ok(())
+    }
+
+    pub(super) fn set_title_bar_transparent(
+        window: &Window,
+        title_bar_transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        WindowExtMacOS::set_titlebar_transparent(window, title_bar_transparent);
         Ok(())
     }
 
@@ -552,6 +567,16 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "window shadow control is only supported on macOS",
             host_protocol::WINDOW_SET_SHADOW_METHOD,
+        ))
+    }
+
+    pub(super) fn set_title_bar_transparent(
+        _window: &Window,
+        _title_bar_transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window titlebar transparency is only supported on macOS",
+            host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
         ))
     }
 

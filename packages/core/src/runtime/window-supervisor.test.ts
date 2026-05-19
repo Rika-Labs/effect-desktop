@@ -491,6 +491,9 @@ const makeHostWindowClient = (overrides: Partial<HostWindowClient> = {}): HostWi
   setResizable: () => Effect.void,
   setDecorations: () => Effect.void,
   setTrafficLights: () => Effect.void,
+  setVibrancy: () => Effect.void,
+  setShadow: () => Effect.void,
+  setTitleBarTransparent: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
   setSkipTaskbar: () => Effect.void,
   setProgress: () => Effect.void,
@@ -500,7 +503,14 @@ const makeHostWindowClient = (overrides: Partial<HostWindowClient> = {}): HostWi
   maximize: () => Effect.void,
   restore: () => Effect.void,
   setFullscreen: () => Effect.void,
-  getState: () => Effect.succeed({ minimized: false, maximized: false, fullscreen: false }),
+  setSimpleFullscreen: () => Effect.void,
+  getState: () =>
+    Effect.succeed({
+      minimized: false,
+      maximized: false,
+      fullscreen: false,
+      simpleFullscreen: false
+    }),
   events: () => Stream.empty,
   destroy: () => Effect.void,
   ...overrides

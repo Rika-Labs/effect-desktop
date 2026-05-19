@@ -4111,6 +4111,33 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setTitleBarTransparent",
+      "surface": "Window",
+      "method": "setTitleBarTransparent",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "titlebar-transparency-macos-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "titlebar-transparency-macos-only"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "titlebar-transparency-macos-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.setTrafficLights",
       "surface": "Window",
       "method": "setTrafficLights",
@@ -4227,11 +4254,11 @@
     }
   ],
   "summary": {
-    "total": 234,
-    "routed": 234,
+    "total": 235,
+    "routed": 235,
     "missing": 0,
     "supported": 127,
-    "partial": 49,
+    "partial": 50,
     "unsupported": 58
   }
 }

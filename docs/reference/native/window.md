@@ -31,42 +31,43 @@ import {
 
 ## Methods
 
-| Method                | Payload                       | Success              | Description                                                         |
-| --------------------- | ----------------------------- | -------------------- | ------------------------------------------------------------------- |
-| `create`              | `WindowCreateOptions`         | `WindowHandle`       | Open a native window.                                               |
-| `show`                | `WindowHandle`                | `void`               | Make an existing window show.                                       |
-| `hide`                | `WindowHandle`                | `void`               | Hide an existing window.                                            |
-| `focus`               | `WindowHandle`                | `void`               | Request focus for a window.                                         |
-| `getCurrent`          | `void`                        | `WindowHandle`       | Read the focused window tracked by the runtime.                     |
-| `getById`             | `WindowLookupInput`           | `WindowHandle`       | Read a tracked window by native window id.                          |
-| `list`                | `void`                        | `WindowListResult`   | List tracked open windows in creation order.                        |
-| `getParent`           | `WindowHandle`                | `WindowParentResult` | Read the tracked parent window, when one exists.                    |
-| `getChildren`         | `WindowHandle`                | `WindowListResult`   | Read tracked child windows for a parent window.                     |
-| `getBounds`           | `WindowHandle`                | `WindowBounds`       | Read logical window bounds.                                         |
-| `setBounds`           | `WindowBoundsInput`           | `void`               | Move and resize a window.                                           |
-| `center`              | `WindowHandle`                | `void`               | Center in the current display.                                      |
-| `centerOnDisplay`     | `WindowDisplayInput`          | `void`               | Center in a specific display's work area.                           |
-| `setTitle`            | `WindowTitleInput`            | `void`               | Set the window title.                                               |
-| `setResizable`        | `WindowResizableInput`        | `void`               | Enable or disable user resizing.                                    |
-| `setDecorations`      | `WindowDecorationsInput`      | `void`               | Enable or disable native window decorations.                        |
-| `setTrafficLights`    | `WindowTrafficLightsInput`    | `void`               | Move macOS traffic-light controls.                                  |
-| `setVibrancy`         | `WindowVibrancyInput`         | `void`               | Apply macOS window vibrancy.                                        |
-| `setShadow`           | `WindowShadowInput`           | `void`               | Enable or disable the macOS native window shadow.                   |
-| `setAlwaysOnTop`      | `WindowAlwaysOnTopInput`      | `void`               | Enable or disable always-on-top z-order.                            |
-| `setSkipTaskbar`      | `WindowSkipTaskbarInput`      | `void`               | Hide or show a window in the taskbar where supported.               |
-| `setProgress`         | `WindowProgressInput`         | `void`               | Set host task progress state for the window.                        |
-| `requestAttention`    | `WindowRequestAttentionInput` | `void`               | Ask the OS to draw attention to a window.                           |
-| `cancelAttention`     | `WindowHandle`                | `void`               | Cancel a pending attention request where possible.                  |
-| `minimize`            | `WindowHandle`                | `void`               | Minimize a window.                                                  |
-| `maximize`            | `WindowHandle`                | `void`               | Maximize a window.                                                  |
-| `restore`             | `WindowHandle`                | `void`               | Clear minimized, maximized, and fullscreen state.                   |
-| `setFullscreen`       | `WindowFullscreenInput`       | `void`               | Enter or exit borderless fullscreen.                                |
-| `setSimpleFullscreen` | `WindowSimpleFullscreenInput` | `void`               | Enter or exit macOS simple fullscreen.                              |
-| `getState`            | `WindowHandle`                | `WindowState`        | Read minimized, maximized, fullscreen, and simple-fullscreen state. |
-| `close`               | `WindowHandle`                | `void`               | Compatibility name for `destroy`.                                   |
-| `destroy`             | `WindowHandle`                | `void`               | Destroy a native window and close its scope.                        |
+| Method                   | Payload                          | Success              | Description                                                         |
+| ------------------------ | -------------------------------- | -------------------- | ------------------------------------------------------------------- |
+| `create`                 | `WindowCreateOptions`            | `WindowHandle`       | Open a native window.                                               |
+| `show`                   | `WindowHandle`                   | `void`               | Make an existing window show.                                       |
+| `hide`                   | `WindowHandle`                   | `void`               | Hide an existing window.                                            |
+| `focus`                  | `WindowHandle`                   | `void`               | Request focus for a window.                                         |
+| `getCurrent`             | `void`                           | `WindowHandle`       | Read the focused window tracked by the runtime.                     |
+| `getById`                | `WindowLookupInput`              | `WindowHandle`       | Read a tracked window by native window id.                          |
+| `list`                   | `void`                           | `WindowListResult`   | List tracked open windows in creation order.                        |
+| `getParent`              | `WindowHandle`                   | `WindowParentResult` | Read the tracked parent window, when one exists.                    |
+| `getChildren`            | `WindowHandle`                   | `WindowListResult`   | Read tracked child windows for a parent window.                     |
+| `getBounds`              | `WindowHandle`                   | `WindowBounds`       | Read logical window bounds.                                         |
+| `setBounds`              | `WindowBoundsInput`              | `void`               | Move and resize a window.                                           |
+| `center`                 | `WindowHandle`                   | `void`               | Center in the current display.                                      |
+| `centerOnDisplay`        | `WindowDisplayInput`             | `void`               | Center in a specific display's work area.                           |
+| `setTitle`               | `WindowTitleInput`               | `void`               | Set the window title.                                               |
+| `setResizable`           | `WindowResizableInput`           | `void`               | Enable or disable user resizing.                                    |
+| `setDecorations`         | `WindowDecorationsInput`         | `void`               | Enable or disable native window decorations.                        |
+| `setTrafficLights`       | `WindowTrafficLightsInput`       | `void`               | Move macOS traffic-light controls.                                  |
+| `setVibrancy`            | `WindowVibrancyInput`            | `void`               | Apply macOS window vibrancy.                                        |
+| `setShadow`              | `WindowShadowInput`              | `void`               | Enable or disable the macOS native window shadow.                   |
+| `setTitleBarTransparent` | `WindowTitleBarTransparentInput` | `void`               | Enable or disable macOS transparent titlebar drawing.               |
+| `setAlwaysOnTop`         | `WindowAlwaysOnTopInput`         | `void`               | Enable or disable always-on-top z-order.                            |
+| `setSkipTaskbar`         | `WindowSkipTaskbarInput`         | `void`               | Hide or show a window in the taskbar where supported.               |
+| `setProgress`            | `WindowProgressInput`            | `void`               | Set host task progress state for the window.                        |
+| `requestAttention`       | `WindowRequestAttentionInput`    | `void`               | Ask the OS to draw attention to a window.                           |
+| `cancelAttention`        | `WindowHandle`                   | `void`               | Cancel a pending attention request where possible.                  |
+| `minimize`               | `WindowHandle`                   | `void`               | Minimize a window.                                                  |
+| `maximize`               | `WindowHandle`                   | `void`               | Maximize a window.                                                  |
+| `restore`                | `WindowHandle`                   | `void`               | Clear minimized, maximized, and fullscreen state.                   |
+| `setFullscreen`          | `WindowFullscreenInput`          | `void`               | Enter or exit borderless fullscreen.                                |
+| `setSimpleFullscreen`    | `WindowSimpleFullscreenInput`    | `void`               | Enter or exit macOS simple fullscreen.                              |
+| `getState`               | `WindowHandle`                   | `WindowState`        | Read minimized, maximized, fullscreen, and simple-fullscreen state. |
+| `close`                  | `WindowHandle`                   | `void`               | Compatibility name for `destroy`.                                   |
+| `destroy`                | `WindowHandle`                   | `void`               | Destroy a native window and close its scope.                        |
 
-`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getParent", "getChildren", "getBounds", "setBounds", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setVibrancy", "setShadow", "setAlwaysOnTop", "setSkipTaskbar", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "setSimpleFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights`, `setVibrancy`, `setShadow`, and `setSimpleFullscreen` are macOS-only and return typed `Unsupported` on other hosts. `setSkipTaskbar` is supported on Windows and Linux and returns typed `Unsupported` on macOS. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
+`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getParent", "getChildren", "getBounds", "setBounds", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setVibrancy", "setShadow", "setTitleBarTransparent", "setAlwaysOnTop", "setSkipTaskbar", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "setSimpleFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights`, `setVibrancy`, `setShadow`, `setTitleBarTransparent`, and `setSimpleFullscreen` are macOS-only and return typed `Unsupported` on other hosts. `setSkipTaskbar` is supported on Windows and Linux and returns typed `Unsupported` on macOS. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
 The placement surface is not complete. `getBounds`, `setBounds`, and `center`
 are host-routed logical-coordinate operations. `centerOnDisplay` uses the host's
@@ -85,10 +86,12 @@ mutable through the host, and `setTrafficLights` mutates macOS traffic-light
 placement with typed unsupported behavior elsewhere. `setVibrancy` applies the
 same validated macOS vibrancy materials that `Window.create({ vibrancy })`
 accepts and returns typed `Unsupported` on non-macOS hosts. Effect Desktop does
-not yet expose a `WindowChrome` service, mutable titlebar-style commands,
-transparency controls, vibrancy clearing, or a complete platform support matrix
-for those chrome features. `setShadow` mutates the macOS native window shadow
-through Tao and returns typed `Unsupported` on Windows and Linux.
+not yet expose a `WindowChrome` service, mutable full titlebar-style
+commands, general window transparency controls, vibrancy clearing, or a complete
+platform support matrix for those chrome features. `setShadow` mutates the macOS
+native window shadow through Tao and returns typed `Unsupported` on Windows and
+Linux. `setTitleBarTransparent` mutates the macOS titlebar background drawing
+flag through Tao and returns typed `Unsupported` on Windows and Linux.
 
 The state surface has command, read, and state-event support for host-tracked
 minimized, maximized, fullscreen, and simple-fullscreen booleans. `minimize`,

@@ -563,6 +563,7 @@ const makeWindowClient = (
   setTrafficLights: () => Effect.void,
   setVibrancy: () => Effect.void,
   setShadow: () => Effect.void,
+  setTitleBarTransparent: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
   setSkipTaskbar: () => Effect.void,
   setProgress: () => Effect.void,
