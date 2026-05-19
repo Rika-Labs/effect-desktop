@@ -262,15 +262,15 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::AUTOSTART_IS_ENABLED_METHOD,
-        HostMethodDispatcher::Payload(autostart::is_enabled),
+        HostMethodDispatcher::EventfulPayload(autostart::is_enabled_with_event_sender),
     ),
     route(
         host_protocol::AUTOSTART_ENABLE_METHOD,
-        HostMethodDispatcher::Payload(autostart::enable),
+        HostMethodDispatcher::EventfulPayload(autostart::enable_with_event_sender),
     ),
     route(
         host_protocol::AUTOSTART_DISABLE_METHOD,
-        HostMethodDispatcher::Payload(autostart::disable),
+        HostMethodDispatcher::EventfulPayload(autostart::disable_with_event_sender),
     ),
     route(
         host_protocol::WINDOW_CREATE_METHOD,
@@ -1980,7 +1980,7 @@ fn local_tool_runtime_payload_id(payload: Option<&serde_json::Value>) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use super::{resident_lifecycle, HostMethodRouter};
+    use super::{autostart, resident_lifecycle, HostMethodRouter};
     use crate::window::{TrayCreateRequest, WindowCreateRequest, WindowMethodHandler};
     use host_protocol::{
         ClipboardSupportedPayload, HostProtocolEnvelope, HostProtocolError, WindowBoundsPayload,
@@ -3275,7 +3275,37 @@ mod tests {
     }
 
     #[test]
-    fn autostart_routes_to_typed_unsupported() {
+    fn autostart_routes_return_mechanism_status() {
+        let _guard = autostart::AUTOSTART_TEST_ENV_LOCK
+            .lock()
+            .expect("autostart env lock");
+        let root = std::env::temp_dir().join(format!(
+            "effect-desktop-autostart-route-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let previous_root = std::env::var_os("EFFECT_DESKTOP_AUTOSTART_ROOT");
+        let previous_id = std::env::var_os("EFFECT_DESKTOP_AUTOSTART_APP_ID");
+        let previous_name = std::env::var_os("EFFECT_DESKTOP_AUTOSTART_APP_NAME");
+        let previous_exe = std::env::var_os("EFFECT_DESKTOP_AUTOSTART_EXE");
+        std::env::set_var("EFFECT_DESKTOP_AUTOSTART_ROOT", &root);
+        std::env::set_var(
+            "EFFECT_DESKTOP_AUTOSTART_APP_ID",
+            "dev.effect-desktop.route-test",
+        );
+        std::env::set_var(
+            "EFFECT_DESKTOP_AUTOSTART_APP_NAME",
+            "Effect Desktop Route Test",
+        );
+        let test_exe = if cfg!(windows) {
+            r"C:\Program Files\Effect Desktop\host.exe"
+        } else {
+            "/Applications/Effect Desktop.app/Contents/MacOS/host"
+        };
+        std::env::set_var("EFFECT_DESKTOP_AUTOSTART_EXE", test_exe);
+
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -3287,19 +3317,22 @@ mod tests {
             )
             .expect("autostart enable should return response");
 
-        assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-autostart-enable".to_string(),
-                timestamp: 1710000000128,
-                trace_id: "trace-request-autostart-enable".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::AUTOSTART_UNSUPPORTED_REASON,
-                    host_protocol::AUTOSTART_ENABLE_METHOD,
-                )),
-            }
-        );
+        restore_env("EFFECT_DESKTOP_AUTOSTART_ROOT", previous_root);
+        restore_env("EFFECT_DESKTOP_AUTOSTART_APP_ID", previous_id);
+        restore_env("EFFECT_DESKTOP_AUTOSTART_APP_NAME", previous_name);
+        restore_env("EFFECT_DESKTOP_AUTOSTART_EXE", previous_exe);
+        let _ = std::fs::remove_dir_all(root);
+
+        let HostProtocolEnvelope::Response {
+            payload: Some(payload),
+            error: None,
+            ..
+        } = response
+        else {
+            panic!("autostart route should return status: {response:?}");
+        };
+        assert_eq!(payload["enabled"], true);
+        assert!(payload.get("mechanism").is_some());
     }
 
     #[test]
@@ -3322,6 +3355,13 @@ mod tests {
             panic!("autostart route should reject malformed args");
         };
         assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    fn restore_env(key: &str, value: Option<std::ffi::OsString>) {
+        match value {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
     }
 
     #[test]

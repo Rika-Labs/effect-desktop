@@ -36,9 +36,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `AttachmentIntake`          | `ingest`                    | `supported`   | `AttachmentIntake.ingest`                 | `routed`    |
 | `AttachmentIntake`          | `inspect`                   | `supported`   | `AttachmentIntake.inspect`                | `routed`    |
 | `AttachmentIntake`          | `isSupported`               | `supported`   | `AttachmentIntake.isSupported`            | `routed`    |
-| `Autostart`                 | `disable`                   | `unsupported` | `Autostart.disable`                       | `routed`    |
-| `Autostart`                 | `enable`                    | `unsupported` | `Autostart.enable`                        | `routed`    |
-| `Autostart`                 | `isEnabled`                 | `unsupported` | `Autostart.isEnabled`                     | `routed`    |
+| `Autostart`                 | `disable`                   | `supported`   | `Autostart.disable`                       | `routed`    |
+| `Autostart`                 | `enable`                    | `supported`   | `Autostart.enable`                        | `routed`    |
+| `Autostart`                 | `isEnabled`                 | `supported`   | `Autostart.isEnabled`                     | `routed`    |
 | `Clipboard`                 | `clear`                     | `supported`   | `Clipboard.clear`                         | `routed`    |
 | `Clipboard`                 | `isSupported`               | `supported`   | `Clipboard.isSupported`                   | `routed`    |
 | `Clipboard`                 | `readHtml`                  | `supported`   | `Clipboard.readHtml`                      | `routed`    |

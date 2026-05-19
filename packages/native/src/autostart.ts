@@ -17,20 +17,14 @@ import {
   AutostartEvent,
   AutostartStatus
 } from "./contracts/autostart.js"
+import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
 export * from "./contracts/autostart.js"
 
 const Surface = "Autostart"
-const UnsupportedReason = "host-adapter-unimplemented"
-const AutostartSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
+const AutostartSupport = NativeSurface.support.supported
 
 export type AutostartError = HostProtocolError
 
@@ -148,7 +142,7 @@ export const makeHostAutostartRpcRuntime = (
 
 const autostartClientFromRpcClient = (
   client: DesktopRpcClient<AutostartRpc>,
-  _exchange?: BridgeClientExchange
+  exchange?: BridgeClientExchange
 ): AutostartClientApi =>
   Object.freeze({
     isEnabled: () => runAutostartRpc(client["Autostart.isEnabled"](), "Autostart.isEnabled"),
@@ -159,7 +153,7 @@ const autostartClientFromRpcClient = (
         )
       ),
     disable: () => runAutostartRpc(client["Autostart.disable"](), "Autostart.disable"),
-    events: () => unsupportedAutostartEvents()
+    events: () => subscribeNativeEvent(exchange, "Autostart.Event", AutostartEvent)
   } satisfies AutostartClientApi)
 
 const decodeAutostartEnableInput = (
@@ -167,20 +161,6 @@ const decodeAutostartEnableInput = (
   operation: string
 ): Effect.Effect<AutostartEnableInput, AutostartError> =>
   decodeNativeInput(AutostartEnableInput, input, operation)
-
-const unsupportedAutostartEvents = (): Stream.Stream<AutostartEvent, AutostartError> =>
-  Stream.fail(unsupportedAutostartEventError())
-
-const unsupportedAutostartEventError = (): AutostartError => ({
-  tag: "Unsupported",
-  get _tag() {
-    return this.tag
-  },
-  reason: UnsupportedReason,
-  message: "unsupported Autostart.Event",
-  operation: "Autostart.Event",
-  recoverable: false
-})
 
 function autostartRpc<
   const Method extends string,

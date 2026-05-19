@@ -1123,6 +1123,10 @@ impl AutostartStatusPayload {
     pub fn new(enabled: bool, mechanism: AutostartMechanismPayload) -> Self {
         Self { enabled, mechanism }
     }
+
+    pub fn mechanism(&self) -> AutostartMechanismPayload {
+        self.mechanism
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
