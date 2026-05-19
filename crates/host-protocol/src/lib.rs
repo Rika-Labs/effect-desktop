@@ -352,6 +352,11 @@ pub const BROWSING_DATA_ESTIMATE_METHOD: &str = "BrowsingData.estimate";
 pub const BROWSING_DATA_LIST_TYPES_METHOD: &str = "BrowsingData.listTypes";
 pub const BROWSING_DATA_IS_SUPPORTED_METHOD: &str = "BrowsingData.isSupported";
 pub const BROWSING_DATA_EVENT: &str = "BrowsingData.Event";
+pub const SESSION_PERMISSION_REQUEST_METHOD: &str = "SessionPermission.request";
+pub const SESSION_PERMISSION_DECIDE_METHOD: &str = "SessionPermission.decide";
+pub const SESSION_PERMISSION_LIST_DECISIONS_METHOD: &str = "SessionPermission.listDecisions";
+pub const SESSION_PERMISSION_IS_SUPPORTED_METHOD: &str = "SessionPermission.isSupported";
+pub const SESSION_PERMISSION_EVENT: &str = "SessionPermission.Event";
 pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
@@ -9960,6 +9965,246 @@ impl BrowsingDataSupportedPayload {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum SessionPermissionKindPayload {
+    Camera,
+    Microphone,
+    Notifications,
+    Geolocation,
+    ClipboardRead,
+    ClipboardWrite,
+    DisplayCapture,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum SessionPermissionDecisionPayload {
+    Grant,
+    Deny,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum SessionPermissionRequestStatusPayload {
+    Pending,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum SessionPermissionEventPhasePayload {
+    Requested,
+    Decided,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionRequestPayload {
+    profile: SessionProfileResourcePayload,
+    kind: SessionPermissionKindPayload,
+    origin: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionPermissionRequestPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        kind: SessionPermissionKindPayload,
+        origin: impl Into<String>,
+    ) -> Self {
+        Self {
+            profile,
+            kind,
+            origin: origin.into(),
+            request_id: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.request_id = Some(request_id.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionDecidePayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    kind: SessionPermissionKindPayload,
+    origin: String,
+    decision: SessionPermissionDecisionPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionPermissionDecidePayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        kind: SessionPermissionKindPayload,
+        origin: impl Into<String>,
+        decision: SessionPermissionDecisionPayload,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            kind,
+            origin: origin.into(),
+            decision,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionListPayload {
+    profile: SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<SessionPermissionKindPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionPermissionListPayload {
+    pub fn new(profile: SessionProfileResourcePayload) -> Self {
+        Self {
+            profile,
+            kind: None,
+            origin: None,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionRequestResultPayload {
+    request_id: String,
+    status: SessionPermissionRequestStatusPayload,
+}
+
+impl SessionPermissionRequestResultPayload {
+    pub fn new(request_id: impl Into<String>) -> Self {
+        Self {
+            request_id: request_id.into(),
+            status: SessionPermissionRequestStatusPayload::Pending,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionDecisionRecordPayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    kind: SessionPermissionKindPayload,
+    origin: String,
+    decision: SessionPermissionDecisionPayload,
+    decided_at: u64,
+}
+
+impl SessionPermissionDecisionRecordPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        kind: SessionPermissionKindPayload,
+        origin: impl Into<String>,
+        decision: SessionPermissionDecisionPayload,
+        decided_at: u64,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            kind,
+            origin: origin.into(),
+            decision,
+            decided_at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionListResultPayload {
+    decisions: Vec<SessionPermissionDecisionRecordPayload>,
+}
+
+impl SessionPermissionListResultPayload {
+    pub fn new(decisions: Vec<SessionPermissionDecisionRecordPayload>) -> Self {
+        Self { decisions }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl SessionPermissionSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: SessionPermissionEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    kind: SessionPermissionKindPayload,
+    origin: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<SessionPermissionDecisionPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl SessionPermissionEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: SessionPermissionEventPhasePayload,
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        kind: SessionPermissionKindPayload,
+        origin: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "session-permission-event".to_string(),
+            timestamp,
+            phase,
+            profile,
+            request_id: request_id.into(),
+            kind,
+            origin: origin.into(),
+            decision: None,
+            message: None,
+        }
+    }
+
+    pub fn with_decision(mut self, decision: SessionPermissionDecisionPayload) -> Self {
+        self.decision = Some(decision);
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceIndexEventPayload {
     r#type: String,
@@ -12490,13 +12735,18 @@ mod tests {
         SafeStorageKeyPayload, SafeStorageListResultPayload, SafeStorageSetPayload,
         ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
         ScreenDisplaysResultPayload, ScreenIsSupportedPayload, ScreenPointPayload,
-        ScreenSupportedPayload, SessionProfileFromPartitionPayload, SessionProfileHandlePayload,
-        SessionProfileListPayload, SessionProfileResourcePayload, SessionProfileSupportedPayload,
-        ShellOpenExternalPayload, ShellOpenPathPayload, ShellShowItemInFolderPayload,
-        ShellTrashItemPayload, SystemAppearanceAccentColorPayload, SystemAppearanceBooleanPayload,
-        SystemAppearanceChangedPayload, SystemAppearanceColorPayload,
-        SystemAppearanceIsSupportedPayload, SystemAppearanceMethodPayload,
-        SystemAppearanceModePayload, SystemAppearanceResultPayload,
+        ScreenSupportedPayload, SessionPermissionDecidePayload, SessionPermissionDecisionPayload,
+        SessionPermissionDecisionRecordPayload, SessionPermissionEventPayload,
+        SessionPermissionEventPhasePayload, SessionPermissionKindPayload,
+        SessionPermissionListPayload, SessionPermissionListResultPayload,
+        SessionPermissionRequestPayload, SessionPermissionRequestResultPayload,
+        SessionPermissionSupportedPayload, SessionProfileFromPartitionPayload,
+        SessionProfileHandlePayload, SessionProfileListPayload, SessionProfileResourcePayload,
+        SessionProfileSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
+        ShellShowItemInFolderPayload, ShellTrashItemPayload, SystemAppearanceAccentColorPayload,
+        SystemAppearanceBooleanPayload, SystemAppearanceChangedPayload,
+        SystemAppearanceColorPayload, SystemAppearanceIsSupportedPayload,
+        SystemAppearanceMethodPayload, SystemAppearanceModePayload, SystemAppearanceResultPayload,
         SystemAppearanceSupportedPayload, TransactionalFileMutationActorKind,
         TransactionalFileMutationActorPayload, TransactionalFileMutationCommitPayload,
         TransactionalFileMutationCommitResultPayload, TransactionalFileMutationDiffPayload,
@@ -15603,6 +15853,86 @@ mod tests {
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-browsing-data-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn session_permission_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        assert_eq!(
+            serde_json::to_string(
+                &SessionPermissionRequestPayload::new(
+                    profile.clone(),
+                    SessionPermissionKindPayload::DisplayCapture,
+                    "https://example.test"
+                )
+                .with_request_id("permission-request-1")
+            )
+            .expect("request payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"kind":"display-capture","origin":"https://example.test","requestId":"permission-request-1"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionDecidePayload::new(
+                profile.clone(),
+                "permission-request-1",
+                SessionPermissionKindPayload::ClipboardRead,
+                "app://localhost",
+                SessionPermissionDecisionPayload::Grant
+            ))
+            .expect("decide payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"clipboard-read","origin":"app://localhost","decision":"grant"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionListPayload::new(profile.clone()))
+                .expect("list payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionRequestResultPayload::new(
+                "permission-request-1"
+            ))
+            .expect("request result should encode"),
+            r#"{"requestId":"permission-request-1","status":"pending"}"#
+        );
+        let record = SessionPermissionDecisionRecordPayload::new(
+            profile.clone(),
+            "permission-request-1",
+            SessionPermissionKindPayload::Notifications,
+            "https://example.test",
+            SessionPermissionDecisionPayload::Deny,
+            1710000000000,
+        );
+        assert_eq!(
+            serde_json::to_string(&record).expect("decision record should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"notifications","origin":"https://example.test","decision":"deny","decidedAt":1710000000000}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionListResultPayload::new(vec![record]))
+                .expect("list result should encode"),
+            r#"{"decisions":[{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"notifications","origin":"https://example.test","decision":"deny","decidedAt":1710000000000}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &SessionPermissionEventPayload::new(
+                    1710000000001,
+                    SessionPermissionEventPhasePayload::Decided,
+                    profile,
+                    "permission-request-1",
+                    SessionPermissionKindPayload::Camera,
+                    "https://example.test"
+                )
+                .with_decision(SessionPermissionDecisionPayload::Grant)
+            )
+            .expect("event should encode"),
+            r#"{"type":"session-permission-event","timestamp":1710000000001,"phase":"decided","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"camera","origin":"https://example.test","decision":"grant"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionSupportedPayload::unsupported(
+                "host-session-permission-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-session-permission-unavailable"}"#
         );
     }
 

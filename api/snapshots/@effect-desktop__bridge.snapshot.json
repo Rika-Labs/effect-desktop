@@ -1159,6 +1159,31 @@
       "signature": "export type SecretString = Redacted.Redacted<string>"
     },
     {
+      "name": "SESSION_PERMISSION_DECIDE_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PERMISSION_DECIDE_METHOD: \"SessionPermission.decide\""
+    },
+    {
+      "name": "SESSION_PERMISSION_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PERMISSION_EVENT_METHOD: \"SessionPermission.Event\""
+    },
+    {
+      "name": "SESSION_PERMISSION_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PERMISSION_IS_SUPPORTED_METHOD: \"SessionPermission.isSupported\""
+    },
+    {
+      "name": "SESSION_PERMISSION_LIST_DECISIONS_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PERMISSION_LIST_DECISIONS_METHOD: \"SessionPermission.listDecisions\""
+    },
+    {
+      "name": "SESSION_PERMISSION_REQUEST_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PERMISSION_REQUEST_METHOD: \"SessionPermission.request\""
+    },
+    {
       "name": "SESSION_PROFILE_DESTROY_METHOD",
       "kind": "value",
       "signature": "const SESSION_PROFILE_DESTROY_METHOD: \"SessionProfile.destroy\""

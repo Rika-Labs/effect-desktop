@@ -986,6 +986,29 @@ export {
   type UpdaterServiceApi
 } from "./updater.js"
 export {
+  makeHostSessionPermissionRpcRuntime,
+  makeSessionPermissionBridgeClientLayer,
+  makeSessionPermissionClientLayer,
+  makeSessionPermissionMemoryClient,
+  makeSessionPermissionServiceLayer,
+  makeSessionPermissionUnsupportedClient,
+  SessionPermission,
+  SessionPermissionClient,
+  SessionPermissionHandlersLive,
+  SessionPermissionLive,
+  SessionPermissionMethodNames,
+  SessionPermissionRpcEvents,
+  SessionPermissionRpcs,
+  SessionPermissionSurface,
+  type SessionPermissionClientApi,
+  type SessionPermissionError,
+  type SessionPermissionMemoryClientOptions,
+  type SessionPermissionRpc,
+  type SessionPermissionRpcHandlers,
+  type SessionPermissionServiceApi,
+  type SessionPermissionServiceOptions
+} from "./session-permission.js"
+export {
   makeHostSessionProfileRpcRuntime,
   makeSessionProfileBridgeClientLayer,
   makeSessionProfileClientLayer,

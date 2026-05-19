@@ -108,6 +108,11 @@ decisions still need explicit profile/session-partitioned host wiring. Calls to
 `respondToPermission` fail as typed unsupported after permission and handle
 validation.
 
+`SessionPermission` now exposes typed request, decision, listing, and event
+contracts scoped to `SessionProfileHandle`, but the host adapter is still
+validation-first unsupported until WebView permission callbacks are routed
+through profile-bound Wry contexts.
+
 Browsing data is not managed by `WebView` today. `SessionProfile` defines the
 typed resource identity for future partitioned browser state, but cache,
 cookies, local storage, IndexedDB, and history cannot be cleared by profile,

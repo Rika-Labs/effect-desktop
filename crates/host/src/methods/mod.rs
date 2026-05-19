@@ -35,6 +35,7 @@ mod safe_storage;
 mod scoped_access_grant;
 mod screen;
 mod selection_context;
+mod session_permission;
 mod session_profile;
 mod shell;
 pub(crate) mod system_appearance;
@@ -1275,6 +1276,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::BROWSING_DATA_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(browsing_data::is_supported),
+    ),
+    route(
+        host_protocol::SESSION_PERMISSION_REQUEST_METHOD,
+        HostMethodDispatcher::Payload(session_permission::request),
+    ),
+    route(
+        host_protocol::SESSION_PERMISSION_DECIDE_METHOD,
+        HostMethodDispatcher::Payload(session_permission::decide),
+    ),
+    route(
+        host_protocol::SESSION_PERMISSION_LIST_DECISIONS_METHOD,
+        HostMethodDispatcher::Payload(session_permission::list_decisions),
+    ),
+    route(
+        host_protocol::SESSION_PERMISSION_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(session_permission::is_supported),
     ),
 ];
 

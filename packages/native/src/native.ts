@@ -43,6 +43,7 @@ import { ResidentLifecycleSurface } from "./resident-lifecycle.js"
 import { SafeStorageSurface } from "./safe-storage.js"
 import { ScopedAccessGrantSurface } from "./scoped-access-grant.js"
 import { SelectionContextSurface } from "./selection-context.js"
+import { SessionPermissionSurface } from "./session-permission.js"
 import { SessionProfileSurface } from "./session-profile.js"
 import { ScreenSurface } from "./screen.js"
 import { ShellSurface } from "./shell.js"
@@ -93,6 +94,7 @@ const BuiltInSurfaces = Object.freeze([
   SafeStorageSurface,
   ScopedAccessGrantSurface,
   SelectionContextSurface,
+  SessionPermissionSurface,
   SessionProfileSurface,
   ScreenSurface,
   ShellSurface,
@@ -149,6 +151,7 @@ const ResidentLifecycle = ResidentLifecycleSurface.selection
 const SafeStorage = SafeStorageSurface.selection
 const ScopedAccessGrant = ScopedAccessGrantSurface.selection
 const SelectionContext = SelectionContextSurface.selection
+const SessionPermission = SessionPermissionSurface.selection
 const SessionProfile = SessionProfileSurface.selection
 const Screen = ScreenSurface.selection
 const Shell = ShellSurface.selection
@@ -205,6 +208,7 @@ export const Permissions = Object.freeze({
   safeStorage: SafeStorageSurface.permissions,
   scopedAccessGrant: ScopedAccessGrantSurface.permissions,
   selectionContext: SelectionContextSurface.permissions,
+  sessionPermission: SessionPermissionSurface.permissions,
   sessionProfile: SessionProfileSurface.permissions,
   screen: ScreenSurface.permissions,
   shell: ShellSurface.permissions,
@@ -256,6 +260,7 @@ export const Native = Object.freeze({
   SafeStorage,
   ScopedAccessGrant,
   SelectionContext,
+  SessionPermission,
   SessionProfile,
   Screen,
   Shell,

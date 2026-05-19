@@ -2875,6 +2875,100 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "SessionPermission.decide",
+      "surface": "SessionPermission",
+      "method": "decide",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-session-permission-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-session-permission-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-session-permission-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-session-permission-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SessionPermission.isSupported",
+      "surface": "SessionPermission",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SessionPermission.listDecisions",
+      "surface": "SessionPermission",
+      "method": "listDecisions",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-session-permission-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-session-permission-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-session-permission-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-session-permission-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "SessionPermission.request",
+      "surface": "SessionPermission",
+      "method": "request",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-session-permission-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-session-permission-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-session-permission-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-session-permission-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "SessionProfile.destroy",
       "surface": "SessionProfile",
       "method": "destroy",
@@ -4855,11 +4949,11 @@
     }
   ],
   "summary": {
-    "total": 267,
-    "routed": 267,
+    "total": 271,
+    "routed": 271,
     "missing": 0,
-    "supported": 143,
+    "supported": 144,
     "partial": 70,
-    "unsupported": 54
+    "unsupported": 57
   }
 }
