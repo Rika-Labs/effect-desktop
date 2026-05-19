@@ -1,5 +1,5 @@
 mod activation_registry;
-mod app;
+pub(crate) mod app;
 mod app_metadata;
 mod association;
 mod attachment_intake;

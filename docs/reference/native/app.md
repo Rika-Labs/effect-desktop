@@ -16,6 +16,7 @@ The Rust host implements `App.quit` by requesting event-loop exit and
 `App.focus` by focusing the current native window. The Rust host also
 implements `App.requestSingleInstanceLock` with a process-held OS file lock and
 returns the primary process id when another process already owns the lock.
+`--single-instance-lock-smoke-test` verifies this lock across host processes.
 The host binary includes `--app-quit-smoke-test` and
 `--app-focus-smoke-test` to verify live startup windows can exit through the
 app-quit lifecycle path and focus through the native window-manager path.

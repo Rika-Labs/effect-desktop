@@ -13,7 +13,9 @@ use std::{
     io::{Read, Seek, SeekFrom, Write},
     path::PathBuf,
     sync::{LazyLock, Mutex},
+    time::Duration,
 };
+use tracing::info;
 
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
@@ -31,7 +33,9 @@ use windows_sys::Win32::System::IO::OVERLAPPED;
 
 const SINGLE_INSTANCE_LOCK_PATH_ENV: &str = "EFFECT_DESKTOP_SINGLE_INSTANCE_LOCK_PATH";
 const SINGLE_INSTANCE_APP_ID_ENV: &str = "EFFECT_DESKTOP_APP_ID";
+const SINGLE_INSTANCE_SMOKE_HOLD_MS_ENV: &str = "EFFECT_DESKTOP_SINGLE_INSTANCE_SMOKE_HOLD_MS";
 const SINGLE_INSTANCE_LOCK_DIR: &str = "effect-desktop-single-instance";
+const SINGLE_INSTANCE_SMOKE_OPERATION: &str = "App.requestSingleInstanceLock.smoke";
 #[cfg(windows)]
 const WINDOWS_SINGLE_INSTANCE_LOCK_OFFSET_HIGH: u32 = 1;
 #[cfg(windows)]
@@ -75,6 +79,34 @@ pub(crate) fn request_single_instance_lock(
         host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
     )?;
     acquire_single_instance_lock(host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD)
+}
+
+pub(crate) fn run_single_instance_lock_smoke() -> Result<(), HostProtocolError> {
+    let payload = request_single_instance_lock(None)?.ok_or_else(|| {
+        HostProtocolError::internal(
+            "single-instance smoke missing payload",
+            SINGLE_INSTANCE_SMOKE_OPERATION,
+        )
+    })?;
+    let result =
+        serde_json::from_value::<AppSingleInstancePayload>(payload.clone()).map_err(|error| {
+            HostProtocolError::internal(
+                format!("failed to decode single-instance smoke payload: {error}"),
+                SINGLE_INSTANCE_SMOKE_OPERATION,
+            )
+        })?;
+    info!(
+        event = "host.app.single_instance_lock.smoke_verified",
+        acquired = result.is_acquired(),
+        primary_pid = result.primary_pid(),
+        payload = %payload,
+        "single-instance lock smoke verified"
+    );
+
+    if let Some(hold) = single_instance_smoke_hold_duration()? {
+        std::thread::sleep(hold);
+    }
+    Ok(())
 }
 
 fn reject_unexpected_payload(
@@ -253,6 +285,21 @@ fn single_instance_key(operation: &'static str) -> Result<String, HostProtocolEr
 
     let digest = Sha256::digest(identity.as_bytes());
     Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+fn single_instance_smoke_hold_duration() -> Result<Option<Duration>, HostProtocolError> {
+    let Some(value) = std::env::var_os(SINGLE_INSTANCE_SMOKE_HOLD_MS_ENV) else {
+        return Ok(None);
+    };
+    let value = value.to_string_lossy();
+    let milliseconds = value.parse::<u64>().map_err(|error| {
+        HostProtocolError::invalid_argument(
+            SINGLE_INSTANCE_SMOKE_HOLD_MS_ENV,
+            format!("must be a non-negative integer millisecond duration: {error}"),
+            SINGLE_INSTANCE_SMOKE_OPERATION,
+        )
+    })?;
+    Ok(Some(Duration::from_millis(milliseconds)))
 }
 
 fn write_single_instance_primary_pid(

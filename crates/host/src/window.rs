@@ -55,6 +55,7 @@ pub(crate) enum RunMode {
     SystemAppearanceSmokeTest,
     AppQuitSmokeTest,
     AppFocusSmokeTest,
+    SingleInstanceLockSmokeTest,
 }
 
 impl RunMode {

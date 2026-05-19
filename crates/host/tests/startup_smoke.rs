@@ -1,4 +1,8 @@
-use std::process::Command;
+use std::{
+    process::{Command, Stdio},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 #[test]
 fn host_binary_emits_startup_event_and_exits_zero() {
@@ -166,6 +170,60 @@ fn host_binary_verifies_app_focus_lifecycle_path() {
     );
 }
 
+#[test]
+fn host_binary_verifies_single_instance_lock_between_processes() {
+    let lock_path = unique_lock_path("single-instance-lock-smoke");
+    let primary = Command::new(env!("CARGO_BIN_EXE_host"))
+        .arg("--single-instance-lock-smoke-test")
+        .env("EFFECT_DESKTOP_SINGLE_INSTANCE_LOCK_PATH", &lock_path)
+        .env("EFFECT_DESKTOP_SINGLE_INSTANCE_SMOKE_HOLD_MS", "1000")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("primary host binary should execute single-instance smoke");
+
+    thread::sleep(Duration::from_millis(250));
+
+    let secondary_output = Command::new(env!("CARGO_BIN_EXE_host"))
+        .arg("--single-instance-lock-smoke-test")
+        .env("EFFECT_DESKTOP_SINGLE_INSTANCE_LOCK_PATH", &lock_path)
+        .output()
+        .expect("secondary host binary should execute single-instance smoke");
+    let secondary_stdout = String::from_utf8_lossy(&secondary_output.stdout);
+    let secondary_stderr = String::from_utf8_lossy(&secondary_output.stderr);
+    let secondary_process_output = format!("{secondary_stdout}{secondary_stderr}");
+
+    let primary_output = primary
+        .wait_with_output()
+        .expect("primary host binary should finish single-instance smoke");
+    let primary_stdout = String::from_utf8_lossy(&primary_output.stdout);
+    let primary_stderr = String::from_utf8_lossy(&primary_output.stderr);
+    let primary_process_output = format!("{primary_stdout}{primary_stderr}");
+
+    assert!(
+        primary_output.status.success(),
+        "primary host exited with status {:?}\nstdout:\n{primary_stdout}\nstderr:\n{primary_stderr}",
+        primary_output.status.code()
+    );
+    assert!(
+        secondary_output.status.success(),
+        "secondary host exited with status {:?}\nstdout:\n{secondary_stdout}\nstderr:\n{secondary_stderr}",
+        secondary_output.status.code()
+    );
+    assert!(
+        primary_process_output.contains("event=\"host.app.single_instance_lock.smoke_verified\"")
+            && primary_process_output.contains("acquired=true"),
+        "primary output did not prove lock ownership\nstdout:\n{primary_stdout}\nstderr:\n{primary_stderr}"
+    );
+    assert!(
+        secondary_process_output
+            .contains("event=\"host.app.single_instance_lock.smoke_verified\"")
+            && secondary_process_output.contains("acquired=false")
+            && secondary_process_output.contains("primary_pid="),
+        "secondary output did not prove primary ownership was observed\nstdout:\n{secondary_stdout}\nstderr:\n{secondary_stderr}"
+    );
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn host_binary_verifies_system_appearance_on_main_thread() {
@@ -198,4 +256,15 @@ fn host_binary_verifies_system_appearance_on_main_thread() {
         !process_output.contains("event=\"runtime.ready\""),
         "system appearance smoke should not start the renderer runtime\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
+}
+
+fn unique_lock_path(name: &str) -> std::path::PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after Unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "effect-desktop-{name}-{}-{nanos}.lock",
+        std::process::id()
+    ))
 }
