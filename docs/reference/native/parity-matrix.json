@@ -4124,6 +4124,16 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.getChildren",
+      "surface": "Window",
+      "method": "getChildren",
+      "capability": "native",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.getCurrent",
       "surface": "Window",
       "method": "getCurrent",
@@ -4399,10 +4409,10 @@
     }
   ],
   "summary": {
-    "total": 230,
-    "routed": 206,
+    "total": 231,
+    "routed": 207,
     "missing": 24,
-    "supported": 112,
+    "supported": 113,
     "partial": 27,
     "unsupported": 91
   }

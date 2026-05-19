@@ -75,6 +75,12 @@ export class WindowParentResult extends Schema.Class<WindowParentResult>("Window
   parent: Schema.optionalKey(WindowResource)
 }) {}
 
+export class WindowChildrenResult extends Schema.Class<WindowChildrenResult>(
+  "WindowChildrenResult"
+)({
+  children: Schema.Array(WindowResource)
+}) {}
+
 export class WindowSubscribeEventsResult extends Schema.Class<WindowSubscribeEventsResult>(
   "WindowSubscribeEventsResult"
 )({

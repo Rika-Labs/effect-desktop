@@ -31,6 +31,7 @@ const windowClient: WindowClientApi = {
   getById: () => Effect.succeed(windowHandle),
   list: () => Effect.succeed([windowHandle]),
   getParent: () => Effect.succeed(undefined),
+  getChildren: () => Effect.succeed([]),
   getBounds: () => Effect.succeed({ x: 0, y: 0, width: 640, height: 480 }),
   setBounds: () => Effect.void,
   center: () => Effect.void,

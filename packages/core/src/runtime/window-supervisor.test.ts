@@ -481,6 +481,8 @@ const makeHostWindowClient = (overrides: Partial<HostWindowClient> = {}): HostWi
   getCurrent: () => Effect.succeed({ windowId: "window-1" }),
   getById: (windowId) => Effect.succeed({ windowId }),
   list: () => Effect.succeed({ windows: [{ windowId: "window-1" }] }),
+  getParent: () => Effect.succeed({}),
+  getChildren: () => Effect.succeed({ windows: [] }),
   getBounds: () => Effect.succeed({ x: 0, y: 0, width: 800, height: 600 }),
   setBounds: () => Effect.void,
   center: () => Effect.void,

@@ -54,6 +54,7 @@ pub const WINDOW_GET_CURRENT_METHOD: &str = "Window.getCurrent";
 pub const WINDOW_GET_BY_ID_METHOD: &str = "Window.getById";
 pub const WINDOW_LIST_METHOD: &str = "Window.list";
 pub const WINDOW_GET_PARENT_METHOD: &str = "Window.getParent";
+pub const WINDOW_GET_CHILDREN_METHOD: &str = "Window.getChildren";
 pub const WINDOW_GET_BOUNDS_METHOD: &str = "Window.getBounds";
 pub const WINDOW_SET_BOUNDS_METHOD: &str = "Window.setBounds";
 pub const WINDOW_CENTER_METHOD: &str = "Window.center";

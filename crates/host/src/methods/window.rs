@@ -112,6 +112,20 @@ pub(crate) fn get_parent(
     Ok(Some(encode_parent_response(response)?))
 }
 
+pub(crate) fn get_children(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload =
+        decode_required_window_payload(payload, host_protocol::WINDOW_GET_CHILDREN_METHOD)?;
+    let response = handler.get_children(payload.window_id())?;
+
+    Ok(Some(encode_list_response(
+        response,
+        host_protocol::WINDOW_GET_CHILDREN_METHOD,
+    )?))
+}
+
 pub(crate) fn get_bounds(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,

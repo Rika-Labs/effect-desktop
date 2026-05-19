@@ -89,6 +89,11 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         window_id: &str,
     ) -> std::result::Result<WindowParentResponse, HostProtocolError>;
 
+    fn get_children(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowListResponse, HostProtocolError>;
+
     fn get_bounds(
         &self,
         window_id: &str,
@@ -302,6 +307,10 @@ enum WindowCommand {
         reply: Sender<WindowCommandReply>,
     },
     GetParent {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    GetChildren {
         window_id: String,
         reply: Sender<WindowCommandReply>,
     },
@@ -812,6 +821,25 @@ impl WindowMethodHandler for WindowMethodPort {
             _ => Err(HostProtocolError::internal(
                 "window get parent received unrelated response",
                 host_protocol::WINDOW_GET_PARENT_METHOD,
+            )),
+        }
+    }
+
+    fn get_children(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowListResponse, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetChildren {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowList(response) => Ok(response),
+            _ => Err(HostProtocolError::internal(
+                "window get children received unrelated response",
+                host_protocol::WINDOW_GET_CHILDREN_METHOD,
             )),
         }
     }
@@ -1951,6 +1979,31 @@ impl WindowRegistry {
         ))
     }
 
+    fn get_children(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowListResponse, HostProtocolError> {
+        if !self.windows.contains_key(window_id) {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_GET_CHILDREN_METHOD,
+            ));
+        }
+        let mut child_window_ids = self
+            .child_window_ids_by_parent_id
+            .get(window_id)
+            .map(|children| children.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        child_window_ids.sort();
+        Ok(WindowListResponse::new(
+            child_window_ids
+                .into_iter()
+                .filter(|child_window_id| self.windows.contains_key(child_window_id.as_str()))
+                .map(WindowLookupResponse::new)
+                .collect(),
+        ))
+    }
+
     fn get_by_id_with_operation(
         &self,
         window_id: &str,
@@ -2822,6 +2875,13 @@ impl WindowRegistry {
                 let result = self
                     .get_parent(&window_id)
                     .map(WindowCommandResponse::WindowParent);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GetChildren { window_id, reply } => {
+                let result = self
+                    .get_children(&window_id)
+                    .map(WindowCommandResponse::WindowList);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }

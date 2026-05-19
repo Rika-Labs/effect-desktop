@@ -13,6 +13,7 @@ import {
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
+  WINDOW_GET_CHILDREN_METHOD,
   WINDOW_GET_CURRENT_METHOD,
   WINDOW_GET_PARENT_METHOD,
   WINDOW_GET_STATE_METHOD,
@@ -118,6 +119,12 @@ export class WindowParentResponse extends Schema.Class<WindowParentResponse>(
   "WindowParentResponse"
 )({
   parentWindowId: Schema.optionalKey(Schema.NonEmptyString)
+}) {}
+
+export class WindowChildrenResponse extends Schema.Class<WindowChildrenResponse>(
+  "WindowChildrenResponse"
+)({
+  windows: Schema.Array(WindowLookupResponse)
 }) {}
 
 export class WindowRegistryEventPayload extends Schema.Class<WindowRegistryEventPayload>(
@@ -289,6 +296,9 @@ export interface HostWindowClient {
   readonly getParent: (
     windowId: string
   ) => Effect.Effect<WindowParentResponse, HostProtocolError, never>
+  readonly getChildren: (
+    windowId: string
+  ) => Effect.Effect<WindowChildrenResponse, HostProtocolError, never>
   readonly getBounds: (
     windowId: string
   ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
@@ -416,6 +426,15 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
         return yield* decodeParentResponse(response.payload, WINDOW_GET_PARENT_METHOD)
+      }),
+    getChildren: (windowId) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeWindowIdPayload(windowId, WINDOW_GET_CHILDREN_METHOD)
+        const request = yield* makeRequest(WINDOW_GET_CHILDREN_METHOD, resolved, payload)
+        const response = yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+        return yield* decodeChildrenResponse(response.payload, WINDOW_GET_CHILDREN_METHOD)
       }),
     getBounds: (windowId) =>
       Effect.gen(function* () {
@@ -596,6 +615,7 @@ const decodeUnknownWindowDestroyPayload = Schema.decodeUnknownSync(WindowDestroy
 const decodeUnknownWindowLookupResponse = Schema.decodeUnknownSync(WindowLookupResponse)
 const decodeUnknownWindowListResponse = Schema.decodeUnknownSync(WindowListResponse)
 const decodeUnknownWindowParentResponse = Schema.decodeUnknownSync(WindowParentResponse)
+const decodeUnknownWindowChildrenResponse = Schema.decodeUnknownSync(WindowChildrenResponse)
 const decodeUnknownWindowEventPayload = Schema.decodeUnknownSync(WindowEventPayload)
 const decodeUnknownWindowBoundsPayload = Schema.decodeUnknownSync(WindowBoundsPayload)
 const decodeUnknownWindowSetBoundsPayload = Schema.decodeUnknownSync(WindowSetBoundsPayload)
@@ -796,6 +816,15 @@ const decodeParentResponse = (
 ): Effect.Effect<WindowParentResponse, HostProtocolError, never> =>
   Effect.try({
     try: () => decodeUnknownWindowParentResponse(payload, StrictParseOptions),
+    catch: (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  })
+
+const decodeChildrenResponse = (
+  payload: unknown,
+  operation: string
+): Effect.Effect<WindowChildrenResponse, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowChildrenResponse(payload, StrictParseOptions),
     catch: (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   })
 

@@ -302,6 +302,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::get_parent),
     ),
     route(
+        host_protocol::WINDOW_GET_CHILDREN_METHOD,
+        HostMethodDispatcher::Window(window::get_children),
+    ),
+    route(
         host_protocol::WINDOW_GET_BOUNDS_METHOD,
         HostMethodDispatcher::Window(window::get_bounds),
     ),
@@ -3379,6 +3383,32 @@ mod tests {
             }
         );
 
+        let children_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-children",
+                    host_protocol::WINDOW_GET_CHILDREN_METHOD,
+                    serde_json::json!({ "windowId": "window-parent" }),
+                ),
+                1710000000114,
+            )
+            .expect("window get children should return response");
+        assert_eq!(
+            children_response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-children".to_string(),
+                timestamp: 1710000000114,
+                trace_id: "trace-request-window-get-children".to_string(),
+                payload: Some(serde_json::json!({
+                    "windows": [
+                        { "windowId": "window-child-1" },
+                        { "windowId": "window-child-2" }
+                    ]
+                })),
+                error: None,
+            }
+        );
+
         assert_eq!(fake.lookup_ids(), vec!["window-1".to_string()]);
     }
 
@@ -3455,6 +3485,31 @@ mod tests {
                     "payload",
                     "windowId must be non-empty",
                     host_protocol::WINDOW_GET_PARENT_METHOD,
+                )),
+            }
+        );
+
+        let invalid_get_children = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-children-invalid",
+                    host_protocol::WINDOW_GET_CHILDREN_METHOD,
+                    serde_json::json!({ "windowId": "" }),
+                ),
+                1710000000116,
+            )
+            .expect("invalid window get children should return response");
+        assert_eq!(
+            invalid_get_children,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-children-invalid".to_string(),
+                timestamp: 1710000000116,
+                trace_id: "trace-request-window-get-children-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "payload",
+                    "windowId must be non-empty",
+                    host_protocol::WINDOW_GET_CHILDREN_METHOD,
                 )),
             }
         );
@@ -6707,6 +6762,16 @@ mod tests {
             Ok(host_protocol::WindowParentResponse::new(Some(
                 "window-parent".to_string(),
             )))
+        }
+
+        fn get_children(
+            &self,
+            _window_id: &str,
+        ) -> Result<host_protocol::WindowListResponse, HostProtocolError> {
+            Ok(host_protocol::WindowListResponse::new(vec![
+                host_protocol::WindowLookupResponse::new("window-child-1"),
+                host_protocol::WindowLookupResponse::new("window-child-2"),
+            ]))
         }
 
         fn get_bounds(&self, _window_id: &str) -> Result<WindowBoundsPayload, HostProtocolError> {

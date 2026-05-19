@@ -37,6 +37,7 @@ import {
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
+  WINDOW_GET_CHILDREN_METHOD,
   WINDOW_GET_CURRENT_METHOD,
   WINDOW_GET_PARENT_METHOD,
   WINDOW_GET_STATE_METHOD,
@@ -240,6 +241,7 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           request.method === WINDOW_FOCUS_METHOD ||
           request.method === WINDOW_GET_BY_ID_METHOD ||
           request.method === WINDOW_GET_PARENT_METHOD ||
+          request.method === WINDOW_GET_CHILDREN_METHOD ||
           request.method === WINDOW_GET_BOUNDS_METHOD ||
           request.method === WINDOW_CENTER_METHOD ||
           request.method === WINDOW_SET_TITLE_METHOD ||
@@ -827,6 +829,7 @@ export const runHeadless = <A, E, R>(
         getById: (windowId) => rawWindow.getById(windowId),
         list: () => rawWindow.list(),
         getParent: (windowId) => rawWindow.getParent(windowId),
+        getChildren: (windowId) => rawWindow.getChildren(windowId),
         getBounds: (windowId) => rawWindow.getBounds(windowId),
         setBounds: (windowId, bounds) => rawWindow.setBounds(windowId, bounds),
         center: (windowId) => rawWindow.center(windowId),
@@ -935,6 +938,7 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_FOCUS_METHOD:
     case WINDOW_GET_BY_ID_METHOD:
     case WINDOW_GET_PARENT_METHOD:
+    case WINDOW_GET_CHILDREN_METHOD:
     case WINDOW_CENTER_METHOD:
     case WINDOW_SET_TITLE_METHOD:
     case WINDOW_SET_RESIZABLE_METHOD:
@@ -958,6 +962,13 @@ const defaultFixture = (method: string): HeadlessFixture => {
           if (request.method === WINDOW_GET_PARENT_METHOD) {
             const parentWindowId = state.windows.get(windowId)?.parentWindowId
             return parentWindowId === undefined ? {} : { parentWindowId }
+          }
+          if (request.method === WINDOW_GET_CHILDREN_METHOD) {
+            return {
+              windows: Array.from(state.windows.entries())
+                .filter(([, input]) => input.parentWindowId === windowId)
+                .map(([childWindowId]) => ({ windowId: childWindowId }))
+            }
           }
           return undefined
         })

@@ -544,6 +544,7 @@ const makeWindowClient = (
   getById: () => Effect.succeed(windowHandle),
   list: () => Effect.succeed([windowHandle]),
   getParent: () => Effect.succeed(undefined),
+  getChildren: () => Effect.succeed([]),
   getBounds: () => Effect.succeed(new WindowBounds({ x: 100, y: 100, width: 800, height: 600 })),
   setBounds: (_window, bounds) =>
     Effect.sync(() => {
