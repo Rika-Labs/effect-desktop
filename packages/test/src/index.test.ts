@@ -1231,9 +1231,7 @@ test("MemoryFilesystem rejects directory targets for writes and atomic renames",
       })
 
       const writeExit = yield* Effect.exit(filesystem.write("/workspace/target", bytes("x")))
-      const atomicExit = yield* Effect.exit(
-        filesystem.writeAtomic("/workspace/target", bytes("x"))
-      )
+      const atomicExit = yield* Effect.exit(filesystem.writeAtomic("/workspace/target", bytes("x")))
       const stat = yield* filesystem.stat("/workspace/target")
 
       expect(Exit.isFailure(writeExit)).toBe(true)

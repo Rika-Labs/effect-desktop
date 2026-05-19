@@ -13,7 +13,7 @@ import {
   P,
   PermissionActor
 } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
 
 import {
   ExtensionPackage,
@@ -38,20 +38,21 @@ import {
   ExtensionPackageUpdateRequest
 } from "./contracts/extension-package.js"
 
-test("ExtensionPackage service installs validated manifests, registers capabilities, emits events, and audits use", async () => {
-  const rows: AuditEvent[] = []
-  const permissions = await configuredPermissions(rows)
-  const client = await Effect.runPromise(makeExtensionPackageMemoryClient())
-
-  const result = await Effect.runPromise(
+test("ExtensionPackage service installs validated manifests, registers capabilities, emits events, and audits use", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const packages = yield* ExtensionPackage
-      const installed = yield* packages.install(installRequest())
-      const listed = yield* packages.list()
-      const event = yield* packages.events().pipe(Stream.runHead)
-      return { event, installed, listed }
-    }).pipe(
-      Effect.provide(
+      const rows: AuditEvent[] = []
+      const permissions = yield* configuredPermissions(rows)
+      const client = yield* makeExtensionPackageMemoryClient()
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const packages = yield* ExtensionPackage
+          const installed = yield* packages.install(installRequest())
+          const listed = yield* packages.list()
+          const event = yield* packages.events().pipe(Stream.runHead)
+          return { event, installed, listed }
+        }),
         makeExtensionPackageServiceLayer(client, {
           permissions,
           audit: memoryAudit(rows),
@@ -59,384 +60,431 @@ test("ExtensionPackage service installs validated manifests, registers capabilit
           nextTraceId: () => "trace-package"
         })
       )
-    )
-  )
 
-  expect(result.installed).toMatchObject({
-    packageId: "extension-1",
-    version: "1.0.0",
-    registeredCapabilities: [manifestCapability()]
-  })
-  expect(result.listed.packages.map((entry) => entry.packageId)).toEqual(["extension-1"])
-  expect(result.event._tag).toBe("Some")
-  expect(rows.some((row) => row.kind === "permission-used")).toBe(true)
-  expect(rows.some((row) => row.kind === "permission-granted")).toBe(true)
-
-  const scopedRules = await Effect.runPromise(
-    permissions.query(
-      "filesystem.read",
-      new PermissionActor({ kind: "resource", id: "extension:extension-1" })
-    )
-  )
-  expect(scopedRules.map((rule) => rule.source)).toContain("extension-package:extension-1@1.0.0")
-})
-
-test("ExtensionPackage denies before host side effects or capability registration", async () => {
-  const permissions = await Effect.runPromise(makePermissionRegistry())
-  let installs = 0
-  const baseClient = await Effect.runPromise(makeExtensionPackageMemoryClient())
-  const client: ExtensionPackageClientApi = {
-    ...baseClient,
-    install: (input) =>
-      Effect.sync(() => {
-        installs += 1
-      }).pipe(Effect.andThen(baseClient.install(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const packages = yield* ExtensionPackage
-      return yield* Effect.exit(packages.install(installRequest()))
-    }).pipe(Effect.provide(makeExtensionPackageServiceLayer(client, { permissions })))
-  )
-  const scopedRules = await Effect.runPromise(
-    permissions.query(
-      "filesystem.read",
-      new PermissionActor({ kind: "resource", id: "extension:extension-1" })
-    )
-  )
-
-  expect(installs).toBe(0)
-  expect(scopedRules).toEqual([])
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({ tag: "PermissionDenied", operation: "ExtensionPackage.install" })
-  })
-})
-
-test("ExtensionPackage denies undeclared manifest capabilities before host side effects", async () => {
-  const permissions = await configuredPermissions([], { includeManifestCapabilities: false })
-  let installs = 0
-  const baseClient = await Effect.runPromise(makeExtensionPackageMemoryClient())
-  const client: ExtensionPackageClientApi = {
-    ...baseClient,
-    install: (input) =>
-      Effect.sync(() => {
-        installs += 1
-      }).pipe(Effect.andThen(baseClient.install(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const packages = yield* ExtensionPackage
-      return yield* Effect.exit(packages.install(installRequest()))
-    }).pipe(Effect.provide(makeExtensionPackageServiceLayer(client, { permissions })))
-  )
-  const scopedRules = await Effect.runPromise(
-    permissions.query(
-      "filesystem.read",
-      new PermissionActor({ kind: "resource", id: "extension:extension-1" })
-    )
-  )
-
-  expect(installs).toBe(0)
-  expect(scopedRules).toEqual([])
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({ tag: "PermissionDenied", operation: "ExtensionPackage.install" })
-  })
-})
-
-test("ExtensionPackage rejects malformed manifests before host transport", async () => {
-  const requests: HostProtocolRequestEnvelope[] = []
-  const exchange: BridgeClientExchange = {
-    request: (request) => {
-      requests.push(request)
-      return Effect.succeed({
-        kind: "success",
-        payload: {
-          packageId: "extension-1",
-          version: "1.0.0",
-          revision: 1,
-          registeredCapabilities: [manifestCapability()]
-        }
+      expect(result.installed).toMatchObject({
+        packageId: "extension-1",
+        version: "1.0.0",
+        registeredCapabilities: [manifestCapability()]
       })
-    },
-    subscribe: () => Stream.empty
-  }
+      expect(result.listed.packages.map((entry) => entry.packageId)).toEqual(["extension-1"])
+      expect(result.event._tag).toBe("Some")
+      expect(rows.some((row) => row.kind === "permission-used")).toBe(true)
+      expect(rows.some((row) => row.kind === "permission-granted")).toBe(true)
 
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const client = yield* ExtensionPackageClient
-      return yield* Effect.exit(
-        client.install(
-          new ExtensionPackageInstallInput({
-            actor: actor(),
-            source: source(),
-            manifest: manifest({ entrypoint: "../escape.js" })
-          })
-        )
+      const scopedRules = yield* permissions.query(
+        "filesystem.read",
+        new PermissionActor({ kind: "resource", id: "extension:extension-1" })
       )
-    }).pipe(Effect.provide(makeExtensionPackageBridgeClientLayer(exchange)))
-  )
-
-  expect(requests).toEqual([])
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "ExtensionPackage.install" })
-  })
-})
-
-test("ExtensionPackage checks compatibility before host side effects", async () => {
-  const permissions = await configuredPermissions([])
-  let installs = 0
-  const baseClient = await Effect.runPromise(makeExtensionPackageMemoryClient())
-  const client: ExtensionPackageClientApi = {
-    ...baseClient,
-    install: (input) =>
-      Effect.sync(() => {
-        installs += 1
-      }).pipe(Effect.andThen(baseClient.install(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const packages = yield* ExtensionPackage
-      return yield* Effect.exit(
-        packages.install(
-          installRequest({
-            manifest: manifest({
-              compatibility: new ExtensionPackageCompatibility({ minHostVersion: "9.0.0" })
-            })
-          })
-        )
+      expect(scopedRules.map((rule) => rule.source)).toContain(
+        "extension-package:extension-1@1.0.0"
       )
-    }).pipe(
-      Effect.provide(
+    })
+  ))
+
+test("ExtensionPackage denies before host side effects or capability registration", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* makePermissionRegistry()
+      let installs = 0
+      const baseClient = yield* makeExtensionPackageMemoryClient()
+      const client: ExtensionPackageClientApi = {
+        ...baseClient,
+        install: (input) =>
+          Effect.sync(() => {
+            installs += 1
+          }).pipe(Effect.andThen(baseClient.install(input)))
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const packages = yield* ExtensionPackage
+          return yield* Effect.exit(packages.install(installRequest()))
+        }),
+        makeExtensionPackageServiceLayer(client, { permissions })
+      )
+      const scopedRules = yield* permissions.query(
+        "filesystem.read",
+        new PermissionActor({ kind: "resource", id: "extension:extension-1" })
+      )
+
+      expect(installs).toBe(0)
+      expect(scopedRules).toEqual([])
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "PermissionDenied",
+          operation: "ExtensionPackage.install"
+        })
+      })
+    })
+  ))
+
+test("ExtensionPackage denies undeclared manifest capabilities before host side effects", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* configuredPermissions([], { includeManifestCapabilities: false })
+      let installs = 0
+      const baseClient = yield* makeExtensionPackageMemoryClient()
+      const client: ExtensionPackageClientApi = {
+        ...baseClient,
+        install: (input) =>
+          Effect.sync(() => {
+            installs += 1
+          }).pipe(Effect.andThen(baseClient.install(input)))
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const packages = yield* ExtensionPackage
+          return yield* Effect.exit(packages.install(installRequest()))
+        }),
+        makeExtensionPackageServiceLayer(client, { permissions })
+      )
+      const scopedRules = yield* permissions.query(
+        "filesystem.read",
+        new PermissionActor({ kind: "resource", id: "extension:extension-1" })
+      )
+
+      expect(installs).toBe(0)
+      expect(scopedRules).toEqual([])
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "PermissionDenied",
+          operation: "ExtensionPackage.install"
+        })
+      })
+    })
+  ))
+
+test("ExtensionPackage rejects malformed manifests before host transport", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const requests: HostProtocolRequestEnvelope[] = []
+      const exchange: BridgeClientExchange = {
+        request: (request) => {
+          requests.push(request)
+          return Effect.succeed({
+            kind: "success",
+            payload: {
+              packageId: "extension-1",
+              version: "1.0.0",
+              revision: 1,
+              registeredCapabilities: [manifestCapability()]
+            }
+          })
+        },
+        subscribe: () => Stream.empty
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ExtensionPackageClient
+          return yield* Effect.exit(
+            client.install(
+              new ExtensionPackageInstallInput({
+                actor: actor(),
+                source: source(),
+                manifest: manifest({ entrypoint: "../escape.js" })
+              })
+            )
+          )
+        }),
+        makeExtensionPackageBridgeClientLayer(exchange)
+      )
+
+      expect(requests).toEqual([])
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ExtensionPackage.install"
+        })
+      })
+    })
+  ))
+
+test("ExtensionPackage checks compatibility before host side effects", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* configuredPermissions([])
+      let installs = 0
+      const baseClient = yield* makeExtensionPackageMemoryClient()
+      const client: ExtensionPackageClientApi = {
+        ...baseClient,
+        install: (input) =>
+          Effect.sync(() => {
+            installs += 1
+          }).pipe(Effect.andThen(baseClient.install(input)))
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const packages = yield* ExtensionPackage
+          return yield* Effect.exit(
+            packages.install(
+              installRequest({
+                manifest: manifest({
+                  compatibility: new ExtensionPackageCompatibility({ minHostVersion: "9.0.0" })
+                })
+              })
+            )
+          )
+        }),
         makeExtensionPackageServiceLayer(client, { permissions, hostVersion: "1.2.0" })
       )
-    )
-  )
 
-  expect(installs).toBe(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "ExtensionPackage.install" })
-  })
-})
+      expect(installs).toBe(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ExtensionPackage.install"
+        })
+      })
+    })
+  ))
 
-test("ExtensionPackage rejects malformed SemVer before host transport", async () => {
-  const requests: HostProtocolRequestEnvelope[] = []
-  const exchange: BridgeClientExchange = {
-    request: (request) => {
-      requests.push(request)
-      return Effect.succeed({
-        kind: "success",
+test("ExtensionPackage rejects malformed SemVer before host transport", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const requests: HostProtocolRequestEnvelope[] = []
+      const exchange: BridgeClientExchange = {
+        request: (request) => {
+          requests.push(request)
+          return Effect.succeed({
+            kind: "success",
+            payload: {
+              packageId: "extension-1",
+              version: "1.0.0-",
+              revision: 1,
+              registeredCapabilities: [manifestCapability()]
+            }
+          })
+        },
+        subscribe: () => Stream.empty
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ExtensionPackageClient
+          return yield* Effect.exit(
+            client.install(
+              new ExtensionPackageInstallInput({
+                actor: actor(),
+                source: source(),
+                manifest: manifest({ version: "1.0.0-" })
+              })
+            )
+          )
+        }),
+        makeExtensionPackageBridgeClientLayer(exchange)
+      )
+
+      expect(requests).toEqual([])
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ExtensionPackage.install"
+        })
+      })
+    })
+  ))
+
+test("ExtensionPackage rejects dot-segment package ids before host transport", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const requests: HostProtocolRequestEnvelope[] = []
+      const exchange: BridgeClientExchange = {
+        request: (request) => {
+          requests.push(request)
+          return Effect.succeed({
+            kind: "success",
+            payload: {
+              packageId: "..",
+              version: "1.0.0",
+              revision: 1,
+              registeredCapabilities: [manifestCapability()]
+            }
+          })
+        },
+        subscribe: () => Stream.empty
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ExtensionPackageClient
+          return yield* Effect.exit(
+            client.install(
+              new ExtensionPackageInstallInput({
+                actor: actor(),
+                source: source(),
+                manifest: manifest({ id: ".." })
+              })
+            )
+          )
+        }),
+        makeExtensionPackageBridgeClientLayer(exchange)
+      )
+
+      expect(requests).toEqual([])
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ExtensionPackage.install"
+        })
+      })
+    })
+  ))
+
+test("ExtensionPackage unsupported client exposes typed unsupported failures", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = makeExtensionPackageUnsupportedClient()
+      const supported = yield* client.isSupported()
+      const exit = yield* Effect.exit(client.install(installInput()))
+
+      expect(supported).toEqual({ supported: false, reason: "host-adapter-unimplemented" })
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({ tag: "Unsupported", operation: "ExtensionPackage.install" })
+      })
+    })
+  ))
+
+test("ExtensionPackage memory client exposes typed host failures", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* makeExtensionPackageMemoryClient({
+        failure: {
+          install: makeHostProtocolInternalError(
+            "extension package failed",
+            "ExtensionPackage.install"
+          )
+        }
+      })
+
+      const exit = yield* Effect.exit(client.install(installInput()))
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({ tag: "Internal", operation: "ExtensionPackage.install" })
+      })
+    })
+  ))
+
+test("ExtensionPackage memory client enforces host lifecycle state", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* makeExtensionPackageMemoryClient()
+      yield* client.install(installInput())
+
+      const duplicate = yield* Effect.exit(client.install(installInput()))
+      const staleUpdate = yield* Effect.exit(
+        client.update(
+          new ExtensionPackageUpdateInput({
+            actor: actor(),
+            source: source(),
+            manifest: manifest({ version: "1.1.0" }),
+            expectedVersion: "0.9.0",
+            traceId: "trace-update"
+          })
+        )
+      )
+      const missingClient = yield* makeExtensionPackageMemoryClient()
+      const missingUpdate = yield* Effect.exit(
+        missingClient.update(
+          new ExtensionPackageUpdateInput({
+            actor: actor(),
+            source: source(),
+            manifest: manifest({ version: "1.1.0" }),
+            traceId: "trace-update"
+          })
+        )
+      )
+
+      expectExitFailure(duplicate, (error) => {
+        expect(error).toMatchObject({ tag: "AlreadyExists", operation: "ExtensionPackage.install" })
+      })
+      expectExitFailure(staleUpdate, (error) => {
+        expect(error).toMatchObject({ tag: "InvalidState", operation: "ExtensionPackage.update" })
+      })
+      expectExitFailure(missingUpdate, (error) => {
+        expect(error).toMatchObject({ tag: "NotFound", operation: "ExtensionPackage.update" })
+      })
+    })
+  ))
+
+test("ExtensionPackage update and remove publish lifecycle state", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* configuredPermissions([])
+      const client = yield* makeExtensionPackageMemoryClient()
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const packages = yield* ExtensionPackage
+          yield* packages.install(installRequest())
+          const updated = yield* packages.update(
+            new ExtensionPackageUpdateRequest({
+              actor: actor(),
+              source: source(),
+              manifest: manifest({ version: "1.1.0" }),
+              expectedVersion: "1.0.0",
+              traceId: "trace-update"
+            })
+          )
+          const removed = yield* packages.remove(removeRequest())
+          const listed = yield* packages.list()
+          return { listed, removed, updated }
+        }),
+        makeExtensionPackageServiceLayer(client, { permissions })
+      )
+
+      expect(result.updated.previousVersion).toBe("1.0.0")
+      expect(result.updated.version).toBe("1.1.0")
+      expect(result.removed.removed).toBe(true)
+      expect(result.listed.packages).toEqual([])
+    })
+  ))
+
+test("ExtensionPackage bridge client decodes native lifecycle events", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const nativeEvent: HostProtocolEventEnvelope = {
+        kind: "event",
+        method: "ExtensionPackage.Event",
+        timestamp: 1710000000000,
+        traceId: "trace-extension-package-event",
         payload: {
+          type: "extension-package-event",
+          timestamp: 1710000000000,
           packageId: "extension-1",
-          version: "1.0.0-",
-          revision: 1,
-          registeredCapabilities: [manifestCapability()]
-        }
-      })
-    },
-    subscribe: () => Stream.empty
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const client = yield* ExtensionPackageClient
-      return yield* Effect.exit(
-        client.install(
-          new ExtensionPackageInstallInput({
-            actor: actor(),
-            source: source(),
-            manifest: manifest({ version: "1.0.0-" })
-          })
-        )
-      )
-    }).pipe(Effect.provide(makeExtensionPackageBridgeClientLayer(exchange)))
-  )
-
-  expect(requests).toEqual([])
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "ExtensionPackage.install" })
-  })
-})
-
-test("ExtensionPackage rejects dot-segment package ids before host transport", async () => {
-  const requests: HostProtocolRequestEnvelope[] = []
-  const exchange: BridgeClientExchange = {
-    request: (request) => {
-      requests.push(request)
-      return Effect.succeed({
-        kind: "success",
-        payload: {
-          packageId: "..",
+          phase: "installed",
           version: "1.0.0",
-          revision: 1,
-          registeredCapabilities: [manifestCapability()]
+          revision: 1
         }
-      })
-    },
-    subscribe: () => Stream.empty
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const client = yield* ExtensionPackageClient
-      return yield* Effect.exit(
-        client.install(
-          new ExtensionPackageInstallInput({
-            actor: actor(),
-            source: source(),
-            manifest: manifest({ id: ".." })
-          })
-        )
+      }
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+        subscribe: (method) => {
+          expect(method).toBe("ExtensionPackage.Event")
+          return Stream.make(nativeEvent)
+        }
+      }
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ExtensionPackageClient
+          return yield* client.events().pipe(Stream.runHead)
+        }),
+        makeExtensionPackageBridgeClientLayer(exchange)
       )
-    }).pipe(Effect.provide(makeExtensionPackageBridgeClientLayer(exchange)))
-  )
 
-  expect(requests).toEqual([])
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({ tag: "InvalidArgument", operation: "ExtensionPackage.install" })
-  })
-})
-
-test("ExtensionPackage unsupported client exposes typed unsupported failures", async () => {
-  const client = makeExtensionPackageUnsupportedClient()
-  const supported = await Effect.runPromise(client.isSupported())
-  const exit = await Effect.runPromiseExit(client.install(installInput()))
-
-  expect(supported).toEqual({ supported: false, reason: "host-adapter-unimplemented" })
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({ tag: "Unsupported", operation: "ExtensionPackage.install" })
-  })
-})
-
-test("ExtensionPackage memory client exposes typed host failures", async () => {
-  const client = await Effect.runPromise(
-    makeExtensionPackageMemoryClient({
-      failure: {
-        install: makeHostProtocolInternalError(
-          "extension package failed",
-          "ExtensionPackage.install"
-        )
+      expect(event._tag).toBe("Some")
+      if (event._tag === "Some") {
+        expect(event.value).toMatchObject({
+          packageId: "extension-1",
+          phase: "installed",
+          version: "1.0.0",
+          revision: 1
+        })
       }
     })
-  )
-
-  const exit = await Effect.runPromiseExit(client.install(installInput()))
-
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({ tag: "Internal", operation: "ExtensionPackage.install" })
-  })
-})
-
-test("ExtensionPackage memory client enforces host lifecycle state", async () => {
-  const client = await Effect.runPromise(makeExtensionPackageMemoryClient())
-  await Effect.runPromise(client.install(installInput()))
-
-  const duplicate = await Effect.runPromiseExit(client.install(installInput()))
-  const staleUpdate = await Effect.runPromiseExit(
-    client.update(
-      new ExtensionPackageUpdateInput({
-        actor: actor(),
-        source: source(),
-        manifest: manifest({ version: "1.1.0" }),
-        expectedVersion: "0.9.0",
-        traceId: "trace-update"
-      })
-    )
-  )
-  const missingClient = await Effect.runPromise(makeExtensionPackageMemoryClient())
-  const missingUpdate = await Effect.runPromiseExit(
-    missingClient.update(
-      new ExtensionPackageUpdateInput({
-        actor: actor(),
-        source: source(),
-        manifest: manifest({ version: "1.1.0" }),
-        traceId: "trace-update"
-      })
-    )
-  )
-
-  expectExitFailure(duplicate, (error) => {
-    expect(error).toMatchObject({ tag: "AlreadyExists", operation: "ExtensionPackage.install" })
-  })
-  expectExitFailure(staleUpdate, (error) => {
-    expect(error).toMatchObject({ tag: "InvalidState", operation: "ExtensionPackage.update" })
-  })
-  expectExitFailure(missingUpdate, (error) => {
-    expect(error).toMatchObject({ tag: "NotFound", operation: "ExtensionPackage.update" })
-  })
-})
-
-test("ExtensionPackage update and remove publish lifecycle state", async () => {
-  const permissions = await configuredPermissions([])
-  const client = await Effect.runPromise(makeExtensionPackageMemoryClient())
-
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const packages = yield* ExtensionPackage
-      yield* packages.install(installRequest())
-      const updated = yield* packages.update(
-        new ExtensionPackageUpdateRequest({
-          actor: actor(),
-          source: source(),
-          manifest: manifest({ version: "1.1.0" }),
-          expectedVersion: "1.0.0",
-          traceId: "trace-update"
-        })
-      )
-      const removed = yield* packages.remove(removeRequest())
-      const listed = yield* packages.list()
-      return { listed, removed, updated }
-    }).pipe(Effect.provide(makeExtensionPackageServiceLayer(client, { permissions })))
-  )
-
-  expect(result.updated.previousVersion).toBe("1.0.0")
-  expect(result.updated.version).toBe("1.1.0")
-  expect(result.removed.removed).toBe(true)
-  expect(result.listed.packages).toEqual([])
-})
-
-test("ExtensionPackage bridge client decodes native lifecycle events", async () => {
-  const nativeEvent: HostProtocolEventEnvelope = {
-    kind: "event",
-    method: "ExtensionPackage.Event",
-    timestamp: 1710000000000,
-    traceId: "trace-extension-package-event",
-    payload: {
-      type: "extension-package-event",
-      timestamp: 1710000000000,
-      packageId: "extension-1",
-      phase: "installed",
-      version: "1.0.0",
-      revision: 1
-    }
-  }
-  const exchange: BridgeClientExchange = {
-    request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
-    subscribe: (method) => {
-      expect(method).toBe("ExtensionPackage.Event")
-      return Stream.make(nativeEvent)
-    }
-  }
-  const client = await Effect.runPromise(
-    Effect.gen(function* () {
-      return yield* ExtensionPackageClient
-    }).pipe(Effect.provide(makeExtensionPackageBridgeClientLayer(exchange)))
-  )
-
-  const event = await Effect.runPromise(client.events().pipe(Stream.runHead))
-
-  expect(event._tag).toBe("Some")
-  if (event._tag === "Some") {
-    expect(event.value).toMatchObject({
-      packageId: "extension-1",
-      phase: "installed",
-      version: "1.0.0",
-      revision: 1
-    })
-  }
-})
+  ))
 
 test("ExtensionPackage RPC metadata reports host methods as supported", () => {
   expect(
@@ -516,32 +564,29 @@ const removeRequest = (): ExtensionPackageRemoveRequest =>
     traceId: "trace-remove"
   })
 
-const configuredPermissions = async (
+const configuredPermissions = (
   rows: AuditEvent[],
   options: { readonly includeManifestCapabilities?: boolean } = {}
-) => {
-  const permissions = await Effect.runPromise(
-    makePermissionRegistry({
+) =>
+  Effect.gen(function* () {
+    const permissions = yield* makePermissionRegistry({
       audit: memoryAudit(rows),
       traceId: () => "trace-permission",
       nextToken: () => "grant-1"
     })
-  )
-  await Effect.runPromise(
-    permissions.declare(
+    yield* permissions.declare(
       P.nativeInvoke({
         primitive: "ExtensionPackage",
         methods: ["install", "update", "remove"]
       })
     )
-  )
-  if (options.includeManifestCapabilities ?? true) {
-    await Effect.runPromise(
-      permissions.declare(manifestCapability(), { source: "test-extension-package-manifest" })
-    )
-  }
-  return permissions
-}
+    if (options.includeManifestCapabilities ?? true) {
+      yield* permissions.declare(manifestCapability(), {
+        source: "test-extension-package-manifest"
+      })
+    }
+    return permissions
+  })
 
 const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
@@ -550,6 +595,17 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
     }),
   observe: () => Stream.fromIterable(rows)
 })
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
+  })
 
 const expectExitFailure = (
   exit: Exit.Exit<unknown, HostProtocolError>,
