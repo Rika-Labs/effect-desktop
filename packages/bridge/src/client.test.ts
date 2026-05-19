@@ -663,9 +663,9 @@ test("Client interruption sends bridge cancellation", () =>
         }
       )
 
-      const fiber = Effect.runFork(
-        client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
-      )
+      const fiber = yield* client.project
+        .open(new ProjectOpenInput({ path: "/tmp/project" }))
+        .pipe(Effect.forkDetach({ startImmediately: true }))
 
       yield* Deferred.await(started)
       yield* Fiber.interrupt(fiber)
@@ -708,9 +708,24 @@ test("Client runtime AbortSignal interruption sends bridge cancellation", () =>
         }
       )
 
-      const fiber = Effect.runFork(
-        client.project.open(new ProjectOpenInput({ path: "/tmp/project" })),
-        { signal: controller.signal }
+      const fiber = yield* Effect.forkDetach(
+        client.project.open(new ProjectOpenInput({ path: "/tmp/project" })).pipe(
+          Effect.raceFirst(
+            Effect.callback<never>((resume) => {
+              if (controller.signal.aborted) {
+                resume(Effect.interrupt)
+                return
+              }
+              controller.signal.addEventListener(
+                "abort",
+                () => {
+                  resume(Effect.interrupt)
+                },
+                { once: true }
+              )
+            })
+          )
+        )
       )
 
       yield* Deferred.await(started)
@@ -752,9 +767,9 @@ test("Client interruption releases callers when the exchange does not answer", (
         }
       )
 
-      const fiber = Effect.runFork(
-        client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
-      )
+      const fiber = yield* client.project
+        .open(new ProjectOpenInput({ path: "/tmp/project" }))
+        .pipe(Effect.forkDetach({ startImmediately: true }))
 
       yield* Fiber.interrupt(fiber)
       const result = yield* Fiber.join(fiber).pipe(Effect.exit, Effect.timeoutOption("50 millis"))
@@ -795,9 +810,9 @@ test("Client interruption releases callers when cancel dispatch does not answer"
         }
       )
 
-      const fiber = Effect.runFork(
-        client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
-      )
+      const fiber = yield* client.project
+        .open(new ProjectOpenInput({ path: "/tmp/project" }))
+        .pipe(Effect.forkDetach({ startImmediately: true }))
 
       yield* Fiber.interrupt(fiber)
       const result = yield* Fiber.join(fiber).pipe(Effect.exit, Effect.timeoutOption("50 millis"))
@@ -876,9 +891,9 @@ test("Client interruption ignores invalid cancel timestamps without masking inte
         }
       )
 
-      const fiber = Effect.runFork(
-        client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
-      )
+      const fiber = yield* client.project
+        .open(new ProjectOpenInput({ path: "/tmp/project" }))
+        .pipe(Effect.forkDetach({ startImmediately: true }))
 
       yield* Fiber.interrupt(fiber)
       const result = yield* Fiber.join(fiber).pipe(Effect.exit, Effect.timeoutOption("50 millis"))
