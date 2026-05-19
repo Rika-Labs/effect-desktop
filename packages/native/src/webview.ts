@@ -41,11 +41,19 @@ import { isSupportedImageHeader } from "./contracts/image.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
 const WebViewUnsupportedReason = "host-adapter-unimplemented"
+const WebViewNavigationPartialReason = "host-navigation-state-tracked"
 const WebViewRpcSupport = NativeSurface.support.unsupported(WebViewUnsupportedReason, {
   platforms: [
     { platform: "macos", status: "unsupported", reason: WebViewUnsupportedReason },
     { platform: "windows", status: "unsupported", reason: WebViewUnsupportedReason },
     { platform: "linux", status: "unsupported", reason: WebViewUnsupportedReason }
+  ]
+})
+const WebViewNavigationSupport = NativeSurface.support.partial(WebViewNavigationPartialReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: WebViewNavigationPartialReason },
+    { platform: "windows", status: "partial", reason: WebViewNavigationPartialReason },
+    { platform: "linux", status: "partial", reason: WebViewNavigationPartialReason }
   ]
 })
 
@@ -56,7 +64,7 @@ export const WebViewCreate = NativeSurface.rpc("WebView", "create", {
     P.nativeInvoke({ primitive: "WebView", methods: ["create"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 export const WebViewLoadRoute = NativeSurface.rpc("WebView", "loadRoute", {
   payload: WebViewLoadRouteInput,
@@ -65,7 +73,7 @@ export const WebViewLoadRoute = NativeSurface.rpc("WebView", "loadRoute", {
     P.nativeInvoke({ primitive: "WebView", methods: ["loadRoute"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 export const WebViewLoadUrl = NativeSurface.rpc("WebView", "loadUrl", {
   payload: WebViewLoadUrlInput,
@@ -74,7 +82,7 @@ export const WebViewLoadUrl = NativeSurface.rpc("WebView", "loadUrl", {
     P.nativeInvoke({ primitive: "WebView", methods: ["loadUrl"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 export const WebViewReload = NativeSurface.rpc("WebView", "reload", {
   payload: WebViewHandleInput,
@@ -83,7 +91,7 @@ export const WebViewReload = NativeSurface.rpc("WebView", "reload", {
     P.nativeInvoke({ primitive: "WebView", methods: ["reload"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 export const WebViewStop = NativeSurface.rpc("WebView", "stop", {
   payload: WebViewHandleInput,
@@ -92,7 +100,7 @@ export const WebViewStop = NativeSurface.rpc("WebView", "stop", {
     P.nativeInvoke({ primitive: "WebView", methods: ["stop"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 export const WebViewGoBack = NativeSurface.rpc("WebView", "goBack", {
   payload: WebViewHandleInput,
@@ -101,7 +109,7 @@ export const WebViewGoBack = NativeSurface.rpc("WebView", "goBack", {
     P.nativeInvoke({ primitive: "WebView", methods: ["goBack"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 export const WebViewGoForward = NativeSurface.rpc("WebView", "goForward", {
   payload: WebViewHandleInput,
@@ -110,7 +118,7 @@ export const WebViewGoForward = NativeSurface.rpc("WebView", "goForward", {
     P.nativeInvoke({ primitive: "WebView", methods: ["goForward"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 export const WebViewGetNavigationState = NativeSurface.rpc("WebView", "getNavigationState", {
   payload: WebViewHandleInput,
@@ -119,7 +127,7 @@ export const WebViewGetNavigationState = NativeSurface.rpc("WebView", "getNaviga
     P.nativeInvoke({ primitive: "WebView", methods: ["getNavigationState"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 export const WebViewCaptureScreenshot = NativeSurface.rpc("WebView", "captureScreenshot", {
   payload: WebViewHandleInput,
@@ -153,7 +161,7 @@ export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
     P.nativeInvoke({ primitive: "WebView", methods: ["destroy"] })
   ),
   endpoint: "mutation",
-  support: WebViewRpcSupport
+  support: WebViewNavigationSupport
 })
 
 export const WebViewRpcEvents = Object.freeze({

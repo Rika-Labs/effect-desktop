@@ -2,6 +2,10 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
+use crate::window::{
+    WebViewCreateRequest, WebViewHandleRequest, WebViewLoadRouteRequest, WebViewLoadUrlRequest,
+    WebViewNavigationDecision, WebViewNavigationPolicy, WindowMethodHandler,
+};
 use host_protocol::HostProtocolError;
 use serde_json::{Map, Value};
 
@@ -15,7 +19,10 @@ const ALLOWED_ORIGIN_POLICY_FIELDS: &[&str] = &["allowedOrigins", "onDisallowed"
 const ALLOWED_WEBVIEW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
 const ALLOWED_WINDOW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
 
-pub(crate) fn create(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+pub(crate) fn create(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
     let payload = required_object(payload, host_protocol::WEBVIEW_CREATE_METHOD)?;
     validate_allowed_fields(
         &payload,
@@ -29,11 +36,16 @@ pub(crate) fn create(payload: Option<Value>) -> Result<Option<Value>, HostProtoc
         "originPolicy",
         host_protocol::WEBVIEW_CREATE_METHOD,
     )?;
+    let request = decode_create_request(&payload)?;
+    let response = handler.create_webview(request)?;
 
-    Err(unsupported(host_protocol::WEBVIEW_CREATE_METHOD))
+    Ok(Some(response.into_json()))
 }
 
-pub(crate) fn load_route(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+pub(crate) fn load_route(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
     let payload = required_object(payload, host_protocol::WEBVIEW_LOAD_ROUTE_METHOD)?;
     validate_allowed_fields(
         &payload,
@@ -42,11 +54,18 @@ pub(crate) fn load_route(payload: Option<Value>) -> Result<Option<Value>, HostPr
     )?;
     validate_webview_handle_field(&payload, host_protocol::WEBVIEW_LOAD_ROUTE_METHOD)?;
     validate_route_field(&payload, "route", host_protocol::WEBVIEW_LOAD_ROUTE_METHOD)?;
+    handler.load_webview_route(WebViewLoadRouteRequest::new(
+        decode_webview_handle(&payload, host_protocol::WEBVIEW_LOAD_ROUTE_METHOD)?,
+        required_string(&payload, "route", host_protocol::WEBVIEW_LOAD_ROUTE_METHOD)?.to_string(),
+    ))?;
 
-    Err(unsupported(host_protocol::WEBVIEW_LOAD_ROUTE_METHOD))
+    Ok(None)
 }
 
-pub(crate) fn load_url(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+pub(crate) fn load_url(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
     let payload = required_object(payload, host_protocol::WEBVIEW_LOAD_URL_METHOD)?;
     validate_allowed_fields(
         &payload,
@@ -55,42 +74,78 @@ pub(crate) fn load_url(payload: Option<Value>) -> Result<Option<Value>, HostProt
     )?;
     validate_webview_handle_field(&payload, host_protocol::WEBVIEW_LOAD_URL_METHOD)?;
     validate_url_field(&payload, "url", host_protocol::WEBVIEW_LOAD_URL_METHOD)?;
+    handler.load_webview_url(WebViewLoadUrlRequest::new(
+        decode_webview_handle(&payload, host_protocol::WEBVIEW_LOAD_URL_METHOD)?,
+        required_string(&payload, "url", host_protocol::WEBVIEW_LOAD_URL_METHOD)?.to_string(),
+    ))?;
 
-    Err(unsupported(host_protocol::WEBVIEW_LOAD_URL_METHOD))
+    Ok(None)
 }
 
-pub(crate) fn reload(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    validate_handle_payload(payload, host_protocol::WEBVIEW_RELOAD_METHOD)?;
+pub(crate) fn reload(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_RELOAD_METHOD)?;
+    handler.reload_webview(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_RELOAD_METHOD,
+    )?)?;
 
-    Err(unsupported(host_protocol::WEBVIEW_RELOAD_METHOD))
+    Ok(None)
 }
 
-pub(crate) fn stop(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    validate_handle_payload(payload, host_protocol::WEBVIEW_STOP_METHOD)?;
+pub(crate) fn stop(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_STOP_METHOD)?;
+    handler.stop_webview(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_STOP_METHOD,
+    )?)?;
 
-    Err(unsupported(host_protocol::WEBVIEW_STOP_METHOD))
+    Ok(None)
 }
 
-pub(crate) fn go_back(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    validate_handle_payload(payload, host_protocol::WEBVIEW_GO_BACK_METHOD)?;
+pub(crate) fn go_back(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_GO_BACK_METHOD)?;
+    handler.go_back_webview(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_GO_BACK_METHOD,
+    )?)?;
 
-    Err(unsupported(host_protocol::WEBVIEW_GO_BACK_METHOD))
+    Ok(None)
 }
 
-pub(crate) fn go_forward(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    validate_handle_payload(payload, host_protocol::WEBVIEW_GO_FORWARD_METHOD)?;
+pub(crate) fn go_forward(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_GO_FORWARD_METHOD)?;
+    handler.go_forward_webview(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_GO_FORWARD_METHOD,
+    )?)?;
 
-    Err(unsupported(host_protocol::WEBVIEW_GO_FORWARD_METHOD))
+    Ok(None)
 }
 
 pub(crate) fn get_navigation_state(
+    handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
-    validate_handle_payload(payload, host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD)?;
-
-    Err(unsupported(
+    let payload =
+        validate_handle_payload(payload, host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD)?;
+    let response = handler.get_webview_navigation_state(decode_webview_handle(
+        &payload,
         host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
-    ))
+    )?)?;
+
+    Ok(Some(response.into_json()))
 }
 
 pub(crate) fn capture_screenshot(
@@ -139,19 +194,137 @@ pub(crate) fn capability(payload: Option<Value>) -> Result<Option<Value>, HostPr
     Err(unsupported(host_protocol::WEBVIEW_CAPABILITY_METHOD))
 }
 
-pub(crate) fn destroy(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    validate_handle_payload(payload, host_protocol::WEBVIEW_DESTROY_METHOD)?;
+pub(crate) fn destroy(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_DESTROY_METHOD)?;
+    handler.destroy_webview(decode_webview_handle(
+        &payload,
+        host_protocol::WEBVIEW_DESTROY_METHOD,
+    )?)?;
 
-    Err(unsupported(host_protocol::WEBVIEW_DESTROY_METHOD))
+    Ok(None)
 }
 
 fn validate_handle_payload(
     payload: Option<Value>,
     operation: &'static str,
-) -> Result<(), HostProtocolError> {
+) -> Result<Map<String, Value>, HostProtocolError> {
     let payload = required_object(payload, operation)?;
     validate_allowed_fields(&payload, ALLOWED_HANDLE_FIELDS, operation)?;
-    validate_webview_handle_field(&payload, operation)
+    validate_webview_handle_field(&payload, operation)?;
+    Ok(payload)
+}
+
+fn decode_create_request(
+    payload: &Map<String, Value>,
+) -> Result<WebViewCreateRequest, HostProtocolError> {
+    Ok(WebViewCreateRequest::new(
+        decode_window_id(payload, host_protocol::WEBVIEW_CREATE_METHOD)?,
+        required_string(payload, "url", host_protocol::WEBVIEW_CREATE_METHOD)?.to_string(),
+        decode_policy(
+            payload,
+            "originPolicy",
+            host_protocol::WEBVIEW_CREATE_METHOD,
+        )?,
+    ))
+}
+
+fn decode_window_id(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<String, HostProtocolError> {
+    let handle = payload
+        .get("window")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument("window", "must be an object", operation)
+        })?;
+    Ok(required_string(handle, "id", operation)?.to_string())
+}
+
+fn decode_webview_handle(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<WebViewHandleRequest, HostProtocolError> {
+    let handle = payload
+        .get("webview")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument("webview", "must be an object", operation)
+        })?;
+    Ok(WebViewHandleRequest::new(
+        required_string(handle, "id", operation)?.to_string(),
+        handle
+            .get("generation")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                HostProtocolError::invalid_argument(
+                    "webview.generation",
+                    "must be an integer",
+                    operation,
+                )
+            })?,
+        required_string(handle, "ownerScope", operation)?.to_string(),
+    ))
+}
+
+fn decode_policy(
+    payload: &Map<String, Value>,
+    field: &'static str,
+    operation: &'static str,
+) -> Result<WebViewNavigationPolicy, HostProtocolError> {
+    let policy = payload
+        .get(field)
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument(field, "must be an object", operation)
+        })?;
+    let origins = policy
+        .get("allowedOrigins")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument(
+                format!("{field}.allowedOrigins"),
+                "must be an array",
+                operation,
+            )
+        })?
+        .iter()
+        .map(|value| {
+            value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
+                HostProtocolError::invalid_argument(
+                    format!("{field}.allowedOrigins"),
+                    "must contain only strings",
+                    operation,
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let on_disallowed = match required_string(policy, "onDisallowed", operation)? {
+        "block" => WebViewNavigationDecision::Block,
+        "openExternal" => WebViewNavigationDecision::OpenExternal,
+        other => {
+            return Err(HostProtocolError::invalid_argument(
+                format!("{field}.onDisallowed"),
+                format!("must be block or openExternal, got {other}"),
+                operation,
+            ));
+        }
+    };
+    Ok(WebViewNavigationPolicy::new(origins, on_disallowed))
+}
+
+fn required_string<'a>(
+    payload: &'a Map<String, Value>,
+    field: &'static str,
+    operation: &'static str,
+) -> Result<&'a str, HostProtocolError> {
+    payload
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| HostProtocolError::invalid_argument(field, "must be a string", operation))
 }
 
 fn validate_window_handle_field(
@@ -569,7 +742,7 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{capability, create, load_route, load_url, reload, set_navigation_policy};
+    use super::{capability, set_navigation_policy};
     use host_protocol::HostProtocolError;
     use serde_json::json;
 
@@ -581,106 +754,6 @@ mod tests {
             "ownerScope": "window:window-1",
             "state": "open"
         })
-    }
-
-    fn window_handle() -> serde_json::Value {
-        json!({
-            "kind": "window",
-            "id": "window-1",
-            "generation": 0,
-            "ownerScope": "runtime:test",
-            "state": "open"
-        })
-    }
-
-    #[test]
-    fn create_validates_payload_then_fails_closed() {
-        let error = create(Some(json!({
-            "window": window_handle(),
-            "url": "app://localhost/settings",
-            "originPolicy": {
-                "allowedOrigins": ["app://localhost"],
-                "onDisallowed": "block"
-            }
-        })))
-        .expect_err("create should be unsupported");
-
-        assert!(matches!(error, HostProtocolError::Unsupported { .. }));
-    }
-
-    #[test]
-    fn create_rejects_blocked_url_schemes_before_unsupported() {
-        let error = create(Some(json!({
-            "window": window_handle(),
-            "url": "file://localhost/secret",
-            "originPolicy": {
-                "allowedOrigins": ["app://localhost"],
-                "onDisallowed": "block"
-            }
-        })))
-        .expect_err("dangerous URL should fail");
-
-        assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
-    }
-
-    #[test]
-    fn create_rejects_missing_window_before_unsupported() {
-        let error = create(Some(json!({
-            "url": "app://localhost/settings",
-            "originPolicy": {
-                "allowedOrigins": ["app://localhost"],
-                "onDisallowed": "block"
-            }
-        })))
-        .expect_err("missing window should fail");
-
-        assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
-    }
-
-    #[test]
-    fn handle_methods_validate_payload_then_fail_closed() {
-        let error = reload(Some(json!({ "webview": webview_handle() })))
-            .expect_err("reload should be unsupported");
-
-        assert!(matches!(error, HostProtocolError::Unsupported { .. }));
-    }
-
-    #[test]
-    fn handle_methods_reject_invalid_handles_before_unsupported() {
-        let error = reload(Some(json!({
-            "webview": {
-                "kind": "window",
-                "id": "webview-1",
-                "generation": 0,
-                "ownerScope": "window:window-1",
-                "state": "open"
-            }
-        })))
-        .expect_err("wrong handle kind should fail");
-
-        assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
-    }
-
-    #[test]
-    fn load_route_rejects_traversal_before_unsupported() {
-        let error = load_route(Some(json!({
-            "webview": webview_handle(),
-            "route": "/../settings"
-        })))
-        .expect_err("traversal route should fail");
-
-        assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
-    }
-
-    #[test]
-    fn load_url_validates_payload_then_fails_closed() {
-        let error = load_url(Some(json!({
-            "webview": webview_handle(),
-            "url": "https://example.com/settings"
-        })))
-        .expect_err("load URL should be unsupported");
-
-        assert!(matches!(error, HostProtocolError::Unsupported { .. }));
     }
 
     #[test]

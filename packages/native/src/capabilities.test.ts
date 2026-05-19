@@ -85,12 +85,12 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     ]
   })
   expect(result.webViewCreate).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
+    status: "partial",
+    reason: "host-navigation-state-tracked",
     platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+      { platform: "macos", status: "partial", reason: "host-navigation-state-tracked" },
+      { platform: "windows", status: "partial", reason: "host-navigation-state-tracked" },
+      { platform: "linux", status: "partial", reason: "host-navigation-state-tracked" }
     ]
   })
   expect(result.menuClear).toEqual({

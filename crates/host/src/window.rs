@@ -17,9 +17,11 @@ use host_protocol::{
     WindowTrafficLights,
 };
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet, VecDeque},
     fs,
     process::{Command, Stdio},
+    rc::Rc,
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc, LazyLock, Mutex,
@@ -346,6 +348,96 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         method: ScreenMethodPayload,
     ) -> std::result::Result<ScreenSupportedPayload, HostProtocolError>;
+
+    fn create_webview(
+        &self,
+        _request: WebViewCreateRequest,
+    ) -> std::result::Result<WebViewResourcePayload, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_CREATE_METHOD,
+        ))
+    }
+
+    fn load_webview_route(
+        &self,
+        _request: WebViewLoadRouteRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
+        ))
+    }
+
+    fn load_webview_url(
+        &self,
+        _request: WebViewLoadUrlRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_LOAD_URL_METHOD,
+        ))
+    }
+
+    fn reload_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_RELOAD_METHOD,
+        ))
+    }
+
+    fn stop_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_STOP_METHOD,
+        ))
+    }
+
+    fn go_back_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_GO_BACK_METHOD,
+        ))
+    }
+
+    fn go_forward_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_GO_FORWARD_METHOD,
+        ))
+    }
+
+    fn get_webview_navigation_state(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<WebViewNavigationStatePayload, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
+        ))
+    }
+
+    fn destroy_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_DESTROY_METHOD,
+        ))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -355,6 +447,140 @@ pub(crate) struct WindowCreateRequest {
     height: f64,
     parent_window_id: Option<String>,
     macos_polish: Option<macos::MacosWindowPolish>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum WebViewNavigationDecision {
+    Block,
+    OpenExternal,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewNavigationPolicy {
+    allowed_origins: Vec<String>,
+    on_disallowed: WebViewNavigationDecision,
+}
+
+impl WebViewNavigationPolicy {
+    pub(crate) fn new(
+        allowed_origins: Vec<String>,
+        on_disallowed: WebViewNavigationDecision,
+    ) -> Self {
+        Self {
+            allowed_origins,
+            on_disallowed,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewCreateRequest {
+    window_id: String,
+    url: String,
+    policy: WebViewNavigationPolicy,
+}
+
+impl WebViewCreateRequest {
+    pub(crate) fn new(window_id: String, url: String, policy: WebViewNavigationPolicy) -> Self {
+        Self {
+            window_id,
+            url,
+            policy,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewHandleRequest {
+    id: String,
+    generation: u64,
+    owner_scope: String,
+}
+
+impl WebViewHandleRequest {
+    pub(crate) fn new(id: String, generation: u64, owner_scope: String) -> Self {
+        Self {
+            id,
+            generation,
+            owner_scope,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewLoadRouteRequest {
+    handle: WebViewHandleRequest,
+    route: String,
+}
+
+impl WebViewLoadRouteRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, route: String) -> Self {
+        Self { handle, route }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewLoadUrlRequest {
+    handle: WebViewHandleRequest,
+    url: String,
+}
+
+impl WebViewLoadUrlRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, url: String) -> Self {
+        Self { handle, url }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewResourcePayload {
+    id: String,
+    generation: u64,
+    owner_scope: String,
+}
+
+impl WebViewResourcePayload {
+    fn new(id: String, generation: u64, owner_scope: String) -> Self {
+        Self {
+            id,
+            generation,
+            owner_scope,
+        }
+    }
+
+    pub(crate) fn into_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "kind": "webview",
+            "id": self.id,
+            "generation": self.generation,
+            "ownerScope": self.owner_scope,
+            "state": "open"
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewNavigationStatePayload {
+    can_go_back: bool,
+    can_go_forward: bool,
+    loading: bool,
+}
+
+impl WebViewNavigationStatePayload {
+    fn new(can_go_back: bool, can_go_forward: bool, loading: bool) -> Self {
+        Self {
+            can_go_back,
+            can_go_forward,
+            loading,
+        }
+    }
+
+    pub(crate) fn into_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "canGoBack": self.can_go_back,
+            "canGoForward": self.can_go_forward,
+            "loading": self.loading
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -595,6 +821,42 @@ enum WindowCommand {
     ClearRuntimeTrays {
         reply: Sender<WindowCommandReply>,
     },
+    CreateWebView {
+        request: WebViewCreateRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    LoadWebViewRoute {
+        request: WebViewLoadRouteRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    LoadWebViewUrl {
+        request: WebViewLoadUrlRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    ReloadWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    StopWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    GoBackWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    GoForwardWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    GetWebViewNavigationState {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    DestroyWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
     GetScreenDisplays {
         reply: Sender<WindowCommandReply>,
     },
@@ -633,6 +895,8 @@ enum WindowCommandResponse {
     ScreenDisplay(ScreenDisplayPayload),
     ScreenPoint(ScreenPointPayload),
     ScreenSupported(ScreenSupportedPayload),
+    WebViewCreated(WebViewResourcePayload),
+    WebViewNavigationState(WebViewNavigationStatePayload),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -650,6 +914,107 @@ struct NativeWindowResources {
     _webview: webview::HostWebView,
 }
 
+struct NativeWebViewResources {
+    _webview: webview::HostWebView,
+    generation: u64,
+    owner_scope: String,
+    policy: WebViewNavigationPolicy,
+    navigation: SharedWebViewNavigationState,
+}
+
+type SharedWebViewNavigationState = Rc<RefCell<WebViewNavigationState>>;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WebViewNavigationState {
+    history: Vec<String>,
+    index: usize,
+    loading: bool,
+}
+
+impl WebViewNavigationState {
+    fn new(url: String) -> Self {
+        Self {
+            history: vec![url],
+            index: 0,
+            loading: false,
+        }
+    }
+
+    fn can_go_back(&self) -> bool {
+        self.index > 0
+    }
+
+    fn can_go_forward(&self) -> bool {
+        self.index + 1 < self.history.len()
+    }
+
+    fn mark_loading(&mut self, url: &str) {
+        self.loading = true;
+        self.record_navigation(url);
+    }
+
+    fn mark_finished(&mut self, url: &str) {
+        self.loading = false;
+        self.record_navigation(url);
+    }
+
+    fn mark_stopped(&mut self) {
+        self.loading = false;
+    }
+
+    fn move_back(&mut self) -> bool {
+        if !self.can_go_back() {
+            return false;
+        }
+        self.index -= 1;
+        self.loading = true;
+        true
+    }
+
+    fn move_forward(&mut self) -> bool {
+        if !self.can_go_forward() {
+            return false;
+        }
+        self.index += 1;
+        self.loading = true;
+        true
+    }
+
+    fn to_payload(&self) -> WebViewNavigationStatePayload {
+        WebViewNavigationStatePayload::new(self.can_go_back(), self.can_go_forward(), self.loading)
+    }
+
+    fn record_navigation(&mut self, url: &str) {
+        if self
+            .history
+            .get(self.index)
+            .is_some_and(|current| current == url)
+        {
+            return;
+        }
+        if self.index > 0
+            && self
+                .history
+                .get(self.index - 1)
+                .is_some_and(|prev| prev == url)
+        {
+            self.index -= 1;
+            return;
+        }
+        if self
+            .history
+            .get(self.index + 1)
+            .is_some_and(|next| next == url)
+        {
+            self.index += 1;
+            return;
+        }
+        self.history.truncate(self.index + 1);
+        self.history.push(url.to_string());
+        self.index = self.history.len() - 1;
+    }
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 struct NativeTrayResources {
     _tray: tray_icon::TrayIcon,
@@ -659,6 +1024,7 @@ struct NativeTrayResources {
 
 struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
+    webviews: HashMap<String, NativeWebViewResources>,
     window_id_by_native_id: HashMap<WindowId, String>,
     window_order: Vec<String>,
     focused_window_id: Option<String>,
@@ -764,7 +1130,9 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window lifecycle command received unrelated response",
                 operation,
             )),
@@ -796,7 +1164,9 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window state command received unrelated response",
                 operation,
             )),
@@ -828,7 +1198,9 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window placement command received unrelated response",
                 operation,
             )),
@@ -923,7 +1295,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window create received tray response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
@@ -993,7 +1367,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window destroy received tray response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
@@ -1143,7 +1519,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window get bounds received unrelated response",
                 host_protocol::WINDOW_GET_BOUNDS_METHOD,
             )),
@@ -1533,7 +1911,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window get state received unrelated response",
                 host_protocol::WINDOW_GET_STATE_METHOD,
             )),
@@ -1572,7 +1952,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "dock badge command received window response",
                 operation,
             )),
@@ -1609,7 +1991,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "dock set progress received unrelated response",
                 host_protocol::DOCK_SET_PROGRESS_METHOD,
             )),
@@ -1643,7 +2027,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "dock attention command received window response",
                 host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
             )),
@@ -1680,7 +2066,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "dock menu command received window response",
                 host_protocol::DOCK_SET_MENU_METHOD,
             )),
@@ -1717,7 +2105,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "application menu command received window response",
                 host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
             )),
@@ -1756,7 +2146,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
             )),
@@ -1894,6 +2286,177 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_tray_response(
                 response,
                 "host.runtime.tray.disconnect",
+            )),
+        }
+    }
+
+    fn create_webview(
+        &self,
+        request: WebViewCreateRequest,
+    ) -> std::result::Result<WebViewResourcePayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::CreateWebView {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WebViewCreated(webview) => Ok(webview),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_CREATE_METHOD,
+            )),
+        }
+    }
+
+    fn load_webview_route(
+        &self,
+        request: WebViewLoadRouteRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::LoadWebViewRoute {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
+            )),
+        }
+    }
+
+    fn load_webview_url(
+        &self,
+        request: WebViewLoadUrlRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::LoadWebViewUrl {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_LOAD_URL_METHOD,
+            )),
+        }
+    }
+
+    fn reload_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ReloadWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_RELOAD_METHOD,
+            )),
+        }
+    }
+
+    fn stop_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::StopWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_STOP_METHOD,
+            )),
+        }
+    }
+
+    fn go_back_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GoBackWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_GO_BACK_METHOD,
+            )),
+        }
+    }
+
+    fn go_forward_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GoForwardWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_GO_FORWARD_METHOD,
+            )),
+        }
+    }
+
+    fn get_webview_navigation_state(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<WebViewNavigationStatePayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetWebViewNavigationState {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WebViewNavigationState(state) => Ok(state),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
+            )),
+        }
+    }
+
+    fn destroy_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::DestroyWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::Destroyed => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_DESTROY_METHOD,
             )),
         }
     }
@@ -2082,6 +2645,7 @@ impl WindowRegistry {
     fn new() -> Self {
         Self {
             windows: HashMap::new(),
+            webviews: HashMap::new(),
             window_id_by_native_id: HashMap::new(),
             window_order: Vec::new(),
             focused_window_id: None,
@@ -3335,6 +3899,185 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn create_webview(
+        &mut self,
+        request: WebViewCreateRequest,
+    ) -> std::result::Result<WebViewResourcePayload, HostProtocolError> {
+        let Some(window) = self.windows.get(&request.window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{}", request.window_id),
+                host_protocol::WEBVIEW_CREATE_METHOD,
+            ));
+        };
+
+        if !origin_allowed(&request.url, &request.policy) {
+            return Err(webview_permission_denied(
+                "WebView.create denied by origin policy",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+            ));
+        }
+
+        let webview_id = Uuid::now_v7().to_string();
+        let owner_scope = format!("window:{}", request.window_id);
+        let navigation = Rc::new(RefCell::new(WebViewNavigationState::new(
+            request.url.clone(),
+        )));
+        let navigation_for_policy = Rc::clone(&navigation);
+        let navigation_for_load = Rc::clone(&navigation);
+        let policy_for_handler = request.policy.clone();
+        let webview = webview::attach_child_webview(
+            &window._window,
+            webview::ChildWebViewRequest {
+                url: request.url,
+                navigation_handler: Box::new(move |url| {
+                    if !origin_allowed(&url, &policy_for_handler) {
+                        return false;
+                    }
+                    navigation_for_policy.borrow_mut().mark_loading(&url);
+                    true
+                }),
+                page_load_handler: Box::new(move |event, url| match event {
+                    wry::PageLoadEvent::Started => {
+                        navigation_for_load.borrow_mut().mark_loading(&url);
+                    }
+                    wry::PageLoadEvent::Finished => {
+                        navigation_for_load.borrow_mut().mark_finished(&url);
+                    }
+                }),
+            },
+        )
+        .map_err(|error| *error)?;
+
+        self.webviews.insert(
+            webview_id.clone(),
+            NativeWebViewResources {
+                _webview: webview,
+                generation: 0,
+                owner_scope: owner_scope.clone(),
+                policy: request.policy,
+                navigation,
+            },
+        );
+
+        Ok(WebViewResourcePayload::new(webview_id, 0, owner_scope))
+    }
+
+    fn load_webview_route(
+        &mut self,
+        request: WebViewLoadRouteRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let url = format!("app://localhost{}", request.route);
+        self.load_webview_url(WebViewLoadUrlRequest::new(request.handle, url))
+    }
+
+    fn load_webview_url(
+        &mut self,
+        request: WebViewLoadUrlRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources =
+            self.webview_resources(&request.handle, host_protocol::WEBVIEW_LOAD_URL_METHOD)?;
+        if !origin_allowed(&request.url, &resources.policy) {
+            return Err(webview_permission_denied(
+                "WebView.loadUrl denied by origin policy",
+                host_protocol::WEBVIEW_LOAD_URL_METHOD,
+            ));
+        }
+        resources
+            ._webview
+            .load_url(&request.url)
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_LOAD_URL_METHOD))?;
+        resources.navigation.borrow_mut().mark_loading(&request.url);
+        Ok(())
+    }
+
+    fn reload_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_RELOAD_METHOD)?;
+        resources
+            ._webview
+            .reload()
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_RELOAD_METHOD))?;
+        resources.navigation.borrow_mut().loading = true;
+        Ok(())
+    }
+
+    fn stop_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_STOP_METHOD)?;
+        resources
+            ._webview
+            .evaluate_script("window.stop()")
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_STOP_METHOD))?;
+        resources.navigation.borrow_mut().mark_stopped();
+        Ok(())
+    }
+
+    fn go_back_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_GO_BACK_METHOD)?;
+        resources
+            ._webview
+            .evaluate_script("history.back()")
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_GO_BACK_METHOD))?;
+        resources.navigation.borrow_mut().move_back();
+        Ok(())
+    }
+
+    fn go_forward_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_GO_FORWARD_METHOD)?;
+        resources
+            ._webview
+            .evaluate_script("history.forward()")
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_GO_FORWARD_METHOD))?;
+        resources.navigation.borrow_mut().move_forward();
+        Ok(())
+    }
+
+    fn get_webview_navigation_state(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<WebViewNavigationStatePayload, HostProtocolError> {
+        let resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD)?;
+        Ok(resources.navigation.borrow().to_payload())
+    }
+
+    fn destroy_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webviews.get(&handle.id).ok_or_else(|| {
+            HostProtocolError::not_found(
+                format!("WebView:{}", handle.id),
+                host_protocol::WEBVIEW_DESTROY_METHOD,
+            )
+        })?;
+        validate_webview_handle(handle, resources, host_protocol::WEBVIEW_DESTROY_METHOD)?;
+        self.webviews.remove(&handle.id);
+        Ok(())
+    }
+
+    fn webview_resources(
+        &self,
+        handle: &WebViewHandleRequest,
+        operation: &'static str,
+    ) -> std::result::Result<&NativeWebViewResources, HostProtocolError> {
+        let resources = self.webviews.get(&handle.id).ok_or_else(|| {
+            HostProtocolError::not_found(format!("WebView:{}", handle.id), operation)
+        })?;
+        validate_webview_handle(handle, resources, operation)?;
+        Ok(resources)
+    }
+
     fn screen_displays(
         &self,
         target: &EventLoopWindowTarget<HostEvent>,
@@ -3946,6 +4689,69 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::CreateWebView { request, reply } => {
+                let result = self
+                    .create_webview(request)
+                    .map(WindowCommandResponse::WebViewCreated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::LoadWebViewRoute { request, reply } => {
+                let result = self
+                    .load_webview_route(request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::LoadWebViewUrl { request, reply } => {
+                let result = self
+                    .load_webview_url(request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ReloadWebView { handle, reply } => {
+                let result = self
+                    .reload_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::StopWebView { handle, reply } => {
+                let result = self
+                    .stop_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GoBackWebView { handle, reply } => {
+                let result = self
+                    .go_back_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GoForwardWebView { handle, reply } => {
+                let result = self
+                    .go_forward_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GetWebViewNavigationState { handle, reply } => {
+                let result = self
+                    .get_webview_navigation_state(&handle)
+                    .map(WindowCommandResponse::WebViewNavigationState);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::DestroyWebView { handle, reply } => {
+                let result = self
+                    .destroy_webview(&handle)
+                    .map(|()| WindowCommandResponse::Destroyed);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::GetScreenDisplays { reply } => {
                 let result = self
                     .screen_displays(target, host_protocol::SCREEN_GET_DISPLAYS_METHOD)
@@ -4147,6 +4953,68 @@ fn lifecycle_for_create_result(result: &WindowCommandReply) -> WindowLifecycleEv
     }
 }
 
+fn validate_webview_handle(
+    handle: &WebViewHandleRequest,
+    resources: &NativeWebViewResources,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    if handle.generation != resources.generation {
+        return Err(HostProtocolError::invalid_argument(
+            "webview.generation",
+            "must match the live WebView generation",
+            operation,
+        ));
+    }
+    if handle.owner_scope != resources.owner_scope {
+        return Err(HostProtocolError::invalid_argument(
+            "webview.ownerScope",
+            "must match the live WebView owner scope",
+            operation,
+        ));
+    }
+    Ok(())
+}
+
+fn origin_allowed(url: &str, policy: &WebViewNavigationPolicy) -> bool {
+    match policy.on_disallowed {
+        WebViewNavigationDecision::Block | WebViewNavigationDecision::OpenExternal => {}
+    }
+    origin_for_url(url).as_deref().is_some_and(|origin| {
+        policy
+            .allowed_origins
+            .iter()
+            .any(|allowed| allowed == origin)
+    })
+}
+
+fn origin_for_url(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once("://")?;
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .filter(|value| !value.is_empty())?;
+    Some(format!("{scheme}://{authority}"))
+}
+
+fn webview_host_error(error: wry::Error, operation: &'static str) -> HostProtocolError {
+    HostProtocolError::internal(format!("WebView host operation failed: {error}"), operation)
+}
+
+fn webview_permission_denied(message: &'static str, operation: &'static str) -> HostProtocolError {
+    HostProtocolError::PermissionDenied {
+        capability: "WebView.navigation".to_string(),
+        resource: None,
+        message: message.to_string(),
+        operation: operation.to_string(),
+        platform: None,
+        code: None,
+        cause: None,
+        recoverable: HostProtocolError::recoverable_default("PermissionDenied").expect("known tag"),
+        remediation: None,
+        docs_url: None,
+    }
+}
+
 fn unexpected_tray_response(
     response: WindowCommandResponse,
     operation: &'static str,
@@ -4174,6 +5042,43 @@ fn unexpected_tray_response(
         | WindowCommandResponse::ScreenDisplay(_)
         | WindowCommandResponse::ScreenPoint(_)
         | WindowCommandResponse::ScreenSupported(_) => "tray command received screen response",
+        WindowCommandResponse::WebViewCreated(_)
+        | WindowCommandResponse::WebViewNavigationState(_) => {
+            "tray command received webview response"
+        }
+    };
+    HostProtocolError::internal(message, operation)
+}
+
+fn unexpected_webview_response(
+    response: WindowCommandResponse,
+    operation: &'static str,
+) -> HostProtocolError {
+    let message = match response {
+        WindowCommandResponse::Created(_) => "webview command received window create response",
+        WindowCommandResponse::Destroyed => "webview command received window destroy response",
+        WindowCommandResponse::WindowUpdated => "webview command received window update response",
+        WindowCommandResponse::WindowLookup(_) => "webview command received window lookup response",
+        WindowCommandResponse::WindowList(_) => "webview command received window list response",
+        WindowCommandResponse::WindowParent(_) => "webview command received window parent response",
+        WindowCommandResponse::WindowBounds(_) => "webview command received window bounds response",
+        WindowCommandResponse::WindowState(_) => "webview command received window state response",
+        WindowCommandResponse::DockBadgeLabelSet
+        | WindowCommandResponse::DockProgressSet
+        | WindowCommandResponse::DockAttentionRequested
+        | WindowCommandResponse::DockMenuSet => "webview command received dock response",
+        WindowCommandResponse::MenuSet => "webview command received menu response",
+        WindowCommandResponse::TrayCreated(_)
+        | WindowCommandResponse::TrayUpdated
+        | WindowCommandResponse::TrayDestroyed => "webview command received tray response",
+        WindowCommandResponse::ScreenDisplays(_)
+        | WindowCommandResponse::ScreenDisplay(_)
+        | WindowCommandResponse::ScreenPoint(_)
+        | WindowCommandResponse::ScreenSupported(_) => "webview command received screen response",
+        WindowCommandResponse::WebViewCreated(_) => "webview command received create response",
+        WindowCommandResponse::WebViewNavigationState(_) => {
+            "webview command received navigation state response"
+        }
     };
     HostProtocolError::internal(message, operation)
 }
@@ -4205,6 +5110,10 @@ fn unexpected_screen_response(
         WindowCommandResponse::ScreenDisplay(_) => "screen command received display response",
         WindowCommandResponse::ScreenPoint(_) => "screen command received point response",
         WindowCommandResponse::ScreenSupported(_) => "screen command received support response",
+        WindowCommandResponse::WebViewCreated(_)
+        | WindowCommandResponse::WebViewNavigationState(_) => {
+            "screen command received webview response"
+        }
     };
     HostProtocolError::internal(message, operation)
 }
@@ -5178,7 +6087,6 @@ fn validate_tray_handle(
             operation,
         ));
     }
-
     Ok(())
 }
 
@@ -5651,7 +6559,8 @@ mod tests {
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
         lifecycle_for_create_result, resident_lifecycle, rounded_i32, rounded_u32,
         screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
-        validate_positive_finite, LogicalScreenArea, PhysicalScreenArea, RunMode, WindowCommand,
+        validate_positive_finite, LogicalScreenArea, PhysicalScreenArea, RunMode,
+        WebViewNavigationDecision, WebViewNavigationPolicy, WebViewNavigationState, WindowCommand,
         WindowCommandResponse, WindowCreateRequest, WindowId, WindowLifecycleEvent,
         WindowMethodPort, WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
         WINDOW_SMOKE_TEST_TIMEOUT,
@@ -5678,6 +6587,47 @@ mod tests {
         fn drop(&mut self) {
             let _ = clear_window_runtime_event_state();
         }
+    }
+
+    #[test]
+    fn webview_navigation_state_tracks_host_history() {
+        let mut state = WebViewNavigationState::new("app://localhost/".to_string());
+        assert!(!state.can_go_back());
+        assert!(!state.can_go_forward());
+
+        state.mark_loading("app://localhost/settings");
+        assert!(state.can_go_back());
+        assert!(!state.can_go_forward());
+        assert!(state.to_payload().loading);
+
+        assert!(state.move_back());
+        assert!(!state.can_go_back());
+        assert!(state.can_go_forward());
+
+        assert!(state.move_forward());
+        state.mark_finished("app://localhost/settings");
+        let payload = state.to_payload();
+        assert!(payload.can_go_back);
+        assert!(!payload.can_go_forward);
+        assert!(!payload.loading);
+    }
+
+    #[test]
+    fn webview_origin_policy_matches_exact_origins() {
+        let policy = WebViewNavigationPolicy::new(
+            vec![
+                "app://localhost".to_string(),
+                "https://example.com".to_string(),
+            ],
+            WebViewNavigationDecision::Block,
+        );
+
+        assert!(super::origin_allowed("app://localhost/settings", &policy));
+        assert!(super::origin_allowed("https://example.com/path", &policy));
+        assert!(!super::origin_allowed(
+            "https://evil.example.com/path",
+            &policy
+        ));
     }
 
     fn install_test_window_event_sender(

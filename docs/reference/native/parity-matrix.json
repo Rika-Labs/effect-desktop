@@ -3387,23 +3387,23 @@
       "method": "create",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -3415,23 +3415,23 @@
       "method": "destroy",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -3443,23 +3443,23 @@
       "method": "getNavigationState",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -3471,23 +3471,23 @@
       "method": "goBack",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -3499,23 +3499,23 @@
       "method": "goForward",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -3527,23 +3527,23 @@
       "method": "loadRoute",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -3555,23 +3555,23 @@
       "method": "loadUrl",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -3583,23 +3583,23 @@
       "method": "reload",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -3639,23 +3639,23 @@
       "method": "stop",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "host-navigation-state-tracked",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "host-navigation-state-tracked"
           }
         ]
       },
@@ -4241,7 +4241,7 @@
     "routed": 243,
     "missing": 0,
     "supported": 140,
-    "partial": 56,
-    "unsupported": 47
+    "partial": 65,
+    "unsupported": 38
   }
 }

@@ -1130,35 +1130,35 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::WEBVIEW_CREATE_METHOD,
-        HostMethodDispatcher::Payload(webview::create),
+        HostMethodDispatcher::Window(webview::create),
     ),
     route(
         host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
-        HostMethodDispatcher::Payload(webview::load_route),
+        HostMethodDispatcher::Window(webview::load_route),
     ),
     route(
         host_protocol::WEBVIEW_LOAD_URL_METHOD,
-        HostMethodDispatcher::Payload(webview::load_url),
+        HostMethodDispatcher::Window(webview::load_url),
     ),
     route(
         host_protocol::WEBVIEW_RELOAD_METHOD,
-        HostMethodDispatcher::Payload(webview::reload),
+        HostMethodDispatcher::Window(webview::reload),
     ),
     route(
         host_protocol::WEBVIEW_STOP_METHOD,
-        HostMethodDispatcher::Payload(webview::stop),
+        HostMethodDispatcher::Window(webview::stop),
     ),
     route(
         host_protocol::WEBVIEW_GO_BACK_METHOD,
-        HostMethodDispatcher::Payload(webview::go_back),
+        HostMethodDispatcher::Window(webview::go_back),
     ),
     route(
         host_protocol::WEBVIEW_GO_FORWARD_METHOD,
-        HostMethodDispatcher::Payload(webview::go_forward),
+        HostMethodDispatcher::Window(webview::go_forward),
     ),
     route(
         host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
-        HostMethodDispatcher::Payload(webview::get_navigation_state),
+        HostMethodDispatcher::Window(webview::get_navigation_state),
     ),
     route(
         host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD,
@@ -1174,7 +1174,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::WEBVIEW_DESTROY_METHOD,
-        HostMethodDispatcher::Payload(webview::destroy),
+        HostMethodDispatcher::Window(webview::destroy),
     ),
 ];
 

@@ -93,7 +93,7 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
   })
   expect(result.rows.find((row) => row.tag === "WebView.create")).toMatchObject({
     hostStatus: "routed",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
+    support: { status: "partial", reason: "host-navigation-state-tracked" }
   })
   expect(result.rows.find((row) => row.tag === "Menu.setApplicationMenu")).toMatchObject({
     hostStatus: "routed",

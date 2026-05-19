@@ -10,10 +10,13 @@ effect_version: 4
 
 Embedded browser views inside desktop windows.
 
-The Rust host currently attaches the application WebView during `Window.create`.
-It routes direct `WebView.*` RPC methods through validation-first fail-closed
-handlers, so the public `WebView` RPC surface is declared but remains
-unsupported in capability metadata until a host adapter owns those methods.
+The Rust host attaches the application WebView during `Window.create`. Direct
+WebView navigation methods now own generated host handles for child WebViews:
+`create`, `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, `goForward`,
+`getNavigationState`, and `destroy` route through the host event-loop command
+port. Capability metadata marks those methods `partial` because history state is
+tracked from Wry navigation/page-load callbacks and host-issued commands rather
+than a portable browser history API.
 
 `WebView.create` requires an explicit `WindowHandle` owner. Session/profile
 handles are not exposed today; `WebView.create` has no profile/session input,
@@ -26,11 +29,14 @@ interception. There is no `WebRequest` service yet for ordered interceptors,
 subresource inspection, response-header mutation, blocking, redirects, or
 request audit.
 
-Navigation controls are not host-backed today. The TypeScript bridge declares
-`create`, `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, `goForward`, and
-`getNavigationState`, and the Rust host validates those routed payloads before
-returning typed unsupported errors. The host still has no scoped WebView
-resource registry or typed navigation lifecycle event stream.
+Navigation controls are host-backed for child WebViews. `WebView.create`
+registers a generation-stamped handle scoped to the owner window, enforces the
+create origin policy before attachment, and releases the native WebView on
+`destroy`. `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, and `goForward`
+dispatch to the retained Wry WebView. `getNavigationState` returns host-tracked
+`canGoBack`, `canGoForward`, and `loading` state. The host still has no typed
+navigation lifecycle event stream, and browser-internal same-document history is
+not exposed as a portable native primitive.
 
 Navigation and popup policy is not host-backed today. `setNavigationPolicy` is
 declared in the TypeScript bridge contract, but the Rust host only validates
@@ -129,13 +135,13 @@ Desktop.make({
 
 ## Status
 
-The contract is declared through `WebViewRpcs`. Runtime WebView attachment is
-currently owned by `Window.create`; direct `WebView.*` bridge methods are
-routed through validation-first host handlers and return
-`host-adapter-unimplemented` until explicit host-backed resource ownership
-exists.
-`webViewCapability(...)` remains a local platform and runtime-mode feature
-helper; it does not prove that the direct WebView RPC host path is executable.
+The contract is declared through `WebViewRpcs`. App runtime WebView attachment
+is owned by `Window.create`; direct child WebView navigation methods are routed
+through host-backed resources and report `partial` support with
+`host-navigation-state-tracked`. `captureScreenshot`, `setNavigationPolicy`, and
+`capability` remain validation-first unsupported routes until their own host
+adapters land. `webViewCapability(...)` remains a local platform and
+runtime-mode feature helper; it does not grant permission.
 Request/response interception is also not part of this surface yet; it requires
 a separate native host adapter.
 Proxy/auth/certificate hooks are likewise absent from the current host-backed
