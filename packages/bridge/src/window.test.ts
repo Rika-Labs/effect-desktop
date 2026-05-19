@@ -311,20 +311,26 @@ test("host window client requests Window.getBounds, Window.setBounds, display bo
   const bounds = await Effect.runPromise(
     Effect.gen(function* () {
       const current = yield* client.getBounds("window-1")
-      yield* client.setBounds("window-1", { x: 30, y: 40, width: 800, height: 600 })
-      yield* client.setBoundsOnDisplay("window-1", "display-1", {
+      const set = yield* client.setBounds("window-1", { x: 30, y: 40, width: 800, height: 600 })
+      const displayed = yield* client.setBoundsOnDisplay("window-1", "display-1", {
         x: 15,
         y: 25,
         width: 700,
         height: 500
       })
-      yield* client.center("window-1")
-      yield* client.centerOnDisplay("window-1", "display-1")
-      return current
+      const centered = yield* client.center("window-1")
+      const displayCentered = yield* client.centerOnDisplay("window-1", "display-1")
+      return { centered, current, displayCentered, displayed, set }
     })
   )
 
-  expect(bounds).toEqual({ x: 10, y: 20, width: 640, height: 480 })
+  expect(bounds).toEqual({
+    current: { x: 10, y: 20, width: 640, height: 480 },
+    set: { x: 30, y: 40, width: 800, height: 600 },
+    displayed: { x: 15, y: 25, width: 700, height: 500 },
+    centered: { x: 50, y: 60, width: 640, height: 480 },
+    displayCentered: { x: 70, y: 80, width: 640, height: 480 }
+  })
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [WINDOW_GET_BOUNDS_METHOD, { windowId: "window-1" }],
     [
@@ -714,15 +720,14 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                         windows: [{ windowId: "window-child-1" }, { windowId: "window-child-2" }]
                       }
                     }
-                  : request.method === WINDOW_GET_BOUNDS_METHOD
+                  : request.method === WINDOW_GET_BOUNDS_METHOD ||
+                      request.method === WINDOW_SET_BOUNDS_METHOD ||
+                      request.method === WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD ||
+                      request.method === WINDOW_CENTER_METHOD ||
+                      request.method === WINDOW_CENTER_ON_DISPLAY_METHOD
                     ? {
                         ...base,
-                        payload: {
-                          x: 10,
-                          y: 20,
-                          width: 640,
-                          height: 480
-                        }
+                        payload: boundsResponseForRequest(request)
                       }
                     : request.method === WINDOW_GET_STATE_METHOD
                       ? {
@@ -786,6 +791,46 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
         )
       : Stream.empty
 })
+
+interface BoundsPayload {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+const boundsResponseForRequest = (request: HostProtocolRequestEnvelope): BoundsPayload => {
+  if (request.method === WINDOW_SET_BOUNDS_METHOD && isBoundsPayload(request.payload)) {
+    return request.payload.bounds
+  }
+  if (
+    request.method === WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD &&
+    isDisplayBoundsPayload(request.payload)
+  ) {
+    return request.payload.bounds
+  }
+  if (request.method === WINDOW_CENTER_METHOD) {
+    return { x: 50, y: 60, width: 640, height: 480 }
+  }
+  if (request.method === WINDOW_CENTER_ON_DISPLAY_METHOD) {
+    return { x: 70, y: 80, width: 640, height: 480 }
+  }
+  return { x: 10, y: 20, width: 640, height: 480 }
+}
+
+const isBoundsPayload = (
+  payload: HostProtocolRequestEnvelope["payload"]
+): payload is { readonly bounds: BoundsPayload } =>
+  typeof payload === "object" &&
+  payload !== null &&
+  "bounds" in payload &&
+  typeof payload.bounds === "object" &&
+  payload.bounds !== null
+
+const isDisplayBoundsPayload = (
+  payload: HostProtocolRequestEnvelope["payload"]
+): payload is { readonly bounds: BoundsPayload; readonly displayId: string } =>
+  isBoundsPayload(payload) && "displayId" in payload
 
 const notFoundExchange = (): HostWindowExchange => ({
   request: (request) =>

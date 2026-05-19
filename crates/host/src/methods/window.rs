@@ -136,7 +136,10 @@ pub(crate) fn get_bounds(
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_GET_BOUNDS_METHOD)?;
     let response = handler.get_bounds(payload.window_id())?;
 
-    Ok(Some(encode_bounds_response(response)?))
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_GET_BOUNDS_METHOD,
+    )?))
 }
 
 pub(crate) fn set_bounds(
@@ -144,9 +147,12 @@ pub(crate) fn set_bounds(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_bounds_payload(payload)?;
-    handler.set_bounds(payload.window_id(), payload.bounds())?;
+    let response = handler.set_bounds(payload.window_id(), payload.bounds())?;
 
-    Ok(None)
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_SET_BOUNDS_METHOD,
+    )?))
 }
 
 pub(crate) fn set_bounds_on_display(
@@ -154,9 +160,16 @@ pub(crate) fn set_bounds_on_display(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_bounds_on_display_payload(payload)?;
-    handler.set_bounds_on_display(payload.window_id(), payload.display_id(), payload.bounds())?;
+    let response = handler.set_bounds_on_display(
+        payload.window_id(),
+        payload.display_id(),
+        payload.bounds(),
+    )?;
 
-    Ok(None)
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+    )?))
 }
 
 pub(crate) fn center(
@@ -164,9 +177,12 @@ pub(crate) fn center(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_CENTER_METHOD)?;
-    handler.center(payload.window_id())?;
+    let response = handler.center(payload.window_id())?;
 
-    Ok(None)
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_CENTER_METHOD,
+    )?))
 }
 
 pub(crate) fn center_on_display(
@@ -174,9 +190,12 @@ pub(crate) fn center_on_display(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_center_on_display_payload(payload)?;
-    handler.center_on_display(payload.window_id(), payload.display_id())?;
+    let response = handler.center_on_display(payload.window_id(), payload.display_id())?;
 
-    Ok(None)
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+    )?))
 }
 
 pub(crate) fn set_title(
@@ -1229,14 +1248,14 @@ fn encode_parent_response(payload: WindowParentResponse) -> Result<Value, HostPr
     })
 }
 
-fn encode_bounds_response(payload: WindowBoundsPayload) -> Result<Value, HostProtocolError> {
+fn encode_bounds_response(
+    payload: WindowBoundsPayload,
+    operation: &'static str,
+) -> Result<Value, HostProtocolError> {
     serde_json::to_value(payload).map_err(|error| {
         HostProtocolError::internal(
-            format!(
-                "failed to encode {} response payload: {error}",
-                host_protocol::WINDOW_GET_BOUNDS_METHOD
-            ),
-            host_protocol::WINDOW_GET_BOUNDS_METHOD,
+            format!("failed to encode {operation} response payload: {error}"),
+            operation,
         )
     })
 }

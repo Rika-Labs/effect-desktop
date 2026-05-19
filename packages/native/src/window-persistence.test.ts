@@ -92,6 +92,7 @@ test("WindowPersistence saves and restores stale display state onto the current 
               Effect.sync(() => {
                 calls.setBounds.push(next)
                 bounds = new WindowBounds(next)
+                return bounds
               }),
             setFullscreen: (_window, fullscreen) =>
               Effect.sync(() => {
@@ -524,7 +525,15 @@ const windowPersistenceBridgeResponse = (
         payload: { minimized: false, maximized: false, fullscreen: false, simpleFullscreen: false }
       })
     case WINDOW_SET_BOUNDS_METHOD:
-      return Effect.succeed({ kind: "success", payload: undefined })
+      return Effect.succeed({
+        kind: "success",
+        payload:
+          typeof request.payload === "object" &&
+          request.payload !== null &&
+          "bounds" in request.payload
+            ? request.payload.bounds
+            : { x: 100, y: 120, width: 800, height: 600 }
+      })
     case "Screen.getDisplays":
       return Effect.succeed({
         kind: "success",
@@ -554,10 +563,12 @@ const makeWindowClient = (
   setBounds: (_window, bounds) =>
     Effect.sync(() => {
       calls.setBounds.push(bounds)
+      return new WindowBounds(bounds)
     }),
-  setBoundsOnDisplay: () => Effect.void,
-  center: () => Effect.void,
-  centerOnDisplay: () => Effect.void,
+  setBoundsOnDisplay: (_window, _displayId, bounds) => Effect.succeed(new WindowBounds(bounds)),
+  center: () => Effect.succeed(new WindowBounds({ x: 100, y: 100, width: 800, height: 600 })),
+  centerOnDisplay: () =>
+    Effect.succeed(new WindowBounds({ x: 100, y: 100, width: 800, height: 600 })),
   setTitle: () => Effect.void,
   setResizable: () => Effect.void,
   setDecorations: () => Effect.void,

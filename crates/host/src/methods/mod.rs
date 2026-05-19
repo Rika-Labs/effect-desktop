@@ -3874,7 +3874,26 @@ mod tests {
                     id: id.to_string(),
                     timestamp: 1710000000111,
                     trace_id: format!("trace-{id}"),
-                    payload: None,
+                    payload: Some(match method {
+                        host_protocol::WINDOW_CENTER_METHOD => serde_json::json!({
+                            "x": 30.0,
+                            "y": 40.0,
+                            "width": 640.0,
+                            "height": 480.0
+                        }),
+                        host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD => serde_json::json!({
+                            "x": 35.0,
+                            "y": 45.0,
+                            "width": 640.0,
+                            "height": 480.0
+                        }),
+                        _ => serde_json::json!({
+                            "x": 15.0,
+                            "y": 25.0,
+                            "width": 700.0,
+                            "height": 500.0
+                        }),
+                    }),
                     error: None,
                 }
             );
@@ -7522,8 +7541,8 @@ mod tests {
             &self,
             _window_id: &str,
             _bounds: &WindowBoundsPayload,
-        ) -> Result<(), HostProtocolError> {
-            Ok(())
+        ) -> Result<WindowBoundsPayload, HostProtocolError> {
+            Ok(WindowBoundsPayload::new(15.0, 25.0, 700.0, 500.0))
         }
 
         fn set_bounds_on_display(
@@ -7531,20 +7550,20 @@ mod tests {
             _window_id: &str,
             _display_id: &str,
             _bounds: &WindowBoundsPayload,
-        ) -> Result<(), HostProtocolError> {
-            Ok(())
+        ) -> Result<WindowBoundsPayload, HostProtocolError> {
+            Ok(WindowBoundsPayload::new(15.0, 25.0, 700.0, 500.0))
         }
 
-        fn center(&self, _window_id: &str) -> Result<(), HostProtocolError> {
-            Ok(())
+        fn center(&self, _window_id: &str) -> Result<WindowBoundsPayload, HostProtocolError> {
+            Ok(WindowBoundsPayload::new(30.0, 40.0, 640.0, 480.0))
         }
 
         fn center_on_display(
             &self,
             _window_id: &str,
             _display_id: &str,
-        ) -> Result<(), HostProtocolError> {
-            Ok(())
+        ) -> Result<WindowBoundsPayload, HostProtocolError> {
+            Ok(WindowBoundsPayload::new(35.0, 45.0, 640.0, 480.0))
         }
 
         fn set_title(&self, window_id: &str, title: &str) -> Result<(), HostProtocolError> {

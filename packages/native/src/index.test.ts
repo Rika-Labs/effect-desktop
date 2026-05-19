@@ -8673,11 +8673,22 @@ test("Window service delegates through a substitutable WindowClient port", async
         calls.push("getBounds")
         return new WindowBounds({ x: 10, y: 20, width: 640, height: 480 })
       }),
-    setBounds: (_window, bounds) => recordVoid(calls, `setBounds:${bounds.width}x${bounds.height}`),
+    setBounds: (_window, bounds) =>
+      recordVoid(calls, `setBounds:${bounds.width}x${bounds.height}`).pipe(
+        Effect.as(new WindowBounds(bounds))
+      ),
     setBoundsOnDisplay: (_window, displayId, bounds) =>
-      recordVoid(calls, `setBoundsOnDisplay:${displayId}:${bounds.width}x${bounds.height}`),
-    center: () => recordVoid(calls, "center"),
-    centerOnDisplay: (_window, displayId) => recordVoid(calls, `centerOnDisplay:${displayId}`),
+      recordVoid(calls, `setBoundsOnDisplay:${displayId}:${bounds.width}x${bounds.height}`).pipe(
+        Effect.as(new WindowBounds(bounds))
+      ),
+    center: () =>
+      recordVoid(calls, "center").pipe(
+        Effect.as(new WindowBounds({ x: 50, y: 60, width: 640, height: 480 }))
+      ),
+    centerOnDisplay: (_window, displayId) =>
+      recordVoid(calls, `centerOnDisplay:${displayId}`).pipe(
+        Effect.as(new WindowBounds({ x: 70, y: 80, width: 640, height: 480 }))
+      ),
     setTitle: (_window, title) => recordVoid(calls, `setTitle:${title}`),
     setResizable: (_window, resizable) => recordVoid(calls, `setResizable:${resizable}`),
     setDecorations: (_window, decorations) => recordVoid(calls, `setDecorations:${decorations}`),
@@ -12329,10 +12340,10 @@ const noopWindowClient: WindowClientApi = {
   getParent: () => Effect.succeed(undefined),
   getChildren: () => Effect.succeed([]),
   getBounds: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
-  setBounds: () => Effect.void,
-  setBoundsOnDisplay: () => Effect.void,
-  center: () => Effect.void,
-  centerOnDisplay: () => Effect.void,
+  setBounds: (_window, bounds) => Effect.succeed(new WindowBounds(bounds)),
+  setBoundsOnDisplay: (_window, _displayId, bounds) => Effect.succeed(new WindowBounds(bounds)),
+  center: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
+  centerOnDisplay: () => Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
   setTitle: () => Effect.void,
   setResizable: () => Effect.void,
   setDecorations: () => Effect.void,
@@ -12392,8 +12403,12 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                 ? { payload: {} }
                 : request.method === WINDOW_GET_CHILDREN_METHOD
                   ? { payload: { windows: [] } }
-                  : request.method === WINDOW_GET_BOUNDS_METHOD
-                    ? { payload: { x: 10, y: 20, width: 640, height: 480 } }
+                  : request.method === WINDOW_GET_BOUNDS_METHOD ||
+                      request.method === WINDOW_SET_BOUNDS_METHOD ||
+                      request.method === WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD ||
+                      request.method === WINDOW_CENTER_METHOD ||
+                      request.method === WINDOW_CENTER_ON_DISPLAY_METHOD
+                    ? { payload: hostWindowBoundsResponseForRequest(request) }
                     : request.method === WINDOW_GET_STATE_METHOD
                       ? {
                           payload: {
@@ -12408,6 +12423,48 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
     )
   }
 })
+
+interface HostWindowBoundsPayload {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+const hostWindowBoundsResponseForRequest = (
+  request: HostProtocolRequestEnvelope
+): HostWindowBoundsPayload => {
+  if (request.method === WINDOW_SET_BOUNDS_METHOD && hasHostBoundsPayload(request.payload)) {
+    return request.payload.bounds
+  }
+  if (
+    request.method === WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD &&
+    hasHostDisplayBoundsPayload(request.payload)
+  ) {
+    return request.payload.bounds
+  }
+  if (request.method === WINDOW_CENTER_METHOD) {
+    return { x: 50, y: 60, width: 640, height: 480 }
+  }
+  if (request.method === WINDOW_CENTER_ON_DISPLAY_METHOD) {
+    return { x: 70, y: 80, width: 640, height: 480 }
+  }
+  return { x: 10, y: 20, width: 640, height: 480 }
+}
+
+const hasHostBoundsPayload = (
+  payload: HostProtocolRequestEnvelope["payload"]
+): payload is { readonly bounds: HostWindowBoundsPayload } =>
+  typeof payload === "object" &&
+  payload !== null &&
+  "bounds" in payload &&
+  typeof payload.bounds === "object" &&
+  payload.bounds !== null
+
+const hasHostDisplayBoundsPayload = (
+  payload: HostProtocolRequestEnvelope["payload"]
+): payload is { readonly bounds: HostWindowBoundsPayload; readonly displayId: string } =>
+  hasHostBoundsPayload(payload) && "displayId" in payload
 
 const appExchange = (
   requests: HostProtocolRequestEnvelope[],

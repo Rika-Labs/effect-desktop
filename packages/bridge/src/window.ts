@@ -379,17 +379,19 @@ export interface HostWindowClient {
   readonly setBounds: (
     windowId: string,
     bounds: WindowBoundsInput
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
   readonly setBoundsOnDisplay: (
     windowId: string,
     displayId: string,
     bounds: WindowBoundsInput
-  ) => Effect.Effect<void, HostProtocolError, never>
-  readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
+  readonly center: (
+    windowId: string
+  ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
   readonly centerOnDisplay: (
     windowId: string,
     displayId: string
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
   readonly setTitle: (
     windowId: string,
     title: string
@@ -553,27 +555,37 @@ export const makeHostWindowClient = (
       Effect.gen(function* () {
         const payload = yield* encodeSetBoundsPayload(windowId, bounds)
         const request = yield* makeRequest(WINDOW_SET_BOUNDS_METHOD, resolved, payload)
-        yield* requireSuccess(
+        const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
+        return yield* decodeBoundsResponse(response.payload, WINDOW_SET_BOUNDS_METHOD)
       }),
     setBoundsOnDisplay: (windowId, displayId, bounds) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetBoundsOnDisplayPayload(windowId, displayId, bounds)
         const request = yield* makeRequest(WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD, resolved, payload)
-        yield* requireSuccess(
+        const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
+        return yield* decodeBoundsResponse(response.payload, WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD)
       }),
     center: (windowId) =>
-      sendWindowLifecycleCommand(windowId, WINDOW_CENTER_METHOD, exchange, resolved),
+      Effect.gen(function* () {
+        const payload = yield* encodeWindowIdPayload(windowId, WINDOW_CENTER_METHOD)
+        const request = yield* makeRequest(WINDOW_CENTER_METHOD, resolved, payload)
+        const response = yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+        return yield* decodeBoundsResponse(response.payload, WINDOW_CENTER_METHOD)
+      }),
     centerOnDisplay: (windowId, displayId) =>
       Effect.gen(function* () {
         const payload = yield* encodeCenterOnDisplayPayload(windowId, displayId)
         const request = yield* makeRequest(WINDOW_CENTER_ON_DISPLAY_METHOD, resolved, payload)
-        yield* requireSuccess(
+        const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
+        return yield* decodeBoundsResponse(response.payload, WINDOW_CENTER_ON_DISPLAY_METHOD)
       }),
     setTitle: (windowId, title) =>
       Effect.gen(function* () {

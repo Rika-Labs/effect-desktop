@@ -261,25 +261,25 @@ export const WindowGetBounds = windowRpc(
 export const WindowSetBounds = windowRpc(
   "setBounds",
   WindowBoundsInput,
-  Schema.Void,
+  WindowBounds,
   P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
 )
 export const WindowSetBoundsOnDisplay = windowRpc(
   "setBoundsOnDisplay",
   WindowDisplayBoundsInput,
-  Schema.Void,
+  WindowBounds,
   P.nativeInvoke({ primitive: "Window", methods: ["setBoundsOnDisplay"] })
 )
 export const WindowCenter = windowRpc(
   "center",
   WindowHandleInput,
-  Schema.Void,
+  WindowBounds,
   P.nativeInvoke({ primitive: "Window", methods: ["center"] })
 )
 export const WindowCenterOnDisplay = windowRpc(
   "centerOnDisplay",
   WindowDisplayInput,
-  Schema.Void,
+  WindowBounds,
   P.nativeInvoke({ primitive: "Window", methods: ["centerOnDisplay"] })
 )
 export const WindowSetTitle = windowRpc(
@@ -550,17 +550,17 @@ export interface WindowClientApi {
   readonly setBounds: (
     window: WindowHandle,
     bounds: WindowBoundsType
-  ) => Effect.Effect<void, WindowError, never>
+  ) => Effect.Effect<WindowBounds, WindowError, never>
   readonly setBoundsOnDisplay: (
     window: WindowHandle,
     displayId: string,
     bounds: WindowBoundsType
-  ) => Effect.Effect<void, WindowError, never>
-  readonly center: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  ) => Effect.Effect<WindowBounds, WindowError, never>
+  readonly center: (window: WindowHandle) => Effect.Effect<WindowBounds, WindowError, never>
   readonly centerOnDisplay: (
     window: WindowHandle,
     displayId: string
-  ) => Effect.Effect<void, WindowError, never>
+  ) => Effect.Effect<WindowBounds, WindowError, never>
   readonly setTitle: (
     window: WindowHandle,
     title: string
@@ -744,22 +744,22 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
   "Window.setBounds": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.setBounds(input.window, input.bounds)
+      return yield* window.setBounds(input.window, input.bounds)
     }),
   "Window.setBoundsOnDisplay": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.setBoundsOnDisplay(input.window, input.displayId, input.bounds)
+      return yield* window.setBoundsOnDisplay(input.window, input.displayId, input.bounds)
     }),
   "Window.center": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.center(input.window)
+      return yield* window.center(input.window)
     }),
   "Window.centerOnDisplay": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.centerOnDisplay(input.window, input.displayId)
+      return yield* window.centerOnDisplay(input.window, input.displayId)
     }),
   "Window.setTitle": (input) =>
     Effect.gen(function* () {
@@ -1057,7 +1057,11 @@ function windowClientFromRpcClient(
     setBounds: (window, bounds) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowBoundsInput(window, bounds, "Window.setBounds")
-        yield* runWindowRpc(client["Window.setBounds"](decoded), "Window.setBounds")
+        const observed = yield* runWindowRpc(
+          client["Window.setBounds"](decoded),
+          "Window.setBounds"
+        )
+        return yield* decodeWindowBounds(observed, "Window.setBounds")
       }),
     setBoundsOnDisplay: (window, displayId, bounds) =>
       Effect.gen(function* () {
@@ -1067,16 +1071,26 @@ function windowClientFromRpcClient(
           bounds,
           "Window.setBoundsOnDisplay"
         )
-        yield* runWindowRpc(
+        const observed = yield* runWindowRpc(
           client["Window.setBoundsOnDisplay"](decoded),
           "Window.setBoundsOnDisplay"
         )
+        return yield* decodeWindowBounds(observed, "Window.setBoundsOnDisplay")
       }),
-    center: (window) => runWindowHandleRpc(client, "Window.center", window),
+    center: (window) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowHandleInput(window, "Window.center")
+        const observed = yield* runWindowRpc(client["Window.center"](decoded), "Window.center")
+        return yield* decodeWindowBounds(observed, "Window.center")
+      }),
     centerOnDisplay: (window, displayId) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowDisplayInput(window, displayId, "Window.centerOnDisplay")
-        yield* runWindowRpc(client["Window.centerOnDisplay"](decoded), "Window.centerOnDisplay")
+        const observed = yield* runWindowRpc(
+          client["Window.centerOnDisplay"](decoded),
+          "Window.centerOnDisplay"
+        )
+        return yield* decodeWindowBounds(observed, "Window.centerOnDisplay")
       }),
     setTitle: (window, title) =>
       Effect.gen(function* () {
@@ -1231,7 +1245,6 @@ const runWindowHandleRpc = (
     | "Window.destroy"
     | "Window.hide"
     | "Window.focus"
-    | "Window.center"
     | "Window.cancelAttention"
     | "Window.minimize"
     | "Window.maximize"
@@ -1933,7 +1946,8 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           knownWindowIds,
           "Window.setBounds"
         )
-        yield* host.setBounds(window.id, toHostWindowBoundsInput(input.bounds))
+        const observed = yield* host.setBounds(window.id, toHostWindowBoundsInput(input.bounds))
+        return yield* decodeWindowBounds(observed, "Window.setBounds")
       }),
     "Window.setBoundsOnDisplay": (input: WindowDisplayBoundsInput) =>
       Effect.gen(function* () {
@@ -1942,16 +1956,18 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           knownWindowIds,
           "Window.setBoundsOnDisplay"
         )
-        yield* host.setBoundsOnDisplay(
+        const observed = yield* host.setBoundsOnDisplay(
           window.id,
           input.displayId,
           toHostWindowBoundsInput(input.bounds)
         )
+        return yield* decodeWindowBounds(observed, "Window.setBoundsOnDisplay")
       }),
     "Window.center": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.center")
-        yield* host.center(window.id)
+        const observed = yield* host.center(window.id)
+        return yield* decodeWindowBounds(observed, "Window.center")
       }),
     "Window.centerOnDisplay": (input: WindowDisplayInput) =>
       Effect.gen(function* () {
@@ -1960,7 +1976,8 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           knownWindowIds,
           "Window.centerOnDisplay"
         )
-        yield* host.centerOnDisplay(window.id, input.displayId)
+        const observed = yield* host.centerOnDisplay(window.id, input.displayId)
+        return yield* decodeWindowBounds(observed, "Window.centerOnDisplay")
       }),
     "Window.setTitle": (input: WindowTitleInput) =>
       Effect.gen(function* () {

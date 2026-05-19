@@ -428,11 +428,17 @@ const makeWindowScenario = (
       ),
     getBounds: (_window): Effect.Effect<WindowBounds, WindowError, never> =>
       Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
-    setBounds: (_window, _bounds): Effect.Effect<void, WindowError, never> => Effect.void,
-    setBoundsOnDisplay: (_window, _displayId, _bounds): Effect.Effect<void, WindowError, never> =>
-      Effect.void,
-    center: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    centerOnDisplay: (_window, _displayId): Effect.Effect<void, WindowError, never> => Effect.void,
+    setBounds: (_window, bounds): Effect.Effect<WindowBounds, WindowError, never> =>
+      Effect.succeed(new WindowBounds(bounds)),
+    setBoundsOnDisplay: (
+      _window,
+      _displayId,
+      bounds
+    ): Effect.Effect<WindowBounds, WindowError, never> => Effect.succeed(new WindowBounds(bounds)),
+    center: (_window): Effect.Effect<WindowBounds, WindowError, never> =>
+      Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
+    centerOnDisplay: (_window, _displayId): Effect.Effect<WindowBounds, WindowError, never> =>
+      Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
     setTitle: (_window, _title): Effect.Effect<void, WindowError, never> => Effect.void,
     setResizable: (_window, _resizable): Effect.Effect<void, WindowError, never> => Effect.void,
     setDecorations: (_window, _decorations): Effect.Effect<void, WindowError, never> => Effect.void,

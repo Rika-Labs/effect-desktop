@@ -134,22 +134,25 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         window_id: &str,
         bounds: &WindowBoundsPayload,
-    ) -> std::result::Result<(), HostProtocolError>;
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError>;
 
     fn set_bounds_on_display(
         &self,
         window_id: &str,
         display_id: &str,
         bounds: &WindowBoundsPayload,
-    ) -> std::result::Result<(), HostProtocolError>;
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError>;
 
-    fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+    fn center(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError>;
 
     fn center_on_display(
         &self,
         window_id: &str,
         display_id: &str,
-    ) -> std::result::Result<(), HostProtocolError>;
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError>;
 
     fn set_title(&self, window_id: &str, title: &str)
         -> std::result::Result<(), HostProtocolError>;
@@ -759,6 +762,38 @@ impl WindowMethodPort {
             )),
         }
     }
+
+    fn expect_window_bounds_response(
+        &self,
+        reply: Receiver<WindowCommandReply>,
+        operation: &'static str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
+        match self.recv_reply(reply)? {
+            WindowCommandResponse::WindowBounds(bounds) => Ok(bounds),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
+            | WindowCommandResponse::WindowParent(_)
+            | WindowCommandResponse::WindowState(_)
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+                "window placement command received unrelated response",
+                operation,
+            )),
+        }
+    }
 }
 
 impl WindowMethodHandler for WindowMethodPort {
@@ -1079,7 +1114,7 @@ impl WindowMethodHandler for WindowMethodPort {
         &self,
         window_id: &str,
         bounds: &WindowBoundsPayload,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::SetBounds {
             window_id: window_id.to_string(),
@@ -1087,7 +1122,7 @@ impl WindowMethodHandler for WindowMethodPort {
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_BOUNDS_METHOD)
+        self.expect_window_bounds_response(reply_rx, host_protocol::WINDOW_SET_BOUNDS_METHOD)
     }
 
     fn set_bounds_on_display(
@@ -1095,7 +1130,7 @@ impl WindowMethodHandler for WindowMethodPort {
         window_id: &str,
         display_id: &str,
         bounds: &WindowBoundsPayload,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::SetBoundsOnDisplay {
             window_id: window_id.to_string(),
@@ -1104,27 +1139,30 @@ impl WindowMethodHandler for WindowMethodPort {
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(
+        self.expect_window_bounds_response(
             reply_rx,
             host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
         )
     }
 
-    fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn center(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::Center {
             window_id: window_id.to_string(),
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CENTER_METHOD)
+        self.expect_window_bounds_response(reply_rx, host_protocol::WINDOW_CENTER_METHOD)
     }
 
     fn center_on_display(
         &self,
         window_id: &str,
         display_id: &str,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::CenterOnDisplay {
             window_id: window_id.to_string(),
@@ -1132,7 +1170,7 @@ impl WindowMethodHandler for WindowMethodPort {
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD)
+        self.expect_window_bounds_response(reply_rx, host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD)
     }
 
     fn set_title(
@@ -2400,7 +2438,7 @@ impl WindowRegistry {
         &self,
         window_id: &str,
         bounds: &WindowBoundsPayload,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2421,7 +2459,7 @@ impl WindowRegistry {
             clipped_bounds.width(),
             clipped_bounds.height(),
         ));
-        Ok(())
+        window_bounds(&resources._window, host_protocol::WINDOW_SET_BOUNDS_METHOD)
     }
 
     fn set_bounds_on_display(
@@ -2429,7 +2467,7 @@ impl WindowRegistry {
         window_id: &str,
         display_id: &str,
         bounds: &WindowBoundsPayload,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2455,10 +2493,16 @@ impl WindowRegistry {
         resources
             ._window
             .set_inner_size(LogicalSize::new(bounds.size.width, bounds.size.height));
-        Ok(())
+        window_bounds(
+            &resources._window,
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        )
     }
 
-    fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn center(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2475,14 +2519,14 @@ impl WindowRegistry {
         resources
             ._window
             .set_outer_position(LogicalPosition::new(bounds.x(), bounds.y()));
-        Ok(())
+        window_bounds(&resources._window, host_protocol::WINDOW_CENTER_METHOD)
     }
 
     fn center_on_display(
         &self,
         window_id: &str,
         display_id: &str,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2505,7 +2549,10 @@ impl WindowRegistry {
             host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
         )?;
         resources._window.set_outer_position(position);
-        Ok(())
+        window_bounds(
+            &resources._window,
+            host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+        )
     }
 
     fn set_title(
@@ -3521,7 +3568,7 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_bounds(&window_id, &bounds)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
+                    .map(WindowCommandResponse::WindowBounds);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -3533,14 +3580,14 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_bounds_on_display(&window_id, &display_id, &bounds)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
+                    .map(WindowCommandResponse::WindowBounds);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
             WindowCommand::Center { window_id, reply } => {
                 let result = self
                     .center(&window_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
+                    .map(WindowCommandResponse::WindowBounds);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -3551,7 +3598,7 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .center_on_display(&window_id, &display_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
+                    .map(WindowCommandResponse::WindowBounds);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
