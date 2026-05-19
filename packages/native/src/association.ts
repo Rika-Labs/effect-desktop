@@ -3,8 +3,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  type RpcCapabilityMetadata,
-  type RpcEndpointKind,
   type HostProtocolError,
   RpcGroup
 } from "@effect-desktop/bridge"
@@ -38,27 +36,41 @@ const AssociationSupport = NativeSurface.support.partial("macos-association-only
 
 export type AssociationError = HostProtocolError
 
-export const AssociationIsDefaultProtocolClient = associationRpc(
+export const AssociationIsDefaultProtocolClient = NativeSurface.rpc(
+  Surface,
   "isDefaultProtocolClient",
-  AssociationProtocolInput,
-  AssociationProtocolStatus,
-  P.nativeInvoke({ primitive: Surface, methods: ["isDefaultProtocolClient"] }),
-  "query"
+  {
+    payload: AssociationProtocolInput,
+    success: AssociationProtocolStatus,
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: Surface, methods: ["isDefaultProtocolClient"] })
+    ),
+    endpoint: "query",
+    support: AssociationSupport
+  }
 )
-export const AssociationSetDefaultProtocolClient = associationRpc(
+export const AssociationSetDefaultProtocolClient = NativeSurface.rpc(
+  Surface,
   "setDefaultProtocolClient",
-  AssociationProtocolInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: Surface, methods: ["setDefaultProtocolClient"] }),
-  "mutation"
+  {
+    payload: AssociationProtocolInput,
+    success: Schema.Void,
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: Surface, methods: ["setDefaultProtocolClient"] })
+    ),
+    endpoint: "mutation",
+    support: AssociationSupport
+  }
 )
-export const AssociationGetFileAssociations = associationRpc(
-  "getFileAssociations",
-  AssociationFileAssociationsInput,
-  AssociationFileAssociationsResult,
-  P.nativeInvoke({ primitive: Surface, methods: ["getFileAssociations"] }),
-  "query"
-)
+export const AssociationGetFileAssociations = NativeSurface.rpc(Surface, "getFileAssociations", {
+  payload: AssociationFileAssociationsInput,
+  success: AssociationFileAssociationsResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["getFileAssociations"] })
+  ),
+  endpoint: "query",
+  support: AssociationSupport
+})
 
 export const AssociationRpcEvents = Object.freeze({
   Event: { payload: AssociationEvent }
@@ -209,26 +221,6 @@ const decodeAssociationFileAssociationsInput = (
   operation: string
 ): Effect.Effect<AssociationFileAssociationsInput, AssociationError, never> =>
   decodeNativeInput(AssociationFileAssociationsInput, input, operation)
-
-function associationRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(
-  method: Method,
-  payload: Payload,
-  success: Success,
-  authority: RpcCapabilityMetadata,
-  endpoint: RpcEndpointKind
-) {
-  return NativeSurface.rpc(Surface, method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(authority),
-    endpoint,
-    support: AssociationSupport
-  })
-}
 
 const runAssociationRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
