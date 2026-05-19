@@ -142,11 +142,20 @@ veto/confirm contract.
 
 `Window.create({ parent })` creates a child or owned window at host creation time. The parent must be a fresh `WindowHandle` from the same runtime; stale or unknown handles fail before host transport. The bridge sends the host `parentWindowId`, and the native host applies Tao's creation-time ownership where supported: macOS uses the parent `NSWindow`; Windows uses an owned window relationship. Hosts without a Tao parent/owner primitive return `Unsupported` when a parent is requested. `Window.getParent(child)` returns the fresh parent handle when the host still tracks one and `undefined` for root windows. `Window.getChildren(parent)` returns fresh child handles that are still open and registered. Destroying a known parent through `Window.destroy` or compatibility `Window.close` closes registered children before destroying the parent so resource scopes and `windowClosed` events are deterministic in tests and host-backed runtimes.
 
-This is not a complete modal ownership API. Effect Desktop does not yet expose a
-`WindowOwnership` service, runtime `setParent`, modal enable/disable, owner
-lookup, or a host event stream dedicated to ownership changes.
+The ownership surface is intentionally creation-time. Installed Tao 0.35.2
+exposes parent, owner, and transient relationships as `WindowBuilder` hooks
+(`with_parent_window`, `with_owner_window`, and `with_transient_for`), not as a
+portable dynamic reparenting or modal toggle on an existing window. Effect
+Desktop therefore keeps the durable contract on `Window.create({ parent })`,
+`getParent`, `getChildren`, and deterministic parent cleanup instead of adding a
+shallow `WindowOwnership` facade that would report unsupported behavior for the
+core operations it names.
 
-Dynamic parent changes, a separate modal flag, owner lookup, host-backed parent/child lifecycle events, portable traffic-light placement beyond macOS, non-macOS shadow and transparency controls, macOS skip-taskbar behavior, blur, OS-originated simple-fullscreen change events, and a separate close-vs-destroy host lifecycle remain reserved for later phases.
+Dynamic parent changes, a separate modal flag, host-backed ownership-specific
+events, portable traffic-light placement beyond macOS, non-macOS shadow and
+transparency controls, macOS skip-taskbar behavior, blur, OS-originated
+simple-fullscreen change events, and a separate close-vs-destroy host lifecycle
+remain reserved for later phases.
 
 ## Errors
 
