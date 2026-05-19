@@ -9,7 +9,6 @@ import {
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidStateError,
   redactForJson,
-  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -57,30 +56,42 @@ const CrashReporterSupport = NativeSurface.support.partial(PartialSupportReason,
   ]
 })
 
-export const CrashReporterStart = crashReporterRpc(
-  "start",
-  CrashReporterStartInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "CrashReporter", methods: ["start"] })
-)
-export const CrashReporterRecordBreadcrumb = crashReporterRpc(
-  "recordBreadcrumb",
-  CrashReporterBreadcrumbInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "CrashReporter", methods: ["recordBreadcrumb"] })
-)
-export const CrashReporterFlush = crashReporterRpc(
-  "flush",
-  Schema.Void,
-  CrashReporterFlushResult,
-  P.nativeInvoke({ primitive: "CrashReporter", methods: ["flush"] })
-)
-export const CrashReporterGetReports = crashReporterRpc(
-  "getReports",
-  Schema.Void,
-  CrashReporterGetReportsResult,
-  P.nativeInvoke({ primitive: "CrashReporter", methods: ["getReports"] })
-)
+export const CrashReporterStart = NativeSurface.rpc(Surface, "start", {
+  payload: CrashReporterStartInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "CrashReporter", methods: ["start"] })
+  ),
+  endpoint: "mutation",
+  support: CrashReporterSupport
+})
+export const CrashReporterRecordBreadcrumb = NativeSurface.rpc(Surface, "recordBreadcrumb", {
+  payload: CrashReporterBreadcrumbInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "CrashReporter", methods: ["recordBreadcrumb"] })
+  ),
+  endpoint: "mutation",
+  support: CrashReporterSupport
+})
+export const CrashReporterFlush = NativeSurface.rpc(Surface, "flush", {
+  payload: Schema.Void,
+  success: CrashReporterFlushResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "CrashReporter", methods: ["flush"] })
+  ),
+  endpoint: "mutation",
+  support: CrashReporterSupport
+})
+export const CrashReporterGetReports = NativeSurface.rpc(Surface, "getReports", {
+  payload: Schema.Void,
+  success: CrashReporterGetReportsResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "CrashReporter", methods: ["getReports"] })
+  ),
+  endpoint: "query",
+  support: CrashReporterSupport
+})
 export const CrashReporterRpcEvents = Object.freeze({})
 
 export type CrashReporterRpcEvents = typeof CrashReporterRpcEvents
@@ -324,20 +335,6 @@ const makeCrashReporterService = (
 interface CrashReporterState {
   readonly breadcrumbs: ReadonlyArray<CrashReporterBreadcrumb>
   readonly started: boolean
-}
-
-function crashReporterRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc(Surface, method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: method === "getReports" ? "query" : "mutation",
-    support: CrashReporterSupport
-  })
 }
 
 const runCrashReporterRpc = <A, E>(
