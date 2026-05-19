@@ -465,6 +465,10 @@ impl AppSecondInstanceEventPayload {
             trace_id: trace_id.into(),
         }
     }
+
+    pub fn trace_id(&self) -> &str {
+        &self.trace_id
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

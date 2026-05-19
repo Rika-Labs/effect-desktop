@@ -222,7 +222,11 @@ fn host_binary_verifies_single_instance_lock_between_processes() {
         .spawn()
         .expect("primary host binary should execute single-instance smoke");
 
-    thread::sleep(Duration::from_millis(250));
+    assert!(
+        wait_for_nonempty_file(&lock_path),
+        "primary did not write single-instance lock metadata at {}",
+        lock_path.display()
+    );
 
     let secondary_output = Command::new(env!("CARGO_BIN_EXE_host"))
         .arg("--single-instance-lock-smoke-test")
@@ -320,6 +324,19 @@ fn unique_temp_path(name: &str, extension: &str) -> std::path::PathBuf {
 fn wait_for_marker(path: &Path) -> bool {
     for _ in 0..40 {
         if path.is_file() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    false
+}
+
+fn wait_for_nonempty_file(path: &Path) -> bool {
+    for _ in 0..40 {
+        if fs::read_to_string(path)
+            .map(|contents| !contents.trim().is_empty())
+            .unwrap_or(false)
+        {
             return true;
         }
         thread::sleep(Duration::from_millis(50));
