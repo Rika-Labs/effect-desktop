@@ -55,7 +55,8 @@ const makePersistentSettingsLayer = (
     return Settings.layer({ path, ...options }).pipe(
       Layer.provide(Layer.succeed(ResourceRegistry, registry)),
       Layer.provide(Layer.succeed(PermissionRegistry, permissions)),
-      Layer.provide(ResourceOwner.test("scope-settings"))
+      Layer.provide(ResourceOwner.test("scope-settings")),
+      Layer.provide(BunServices.layer)
     )
   })
 

@@ -15,6 +15,7 @@ import type {
 } from "./desktop-app.js"
 import {
   makeMissingDesktopRpcClientError,
+  RendererRpcError,
   type DesktopFramework,
   type MissingDesktopRpcClientError
 } from "./desktop-errors.js"
@@ -28,7 +29,9 @@ export type DesktopRendererRpcTransport = DesktopTransportSend & DesktopTranspor
 
 export type DesktopRendererRpcClientMethod = (
   input: unknown
-) => Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never>
+) =>
+  | Effect.Effect<unknown, RendererRpcError, never>
+  | Stream.Stream<unknown, RendererRpcError, never>
 
 export type DesktopRendererRpcClient = Readonly<Record<string, DesktopRendererRpcClientMethod>>
 
@@ -36,8 +39,8 @@ export type DesktopRendererRpcClientMap = ReadonlyMap<RpcGroup.Any, DesktopRende
 
 type DesktopRendererRpcFlatClient = RpcClient.RpcClient.Flat<Rpc.Any, unknown>
 type DesktopRendererRpcScopedResult =
-  | Effect.Effect<unknown, unknown, Scope.Scope>
-  | Stream.Stream<unknown, unknown, Scope.Scope>
+  | Effect.Effect<unknown, RendererRpcError, Scope.Scope>
+  | Stream.Stream<unknown, RendererRpcError, Scope.Scope>
 
 export interface RendererRpcClientsApi {
   readonly clients: DesktopRendererRpcClientMap
@@ -183,9 +186,11 @@ const acquireDesktopRendererRpcTestClients = (
     const clients = new Map<RpcGroup.Any, DesktopRendererRpcClient>()
     for (const registration of registrations) {
       const group = registration.group
-      const rpcClient = yield* RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>, {
-        flatten: true
-      }).pipe(Effect.provide(registration.handlers))
+      const handlerContext = yield* Layer.build(registration.handlers)
+      const rpcClient = yield* Effect.provide(
+        RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>, { flatten: true }),
+        handlerContext
+      )
       const client = makeRpcTestGroupClient(
         group,
         rpcClient,
@@ -219,7 +224,10 @@ const makeGroupClient = (
     for (const tag of group.requests.keys()) {
       client[tag] = (input: unknown): ReturnType<DesktopRendererRpcClientMethod> =>
         instrumentRendererRpcMethod(
-          provideRendererRpcMethodScope(callRendererRpcFlatClient(rpcClient, tag, input), scope),
+          provideRendererRpcMethodScope(
+            callRendererRpcFlatClient(rpcClient, tag, input, options.framework),
+            scope
+          ),
           tag,
           options.framework,
           options.inspector ?? disabledRendererInspectorCollector,
@@ -240,7 +248,10 @@ const makeRpcTestGroupClient = (
   for (const tag of group.requests.keys()) {
     client[tag] = (input: unknown): ReturnType<DesktopRendererRpcClientMethod> =>
       instrumentRendererRpcMethod(
-        provideRendererRpcMethodScope(callRendererRpcFlatClient(rpcClient, tag, input), scope),
+        provideRendererRpcMethodScope(
+          callRendererRpcFlatClient(rpcClient, tag, input, framework),
+          scope
+        ),
         tag,
         framework,
         inspector
@@ -249,12 +260,24 @@ const makeRpcTestGroupClient = (
   return Object.freeze(client)
 }
 
+type RawRendererRpcInvocation = (
+  tag: string,
+  input: unknown
+) =>
+  | Effect.Effect<unknown, RendererRpcError, Scope.Scope>
+  | Stream.Stream<unknown, RendererRpcError, Scope.Scope>
+
 const callRendererRpcFlatClient = (
   rpcClient: DesktopRendererRpcFlatClient,
   tag: string,
-  input: unknown
-): DesktopRendererRpcScopedResult =>
-  rpcClient(tag, input as never) as DesktopRendererRpcScopedResult
+  input: unknown,
+  framework: DesktopFramework
+): DesktopRendererRpcScopedResult => {
+  const result = (rpcClient as unknown as RawRendererRpcInvocation)(tag, input)
+  return Effect.isEffect(result)
+    ? Effect.mapError(result, (cause) => new RendererRpcError({ framework, tag, cause }))
+    : Stream.mapError(result, (cause) => new RendererRpcError({ framework, tag, cause }))
+}
 
 const provideRendererRpcMethodScope = (
   result: DesktopRendererRpcScopedResult,
@@ -276,12 +299,12 @@ const instrumentRendererRpcMethod = (
     : instrumentRendererRpcStream(result, operation, framework, inspector, now)
 
 const instrumentRendererRpcEffect = (
-  effect: Effect.Effect<unknown, unknown, never>,
+  effect: Effect.Effect<unknown, RendererRpcError, never>,
   operation: string,
   framework: DesktopFramework,
   inspector: RendererInspectorCollectorApi,
   now: (() => number) | undefined
-): Effect.Effect<unknown, unknown, never> =>
+): Effect.Effect<unknown, RendererRpcError, never> =>
   publishRendererRpcEvent(inspector, "rpc", "start", operation, framework, now).pipe(
     Effect.andThen(effect),
     Effect.onExit((exit) =>
@@ -297,12 +320,12 @@ const instrumentRendererRpcEffect = (
   )
 
 const instrumentRendererRpcStream = (
-  stream: Stream.Stream<unknown, unknown, never>,
+  stream: Stream.Stream<unknown, RendererRpcError, never>,
   operation: string,
   framework: DesktopFramework,
   inspector: RendererInspectorCollectorApi,
   now: (() => number) | undefined
-): Stream.Stream<unknown, unknown, never> =>
+): Stream.Stream<unknown, RendererRpcError, never> =>
   Stream.concat(
     Stream.drain(
       Stream.fromEffect(

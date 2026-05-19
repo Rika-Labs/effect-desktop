@@ -516,9 +516,11 @@ const cleanupAtomicTemp = (
   fileSystem: EffectFileSystem.FileSystem,
   tempPath: string
 ): Effect.Effect<void, PlatformError, never> =>
-  fileSystem.remove(tempPath, { force: true }).pipe(
-    Effect.catch((error) => (isNotFoundPlatformError(error) ? Effect.void : Effect.fail(error)))
-  )
+  fileSystem
+    .remove(tempPath, { force: true })
+    .pipe(
+      Effect.catch((error) => (isNotFoundPlatformError(error) ? Effect.void : Effect.fail(error)))
+    )
 
 const makeAtomicTempPath = (path: string): string => `${path}.tmp.${randomUUID()}`
 

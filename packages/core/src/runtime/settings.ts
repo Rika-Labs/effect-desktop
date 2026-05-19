@@ -1,4 +1,6 @@
 import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
+import type { FileSystem } from "effect/FileSystem"
+import type { Path } from "effect/Path"
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import type { PermissionRegistry } from "./permission-registry.js"
@@ -379,7 +381,7 @@ export class Settings extends Context.Service<Settings, SettingsApi>()(
   ): Layer.Layer<
     Settings,
     SettingsError | SqlitePolicyError,
-    ResourceOwner | PermissionRegistry | ResourceRegistry
+    ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path
   > {
     return Layer.unwrap(
       Effect.gen(function* () {
@@ -394,7 +396,7 @@ export class Settings extends Context.Service<Settings, SettingsApi>()(
   ): Layer.Layer<
     Settings,
     SettingsError | SqlitePolicyError,
-    ResourceOwner | PermissionRegistry | ResourceRegistry
+    ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path
   > {
     return Settings.layer(options)
   }
@@ -410,7 +412,7 @@ const settingsLayer = (
 ): Layer.Layer<
   Settings,
   SettingsError | SqlitePolicyError,
-  ResourceOwner | PermissionRegistry | ResourceRegistry
+  ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path
 > =>
   settingsFromKv(options, ownerScope).pipe(
     Layer.provide(KeyValueStore.layerSql()),

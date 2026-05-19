@@ -1366,12 +1366,9 @@ const mergeLayerArray = <E, R>(
 const bindRpcGroup = <Rpcs extends Rpc.Any, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-): Layer.Layer<never, unknown, unknown> =>
-  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers)
+) => Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers)
 
-const bindRegistration = (
-  registration: AnyDesktopRpcRegistration
-): Layer.Layer<never, unknown, unknown> => registration.serverLayer
+const bindRegistration = (registration: AnyDesktopRpcRegistration) => registration.serverLayer
 
 function graphNode(
   id: string,

@@ -1,8 +1,7 @@
-import { realpath } from "node:fs/promises"
-import { dirname, join } from "node:path"
-
 import * as UpstreamSqliteClient from "@effect/sql-sqlite-bun/SqliteClient"
 import { Data, Effect, Exit, Layer, Option, Schema, Scope } from "effect"
+import { FileSystem } from "effect/FileSystem"
+import { Path } from "effect/Path"
 import { SqlClient } from "effect/unstable/sql/SqlClient"
 import { SqlError } from "effect/unstable/sql/SqlError"
 import * as SqlModel from "effect/unstable/sql/SqlModel"
@@ -44,15 +43,17 @@ export const SqlClientLive = (
 ): Layer.Layer<
   SqlClient | UpstreamSqliteClient.SqliteClient,
   SqlitePolicyError,
-  ResourceOwner | ResourceRegistry | PermissionRegistry
+  ResourceOwner | ResourceRegistry | PermissionRegistry | FileSystem | Path
 > =>
   Layer.effectContext(
     Effect.gen(function* () {
       const owner = yield* ResourceOwner
       const registry = yield* ResourceRegistry
       const permissions = yield* PermissionRegistry
+      const fs = yield* FileSystem
+      const path = yield* Path
       const input = yield* decodeSqlClientLayerConfig(config)
-      const filename = yield* authorizeSqliteFilename(input, owner, permissions)
+      const filename = yield* authorizeSqliteFilename(input, owner, permissions, fs, path)
       const sqlScope = yield* Scope.make("sequential")
       yield* Effect.addFinalizer(() => Scope.close(sqlScope, Exit.void).pipe(Effect.ignore))
 
@@ -107,14 +108,16 @@ const decodeStringField = (
 const authorizeSqliteFilename = (
   input: SqlClientLayerConfig,
   owner: ResourceOwnerApi,
-  permissions: PermissionRegistryApi
+  permissions: PermissionRegistryApi,
+  fs: FileSystem,
+  path: Path
 ): Effect.Effect<string, SqliteInvalidArgumentError | PermissionRegistryError, never> =>
   Effect.gen(function* () {
     if (input.filename === ":memory:") {
       return input.filename
     }
 
-    const canonicalPath = yield* canonicalizeSqlitePath(input.filename)
+    const canonicalPath = yield* canonicalizeSqlitePath(input.filename, fs, path)
     yield* permissions.check(
       {
         kind: "sqlite.open",
@@ -132,49 +135,27 @@ const authorizeSqliteFilename = (
   })
 
 const canonicalizeSqlitePath = (
-  path: string
+  target: string,
+  fs: FileSystem,
+  path: Path
 ): Effect.Effect<string, SqliteInvalidArgumentError, never> =>
-  Effect.tryPromise({
-    try: () => realpath(path),
-    catch: (error) => error
-  }).pipe(
+  fs.realPath(target).pipe(
     Effect.catch((error) => {
-      if (isNodeError(error) && error.code === "ENOENT") {
-        const parent = dirname(path)
-        if (parent === path) {
-          return Effect.fail(makeSqliteInvalidPath(path, error))
+      if (error.reason._tag === "NotFound") {
+        const parent = path.dirname(target)
+        if (parent === target) {
+          return Effect.fail(makeSqliteInvalidPath(target, error))
         }
-        return canonicalizeSqliteParent(parent).pipe(
-          Effect.map((canonicalParent) => join(canonicalParent, pathSegment(path)))
+        return canonicalizeSqlitePath(parent, fs, path).pipe(
+          Effect.map((canonicalParent) => path.join(canonicalParent, pathSegment(target)))
         )
       }
-      return Effect.fail(makeSqliteInvalidPath(path, error))
+      return Effect.fail(makeSqliteInvalidPath(target, error))
     })
   )
 
-const canonicalizeSqliteParent = (
-  path: string
-): Effect.Effect<string, SqliteInvalidArgumentError, never> =>
-  Effect.tryPromise({
-    try: () => realpath(path),
-    catch: (error) => error
-  }).pipe(
-    Effect.catch((error) => {
-      if (isNodeError(error) && error.code === "ENOENT") {
-        const parent = dirname(path)
-        if (parent === path) {
-          return Effect.fail(makeSqliteInvalidPath(path, error))
-        }
-        return canonicalizeSqliteParent(parent).pipe(
-          Effect.map((canonicalParent) => join(canonicalParent, pathSegment(path)))
-        )
-      }
-      return Effect.fail(makeSqliteInvalidPath(path, error))
-    })
-  )
-
-const pathSegment = (path: string): string => {
-  const normalized = path.replaceAll("\\", "/")
+const pathSegment = (target: string): string => {
+  const normalized = target.replaceAll("\\", "/")
   return normalized.slice(normalized.lastIndexOf("/") + 1)
 }
 
@@ -185,9 +166,6 @@ const makeSqliteInvalidPath = (path: string, cause: unknown): SqliteInvalidArgum
     message: formatUnknownError(cause),
     cause: Option.some({ path, cause })
   })
-
-const isNodeError = (error: unknown): error is Error & { readonly code: string } =>
-  error instanceof Error && "code" in error && typeof error.code === "string"
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

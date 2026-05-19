@@ -1,6 +1,10 @@
 import { Effect, Stream } from "effect"
 
-import { makeMissingDesktopRpcClientError, type DesktopFramework } from "./desktop-errors.js"
+import {
+  makeMissingDesktopRpcClientError,
+  type DesktopFramework,
+  type RendererRpcError
+} from "./desktop-errors.js"
 import type {
   DesktopRendererRpcClient,
   DesktopRendererRpcClientMethod
@@ -76,7 +80,7 @@ const asEffect = (
   value: ReturnType<DesktopRendererRpcClientMethod>,
   tag: string,
   framework: DesktopFramework
-): Effect.Effect<unknown, unknown, never> => {
+): Effect.Effect<unknown, RendererRpcError, never> => {
   if (Effect.isEffect(value)) {
     return value
   }
@@ -91,7 +95,7 @@ const asStream = (
   value: ReturnType<DesktopRendererRpcClientMethod>,
   tag: string,
   framework: DesktopFramework
-): Stream.Stream<unknown, unknown, never> => {
+): Stream.Stream<unknown, RendererRpcError, never> => {
   if (Stream.isStream(value)) {
     return value
   }

@@ -38,6 +38,12 @@ export class MissingDesktopRpcClientError extends Data.TaggedError("MissingDeskt
   readonly docsUrl: string
 }> {}
 
+export class RendererRpcError extends Data.TaggedError("RendererRpcError")<{
+  readonly framework: DesktopFramework
+  readonly tag: string
+  readonly cause: unknown
+}> {}
+
 export class MissingDesktopRpcsError extends Data.TaggedError("MissingDesktopRpcsError")<{
   readonly message: string
   readonly tags: readonly string[]
