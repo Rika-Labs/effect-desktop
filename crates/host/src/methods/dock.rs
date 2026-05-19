@@ -31,11 +31,16 @@ pub(crate) fn set_badge_text(
     Ok(None)
 }
 
-pub(crate) fn set_progress(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+pub(crate) fn set_progress(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_progress(payload)?;
     validate_progress_value(payload.value())?;
 
-    Err(unsupported(host_protocol::DOCK_SET_PROGRESS_METHOD))
+    handler.set_dock_progress(&payload)?;
+
+    Ok(None)
 }
 
 pub(crate) fn request_attention(
@@ -349,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn progress_rejects_invalid_shape_before_unsupported() {
+    fn progress_rejects_invalid_shape_before_side_effects() {
         assert!(decode_progress(Some(json!({}))).is_err());
         assert!(decode_progress(Some(json!({ "value": 0.5, "extra": true }))).is_err());
         assert!(decode_progress(Some(json!({

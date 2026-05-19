@@ -1143,25 +1143,7 @@
       "method": "setProgress",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host adapter does not implement this Dock method on any platform",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "macOS Dock does not expose taskbar progress"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "Linux launcher progress is not wired in the host adapter"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "Windows taskbar progress is not wired yet"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4315,8 +4297,8 @@
     "total": 233,
     "routed": 233,
     "missing": 0,
-    "supported": 121,
+    "supported": 122,
     "partial": 37,
-    "unsupported": 75
+    "unsupported": 74
   }
 }

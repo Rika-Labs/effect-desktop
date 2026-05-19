@@ -19,6 +19,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       const capabilities = yield* NativeCapabilities
       const create = yield* capabilities.support("Window.create")
       const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
+      const dockProgress = yield* capabilities.support("Dock.setProgress")
       const updaterInstall = yield* capabilities.support("Updater.install")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
@@ -34,6 +35,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
         create,
         appQuit,
         dockBadge,
+        dockProgress,
         globalShortcutRegister,
         webViewCreate,
         menuClear,
@@ -76,6 +78,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       }
     ]
   })
+  expect(result.dockProgress).toEqual({ status: "supported" })
   expect(result.globalShortcutRegister).toEqual({
     status: "unsupported",
     reason: "host-adapter-unimplemented",

@@ -47,9 +47,6 @@ const DOCK_UNSUPPORTED_REASON = "host adapter does not implement this Dock metho
 const DOCK_WINDOWS_BADGE_REASON = "Windows taskbar badges require jump-list/taskbar integration"
 const DOCK_LINUX_BADGE_REASON = "Linux launcher badge labels are not wired in the host adapter"
 const DOCK_LINUX_BADGE_TEXT_REASON = "Linux host only exposes numeric launcher badge labels"
-const DOCK_MACOS_PROGRESS_REASON = "macOS Dock does not expose taskbar progress"
-const DOCK_WINDOWS_PROGRESS_REASON = "Windows taskbar progress is not wired yet"
-const DOCK_LINUX_PROGRESS_REASON = "Linux launcher progress is not wired in the host adapter"
 
 const DockSupportByMethod = Object.freeze({
   setBadgeCount: NativeSurface.support.partial(DOCK_PLATFORM_VARIANCE_REASON, {
@@ -66,13 +63,7 @@ const DockSupportByMethod = Object.freeze({
       { platform: "windows", status: "unsupported", reason: DOCK_WINDOWS_BADGE_REASON }
     ]
   }),
-  setProgress: NativeSurface.support.unsupported(DOCK_UNSUPPORTED_REASON, {
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: DOCK_MACOS_PROGRESS_REASON },
-      { platform: "linux", status: "unsupported", reason: DOCK_LINUX_PROGRESS_REASON },
-      { platform: "windows", status: "unsupported", reason: DOCK_WINDOWS_PROGRESS_REASON }
-    ]
-  }),
+  setProgress: NativeSurface.support.supported,
   setMenu: NativeSurface.support.unsupported(DOCK_UNSUPPORTED_REASON, {
     platforms: [
       { platform: "macos", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },

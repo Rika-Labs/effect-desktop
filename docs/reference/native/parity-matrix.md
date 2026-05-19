@@ -75,7 +75,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Dock`                      | `setBadgeText`              | `partial`     | `Dock.setBadgeText`                       | `routed`    |
 | `Dock`                      | `setJumpList`               | `unsupported` | `Dock.setJumpList`                        | `routed`    |
 | `Dock`                      | `setMenu`                   | `unsupported` | `Dock.setMenu`                            | `routed`    |
-| `Dock`                      | `setProgress`               | `unsupported` | `Dock.setProgress`                        | `routed`    |
+| `Dock`                      | `setProgress`               | `supported`   | `Dock.setProgress`                        | `routed`    |
 | `EgressPolicy`              | `decide`                    | `partial`     | `EgressPolicy.decide`                     | `routed`    |
 | `EgressPolicy`              | `isSupported`               | `partial`     | `EgressPolicy.isSupported`                | `routed`    |
 | `EgressPolicy`              | `record`                    | `partial`     | `EgressPolicy.record`                     | `routed`    |

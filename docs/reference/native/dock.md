@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Dock`
 
-Dock/taskbar-facing application state. The surface is intentionally explicit about platform gaps: badge count/text and attention are host-routed, while progress, dock menus, and jump lists remain unavailable until platform adapters are implemented.
+Dock/taskbar-facing application state. The surface is intentionally explicit about platform gaps: badge count/text, progress, and attention are host-routed, while dock menus and jump lists remain unavailable until platform adapters are implemented.
 
 ## Methods
 
@@ -29,10 +29,10 @@ Dock/taskbar-facing application state. The surface is intentionally explicit abo
 ## Platform support
 
 - `requestAttention` is supported.
+- `setProgress` is supported as application-scoped Dock/taskbar progress. Values are `0..1`; `null` clears progress.
 - `setBadgeCount` and `setBadgeText` are partial: macOS is supported; Linux and Windows are not wired in the current host adapter.
-- `setProgress` is unsupported: macOS has no taskbar-progress equivalent, and Linux/Windows progress adapters are not wired yet.
 - `setMenu` is currently marked unsupported by the public capability metadata. The Rust host validates and routes the call, but macOS dock menu installation still requires a native delegate bridge.
-- `setJumpList` is unsupported and has no Rust host route yet.
+- `setJumpList` is unsupported. The Rust host validates and routes the call, then fails closed until the Windows taskbar adapter exists.
 
 ## Related
 

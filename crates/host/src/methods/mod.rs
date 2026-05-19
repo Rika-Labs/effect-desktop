@@ -401,7 +401,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::DOCK_SET_PROGRESS_METHOD,
-        HostMethodDispatcher::Payload(dock::set_progress),
+        HostMethodDispatcher::Window(dock::set_progress),
     ),
     route(
         host_protocol::DOCK_SET_MENU_METHOD,
@@ -4072,6 +4072,49 @@ mod tests {
     }
 
     #[test]
+    fn dock_set_progress_routes_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-progress",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                    serde_json::json!({
+                        "value": 0.5,
+                        "options": { "state": "normal" }
+                    }),
+                ),
+                1710000000109,
+            )
+            .expect("dock progress request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-dock-progress".to_string(),
+                timestamp: 1710000000109,
+                trace_id: "trace-request-dock-progress".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+
+        let progress = fake.dock_progress();
+        assert_eq!(progress.len(), 1);
+        assert_eq!(progress[0].value(), &serde_json::json!(0.5));
+        assert_eq!(
+            progress[0]
+                .options()
+                .and_then(host_protocol::DockSetProgressOptionsPayload::state),
+            Some(host_protocol::DockProgressState::Normal)
+        );
+    }
+
+    #[test]
     fn dock_set_badge_text_rejects_ascii_control_characters() {
         let response = test_router()
             .dispatch_at(
@@ -4103,35 +4146,8 @@ mod tests {
     }
 
     #[test]
-    fn dock_progress_and_jump_list_routes_fail_closed_after_validation() {
+    fn dock_jump_list_route_fails_closed_after_validation() {
         let router = test_router();
-        let progress_response = router
-            .dispatch_at(
-                request_with_payload(
-                    "request-dock-progress",
-                    host_protocol::DOCK_SET_PROGRESS_METHOD,
-                    serde_json::json!({
-                        "value": 0.5,
-                        "options": { "state": "normal" }
-                    }),
-                ),
-                1710000000114,
-            )
-            .expect("dock progress request should return response");
-        assert_eq!(
-            progress_response,
-            HostProtocolEnvelope::Response {
-                id: "request-dock-progress".to_string(),
-                timestamp: 1710000000114,
-                trace_id: "trace-request-dock-progress".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    "host-adapter-unimplemented",
-                    host_protocol::DOCK_SET_PROGRESS_METHOD,
-                )),
-            }
-        );
-
         let jump_list_response = router
             .dispatch_at(
                 request_with_payload(
@@ -4160,7 +4176,7 @@ mod tests {
     }
 
     #[test]
-    fn dock_progress_and_jump_list_reject_invalid_payloads_before_unsupported() {
+    fn dock_progress_and_jump_list_reject_invalid_payloads_before_side_effects() {
         let progress_response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -7038,6 +7054,7 @@ mod tests {
         always_on_top: Mutex<Vec<(String, bool)>>,
         skip_taskbar: Mutex<Vec<(String, bool)>>,
         progress: Mutex<Vec<host_protocol::WindowSetProgressPayload>>,
+        dock_progress: Mutex<Vec<host_protocol::DockSetProgressPayload>>,
         attention: Mutex<Vec<(String, host_protocol::WindowAttentionType)>>,
         attention_cancellations: Mutex<Vec<String>>,
         minimized: Mutex<Vec<String>>,
@@ -7067,6 +7084,7 @@ mod tests {
                 always_on_top: Mutex::new(Vec::new()),
                 skip_taskbar: Mutex::new(Vec::new()),
                 progress: Mutex::new(Vec::new()),
+                dock_progress: Mutex::new(Vec::new()),
                 attention: Mutex::new(Vec::new()),
                 attention_cancellations: Mutex::new(Vec::new()),
                 minimized: Mutex::new(Vec::new()),
@@ -7165,6 +7183,13 @@ mod tests {
             self.progress
                 .lock()
                 .expect("fake progress requests should lock")
+                .clone()
+        }
+
+        fn dock_progress(&self) -> Vec<host_protocol::DockSetProgressPayload> {
+            self.dock_progress
+                .lock()
+                .expect("fake dock progress requests should lock")
                 .clone()
         }
 
@@ -7396,6 +7421,17 @@ mod tests {
             self.progress
                 .lock()
                 .expect("fake progress requests should lock")
+                .push(progress.clone());
+            Ok(())
+        }
+
+        fn set_dock_progress(
+            &self,
+            progress: &host_protocol::DockSetProgressPayload,
+        ) -> Result<(), HostProtocolError> {
+            self.dock_progress
+                .lock()
+                .expect("fake dock progress requests should lock")
                 .push(progress.clone());
             Ok(())
         }

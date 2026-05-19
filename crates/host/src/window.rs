@@ -7,13 +7,14 @@ use crate::methods::resident_lifecycle::{self, ResidentWindowCloseAction};
 use crate::{macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{
-    HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
-    ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
-    ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
-    WindowAttentionType, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
-    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
-    WindowStateEventPayload, WindowStatePayload, WindowTrafficLights,
+    DockProgressState, DockSetProgressPayload, HostProtocolEnvelope, HostProtocolError,
+    ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
+    ScreenDisplaysResultPayload, ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload,
+    TrayActivatedEventPayload, TrayResourcePayload, WindowAttentionType, WindowBoundsPayload,
+    WindowCreatePayload, WindowCreateResponse, WindowListResponse, WindowLookupResponse,
+    WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
+    WindowRegistryEventPhase, WindowSetProgressPayload, WindowStateEventPayload,
+    WindowStatePayload, WindowTrafficLights,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -195,6 +196,11 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         label: Option<String>,
         operation: &'static str,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_dock_progress(
+        &self,
+        progress: &DockSetProgressPayload,
     ) -> std::result::Result<(), HostProtocolError>;
 
     fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError>;
@@ -426,6 +432,10 @@ enum WindowCommand {
         operation: &'static str,
         reply: Sender<WindowCommandReply>,
     },
+    SetDockProgress {
+        progress: DockSetProgressPayload,
+        reply: Sender<WindowCommandReply>,
+    },
     RequestDockAttention {
         critical: bool,
         reply: Sender<WindowCommandReply>,
@@ -501,6 +511,7 @@ enum WindowCommandResponse {
     WindowBounds(WindowBoundsPayload),
     WindowState(WindowStatePayload),
     DockBadgeLabelSet,
+    DockProgressSet,
     DockAttentionRequested,
     DockMenuSet,
     MenuSet,
@@ -632,6 +643,7 @@ impl WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
@@ -664,6 +676,10 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Created(response) => Ok(response),
             WindowCommandResponse::DockBadgeLabelSet => Err(HostProtocolError::internal(
                 "window create received dock badge response",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )),
+            WindowCommandResponse::DockProgressSet => Err(HostProtocolError::internal(
+                "window create received dock progress response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
             WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
@@ -730,6 +746,10 @@ impl WindowMethodHandler for WindowMethodPort {
             WindowCommandResponse::Destroyed => Ok(()),
             WindowCommandResponse::DockBadgeLabelSet => Err(HostProtocolError::internal(
                 "window destroy received dock badge response",
+                host_protocol::WINDOW_DESTROY_METHOD,
+            )),
+            WindowCommandResponse::DockProgressSet => Err(HostProtocolError::internal(
+                "window destroy received dock progress response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
             WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
@@ -918,6 +938,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowParent(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
@@ -1199,6 +1220,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowParent(_)
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
@@ -1238,6 +1260,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
@@ -1249,6 +1272,43 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
                 "dock badge command received window response",
                 operation,
+            )),
+        }
+    }
+
+    fn set_dock_progress(
+        &self,
+        progress: &DockSetProgressPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetDockProgress {
+            progress: progress.clone(),
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::DockProgressSet => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
+            | WindowCommandResponse::WindowParent(_)
+            | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+                "dock set progress received unrelated response",
+                host_protocol::DOCK_SET_PROGRESS_METHOD,
             )),
         }
     }
@@ -1271,6 +1331,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
@@ -1307,6 +1368,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
@@ -1343,6 +1405,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::TrayCreated(_)
@@ -1381,6 +1444,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::TrayCreated(_)
@@ -2525,6 +2589,23 @@ impl WindowRegistry {
         macos::set_dock_badge_label(&resources._window, label)
     }
 
+    fn set_dock_progress(
+        &self,
+        progress: &DockSetProgressPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.values().next() else {
+            return Err(HostProtocolError::not_found(
+                "Window:firstResponder",
+                host_protocol::DOCK_SET_PROGRESS_METHOD,
+            ));
+        };
+
+        resources
+            ._window
+            .set_progress_bar(to_tao_dock_progress(progress)?);
+        Ok(())
+    }
+
     fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.values().next() else {
             return Err(HostProtocolError::not_found(
@@ -3211,6 +3292,13 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::SetDockProgress { progress, reply } => {
+                let result = self
+                    .set_dock_progress(&progress)
+                    .map(|()| WindowCommandResponse::DockProgressSet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::RequestDockAttention { critical, reply } => {
                 let result = self
                     .request_dock_attention(critical)
@@ -3347,6 +3435,7 @@ fn unexpected_tray_response(
         WindowCommandResponse::WindowBounds(_) => "tray command received window bounds response",
         WindowCommandResponse::WindowState(_) => "tray command received window state response",
         WindowCommandResponse::DockBadgeLabelSet => "tray command received dock badge response",
+        WindowCommandResponse::DockProgressSet => "tray command received dock progress response",
         WindowCommandResponse::DockAttentionRequested => {
             "tray command received dock attention response"
         }
@@ -3377,6 +3466,7 @@ fn unexpected_screen_response(
         WindowCommandResponse::WindowBounds(_) => "screen command received window bounds response",
         WindowCommandResponse::WindowState(_) => "screen command received window state response",
         WindowCommandResponse::DockBadgeLabelSet => "screen command received dock badge response",
+        WindowCommandResponse::DockProgressSet => "screen command received dock progress response",
         WindowCommandResponse::DockAttentionRequested => {
             "screen command received dock attention response"
         }
@@ -3470,6 +3560,58 @@ fn to_tao_progress_state(state: WindowProgressState) -> ProgressState {
         WindowProgressState::Indeterminate => ProgressState::Indeterminate,
         WindowProgressState::Paused => ProgressState::Paused,
         WindowProgressState::Error => ProgressState::Error,
+    }
+}
+
+fn to_tao_dock_progress(
+    progress: &DockSetProgressPayload,
+) -> std::result::Result<ProgressBarState, HostProtocolError> {
+    let progress_value = match progress.value() {
+        serde_json::Value::Null => None,
+        serde_json::Value::Number(number) => {
+            let Some(value) = number.as_f64() else {
+                return Err(HostProtocolError::invalid_argument(
+                    "value",
+                    "must be null or a finite number between 0 and 1",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                ));
+            };
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                return Err(HostProtocolError::invalid_argument(
+                    "value",
+                    "must be null or a finite number between 0 and 1",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                ));
+            }
+            Some((value * 100.0).round() as u64)
+        }
+        _ => {
+            return Err(HostProtocolError::invalid_argument(
+                "value",
+                "must be null or a finite number between 0 and 1",
+                host_protocol::DOCK_SET_PROGRESS_METHOD,
+            ));
+        }
+    };
+    let state = match progress.options().and_then(|options| options.state()) {
+        Some(state) => Some(to_tao_dock_progress_state(state)),
+        None if progress_value.is_some() => Some(ProgressState::Normal),
+        None => Some(ProgressState::None),
+    };
+
+    Ok(ProgressBarState {
+        state,
+        progress: progress_value,
+        desktop_filename: None,
+    })
+}
+
+fn to_tao_dock_progress_state(state: DockProgressState) -> ProgressState {
+    match state {
+        DockProgressState::Normal => ProgressState::Normal,
+        DockProgressState::Indeterminate => ProgressState::Indeterminate,
+        DockProgressState::Paused => ProgressState::Paused,
+        DockProgressState::Error => ProgressState::Error,
     }
 }
 
@@ -4396,12 +4538,14 @@ mod tests {
         control_flow_for_window_state, emit_window_registry_event,
         handle_native_window_close_requested, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
-        lifecycle_for_create_result, smoke_deadline_for_mode, unsupported_screen,
-        validate_positive_finite, RunMode, WindowCommand, WindowCommandResponse,
-        WindowCreateRequest, WindowId, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
-        WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
+        lifecycle_for_create_result, smoke_deadline_for_mode, to_tao_dock_progress,
+        unsupported_screen, validate_positive_finite, RunMode, WindowCommand,
+        WindowCommandResponse, WindowCreateRequest, WindowId, WindowLifecycleEvent,
+        WindowMethodPort, WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
+        WINDOW_SMOKE_TEST_TIMEOUT,
     };
     use host_protocol::{
+        DockProgressState, DockSetProgressOptionsPayload, DockSetProgressPayload,
         HostProtocolEnvelope, HostProtocolError, WindowCreatePayload, WindowCreateResponse,
         WindowRegistryEventPhase,
     };
@@ -4414,6 +4558,7 @@ mod tests {
     use tao::dpi::PhysicalSize;
     use tao::event::WindowEvent;
     use tao::event_loop::ControlFlow;
+    use tao::window::ProgressState;
 
     struct WindowEventSenderGuard;
 
@@ -4712,6 +4857,27 @@ mod tests {
         assert!(state.minimized());
         assert!(!state.maximized());
         assert!(!state.fullscreen());
+    }
+
+    #[test]
+    fn dock_progress_payload_maps_to_tao_progress_bar_state() {
+        let progress = DockSetProgressPayload::new(
+            serde_json::json!(0.5),
+            Some(DockSetProgressOptionsPayload::new(Some(
+                DockProgressState::Normal,
+            ))),
+        );
+        let progress_bar =
+            to_tao_dock_progress(&progress).expect("dock progress should map to tao state");
+
+        assert_eq!(progress_bar.progress, Some(50));
+        assert!(matches!(progress_bar.state, Some(ProgressState::Normal)));
+        assert_eq!(progress_bar.desktop_filename, None);
+
+        let clear = DockSetProgressPayload::new(serde_json::Value::Null, None);
+        let clear_bar = to_tao_dock_progress(&clear).expect("dock clear should map to tao state");
+        assert_eq!(clear_bar.progress, None);
+        assert!(matches!(clear_bar.state, Some(ProgressState::None)));
     }
 
     #[test]
