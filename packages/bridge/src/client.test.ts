@@ -142,33 +142,31 @@ test("makeUnaryDesktopTransportFromBridgeClientExchange converts invalid exchang
     Effect.gen(function* () {
       const responses: unknown[] = []
 
-      yield* Effect.gen(function* () {
-        const transport = yield* makeUnaryDesktopTransportFromBridgeClientExchange(
-          {
-            request: () => Effect.succeed({ kind: "nonsense", payload: { id: "accepted" } })
-          },
-          { now: () => 43, nextTraceId: () => "trace-transport" }
-        )
-        const fiber = yield* transport
-          .run((envelope) =>
-            Effect.sync(() => {
-              responses.push(envelope)
-            })
-          )
-          .pipe(Effect.forkChild({ startImmediately: true }))
-
-        yield* transport.send(
-          new HostProtocolRequestEnvelope({
-            kind: "request",
-            id: "request-invalid-response",
-            method: "Project.open",
-            timestamp: 42,
-            traceId: "trace-request"
+      const transport = yield* makeUnaryDesktopTransportFromBridgeClientExchange(
+        {
+          request: () => Effect.succeed({ kind: "nonsense", payload: { id: "accepted" } })
+        },
+        { now: () => 43, nextTraceId: () => "trace-transport" }
+      )
+      const fiber = yield* transport
+        .run((envelope) =>
+          Effect.sync(() => {
+            responses.push(envelope)
           })
         )
-        yield* Effect.yieldNow
-        yield* Fiber.interrupt(fiber)
-      })
+        .pipe(Effect.forkChild({ startImmediately: true }))
+
+      yield* transport.send(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "request-invalid-response",
+          method: "Project.open",
+          timestamp: 42,
+          traceId: "trace-request"
+        })
+      )
+      yield* Effect.yieldNow
+      yield* Fiber.interrupt(fiber)
 
       expect(responses).toContainEqual(
         expect.objectContaining({
