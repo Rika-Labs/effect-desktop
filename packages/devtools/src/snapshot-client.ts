@@ -105,12 +105,10 @@ export const DevtoolsSnapshotClientLive: Layer.Layer<
             payload: snapshot satisfies Omit<DevtoolsSnapshot, "safety">
           })
           if (Option.isNone(decision.value)) {
-            return yield* Effect.fail(
-              new DevtoolsSnapshotSafetyError({
-                operation: "DevtoolsSnapshotClient.exportSnapshot",
-                safety: decision.summary
-              })
-            )
+            return yield* new DevtoolsSnapshotSafetyError({
+              operation: "DevtoolsSnapshotClient.exportSnapshot",
+              safety: decision.summary
+            })
           }
           return {
             ...decision.value.value,

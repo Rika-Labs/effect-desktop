@@ -15,6 +15,8 @@ import {
   ReplayTransportFromSession
 } from "./index.js"
 
+const encodeJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
 const DiagnosticsPayload = Schema.Struct({
   logs: Schema.Array(Schema.Struct({ message: Schema.String })),
   traces: Schema.Array(Schema.Unknown),
@@ -45,8 +47,8 @@ test("InspectorTest records redacted frames through an Effect layer", () => {
       expect(Option.isSome(recorded)).toBe(true)
       expect(session.id).toBe("session-test")
       expect(session.frames[0]?.surface).toBe("diagnostics")
-      expect(JSON.stringify(session)).not.toContain("secret-token")
-      expect(JSON.stringify(session)).toContain("<redacted:redacted>")
+      expect(encodeJsonString(session)).not.toContain("secret-token")
+      expect(encodeJsonString(session)).toContain("<redacted:redacted>")
     })
   )
 })
@@ -63,7 +65,7 @@ test("ReplayTransport serves recorded sessions on the same fixture stream", () =
 
       expect(frames).toHaveLength(1)
       expect(frames[0]?.surface).toBe("diagnostics")
-      expect(JSON.stringify(frames)).not.toContain("secret-token")
+      expect(encodeJsonString(frames)).not.toContain("secret-token")
     })
   )
 })

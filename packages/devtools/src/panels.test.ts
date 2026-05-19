@@ -5,7 +5,18 @@ import {
   InspectorSafetyPolicyLive,
   LayerGraphSnapshot
 } from "@effect-desktop/core"
-import { Cause, Clock, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Stream } from "effect"
+import {
+  Cause,
+  Clock,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Schema,
+  Stream
+} from "effect"
 
 import {
   ClusterPanel,
@@ -36,6 +47,8 @@ import {
 import { EventJournal, EventLog as EventLogNS } from "effect/unstable/eventlog"
 import { TestRunner } from "effect/unstable/cluster"
 import { KeyValueStore } from "effect/unstable/persistence"
+
+const encodeJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 test("ClusterPanelDisabled returns disabled state", () => {
   const runtime = ManagedRuntime.make(ClusterPanelDisabled)
@@ -266,7 +279,7 @@ test("LogsPanel sanitizes logger text before buffering", () => {
       const panel = yield* LogsPanel
       const result = yield* panel.list()
 
-      expect(JSON.stringify(result)).not.toContain("secret-key")
+      expect(encodeJsonString(result)).not.toContain("secret-key")
       expect(result.records[0]?.message).toContain("<redacted>")
       expect(result.records[0]?.safety.redacted).toBeGreaterThan(0)
     })

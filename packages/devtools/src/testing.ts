@@ -8,6 +8,8 @@ import {
 } from "@effect-desktop/core/runtime/inspector-safety-policy"
 import { Context, Data, Effect, Layer, Option, Queue, Schema, Stream } from "effect"
 
+const encodeJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
 export const InspectorSurface = Schema.Literals([
   "commands",
   "workers",
@@ -149,7 +151,7 @@ export const CollectorLaws = Object.freeze({
     name: "RecordedSession fixtures are redacted",
     check: (session: RecordedSession) =>
       Effect.gen(function* () {
-        const text = JSON.stringify(session)
+        const text = encodeJsonString(session)
         if (SECRET_TEXT_PATTERN.test(text)) {
           return yield* new InspectorFixtureError({
             operation: "CollectorLaws.fixturesAreRedacted",

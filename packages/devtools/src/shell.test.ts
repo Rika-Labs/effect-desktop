@@ -1,9 +1,6 @@
 import { expect, test } from "bun:test"
-import { mkdtemp, readFile, rm, stat, mkdir } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-
-import { Deferred, Effect, Exit, Option } from "effect"
+import { BunServices } from "@effect/platform-bun"
+import { Deferred, Effect, Exit, Fiber, FileSystem, ManagedRuntime, Option, Path } from "effect"
 
 import {
   DevtoolsShellOpenError,
@@ -16,190 +13,246 @@ import {
   type DevtoolsShellWindow
 } from "./shell.js"
 
-test("DevtoolsShell stays disabled in production without both gates", async () => {
-  const stateDir = await tempStateDir()
-  const shell = await Effect.runPromise(makeDevtoolsShell())
+const BunServicesRuntime = ManagedRuntime.make(BunServices.layer)
 
-  const withoutFlag = await Effect.runPromise(
-    shell.start({
-      profile: "prod",
-      stateDir,
-      securityDevtoolsInProd: true
-    })
-  )
-  const withoutConfig = await Effect.runPromise(
-    shell.start({
-      profile: "prod",
-      stateDir,
-      devtoolsFlag: true
-    })
-  )
+const runWithBun = <A, E>(
+  effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>
+): Effect.Effect<A, E, never> =>
+  Effect.promise(() => BunServicesRuntime.runPromise(effect)) as Effect.Effect<A, E, never>
 
-  expect(withoutFlag.status).toBe("disabled")
-  expect(withoutConfig.status).toBe("disabled")
-  expect(Option.isNone(withoutFlag.tokenPath)).toBe(true)
-  expect(Option.isNone(withoutConfig.tokenPath)).toBe(true)
-})
+const tempStateDir: Effect.Effect<string, never, never> = runWithBun(
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    return yield* fs.makeTempDirectory({ prefix: "effect-desktop-devtools-" })
+  }).pipe(Effect.orDie)
+)
 
-test("DevtoolsShell mints a 256-bit token, opens shell, and disables cleanly", async () => {
-  const stateDir = await tempStateDir()
-  const closed: string[] = []
-  const opened: string[] = []
-  const shell = await Effect.runPromise(
-    makeDevtoolsShell({
-      transport: fakeTransport(closed),
-      shellWindow: fakeShellWindow(opened)
-    })
+const readUtf8 = (path: string): Effect.Effect<string, never, never> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.readFileString(path, "utf8")
+    }).pipe(Effect.orDie)
   )
 
-  const handle = await Effect.runPromise(
-    shell.start({
-      profile: "dev",
-      stateDir
-    })
+const statMode = (path: string): Effect.Effect<number, never, never> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const info = yield* fs.stat(path)
+      return Number(info.mode) & 0o777
+    }).pipe(Effect.orDie)
   )
-  const tokenPath = expectSome(handle.tokenPath)
-  const token = await readFile(tokenPath, "utf8")
-  const mode = (await stat(tokenPath)).mode & 0o777
-  await Effect.runPromise(handle.disable)
 
-  expect(handle.status).toBe("enabled")
-  expect(expectSome(handle.url)).toBe("http://127.0.0.1:49152")
-  expect(token).toMatch(/^[\da-f]{64}$/u)
-  if (process.platform !== "win32") {
-    expect(mode).toBe(0o600)
+const fileExists = (path: string): Effect.Effect<boolean, never, never> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      return yield* fs.exists(path)
+    }).pipe(Effect.orDie)
+  )
+
+const removeFile = (path: string): Effect.Effect<void, never, never> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      yield* fs.remove(path)
+    }).pipe(Effect.orDie)
+  )
+
+const makeDirectory = (path: string): Effect.Effect<void, never, never> =>
+  runWithBun(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      yield* fs.makeDirectory(path)
+    }).pipe(Effect.orDie)
+  )
+
+const expectSome = <A>(option: Option.Option<A>): A => {
+  expect(Option.isSome(option)).toBe(true)
+  if (Option.isSome(option)) {
+    return option.value
   }
-  expect(opened).toEqual([`http://127.0.0.1:49152:${tokenPath}`])
-  expect(closed).toEqual(["closed"])
-  expect(await fileExists(tokenPath)).toBe(false)
-})
+  throw new Error("expected Option.some")
+}
 
-test("DevtoolsShell rotates the token on every start", async () => {
-  const stateDir = await tempStateDir()
-  const shell = await Effect.runPromise(
-    makeDevtoolsShell({
-      transport: fakeTransport([]),
-      shellWindow: fakeShellWindow([])
+test("DevtoolsShell stays disabled in production without both gates", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stateDir = yield* tempStateDir
+      const shell = yield* makeDevtoolsShell()
+
+      const withoutFlag = yield* shell.start({
+        profile: "prod",
+        stateDir,
+        securityDevtoolsInProd: true
+      })
+      const withoutConfig = yield* shell.start({
+        profile: "prod",
+        stateDir,
+        devtoolsFlag: true
+      })
+
+      expect(withoutFlag.status).toBe("disabled")
+      expect(withoutConfig.status).toBe("disabled")
+      expect(Option.isNone(withoutFlag.tokenPath)).toBe(true)
+      expect(Option.isNone(withoutConfig.tokenPath)).toBe(true)
     })
-  )
+  ))
 
-  const first = await Effect.runPromise(shell.start({ profile: "dev", stateDir, openShell: false }))
-  const firstPath = expectSome(first.tokenPath)
-  const firstToken = await readFile(firstPath, "utf8")
-  await Effect.runPromise(first.disable)
-  const second = await Effect.runPromise(
-    shell.start({ profile: "dev", stateDir, openShell: false })
-  )
-  const secondToken = await readFile(expectSome(second.tokenPath), "utf8")
-  await Effect.runPromise(second.disable)
+test("DevtoolsShell mints a 256-bit token, opens shell, and disables cleanly", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stateDir = yield* tempStateDir
+      const closed: string[] = []
+      const opened: string[] = []
+      const shell = yield* makeDevtoolsShell({
+        transport: fakeTransport(closed),
+        shellWindow: fakeShellWindow(opened)
+      })
 
-  expect(firstToken).not.toBe(secondToken)
-})
-
-test("DevtoolsShell disable awaits loopback close completion", async () => {
-  const stateDir = await tempStateDir()
-  const closeReleased = Effect.runSync(Deferred.make<void>())
-  let closed = false
-  const shell = await Effect.runPromise(
-    makeDevtoolsShell({
-      transport: {
-        listen: () =>
-          Effect.succeed({
-            url: "http://127.0.0.1:49152",
-            close: Deferred.await(closeReleased).pipe(
-              Effect.tap(() =>
-                Effect.sync(() => {
-                  closed = true
-                })
-              )
-            )
-          } satisfies DevtoolsListener)
-      },
-      shellWindow: fakeShellWindow([])
-    })
-  )
-
-  const handle = await Effect.runPromise(
-    shell.start({ profile: "dev", stateDir, openShell: false })
-  )
-  const disable = Effect.runPromise(handle.disable)
-
-  await Effect.runPromise(Effect.yieldNow)
-  expect(closed).toBe(false)
-
-  Effect.runSync(Deferred.succeed(closeReleased, undefined).pipe(Effect.asVoid))
-  await disable
-  expect(closed).toBe(true)
-})
-
-test("DevtoolsShell reports token cleanup failures", async () => {
-  const stateDir = await tempStateDir()
-  const shell = await Effect.runPromise(
-    makeDevtoolsShell({
-      transport: fakeTransport([]),
-      shellWindow: fakeShellWindow([])
-    })
-  )
-
-  const handle = await Effect.runPromise(
-    shell.start({ profile: "dev", stateDir, openShell: false })
-  )
-  const tokenPath = expectSome(handle.tokenPath)
-  await rm(tokenPath)
-  await mkdir(tokenPath)
-
-  const exit = await Effect.runPromiseExit(handle.disable)
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find((reason) => reason._tag === "Fail")
-    expect(failure?.error).toBeInstanceOf(DevtoolsTokenError)
-  }
-})
-
-test("DevtoolsShell fails with a typed error when no shell window port is configured", async () => {
-  const stateDir = await tempStateDir()
-  const closed: string[] = []
-  const shell = await Effect.runPromise(
-    makeDevtoolsShell({
-      transport: fakeTransport(closed)
-    })
-  )
-
-  const error = await Effect.runPromise(
-    Effect.flip(
-      shell.start({
+      const handle = yield* shell.start({
         profile: "dev",
         stateDir
       })
-    )
-  )
+      const tokenPath = expectSome(handle.tokenPath)
+      const token = yield* readUtf8(tokenPath)
+      const mode = yield* statMode(tokenPath)
+      yield* handle.disable
 
-  expect(error).toBeInstanceOf(DevtoolsShellOpenError)
-  expect(closed).toEqual(["closed"])
-})
-
-test("DevtoolsShell rejects production capture without an explicit safe inspector policy", async () => {
-  const stateDir = await tempStateDir()
-  const shell = await Effect.runPromise(
-    makeDevtoolsShell({
-      transport: fakeTransport([]),
-      shellWindow: fakeShellWindow([])
+      expect(handle.status).toBe("enabled")
+      expect(handle.url.pipe(expectSome)).toBe("http://127.0.0.1:49152")
+      expect(token).toMatch(/^[\da-f]{64}$/u)
+      if (process.platform !== "win32") {
+        expect(mode).toBe(0o600)
+      }
+      expect(opened).toEqual([`http://127.0.0.1:49152:${tokenPath}`])
+      expect(closed).toEqual(["closed"])
+      expect(yield* fileExists(tokenPath)).toBe(false)
     })
-  )
+  ))
 
-  const error = await Effect.runPromise(
-    Effect.flip(
-      shell.start({
-        profile: "prod",
-        stateDir,
-        devtoolsFlag: true,
-        securityDevtoolsInProd: true
+test("DevtoolsShell rotates the token on every start", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stateDir = yield* tempStateDir
+      const shell = yield* makeDevtoolsShell({
+        transport: fakeTransport([]),
+        shellWindow: fakeShellWindow([])
       })
-    )
-  )
 
-  expect(error).toBeInstanceOf(DevtoolsUnsafeProductionCaptureError)
-})
+      const first = yield* shell.start({ profile: "dev", stateDir, openShell: false })
+      const firstPath = expectSome(first.tokenPath)
+      const firstToken = yield* readUtf8(firstPath)
+      yield* first.disable
+      const second = yield* shell.start({ profile: "dev", stateDir, openShell: false })
+      const secondToken = yield* readUtf8(second.tokenPath.pipe(expectSome))
+      yield* second.disable
+
+      expect(firstToken).not.toBe(secondToken)
+    })
+  ))
+
+test("DevtoolsShell disable awaits loopback close completion", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stateDir = yield* tempStateDir
+      const closeReleased = yield* Deferred.make<void>()
+      let closed = false
+      const shell = yield* makeDevtoolsShell({
+        transport: {
+          listen: () =>
+            Effect.succeed({
+              url: "http://127.0.0.1:49152",
+              close: Deferred.await(closeReleased).pipe(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    closed = true
+                  })
+                )
+              )
+            } satisfies DevtoolsListener)
+        },
+        shellWindow: fakeShellWindow([])
+      })
+
+      const handle = yield* shell.start({ profile: "dev", stateDir, openShell: false })
+      const disableFiber = yield* handle.disable.pipe(Effect.forkChild({ startImmediately: true }))
+
+      yield* Effect.yieldNow
+      expect(closed).toBe(false)
+
+      yield* Deferred.succeed(closeReleased, undefined)
+      yield* Fiber.join(disableFiber)
+      expect(closed).toBe(true)
+    })
+  ))
+
+test("DevtoolsShell reports token cleanup failures", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stateDir = yield* tempStateDir
+      const shell = yield* makeDevtoolsShell({
+        transport: fakeTransport([]),
+        shellWindow: fakeShellWindow([])
+      })
+
+      const handle = yield* shell.start({ profile: "dev", stateDir, openShell: false })
+      const tokenPath = expectSome(handle.tokenPath)
+      yield* removeFile(tokenPath)
+      yield* makeDirectory(tokenPath)
+
+      const exit = yield* Effect.exit(handle.disable)
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+        expect(failure?.error).toBeInstanceOf(DevtoolsTokenError)
+      }
+    })
+  ))
+
+test("DevtoolsShell fails with a typed error when no shell window port is configured", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stateDir = yield* tempStateDir
+      const closed: string[] = []
+      const shell = yield* makeDevtoolsShell({
+        transport: fakeTransport(closed)
+      })
+
+      const error = yield* Effect.flip(
+        shell.start({
+          profile: "dev",
+          stateDir
+        })
+      )
+
+      expect(error).toBeInstanceOf(DevtoolsShellOpenError)
+      expect(closed).toEqual(["closed"])
+    })
+  ))
+
+test("DevtoolsShell rejects production capture without an explicit safe inspector policy", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stateDir = yield* tempStateDir
+      const shell = yield* makeDevtoolsShell({
+        transport: fakeTransport([]),
+        shellWindow: fakeShellWindow([])
+      })
+
+      const error = yield* Effect.flip(
+        shell.start({
+          profile: "prod",
+          stateDir,
+          devtoolsFlag: true,
+          securityDevtoolsInProd: true
+        })
+      )
+
+      expect(error).toBeInstanceOf(DevtoolsUnsafeProductionCaptureError)
+    })
+  ))
 
 test("shouldStartDevtools models dev and production gates", () => {
   expect(shouldStartDevtools({ profile: "dev", stateDir: "/tmp/state" })).toBe(true)
@@ -230,17 +283,6 @@ test("shouldStartDevtools models dev and production gates", () => {
   ).toBe(false)
 })
 
-const tempStateDir = (): Promise<string> => mkdtemp(join(tmpdir(), "effect-desktop-devtools-"))
-
-const fileExists = async (path: string): Promise<boolean> => {
-  try {
-    await stat(path)
-    return true
-  } catch {
-    return false
-  }
-}
-
 const fakeTransport = (closed: string[]): DevtoolsLoopbackTransport => ({
   listen: () =>
     Effect.succeed({
@@ -257,11 +299,3 @@ const fakeShellWindow = (opened: string[]): DevtoolsShellWindow => ({
       opened.push(`${url}:${tokenPath}`)
     })
 })
-
-const expectSome = <A>(option: Option.Option<A>): A => {
-  expect(Option.isSome(option)).toBe(true)
-  if (Option.isSome(option)) {
-    return option.value
-  }
-  throw new Error("expected Option.some")
-}
