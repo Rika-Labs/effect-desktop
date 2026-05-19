@@ -45,6 +45,7 @@ The current Rust host adapter is intentionally fail-closed while OS selection an
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
 `isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
+The bridge-backed `SelectionContext.Event` stream also fails as typed `Unsupported` before opening a host subscription until the native watch adapter can publish selection context events.
 
 ## Testing
 

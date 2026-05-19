@@ -48,7 +48,6 @@ import {
   SelectionContextWatchFocusRequest,
   SelectionContextWatchFocusResult
 } from "./contracts/selection-context.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
@@ -364,7 +363,7 @@ export const makeSelectionContextUnsupportedClient = (): SelectionContextClientA
       Effect.succeed(
         new SelectionContextSupportedResult({ supported: false, reason: UnsupportedReason })
       ),
-    events: () => Stream.fail(unsupportedError("SelectionContext.events"))
+    events: () => Stream.fail(unsupportedError(SelectionContextEventMethod))
   } satisfies SelectionContextClientApi)
 
 const makeSelectionContextService = (
@@ -525,7 +524,7 @@ const makeSelectionContextService = (
 
 const selectionContextClientFromRpcClient = (
   client: DesktopRpcClient<SelectionContextRpc>,
-  exchange: BridgeClientExchange | undefined
+  _exchange: BridgeClientExchange | undefined
 ): SelectionContextClientApi =>
   Object.freeze({
     readSelection: (input) =>
@@ -569,7 +568,7 @@ const selectionContextClientFromRpcClient = (
         client["SelectionContext.isSupported"](undefined),
         "SelectionContext.isSupported"
       ),
-    events: () => subscribeNativeEvent(exchange, SelectionContextEventMethod, SelectionContextEvent)
+    events: () => Stream.fail(unsupportedError(SelectionContextEventMethod))
   } satisfies SelectionContextClientApi)
 
 function selectionContextRpc<

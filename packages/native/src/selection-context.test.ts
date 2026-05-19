@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInternalError } from "@effect-desktop/bridge"
+import { type BridgeClientExchange, makeHostProtocolInternalError } from "@effect-desktop/bridge"
 import {
   type AuditEvent,
   makePermissionRegistry,
@@ -9,10 +9,12 @@ import {
 import { Cause, Effect, Exit, Option, Stream } from "effect"
 
 import {
+  makeSelectionContextBridgeClientLayer,
   makeSelectionContextMemoryClient,
   makeSelectionContextServiceLayer,
   makeSelectionContextUnsupportedClient,
   SelectionContext,
+  SelectionContextClient,
   type SelectionContextClientApi
 } from "./selection-context.js"
 import {
@@ -291,6 +293,33 @@ test("SelectionContext unsupported client fails through the public service layer
       operation: "SelectionContext.readSelection"
     })
   })
+})
+
+test("SelectionContext bridge client fails event stream as unsupported before subscribing", async () => {
+  const subscriptions: string[] = []
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.die("unexpected request"),
+    subscribe: (method) => {
+      subscriptions.push(method)
+      return Stream.empty
+    }
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* SelectionContextClient
+      return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(Effect.provide(makeSelectionContextBridgeClientLayer(exchange)))
+  )
+
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({
+      tag: "Unsupported",
+      reason: "host-adapter-unimplemented",
+      operation: "SelectionContext.Event"
+    })
+  })
+  expect(subscriptions).toEqual([])
 })
 
 const configuredPermissions = async (rows: AuditEvent[]) => {
