@@ -4,20 +4,14 @@ import {
   generateKeyPairSync,
   verify as cryptoVerify
 } from "node:crypto"
-import {
-  chmod,
-  lstat,
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  readlink,
-  rm,
-  stat,
-  symlink,
-  writeFile
-} from "node:fs/promises"
-import { basename, dirname, join, relative } from "node:path"
+import { createRequire } from "node:module"
+
+const nodeRequire = createRequire(import.meta.url)
+const fsPromises = nodeRequire("node:fs/promises") as typeof import("node:fs/promises")
+const nodePath = nodeRequire("node:path") as typeof import("node:path")
+const { chmod, lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, symlink, writeFile } =
+  fsPromises
+const { basename, dirname, join, relative } = nodePath
 import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
@@ -1106,7 +1100,7 @@ test("desktop check rejects mixed mode flags before dispatch", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-check-modes-"))
       )
       try {
-        yield* Effect.promise(() => writeReleaseFixture(directory))
+        yield* writeReleaseFixture(directory)
         yield* Effect.promise(() =>
           writeFile(
             join(directory, "desktop.config.ts"),
@@ -1186,7 +1180,7 @@ test("desktop doctor reports typed missing Rust toolchain failures", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1232,7 +1226,7 @@ test("desktop doctor exits zero with warnings for optional signing and host cach
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1276,7 +1270,7 @@ test("desktop doctor reports native capability truth from the generated parity m
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-capabilities-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1338,7 +1332,7 @@ test("desktop doctor fails when native capability truth is malformed", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-capabilities-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1383,17 +1377,15 @@ test("desktop doctor suppresses signing warning when signing config is present",
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              macos: {
-                identity: "Developer ID Application: Example",
-                teamId: "ABCD1234",
-                notarytoolProfile: "release-profile"
-              }
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: {
+              identity: "Developer ID Application: Example",
+              teamId: "ABCD1234",
+              notarytoolProfile: "release-profile"
             }
-          })
-        )
+          }
+        })
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1436,15 +1428,13 @@ test("desktop doctor reads signing credentials from injected environment", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-env-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              macos: {
-                identity: "Developer ID Application: Example"
-              }
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: {
+              identity: "Developer ID Application: Example"
             }
-          })
-        )
+          }
+        })
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1489,7 +1479,7 @@ test("desktop doctor reports config import failures with the import cause", () =
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-config-import-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         yield* Effect.promise(() =>
           writeFile(
             join(directory, "apps", "inspector", "desktop.config.ts"),
@@ -1539,15 +1529,13 @@ test("desktop doctor rejects empty app metadata strings", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-empty-metadata-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "",
-              name: "",
-              version: ""
-            }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "",
+            name: "",
+            version: ""
+          }
+        })
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1592,8 +1580,8 @@ test("desktop doctor rejects config paths outside the workspace", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-outside-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writePlaygroundFixture(outsideDirectory))
+        yield* writePlaygroundFixture(directory)
+        yield* writePlaygroundFixture(outsideDirectory)
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1641,11 +1629,9 @@ test("desktop doctor rejects invalid security config", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
+        })
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1688,17 +1674,15 @@ test("desktop doctor rejects protocol limits above caps", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            protocol: {
-              limits: {
-                maxFrameBytes: 999_999_999,
-                maxConcurrentRequestsPerWindow: 999_999,
-                maxConcurrentStreamsPerWindow: 999_999
-              }
+        yield* writePlaygroundFixture(directory, {
+          protocol: {
+            limits: {
+              maxFrameBytes: 999_999_999,
+              maxConcurrentRequestsPerWindow: 999_999,
+              maxConcurrentStreamsPerWindow: 999_999
             }
-          })
-        )
+          }
+        })
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
         )
@@ -1738,7 +1722,7 @@ test("desktop doctor fails when package manager state is not Bun-pinned", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         yield* Effect.promise(() =>
           writeFile(join(directory, "package.json"), '{"packageManager":"npm@10.0.0"}\n')
         )
@@ -1777,7 +1761,7 @@ test("desktop check --repro exits zero for byte-identical staged and packaged ou
         mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const commandRunner = deterministicBuildRunner()
         const packageRunner = deterministicPackageRunner(() => "deb")
         const stdout: string[] = []
@@ -1819,7 +1803,7 @@ test("desktop check --repro reports the differing file and byte offset", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const commandRunner = deterministicBuildRunner()
         let packagePass = 0
         const packageRunner = deterministicPackageRunner(() => {
@@ -1867,7 +1851,7 @@ test("desktop check --repro --json returns structured diff reports", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const commandRunner = deterministicBuildRunner()
         let packagePass = 0
         const packageRunner = deterministicPackageRunner(() => {
@@ -1995,7 +1979,7 @@ reproSymlinkTest(
           mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
         )
         try {
-          yield* Effect.promise(() => writePlaygroundFixture(directory))
+          yield* writePlaygroundFixture(directory)
           const commandRunner = deterministicBuildRunner()
           let pass = 0
           const packageRunner = symlinkDriftPackageRunner(() => {
@@ -2049,7 +2033,7 @@ reproSymlinkTest("desktop check --repro reports symlink-target drift between two
         mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const commandRunner = deterministicBuildRunner()
         let pass = 0
         const packageRunner = symlinkDriftPackageRunner(() => {
@@ -2103,7 +2087,7 @@ reproSymlinkTest("desktop check --repro passes when both passes emit identical s
         mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const commandRunner = deterministicBuildRunner()
         const packageRunner = symlinkDriftPackageRunner(() => "symlink")
         const stdout: string[] = []
@@ -2148,7 +2132,7 @@ reproModeTest("desktop check --repro reports mode drift between byte-identical f
         mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const commandRunner = deterministicBuildRunner()
         let pass = 0
         const packageRunner = modeDriftPackageRunner(() => {
@@ -2202,7 +2186,7 @@ reproModeTest("desktop check --repro reports mode drift when only read/write bit
         mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const commandRunner = deterministicBuildRunner()
         let pass = 0
         const packageRunner = modeDriftPackageRunner(() => {
@@ -2256,7 +2240,7 @@ reproModeTest("desktop check --repro passes when both passes set the same execut
         mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const commandRunner = deterministicBuildRunner()
         const packageRunner = modeDriftPackageRunner(() => 0o755)
         const stdout: string[] = []
@@ -2298,8 +2282,9 @@ test("desktop check --api writes and verifies public API snapshots", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
         )
         const writeStdout: string[] = []
 
@@ -2340,8 +2325,9 @@ test("desktop check --api rejects snapshots for the wrong package", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
         )
         yield* runCli({
           argv: ["check", "--api", "--write"],
@@ -2393,8 +2379,9 @@ test("desktop check --api ignores non-package directories", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
         )
         yield* Effect.promise(() =>
           mkdir(join(directory, "packages", ".cache"), { recursive: true })
@@ -2425,8 +2412,9 @@ test("desktop check --api rejects invalid package names", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
         )
         yield* Effect.promise(() =>
           writeFile(
@@ -2474,8 +2462,9 @@ test("desktop check --api fails when the public API changes without a snapshot u
         mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
         )
         yield* runCli({
           argv: ["check", "--api", "--write"],
@@ -2516,8 +2505,9 @@ test("desktop check --api fails when a public signature changes without a snapsh
         mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
         )
         yield* runCli({
           argv: ["check", "--api", "--write"],
@@ -2558,9 +2548,7 @@ test("desktop check --api --json reports missing snapshots as typed values", () 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeApiFixturePackage(directory, "export const present = true\n")
-        )
+        yield* writeApiFixturePackage(directory, "export const present = true\n")
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -2589,18 +2577,16 @@ test("desktop check --docs verifies manifest pages and runnable examples", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeDocsFixture(directory, {
-            "docs/installation.md": [
-              "# Installation",
-              "",
-              "```ts run",
-              "const value: string = 'docs'",
-              "if (value.length === 0) throw new Error('empty')",
-              "```"
-            ].join("\n")
-          })
-        )
+        yield* writeDocsFixture(directory, {
+          "docs/installation.md": [
+            "# Installation",
+            "",
+            "```ts run",
+            "const value: string = 'docs'",
+            "if (value.length === 0) throw new Error('empty')",
+            "```"
+          ].join("\n")
+        })
         const stdout: string[] = []
 
         const exitCode = yield* runCli({
@@ -2628,11 +2614,9 @@ test("desktop check --docs reports missing pages as typed values", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeDocsManifest(directory, [
-            { id: "installation", title: "Installation", path: "docs/missing.md" }
-          ])
-        )
+        yield* writeDocsManifest(directory, [
+          { id: "installation", title: "Installation", path: "docs/missing.md" }
+        ])
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -2661,9 +2645,9 @@ test("desktop check --docs rejects non-string page paths as typed manifest error
         mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeDocsManifest(directory, [{ id: "installation", title: "Installation", path: 42 }])
-        )
+        yield* writeDocsManifest(directory, [
+          { id: "installation", title: "Installation", path: 42 }
+        ])
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -2737,17 +2721,15 @@ test("desktop check --docs reports failing runnable examples", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeDocsFixture(directory, {
-            "docs/installation.md": [
-              "# Installation",
-              "",
-              "```ts run",
-              "throw new Error('broken docs example')",
-              "```"
-            ].join("\n")
-          })
-        )
+        yield* writeDocsFixture(directory, {
+          "docs/installation.md": [
+            "# Installation",
+            "",
+            "```ts run",
+            "throw new Error('broken docs example')",
+            "```"
+          ].join("\n")
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -2780,9 +2762,7 @@ test("desktop check --docs rejects placeholder examples on required pages", () =
             readFile(join(REPO_ROOT, "docs", "docs-manifest.json"), "utf8")
           )
         )
-        yield* Effect.promise(() =>
-          writeDocsManifest(directory, sourceManifest.pages, "engineering/SPEC.md §25.3")
-        )
+        yield* writeDocsManifest(directory, sourceManifest.pages, "engineering/SPEC.md §25.3")
         const coverageTokens = [
           "runCli",
           "ReactDesktop",
@@ -2861,17 +2841,15 @@ test("desktop check --docs times out hanging runnable examples", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeDocsFixture(directory, {
-            "docs/installation.md": [
-              "# Installation",
-              "",
-              "```ts run",
-              "await new Promise(() => {})",
-              "```"
-            ].join("\n")
-          })
-        )
+        yield* writeDocsFixture(directory, {
+          "docs/installation.md": [
+            "# Installation",
+            "",
+            "```ts run",
+            "await new Promise(() => {})",
+            "```"
+          ].join("\n")
+        })
         const hangingRunner: DocsExampleRunner = () => Effect.never
 
         const result = yield* Effect.exit(
@@ -2906,9 +2884,9 @@ test("desktop check --docs rejects manifest paths outside the repo", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeDocsManifest(directory, [{ id: "escape", title: "Escape", path: "../outside.md" }])
-        )
+        yield* writeDocsManifest(directory, [
+          { id: "escape", title: "Escape", path: "../outside.md" }
+        ])
 
         const stderr: string[] = []
         const exitCode = yield* runCli({
@@ -2937,9 +2915,9 @@ test("desktop check --docs rejects absolute manifest paths", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeDocsManifest(directory, [{ id: "absolute", title: "Absolute", path: "/etc/passwd" }])
-        )
+        yield* writeDocsManifest(directory, [
+          { id: "absolute", title: "Absolute", path: "/etc/passwd" }
+        ])
 
         const stderr: string[] = []
         const exitCode = yield* runCli({
@@ -2968,7 +2946,7 @@ test("desktop check --release verifies the release supply-chain posture", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
       )
       try {
-        yield* Effect.promise(() => writeReleaseFixture(directory))
+        yield* writeReleaseFixture(directory)
         const stdout: string[] = []
 
         const exitCode = yield* runCli({
@@ -2997,30 +2975,28 @@ test("desktop check --release rejects incomplete spec gate identities", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            checklist: {
-              schemaVersion: 1,
-              source: "engineering/SPEC.md §25.4",
-              subjects: [
-                {
-                  id: "inspector",
-                  configPath: "apps/inspector/desktop.config.ts",
-                  distDir: "apps/inspector/dist",
-                  requiredCommands: [
-                    "bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts"
-                  ]
-                }
-              ],
-              gates: Array.from({ length: 8 }, (_, index) => ({
-                id: `gate-${index}`,
-                title: `Gate ${index}`,
-                kind: "workflow-step",
-                evidence: [".github/workflows/release.yml#Gate"]
-              }))
-            }
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            schemaVersion: 1,
+            source: "engineering/SPEC.md §25.4",
+            subjects: [
+              {
+                id: "inspector",
+                configPath: "apps/inspector/desktop.config.ts",
+                distDir: "apps/inspector/dist",
+                requiredCommands: [
+                  "bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts"
+                ]
+              }
+            ],
+            gates: Array.from({ length: 8 }, (_, index) => ({
+              id: `gate-${index}`,
+              title: `Gate ${index}`,
+              kind: "workflow-step",
+              evidence: [".github/workflows/release.yml#Gate"]
+            }))
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3049,14 +3025,12 @@ test("desktop check --release rejects malformed checklist shape", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            checklist: {
-              schemaVersion: 1,
-              source: "engineering/SPEC.md §25.4"
-            }
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            schemaVersion: 1,
+            source: "engineering/SPEC.md §25.4"
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3089,35 +3063,33 @@ test("desktop check --release verifies configured non-inspector subjects", () =>
         if (!isReleaseChecklistFixture(checklist)) {
           throw new Error("invalid release checklist fixture")
         }
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            checklist: {
-              ...checklist,
-              subjects: [
-                ...checklist.subjects,
-                {
-                  id: "basic-template",
-                  configPath: "apps/fixture-a11y/desktop.config.ts",
-                  distDir: "apps/fixture-a11y/dist",
-                  requiredCommands: [
-                    "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts",
-                    "bun packages/cli/src/bin.ts package --config apps/fixture-a11y/desktop.config.ts",
-                    "bun packages/cli/src/bin.ts check --repro --config apps/fixture-a11y/desktop.config.ts"
-                  ]
-                }
-              ]
-            },
-            releaseWorkflow: [
-              releaseWorkflowFixture(),
-              "      - name: Build basic template",
-              "        run: bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts",
-              "      - name: Package basic template",
-              "        run: bun packages/cli/src/bin.ts package --config apps/fixture-a11y/desktop.config.ts",
-              "      - name: Repro basic template",
-              "        run: bun packages/cli/src/bin.ts check --repro --config apps/fixture-a11y/desktop.config.ts"
-            ].join("\n")
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            subjects: [
+              ...checklist.subjects,
+              {
+                id: "basic-template",
+                configPath: "apps/fixture-a11y/desktop.config.ts",
+                distDir: "apps/fixture-a11y/dist",
+                requiredCommands: [
+                  "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts",
+                  "bun packages/cli/src/bin.ts package --config apps/fixture-a11y/desktop.config.ts",
+                  "bun packages/cli/src/bin.ts check --repro --config apps/fixture-a11y/desktop.config.ts"
+                ]
+              }
+            ]
+          },
+          releaseWorkflow: [
+            releaseWorkflowFixture(),
+            "      - name: Build basic template",
+            "        run: bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts",
+            "      - name: Package basic template",
+            "        run: bun packages/cli/src/bin.ts package --config apps/fixture-a11y/desktop.config.ts",
+            "      - name: Repro basic template",
+            "        run: bun packages/cli/src/bin.ts check --repro --config apps/fixture-a11y/desktop.config.ts"
+          ].join("\n")
+        })
         const stdout: string[] = []
 
         const exitCode = yield* runCli({
@@ -3144,11 +3116,9 @@ test("desktop check --release rejects runner-local release signing policy", () =
         mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            keyManagement: "# Release Key Management\n\nHSM-backed release signing uses rotation.\n"
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          keyManagement: "# Release Key Management\n\nHSM-backed release signing uses rotation.\n"
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3180,18 +3150,16 @@ test("desktop check --release rejects unknown evidence sources", () =>
         if (!isReleaseChecklistFixture(checklist)) {
           throw new Error("invalid release checklist fixture")
         }
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            checklist: {
-              ...checklist,
-              gates: checklist.gates.map((gate) =>
-                gate.id === "spdx-sbom"
-                  ? { ...gate, evidence: ["engineering/security/unknown.md#Imaginary Evidence"] }
-                  : gate
-              )
-            }
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            gates: checklist.gates.map((gate) =>
+              gate.id === "spdx-sbom"
+                ? { ...gate, evidence: ["engineering/security/unknown.md#Imaginary Evidence"] }
+                : gate
+            )
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3224,18 +3192,16 @@ test("desktop check --release rejects empty evidence anchors", () =>
         if (!isReleaseChecklistFixture(checklist)) {
           throw new Error("invalid release checklist fixture")
         }
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            checklist: {
-              ...checklist,
-              gates: checklist.gates.map((gate) =>
-                gate.id === "spdx-sbom"
-                  ? { ...gate, evidence: [".github/workflows/release.yml#"] }
-                  : gate
-              )
-            }
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            gates: checklist.gates.map((gate) =>
+              gate.id === "spdx-sbom"
+                ? { ...gate, evidence: [".github/workflows/release.yml#"] }
+                : gate
+            )
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3268,21 +3234,19 @@ test("desktop check --release rejects evidence from another gate", () =>
         if (!isReleaseChecklistFixture(checklist)) {
           throw new Error("invalid release checklist fixture")
         }
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            checklist: {
-              ...checklist,
-              gates: checklist.gates.map((gate) =>
-                gate.id === "secret-scanning"
-                  ? {
-                      ...gate,
-                      evidence: ["engineering/security/release-settings.md#GitHub-hosted runners"]
-                    }
-                  : gate
-              )
-            }
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            gates: checklist.gates.map((gate) =>
+              gate.id === "secret-scanning"
+                ? {
+                    ...gate,
+                    evidence: ["engineering/security/release-settings.md#GitHub-hosted runners"]
+                  }
+                : gate
+            )
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3315,18 +3279,16 @@ test("desktop check --release rejects stale workflow evidence in the checklist",
         if (!isReleaseChecklistFixture(checklist)) {
           throw new Error("invalid release checklist fixture")
         }
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            checklist: {
-              ...checklist,
-              gates: checklist.gates.map((gate) =>
-                gate.id === "spdx-sbom"
-                  ? { ...gate, evidence: [".github/workflows/release.yml#Missing SBOM Step"] }
-                  : gate
-              )
-            }
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            gates: checklist.gates.map((gate) =>
+              gate.id === "spdx-sbom"
+                ? { ...gate, evidence: [".github/workflows/release.yml#Missing SBOM Step"] }
+                : gate
+            )
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3354,14 +3316,12 @@ test("desktop check --release rejects unpinned release workflow actions", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            releaseWorkflow: releaseWorkflowFixture().replace(
-              "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0",
-              "actions/attest@v4"
-            )
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          releaseWorkflow: releaseWorkflowFixture().replace(
+            "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0",
+            "actions/attest@v4"
+          )
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3389,17 +3349,15 @@ test("desktop check --release ignores uses text inside run scripts", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            releaseWorkflow: [
-              releaseWorkflowFixture(),
-              "      - name: Document action syntax",
-              "        run: |",
-              "          # uses: actions/checkout@v6",
-              "          echo done"
-            ].join("\n")
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          releaseWorkflow: [
+            releaseWorkflowFixture(),
+            "      - name: Document action syntax",
+            "        run: |",
+            "          # uses: actions/checkout@v6",
+            "          echo done"
+          ].join("\n")
+        })
         const stdout: string[] = []
 
         const exitCode = yield* runCli({
@@ -3426,24 +3384,22 @@ test("desktop check --release rejects subject package before build", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            releaseWorkflow: releaseWorkflowFixture().replace(
-              [
-                "      - name: Build desktop app",
-                "        run: bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts",
-                "      - name: Package release artifact",
-                "        run: bun packages/cli/src/bin.ts package --config apps/inspector/desktop.config.ts"
-              ].join("\n"),
-              [
-                "      - name: Package release artifact",
-                "        run: bun packages/cli/src/bin.ts package --config apps/inspector/desktop.config.ts",
-                "      - name: Build desktop app",
-                "        run: bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts"
-              ].join("\n")
-            )
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          releaseWorkflow: releaseWorkflowFixture().replace(
+            [
+              "      - name: Build desktop app",
+              "        run: bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts",
+              "      - name: Package release artifact",
+              "        run: bun packages/cli/src/bin.ts package --config apps/inspector/desktop.config.ts"
+            ].join("\n"),
+            [
+              "      - name: Package release artifact",
+              "        run: bun packages/cli/src/bin.ts package --config apps/inspector/desktop.config.ts",
+              "      - name: Build desktop app",
+              "        run: bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts"
+            ].join("\n")
+          )
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3478,23 +3434,21 @@ test("desktop check --release reports missing subject workflow command", () =>
         if (!isReleaseChecklistFixture(checklist)) {
           throw new Error("invalid release checklist fixture")
         }
-        yield* Effect.promise(() =>
-          writeReleaseFixture(directory, {
-            checklist: {
-              ...checklist,
-              subjects: [
-                {
-                  id: "basic-template",
-                  configPath: "apps/fixture-a11y/desktop.config.ts",
-                  distDir: "apps/fixture-a11y/dist",
-                  requiredCommands: [
-                    "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts"
-                  ]
-                }
-              ]
-            }
-          })
-        )
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            subjects: [
+              {
+                id: "basic-template",
+                configPath: "apps/fixture-a11y/desktop.config.ts",
+                distDir: "apps/fixture-a11y/dist",
+                requiredCommands: [
+                  "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts"
+                ]
+              }
+            ]
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3526,7 +3480,7 @@ test("desktop check --release rejects empty CVSS exemption sections", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
       )
       try {
-        yield* Effect.promise(() => writeReleaseFixture(directory))
+        yield* writeReleaseFixture(directory)
         yield* Effect.promise(() =>
           mkdir(join(directory, "engineering", "security", "exemptions"), { recursive: true })
         )
@@ -3564,7 +3518,7 @@ test("desktop check --a11y verifies template accessibility evidence", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
       )
       try {
-        yield* Effect.promise(() => writeAccessibilityFixture(directory))
+        yield* writeAccessibilityFixture(directory)
         const stdout: string[] = []
 
         const exitCode = yield* runCli({
@@ -3592,16 +3546,14 @@ test("desktop check --a11y rejects hardcoded template English outside i18n files
         mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            appSource: [
-              "import { templateMessages } from './messages'",
-              "export function App() {",
-              "  return <button>Open window</button>",
-              "}"
-            ].join("\n")
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          appSource: [
+            "import { templateMessages } from './messages'",
+            "export function App() {",
+            "  return <button>Open window</button>",
+            "}"
+          ].join("\n")
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3629,16 +3581,14 @@ test("desktop check --a11y rejects single-word hardcoded template labels", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            appSource: [
-              "import { templateMessages } from './messages'",
-              "export function App() {",
-              "  return <button>Settings</button>",
-              "}"
-            ].join("\n")
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          appSource: [
+            "import { templateMessages } from './messages'",
+            "export function App() {",
+            "  return <button>Settings</button>",
+            "}"
+          ].join("\n")
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3666,11 +3616,9 @@ test("desktop check --a11y rejects zero-pass axe reports", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            axePasses: []
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          axePasses: []
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3699,15 +3647,13 @@ test("desktop check --a11y rejects comment-only required tokens", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            styles: [
-              "/* prefers-color-scheme */",
-              "/* prefers-reduced-motion */",
-              ":root { color-scheme: light; }"
-            ].join("\n")
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          styles: [
+            "/* prefers-color-scheme */",
+            "/* prefers-reduced-motion */",
+            ":root { color-scheme: light; }"
+          ].join("\n")
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3736,14 +3682,12 @@ test("desktop check --a11y binds RTL audit modes to Arabic rendered state", () =
         mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            axeUrlForMode: (mode) =>
-              mode.endsWith("rtl")
-                ? `fixture:${mode}?dir=rtl&color-scheme=${mode.startsWith("dark") ? "dark" : "light"}`
-                : defaultAxeUrlForMode(mode)
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          axeUrlForMode: (mode) =>
+            mode.endsWith("rtl")
+              ? `fixture:${mode}?dir=rtl&color-scheme=${mode.startsWith("dark") ? "dark" : "light"}`
+              : defaultAxeUrlForMode(mode)
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3773,15 +3717,13 @@ test("desktop check --a11y rejects missing manifest template arrays", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            manifest: {
-              schemaVersion: 1,
-              source: "engineering/SPEC.md §25.5",
-              release: "v1.0.0"
-            }
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            schemaVersion: 1,
+            source: "engineering/SPEC.md §25.5",
+            release: "v1.0.0"
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3814,19 +3756,17 @@ test("desktop check --a11y binds audit mode IDs to semantics", () =>
         if (!isAccessibilityManifestFixture(manifest)) {
           throw new Error("invalid accessibility manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            manifest: {
-              ...manifest,
-              templates: manifest.templates.map((template) => ({
-                ...template,
-                auditModes: template.auditModes.map((mode) =>
-                  mode.id === "light-ltr" ? { ...mode, direction: "rtl" } : mode
-                )
-              }))
-            }
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              auditModes: template.auditModes.map((mode) =>
+                mode.id === "light-ltr" ? { ...mode, direction: "rtl" } : mode
+              )
+            }))
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3855,11 +3795,9 @@ test("desktop check --a11y binds Pa11y audit files to modes", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            pa11yUrlForMode: () => defaultAxeUrlForMode("light-ltr")
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          pa11yUrlForMode: () => defaultAxeUrlForMode("light-ltr")
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3893,24 +3831,22 @@ test("desktop check --a11y rejects contrast below the WCAG floor", () =>
         if (!isAccessibilityManifestFixture(manifest)) {
           throw new Error("invalid accessibility manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            manifest: {
-              ...manifest,
-              templates: manifest.templates.map((template) => ({
-                ...template,
-                contrastPairs: [
-                  {
-                    id: "bad-body",
-                    foreground: "#777777",
-                    background: "#888888",
-                    minimumRatio: 4.5
-                  }
-                ]
-              }))
-            }
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              contrastPairs: [
+                {
+                  id: "bad-body",
+                  foreground: "#777777",
+                  background: "#888888",
+                  minimumRatio: 4.5
+                }
+              ]
+            }))
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3942,24 +3878,22 @@ test("desktop check --a11y rejects invalid contrast colors", () =>
         if (!isAccessibilityManifestFixture(manifest)) {
           throw new Error("invalid accessibility manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            manifest: {
-              ...manifest,
-              templates: manifest.templates.map((template) => ({
-                ...template,
-                contrastPairs: [
-                  {
-                    id: "bad-color",
-                    foreground: "not-a-color",
-                    background: "#ffffff",
-                    minimumRatio: 4.5
-                  }
-                ]
-              }))
-            }
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              contrastPairs: [
+                {
+                  id: "bad-color",
+                  foreground: "not-a-color",
+                  background: "#ffffff",
+                  minimumRatio: 4.5
+                }
+              ]
+            }))
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -3992,24 +3926,22 @@ test("desktop check --a11y rejects invalid contrast minimums", () =>
         if (!isAccessibilityManifestFixture(manifest)) {
           throw new Error("invalid accessibility manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            manifest: {
-              ...manifest,
-              templates: manifest.templates.map((template) => ({
-                ...template,
-                contrastPairs: [
-                  {
-                    id: "bad-minimum",
-                    foreground: "#020617",
-                    background: "#f8fafc",
-                    minimumRatio: -1
-                  }
-                ]
-              }))
-            }
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              contrastPairs: [
+                {
+                  id: "bad-minimum",
+                  foreground: "#020617",
+                  background: "#f8fafc",
+                  minimumRatio: -1
+                }
+              ]
+            }))
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -4042,17 +3974,15 @@ test("desktop check --a11y rejects paths outside the workspace", () =>
         if (!isAccessibilityManifestFixture(manifest)) {
           throw new Error("invalid accessibility manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeAccessibilityFixture(directory, {
-            manifest: {
-              ...manifest,
-              templates: manifest.templates.map((template) => ({
-                ...template,
-                requiredTokens: [{ file: "../outside-token.txt", token: "resolveTemplateLocale" }]
-              }))
-            }
-          })
-        )
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              requiredTokens: [{ file: "../outside-token.txt", token: "resolveTemplateLocale" }]
+            }))
+          }
+        })
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -4081,7 +4011,7 @@ test("desktop check --a11y rejects screencast directories", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
       )
       try {
-        yield* Effect.promise(() => writeAccessibilityFixture(directory))
+        yield* writeAccessibilityFixture(directory)
         const screencastPath = join(
           directory,
           "engineering",
@@ -4120,7 +4050,7 @@ test("semver guard verifies additive release posture", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
       )
       try {
-        yield* Effect.promise(() => writeSemverFixture(directory, { packageVersion: "1.1.0" }))
+        yield* writeSemverFixture(directory, { packageVersion: "1.1.0" })
         const report = yield* runSemverGuard({
           cwd: directory,
           publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
@@ -4142,7 +4072,7 @@ test("semver guard rejects package version drift from the release manifest", () 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
       )
       try {
-        yield* Effect.promise(() => writeSemverFixture(directory, { packageVersion: "0.0.0" }))
+        yield* writeSemverFixture(directory, { packageVersion: "0.0.0" })
         const error = yield* runSemverGuard({
           cwd: directory,
           publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
@@ -4169,12 +4099,10 @@ test("semver guard rejects manifest with missing bridgeEnvelopePolicy", () =>
         if (!isSemverManifestFixture(manifest)) {
           throw new Error("invalid semver manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            packageVersion: "1.1.0",
-            manifest: { ...manifest, bridgeEnvelopePolicy: undefined }
-          })
-        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, bridgeEnvelopePolicy: undefined }
+        })
         const error = yield* runSemverGuard({
           cwd: directory,
           publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
@@ -4199,12 +4127,10 @@ test("semver guard passes manifest publicApiSnapshots to the API checker", () =>
         if (!isSemverManifestFixture(manifest)) {
           throw new Error("invalid semver manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            packageVersion: "1.1.0",
-            manifest: { ...manifest, publicApiSnapshots: "api/custom-snapshots" }
-          })
-        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, publicApiSnapshots: "api/custom-snapshots" }
+        })
         let observedSnapshotRoot = ""
 
         yield* runSemverGuard({
@@ -4233,12 +4159,10 @@ test("semver guard rejects escaping publicApiSnapshots roots", () =>
         if (!isSemverManifestFixture(manifest)) {
           throw new Error("invalid semver manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            packageVersion: "1.1.0",
-            manifest: { ...manifest, publicApiSnapshots: "../api/snapshots" }
-          })
-        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, publicApiSnapshots: "../api/snapshots" }
+        })
 
         const error = yield* runSemverGuard({
           cwd: directory,
@@ -4264,12 +4188,10 @@ test("semver guard rejects empty public API snapshot paths", () =>
         if (!isSemverManifestFixture(manifest)) {
           throw new Error("invalid semver manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            packageVersion: "1.1.0",
-            manifest: { ...manifest, publicApiSnapshots: "" }
-          })
-        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, publicApiSnapshots: "" }
+        })
 
         const error = yield* runSemverGuard({
           cwd: directory,
@@ -4302,15 +4224,13 @@ test("semver guard rejects verification matrices outside the repo", () =>
         yield* Effect.promise(() =>
           writeFile(outsideMatrix, stringifyJson(semverMatrixFixture(), 2))
         )
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            packageVersion: "1.1.0",
-            manifest: {
-              ...manifest,
-              verificationMatrix: relative(directory, outsideMatrix)
-            }
-          })
-        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: {
+            ...manifest,
+            verificationMatrix: relative(directory, outsideMatrix)
+          }
+        })
 
         const error = yield* runSemverGuard({
           cwd: directory,
@@ -4337,12 +4257,10 @@ test("semver guard rejects missing Appendix C rows", () =>
         if (!isSemverManifestFixture(manifest)) {
           throw new Error("invalid semver manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            packageVersion: "1.1.0",
-            manifest: { ...manifest, appendixCRows: ["C.54", "C.404"] }
-          })
-        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, appendixCRows: ["C.54", "C.404"] }
+        })
         const exit = yield* Effect.exit(
           runSemverGuard({
             cwd: directory,
@@ -4384,13 +4302,11 @@ test("semver guard rejects malformed Appendix C matrix coverage", () =>
           if (!isSemverManifestFixture(manifest)) {
             throw new Error("invalid semver manifest fixture")
           }
-          yield* Effect.promise(() =>
-            writeSemverFixture(directory, {
-              packageVersion: "1.1.0",
-              manifest: { ...manifest, ...testCase.manifestPatch },
-              matrix: testCase.matrix
-            })
-          )
+          yield* writeSemverFixture(directory, {
+            packageVersion: "1.1.0",
+            manifest: { ...manifest, ...testCase.manifestPatch },
+            matrix: testCase.matrix
+          })
 
           const error = yield* runSemverGuard({
             cwd: directory,
@@ -4452,12 +4368,10 @@ test("semver guard rejects weakened semver policy fields", () =>
           if (!isSemverManifestFixture(manifest)) {
             throw new Error("invalid semver manifest fixture")
           }
-          yield* Effect.promise(() =>
-            writeSemverFixture(directory, {
-              packageVersion: "1.1.0",
-              manifest: { ...manifest, ...testCase.manifestPatch }
-            })
-          )
+          yield* writeSemverFixture(directory, {
+            packageVersion: "1.1.0",
+            manifest: { ...manifest, ...testCase.manifestPatch }
+          })
 
           const error = yield* runSemverGuard({
             cwd: directory,
@@ -4479,7 +4393,7 @@ test("semver guard allows additive public API changes and blocks removals", () =
         mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
       )
       try {
-        yield* Effect.promise(() => writeSemverFixture(directory, { packageVersion: "1.1.0" }))
+        yield* writeSemverFixture(directory, { packageVersion: "1.1.0" })
         const additive = yield* runSemverGuard({
           cwd: directory,
           publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
@@ -4511,12 +4425,10 @@ test("semver guard rejects additive public API changes in patch releases", () =>
         if (!isSemverManifestFixture(manifest)) {
           throw new Error("invalid semver manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            packageVersion: "1.1.1",
-            manifest: { ...manifest, release: "1.1.1", releaseKind: "patch" }
-          })
-        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.1",
+          manifest: { ...manifest, release: "1.1.1", releaseKind: "patch" }
+        })
 
         const exit = yield* Effect.exit(
           runSemverGuard({
@@ -4543,12 +4455,10 @@ test("semver guard rejects release kind drift from the semantic version", () =>
         if (!isSemverManifestFixture(manifest)) {
           throw new Error("invalid semver manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            packageVersion: "1.1.1",
-            manifest: { ...manifest, release: "1.1.1", releaseKind: "minor" }
-          })
-        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.1",
+          manifest: { ...manifest, release: "1.1.1", releaseKind: "minor" }
+        })
 
         const exit = yield* Effect.exit(
           runSemverGuard({
@@ -4575,12 +4485,10 @@ test("semver guard rejects padded release versions", () =>
         if (!isSemverManifestFixture(manifest)) {
           throw new Error("invalid semver manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            packageVersion: "01.02.03",
-            manifest: { ...manifest, release: "01.02.03", releaseKind: "patch" }
-          })
-        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "01.02.03",
+          manifest: { ...manifest, release: "01.02.03", releaseKind: "patch" }
+        })
 
         const exit = yield* Effect.exit(
           runSemverGuard({
@@ -4607,17 +4515,15 @@ test("semver guard rejects wrong-typed manifest fields", () =>
         if (!isSemverManifestFixture(manifest)) {
           throw new Error("invalid semver manifest fixture")
         }
-        yield* Effect.promise(() =>
-          writeSemverFixture(directory, {
-            manifest: {
-              ...manifest,
-              deprecationPolicy: {
-                ...manifest.deprecationPolicy,
-                minimumMinorReleases: "3"
-              }
+        yield* writeSemverFixture(directory, {
+          manifest: {
+            ...manifest,
+            deprecationPolicy: {
+              ...manifest.deprecationPolicy,
+              minimumMinorReleases: "3"
             }
-          })
-        )
+          }
+        })
 
         const exit = yield* Effect.exit(
           runSemverGuard({
@@ -4640,15 +4546,13 @@ test("desktop sign signs macOS app bundle with hardened runtime entitlements", (
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
-            },
-            permissions: ["device.camera", "network.client"]
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "app"))
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
+          },
+          permissions: ["device.camera", "network.client"]
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const calls: string[] = []
         const runner: SignCommandRunner = (invocation) => {
           calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
@@ -4703,15 +4607,13 @@ test("desktop sign rejects malformed permission entries before macOS codesign", 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
-            },
-            permissions: [42]
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "app"))
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
+          },
+          permissions: [42]
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
@@ -4741,8 +4643,8 @@ test("desktop sign fails macOS signing without a Developer ID identity", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "app"))
+        yield* writePlaygroundFixture(directory)
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -4773,17 +4675,15 @@ test("desktop sign Authenticode-signs Windows MSI with RFC 3161 timestamp", () =
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              windows: {
-                thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
-                timestampUrl: "http://timestamp.digicert.com"
-              }
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            windows: {
+              thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
+              timestampUrl: "http://timestamp.digicert.com"
             }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "windows-x64", "msi"))
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "windows-x64", "msi")
         const calls: string[] = []
         const runner: SignCommandRunner = (invocation) => {
           calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
@@ -4819,17 +4719,15 @@ test("desktop sign rejects invalid Windows timestamp URLs before signtool", () =
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              windows: {
-                thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
-                timestampUrl: "not a url"
-              }
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            windows: {
+              thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
+              timestampUrl: "not a url"
             }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "windows-x64", "msi"))
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "windows-x64", "msi")
         const calls: string[] = []
         const stderr: string[] = []
 
@@ -4865,14 +4763,12 @@ test("desktop sign rejects malformed Windows certificate thumbprints", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              windows: { thumbprint: "not-a-sha1", timestampUrl: "http://timestamp.digicert.com" }
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "windows-x64", "msi"))
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            windows: { thumbprint: "not-a-sha1", timestampUrl: "http://timestamp.digicert.com" }
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "windows-x64", "msi")
         const calls: string[] = []
         const stderr: string[] = []
 
@@ -4914,16 +4810,14 @@ test("desktop sign resolves Windows PFX password env without recording the secre
         yield* Effect.sync(() =>
           writeTestEnv("EFFECT_DESKTOP_TEST_PFX_PASSWORD", "secret-password")
         )
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              windows: {
-                pfx: { path: "certs/release.pfx", passwordEnv: "EFFECT_DESKTOP_TEST_PFX_PASSWORD" }
-              }
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            windows: {
+              pfx: { path: "certs/release.pfx", passwordEnv: "EFFECT_DESKTOP_TEST_PFX_PASSWORD" }
             }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "windows-x64", "msi"))
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "windows-x64", "msi")
         let signArgs: readonly string[] = []
         const runner: SignCommandRunner = (invocation) => {
           if (invocation.step === "windows-authenticode") {
@@ -4972,12 +4866,8 @@ test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-        )
+        yield* writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
         const calls: string[] = []
         const runner: SignCommandRunner = (invocation) =>
           Effect.gen(function* () {
@@ -5041,12 +4931,8 @@ test("desktop sign rejects tampered package artifacts before signing", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-tampered-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-        )
+        yield* writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
         yield* Effect.promise(() => writeFile(artifactPath, "tampered"))
         const calls: string[] = []
         const stderr: string[] = []
@@ -5082,12 +4968,8 @@ test("desktop sign rejects Linux signable artifacts without linuxIntegration met
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-no-linux-int-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-        )
+        yield* writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
         const artifactRoot = dirname(artifactPath)
         const artifactJsonPath = join(artifactRoot, "artifact.json")
         const artifactJson = {
@@ -5142,11 +5024,11 @@ test("desktop sign rejects artifact fileName that escapes the metadata directory
           mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-traversal-"))
         )
         try {
-          yield* Effect.promise(() =>
-            writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
-          )
-          const artifactPath = yield* Effect.promise(() =>
-            writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+          yield* writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+          const artifactPath = yield* writePackagedArtifactFixture(
+            directory,
+            "linux-x64",
+            "appimage"
           )
           const artifactRoot = dirname(artifactPath)
           const linuxDir = dirname(artifactRoot)
@@ -5211,18 +5093,14 @@ test("desktop sign rejects path-shaped app.id before writing Linux sidecars", ()
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-id-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "../../../../escaped",
-              name: "Effect Desktop Playground",
-              version: "0.0.0"
-            }
-          })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "../../../../escaped",
+            name: "Effect Desktop Playground",
+            version: "0.0.0"
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
         const artifactRoot = dirname(artifactPath)
         const calls: string[] = []
         const runner: SignCommandRunner = (invocation) => {
@@ -5263,16 +5141,12 @@ test("desktop sign skips artifacts whose metadata target does not match the requ
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-target-mismatch-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
-            }
-          })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "app")
-        )
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
         const artifactJson = {
           ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
@@ -5318,15 +5192,11 @@ test("desktop sign rejects stale artifacts from a different app identity", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-identity-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
-            signing: { linux: { gpgKey: "ABCD1234" } }
-          })
-        )
-        yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
+          signing: { linux: { gpgKey: "ABCD1234" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
         const calls: string[] = []
         const runner: SignCommandRunner = (invocation) => {
           calls.push(invocation.step)
@@ -5363,14 +5233,10 @@ test("desktop notarize skips artifacts whose metadata target does not match the 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-target-mismatch-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "app")
-        )
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
         const artifactJson = {
           ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
@@ -5416,13 +5282,11 @@ test("desktop notarize rejects stale artifacts from a different app identity", (
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-identity-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "app"))
+        yield* writePlaygroundFixture(directory, {
+          app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const calls: string[] = []
         const runner: NotarizeCommandRunner = (invocation) => {
           calls.push(invocation.step)
@@ -5459,14 +5323,10 @@ test("desktop notarize submits staples and assesses unstapled macOS artifacts", 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
-        const appPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "app")
-        )
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        const appPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const calls: string[] = []
         const runner: NotarizeCommandRunner = (invocation) => {
           calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
@@ -5535,14 +5395,10 @@ test("desktop notarize rejects tampered package artifacts before submission", ()
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-tampered-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
-        const appPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "app")
-        )
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        const appPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         yield* Effect.promise(() =>
           writeFile(join(appPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "tampered")
         )
@@ -5581,12 +5437,10 @@ test("desktop notarize is a no-op submit when staple validation already passes",
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const calls: string[] = []
         const runner: NotarizeCommandRunner = (invocation) => {
           calls.push(invocation.step)
@@ -5617,14 +5471,10 @@ test("desktop notarize assesses DMG artifacts as disk images", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-dmg-spctl-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
-        const dmgPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-        )
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        const dmgPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const calls: string[] = []
         const runner: NotarizeCommandRunner = (invocation) => {
           calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
@@ -5670,11 +5520,9 @@ test("desktop notarize rejects artifact file names outside the metadata director
           mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-containment-"))
         )
         try {
-          yield* Effect.promise(() =>
-            writePlaygroundFixture(directory, {
-              signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-            })
-          )
+          yield* writePlaygroundFixture(directory, {
+            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+          })
           const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
           const artifactRoot = join(outputRoot, "artifact-root")
           yield* Effect.promise(() => mkdir(artifactRoot, { recursive: true }))
@@ -5734,18 +5582,16 @@ test("desktop notarize accepts contained artifact file names with consecutive do
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-dotted-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
         const artifactRoot = join(outputRoot, "artifact-root")
         const fileName = "Effect..Desktop-0.0.0-macos-arm64.dmg"
         const artifactPath = join(artifactRoot, fileName)
         yield* Effect.promise(() => mkdir(artifactRoot, { recursive: true }))
         yield* Effect.promise(() => writeFile(artifactPath, "dmg"))
-        const digest = yield* Effect.promise(() => digestArtifactFixture(artifactPath))
+        const digest = yield* digestArtifactFixture(artifactPath)
         yield* Effect.promise(() =>
           writeFile(
             join(artifactRoot, "artifact.json"),
@@ -5793,13 +5639,11 @@ test("desktop notarize ignores zip sidecars that stapler cannot staple", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "zip"))
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "zip")
         const calls: string[] = []
         const runner: NotarizeCommandRunner = (invocation) => {
           calls.push(invocation.step)
@@ -5851,18 +5695,16 @@ test("desktop notarize redacts Apple ID password credentials in the persisted re
       const previousPassword = yield* Effect.sync(() => readTestEnv(passwordEnv))
       yield* Effect.sync(() => writeTestEnv(passwordEnv, "real-app-specific-password"))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: {
-              macos: {
-                teamId: "ABCD1234",
-                appleId: "release@example.com",
-                passwordEnv
-              }
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: {
+              teamId: "ABCD1234",
+              appleId: "release@example.com",
+              passwordEnv
             }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "app"))
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const calls: string[] = []
         const runner: NotarizeCommandRunner = (invocation) => {
           calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
@@ -5931,12 +5773,10 @@ test("desktop notarize surfaces rejected notarytool output", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "app"))
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const stderr: string[] = []
         const runner: NotarizeCommandRunner = (invocation) => {
           if (invocation.step === "stapler-validate") {
@@ -5979,12 +5819,10 @@ test("desktop notarize returns malformed notarytool JSON as a typed failure", ()
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "app"))
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const stderr: string[] = []
         const runner: NotarizeCommandRunner = (invocation) => {
           if (invocation.step === "stapler-validate") {
@@ -6026,19 +5864,17 @@ test("desktop publish writes a byte-stable Ed25519-signed update manifest", () =
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5,
-              minVersion: "0.0.0"
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            minVersion: "0.0.0"
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
 
         const stdout: string[] = []
         const exitCode = yield* runCli({
@@ -6113,19 +5949,17 @@ test("desktop publish rejects invalid publish timestamps before writing manifest
         const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
         yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
         try {
-          yield* Effect.promise(() =>
-            writePlaygroundFixture(directory, {
-              update: {
-                channel: "stable",
-                feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-                publicKey: key.publicKey,
-                privateKeyEnv,
-                keyVersion: 5,
-                minVersion: "0.0.0"
-              }
-            })
-          )
-          yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+          yield* writePlaygroundFixture(directory, {
+            update: {
+              channel: "stable",
+              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+              publicKey: key.publicKey,
+              privateKeyEnv,
+              keyVersion: 5,
+              minVersion: "0.0.0"
+            }
+          })
+          yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
           const manifestPath = join(
             directory,
             "apps",
@@ -6211,19 +6045,17 @@ test("desktop publish encodes artifact URLs for query-string feed URLs", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid?platform={platform}&channel={channel}",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5,
-              minVersion: "0.0.0"
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid?platform={platform}&channel={channel}",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            minVersion: "0.0.0"
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const exitCode = yield* runCli({
           argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
           cwd: directory,
@@ -6267,18 +6099,16 @@ test("desktop publish rejects tampered manifest signatures through canonical byt
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
 
         yield* runCli({
           argv: ["publish", "--config", "apps/inspector/desktop.config.ts"],
@@ -6334,20 +6164,16 @@ test("desktop publish rejects stale package metadata before signing the manifest
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-        )
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         yield* Effect.promise(() =>
           writeFile(
             join(dirname(artifactPath), "artifact.json"),
@@ -6399,15 +6225,13 @@ test("desktop publish rejects invalid app ids before writing manifests", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-appid-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "not a reverse dns id",
-              name: "Effect Desktop Playground",
-              version: "0.0.0"
-            }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "not a reverse dns id",
+            name: "Effect Desktop Playground",
+            version: "0.0.0"
+          }
+        })
         const manifestPath = join(
           directory,
           "apps",
@@ -6449,22 +6273,20 @@ test("desktop publish rejects non-SemVer app versions before writing manifests",
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "dev.effect-desktop.inspector",
-              name: "Effect Desktop Playground",
-              version: "not-semver"
-            },
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "not-semver"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
         const manifestPath = join(
           directory,
           "apps",
@@ -6511,18 +6333,16 @@ test("desktop publish rejects invalid feedUrl", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "not-a-url-{platform}-{channel}",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "not-a-url-{platform}-{channel}",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
@@ -6559,18 +6379,16 @@ test("desktop publish rejects feedUrl missing the {platform} placeholder", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
@@ -6607,18 +6425,16 @@ test("desktop publish rejects feedUrl missing the {channel} placeholder", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/stable.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/stable.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
@@ -6655,19 +6471,17 @@ test("desktop publish rejects stale artifacts from a different app identity", ()
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
 
         const manifestPath = join(
           directory,
@@ -6717,20 +6531,16 @@ test("desktop publish rejects artifact target mismatching platform directory", (
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-        )
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
         const artifactJson = {
           ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
@@ -6775,20 +6585,16 @@ test("desktop publish rejects artifact fileName that escapes the metadata direct
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-        )
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const artifactRoot = dirname(artifactPath)
         const macosDir = dirname(artifactRoot)
         const outsideName = "outside.dmg"
@@ -6858,24 +6664,22 @@ test("desktop publish rejects update.minVersion greater than app.version", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "dev.effect-desktop.inspector",
-              name: "Effect Desktop Playground",
-              version: "1.2.3"
-            },
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5,
-              minVersion: "9.0.0"
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            minVersion: "9.0.0"
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const manifestPath = join(
           directory,
           "apps",
@@ -6921,24 +6725,22 @@ test("desktop publish rejects rollback manifests without maxVersion", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "dev.effect-desktop.inspector",
-              name: "Effect Desktop Playground",
-              version: "1.2.3"
-            },
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5,
-              rollback: true
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            rollback: true
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const manifestPath = join(
           directory,
           "apps",
@@ -6984,27 +6786,23 @@ test("desktop publish accepts rollback manifests with maxVersion", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "dev.effect-desktop.inspector",
-              name: "Effect Desktop Playground",
-              version: "1.2.3"
-            },
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5,
-              rollback: true,
-              maxVersion: "2.0.0"
-            }
-          })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            rollback: true,
+            maxVersion: "2.0.0"
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
         const artifactJson = {
           ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
@@ -7057,18 +6855,16 @@ test("desktop publish rejects update.publicKey with non-canonical base64", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: garbledKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "dmg"))
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: garbledKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
@@ -7106,26 +6902,22 @@ test("desktop publish accepts update.minVersion equal to app.version", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "dev.effect-desktop.inspector",
-              name: "Effect Desktop Playground",
-              version: "1.2.3"
-            },
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5,
-              minVersion: "1.2.3"
-            }
-          })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            minVersion: "1.2.3"
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
         const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
         const artifactJson = {
           ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
@@ -7165,18 +6957,16 @@ test("desktop publish signs macOS app directory artifacts with deterministic dir
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        yield* Effect.promise(() => writePackagedArtifactFixture(directory, "macos-arm64", "app"))
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
 
         const exitCode = yield* runCli({
           argv: [
@@ -7231,20 +7021,16 @@ test("desktop publish rejects symbolic links inside directory artifacts", () =>
       const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
       yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            update: {
-              channel: "stable",
-              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-              publicKey: key.publicKey,
-              privateKeyEnv,
-              keyVersion: 5
-            }
-          })
-        )
-        const artifactPath = yield* Effect.promise(() =>
-          writePackagedArtifactFixture(directory, "macos-arm64", "app")
-        )
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         const artifactRoot = dirname(artifactPath)
         const externalPayload = join(directory, "external-payload.txt")
         yield* Effect.promise(() => writeFile(externalPayload, "outside artifact bytes"))
@@ -7254,7 +7040,7 @@ test("desktop publish rejects symbolic links inside directory artifacts", () =>
             join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime", "outside.txt")
           )
         )
-        const digest = yield* Effect.promise(() => digestArtifactFixture(artifactPath))
+        const digest = yield* digestArtifactFixture(artifactPath)
         const artifactJsonPath = join(artifactRoot, "artifact.json")
         const artifactJson = {
           ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
@@ -7312,7 +7098,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", (
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const calls: string[] = []
         const nativeHostEmbedEnv: Array<string | undefined> = []
         const runner: CommandRunner = (invocation) =>
@@ -7460,9 +7246,7 @@ test("desktop build emits explicit chrome web engine selection in the host manif
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-web-engine-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { web: { engine: "chrome" } })
-        )
+        yield* writePlaygroundFixture(directory, { web: { engine: "chrome" } })
         const chromeRuntime = join(directory, "apps", "inspector", "native", "chrome", "linux-x64")
         yield* Effect.promise(() => mkdir(chromeRuntime, { recursive: true }))
         yield* Effect.promise(() =>
@@ -7543,9 +7327,7 @@ test("desktop build rejects chrome web engine when the bundled runtime is absent
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-chrome-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { web: { engine: "chrome" } })
-        )
+        yield* writePlaygroundFixture(directory, { web: { engine: "chrome" } })
         const calls: string[] = []
         const stderr: string[] = []
 
@@ -7581,9 +7363,9 @@ test("desktop build emits node runtime launch manifest for node runtime config",
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-node-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { runtime: { engine: "node", entry: "runtime.ts" } })
-        )
+        yield* writePlaygroundFixture(directory, {
+          runtime: { engine: "node", entry: "runtime.ts" }
+        })
         const calls: string[] = []
         const runner: CommandRunner = (invocation) =>
           Effect.gen(function* () {
@@ -7631,7 +7413,7 @@ test("desktop build reuses provider-owned nodes when only runtime source changes
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-provider-cache-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const appRoot = join(directory, "apps", "inspector")
         const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
         const calls: string[] = []
@@ -7642,24 +7424,22 @@ test("desktop build reuses provider-owned nodes when only runtime source changes
           })
 
         const runBuild = () =>
-          Effect.runPromise(
-            runCli({
-              argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
-              cwd: directory,
-              hostTarget: "linux-x64",
-              commandRunner: runner,
-              writeStdout: () => {},
-              writeStderr: () => {}
-            })
-          )
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: () => {}
+          })
 
-        expect(yield* Effect.promise(() => runBuild())).toBe(0)
+        expect(yield* runBuild()).toBe(0)
         calls.length = 0
         yield* Effect.promise(() =>
           writeFile(join(appRoot, "runtime.ts"), "console.log('runtime changed')\n")
         )
 
-        expect(yield* Effect.promise(() => runBuild())).toBe(0)
+        expect(yield* runBuild()).toBe(0)
 
         const report = decodeBuildStepsReportJson(
           yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
@@ -7688,7 +7468,7 @@ test("desktop build reuses native host when only renderer source changes", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-cache-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const appRoot = join(directory, "apps", "inspector")
         const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
         const calls: string[] = []
@@ -7702,24 +7482,22 @@ test("desktop build reuses native host when only renderer source changes", () =>
           })
 
         const runBuild = () =>
-          Effect.runPromise(
-            runCli({
-              argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
-              cwd: directory,
-              hostTarget: "linux-x64",
-              commandRunner: runner,
-              writeStdout: () => {},
-              writeStderr: () => {}
-            })
-          )
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: () => {}
+          })
 
-        expect(yield* Effect.promise(() => runBuild())).toBe(0)
+        expect(yield* runBuild()).toBe(0)
         calls.length = 0
         yield* Effect.promise(() =>
           writeFile(join(appRoot, "src", "renderer", "main.tsx"), "console.log('changed')\n")
         )
 
-        expect(yield* Effect.promise(() => runBuild())).toBe(0)
+        expect(yield* runBuild()).toBe(0)
 
         const report = decodeBuildStepsReportJson(
           yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
@@ -7745,7 +7523,7 @@ test("desktop build ignores malformed build cache and rebuilds nodes", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-cache-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const appRoot = join(directory, "apps", "inspector")
         const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
         const calls: string[] = []
@@ -7759,22 +7537,20 @@ test("desktop build ignores malformed build cache and rebuilds nodes", () =>
           })
 
         const runBuild = () =>
-          Effect.runPromise(
-            runCli({
-              argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
-              cwd: directory,
-              hostTarget: "linux-x64",
-              commandRunner: runner,
-              writeStdout: () => {},
-              writeStderr: () => {}
-            })
-          )
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: () => {}
+          })
 
-        expect(yield* Effect.promise(() => runBuild())).toBe(0)
+        expect(yield* runBuild()).toBe(0)
         calls.length = 0
         yield* Effect.promise(() => writeFile(join(layout, ".build-cache.json"), "{bad json"))
 
-        expect(yield* Effect.promise(() => runBuild())).toBe(0)
+        expect(yield* runBuild()).toBe(0)
 
         const report = decodeBuildStepsReportJson(
           yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
@@ -7804,7 +7580,7 @@ test("desktop build reports unreadable build cache before running build steps", 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-unreadable-cache-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const appRoot = join(directory, "apps", "inspector")
         const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
         const calls: string[] = []
@@ -7819,26 +7595,24 @@ test("desktop build reports unreadable build cache before running build steps", 
           })
 
         const runBuild = () =>
-          Effect.runPromise(
-            runCli({
-              argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
-              cwd: directory,
-              hostTarget: "linux-x64",
-              commandRunner: runner,
-              writeStdout: () => {},
-              writeStderr: (text) => {
-                stderr.push(text)
-              }
-            })
-          )
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
 
-        expect(yield* Effect.promise(() => runBuild())).toBe(0)
+        expect(yield* runBuild()).toBe(0)
         calls.length = 0
         stderr.length = 0
         yield* Effect.promise(() => rm(join(layout, ".build-cache.json"), { force: true }))
         yield* Effect.promise(() => mkdir(join(layout, ".build-cache.json")))
 
-        expect(yield* Effect.promise(() => runBuild())).toBe(1)
+        expect(yield* runBuild()).toBe(1)
 
         expect(calls).toEqual([])
         expect(stderr.join("")).toContain("failed to read")
@@ -7855,7 +7629,7 @@ test("desktop build preserves renderer stderr on command failure", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-stderr-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const appRoot = join(directory, "apps", "inspector")
         yield* Effect.promise(() =>
           writeFile(
@@ -7898,7 +7672,7 @@ test("desktop check --repro preserves nested build stderr", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-stderr-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const appRoot = join(directory, "apps", "inspector")
         yield* Effect.promise(() =>
           writeFile(
@@ -7942,7 +7716,7 @@ test("desktop build rejects missing runtime.entry", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-runtime-entry-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory, { runtime: {} }))
+        yield* writePlaygroundFixture(directory, { runtime: {} })
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
@@ -7969,9 +7743,7 @@ test("desktop build rejects runtime.entry directories with a precise config erro
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-entry-dir-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { runtime: { entry: "src" } })
-        )
+        yield* writePlaygroundFixture(directory, { runtime: { entry: "src" } })
         const calls: string[] = []
         const stderr: string[] = []
 
@@ -8006,9 +7778,9 @@ test("desktop build rejects unsupported runtime.engine before running build step
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-engine-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { runtime: { engine: "deno", entry: "runtime.ts" } })
-        )
+        yield* writePlaygroundFixture(directory, {
+          runtime: { engine: "deno", entry: "runtime.ts" }
+        })
         const calls: string[] = []
         const stderr: string[] = []
 
@@ -8043,9 +7815,9 @@ test("desktop build rejects runtime.entry outside the app root before running bu
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-entry-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { runtime: { entry: "../../../outside-runtime.ts" } })
-        )
+        yield* writePlaygroundFixture(directory, {
+          runtime: { entry: "../../../outside-runtime.ts" }
+        })
         yield* Effect.promise(() =>
           writeFile(join(directory, "outside-runtime.ts"), "console.log('outside')\n")
         )
@@ -8083,7 +7855,7 @@ test("desktop build refuses non-matching platform targets with doctor remediatio
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: [
@@ -8118,15 +7890,13 @@ test("desktop build rejects non-SemVer app.version", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-version-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "dev.effect-desktop.inspector",
-              name: "Effect Desktop Playground",
-              version: "not-semver"
-            }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "not-semver"
+          }
+        })
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
@@ -8155,15 +7925,13 @@ test("desktop build rejects invalid reverse-DNS app.id", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-appid-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "not a bundle id",
-              name: "Effect Desktop Playground",
-              version: "1.2.3"
-            }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "not a bundle id",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          }
+        })
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
@@ -8192,14 +7960,12 @@ test("desktop build rejects renderer.dist outside the app root before running bu
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-dist-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            renderer: {
-              entry: "src/renderer/main.tsx",
-              dist: "../../outside-dist"
-            }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          renderer: {
+            entry: "src/renderer/main.tsx",
+            dist: "../../outside-dist"
+          }
+        })
         yield* Effect.promise(() => mkdir(join(directory, "outside-dist"), { recursive: true }))
         yield* Effect.promise(() =>
           writeFile(join(directory, "outside-dist", "index.html"), "<h1>outside</h1>")
@@ -8249,7 +8015,7 @@ test("desktop build refuses renderer dist symlinks that escape dist", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-link-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const appRoot = join(directory, "apps", "inspector")
         yield* Effect.promise(() => writeFile(join(appRoot, "secret.txt"), "external"))
         const runner: CommandRunner = (invocation) =>
@@ -8301,11 +8067,9 @@ test("desktop build rejects invalid security config before running build steps",
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
+        })
         const stderr: string[] = []
         const calls: string[] = []
         const exitCode = yield* runCli({
@@ -8339,17 +8103,15 @@ test("desktop build emits validated renderer security policy", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            security: {
-              externalNavigation: "ask",
-              devtoolsInProd: true,
-              csp: {
-                policy: "connect-src 'self'; frame-src 'none'; upgrade-insecure-requests"
-              }
+        yield* writePlaygroundFixture(directory, {
+          security: {
+            externalNavigation: "ask",
+            devtoolsInProd: true,
+            csp: {
+              policy: "connect-src 'self'; frame-src 'none'; upgrade-insecure-requests"
             }
-          })
-        )
+          }
+        })
         const runner: CommandRunner = (invocation) =>
           writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
         const exitCode = yield* runCli({
@@ -8409,17 +8171,15 @@ test("desktop build emits disabled renderer CSP policy when explicitly acknowled
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-disabled-csp-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            security: {
-              csp: {
-                disabled: true,
-                acknowledgeWeakening: true,
-                justification: "test fixture verifies disabled CSP serialization"
-              }
+        yield* writePlaygroundFixture(directory, {
+          security: {
+            csp: {
+              disabled: true,
+              acknowledgeWeakening: true,
+              justification: "test fixture verifies disabled CSP serialization"
             }
-          })
-        )
+          }
+        })
         const runner: CommandRunner = (invocation) =>
           writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
         const exitCode = yield* runCli({
@@ -8463,23 +8223,21 @@ test("desktop build rejects invalid window config before running build steps", (
         mkdtemp(join(tmpdir(), "effect-desktop-cli-build-windows-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            windows: {
-              defaults: {
-                titleBarStyle: "floating-space-station",
-                trafficLights: { x: -10, y: -20 },
-                hasShadow: "yes",
-                backgroundColor: "not-a-color"
-              },
-              main: {
-                route: "/",
-                width: 0,
-                height: -1
-              }
+        yield* writePlaygroundFixture(directory, {
+          windows: {
+            defaults: {
+              titleBarStyle: "floating-space-station",
+              trafficLights: { x: -10, y: -20 },
+              hasShadow: "yes",
+              backgroundColor: "not-a-color"
+            },
+            main: {
+              route: "/",
+              width: 0,
+              height: -1
             }
-          })
-        )
+          }
+        })
         const stderr: string[] = []
         const calls: string[] = []
         const exitCode = yield* runCli({
@@ -8526,7 +8284,7 @@ test("desktop build emits validated window config in host manifest", () =>
             height: 800
           }
         }
-        yield* Effect.promise(() => writePlaygroundFixture(directory, { windows }))
+        yield* writePlaygroundFixture(directory, { windows })
         const runner: CommandRunner = (invocation) =>
           writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
 
@@ -8590,7 +8348,7 @@ test("desktop package reports missing build output before reading manifests", ()
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-missing-build-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
+        yield* writePlaygroundFixture(directory)
         const stderr: string[] = []
 
         const exitCode = yield* runCli({
@@ -8623,8 +8381,8 @@ test("desktop package rejects malformed build manifests as typed package errors"
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-manifest-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "macos-arm64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const layout = join(
           directory,
           "apps",
@@ -8686,8 +8444,8 @@ test("desktop package rejects malformed runtime launch manifests", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-runtime-manifest-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "macos-arm64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const layout = join(
           directory,
           "apps",
@@ -8816,10 +8574,10 @@ test("desktop package rejects runtime launch contract drift and path escapes", (
           mkdtemp(join(tmpdir(), `effect-desktop-cli-package-${testCase.name}-`))
         )
         try {
-          yield* Effect.promise(() =>
-            writePlaygroundFixture(directory, { runtime: { engine: "node", entry: "runtime.ts" } })
-          )
-          yield* Effect.promise(() => writeBuildLayoutFixture(directory, "linux-x64", "node"))
+          yield* writePlaygroundFixture(directory, {
+            runtime: { engine: "node", entry: "runtime.ts" }
+          })
+          yield* writeBuildLayoutFixture(directory, "linux-x64", "node")
           const layout = join(
             directory,
             "apps",
@@ -8873,10 +8631,10 @@ test("desktop package accepts node runtime launch manifests", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-node-runtime-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, { runtime: { engine: "node", entry: "runtime.ts" } })
-        )
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "linux-x64", "node"))
+        yield* writePlaygroundFixture(directory, {
+          runtime: { engine: "node", entry: "runtime.ts" }
+        })
+        yield* writeBuildLayoutFixture(directory, "linux-x64", "node")
         const calls: string[] = []
         const runner: PackageCommandRunner = (invocation) =>
           Effect.gen(function* () {
@@ -8917,8 +8675,8 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "macos-arm64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
         const calls: string[] = []
         const runner: PackageCommandRunner = (invocation) =>
@@ -9002,8 +8760,8 @@ packageModeTest("desktop package metadata digest includes directory file modes",
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-mode-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "macos-arm64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
         const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
         const runtimeMain = join(
@@ -9016,9 +8774,9 @@ packageModeTest("desktop package metadata digest includes directory file modes",
           "runtime",
           "main.js"
         )
-        const runPackage = async (): Promise<string> => {
-          const exitCode = await Effect.runPromise(
-            runCli({
+        const runPackage = (): Effect.Effect<string> =>
+          Effect.gen(function* () {
+            const exitCode = yield* runCli({
               argv: [
                 "package",
                 "--config",
@@ -9032,21 +8790,20 @@ packageModeTest("desktop package metadata digest includes directory file modes",
               writeStdout: () => {},
               writeStderr: () => {}
             })
-          )
-          expect(exitCode).toBe(0)
-          const appMetadata = decodePackageAppMetadataJson(
-            await readFile(join(appRoot, "artifact.json"), "utf8")
-          )
-          expect(appMetadata.kind).toBe("app")
-          expect(appMetadata.sha256).toHaveLength(64)
-          return appMetadata.sha256
-        }
+            expect(exitCode).toBe(0)
+            const appMetadata = decodePackageAppMetadataJson(
+              yield* Effect.promise(() => readFile(join(appRoot, "artifact.json"), "utf8"))
+            )
+            expect(appMetadata.kind).toBe("app")
+            expect(appMetadata.sha256).toHaveLength(64)
+            return appMetadata.sha256
+          })
 
         yield* Effect.promise(() => chmod(runtimeMain, 0o644))
-        const firstDigest = yield* Effect.promise(() => runPackage())
+        const firstDigest = yield* runPackage()
 
         yield* Effect.promise(() => chmod(runtimeMain, 0o444))
-        const secondDigest = yield* Effect.promise(() => runPackage())
+        const secondDigest = yield* runPackage()
 
         expect(secondDigest).not.toBe(firstDigest)
       } finally {
@@ -9063,8 +8820,8 @@ test("desktop package stages macOS app bundle before explicit dmg artifact", () 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-dmg-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "macos-arm64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
         const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
         const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
@@ -9110,8 +8867,8 @@ test("desktop package stages macOS app bundle before explicit zip artifact", () 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-zip-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "macos-arm64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
         const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
         const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
@@ -9157,8 +8914,8 @@ test("desktop package preserves sibling artifacts during targeted runs", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-siblings-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "macos-arm64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
         const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
         const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
@@ -9214,11 +8971,9 @@ test("desktop package rejects app.name that resolves to reserved basenames", () 
           mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
         )
         try {
-          yield* Effect.promise(() =>
-            writePlaygroundFixture(directory, {
-              app: { id: "dev.effect-desktop.inspector", name: appName, version: "0.0.0" }
-            })
-          )
+          yield* writePlaygroundFixture(directory, {
+            app: { id: "dev.effect-desktop.inspector", name: appName, version: "0.0.0" }
+          })
           const stderr: string[] = []
 
           const exitCode = yield* runCli({
@@ -9255,11 +9010,9 @@ test("desktop package rejects control characters in package metadata", () =>
           mkdtemp(join(tmpdir(), `effect-desktop-cli-package-${label}-`))
         )
         try {
-          yield* Effect.promise(() =>
-            writePlaygroundFixture(directory, {
-              app: { id: "dev.effect-desktop.inspector", name: appName, version: "0.0.0" }
-            })
-          )
+          yield* writePlaygroundFixture(directory, {
+            app: { id: "dev.effect-desktop.inspector", name: appName, version: "0.0.0" }
+          })
           const stderr: string[] = []
 
           const exitCode = yield* runCli({
@@ -9298,15 +9051,13 @@ test("desktop package rejects non-SemVer app.version", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-invalid-version-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "dev.effect-desktop.inspector",
-              name: "Effect Desktop Playground",
-              version: "not-semver"
-            }
-          })
-        )
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "not-semver"
+          }
+        })
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
@@ -9334,16 +9085,14 @@ test("desktop package rejects path-shaped app.id before staging Linux sidecars",
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-invalid-appid-"))
       )
       try {
-        yield* Effect.promise(() =>
-          writePlaygroundFixture(directory, {
-            app: {
-              id: "../../../escaped",
-              name: "Effect Desktop Playground",
-              version: "0.0.0"
-            }
-          })
-        )
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "linux-x64"))
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "../../../escaped",
+            name: "Effect Desktop Playground",
+            version: "0.0.0"
+          }
+        })
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
         const calls: string[] = []
         const stderr: string[] = []
 
@@ -9378,8 +9127,8 @@ test("desktop package rejects build manifest app name drift", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-name-drift-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "macos-arm64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const layout = join(
           directory,
           "apps",
@@ -9424,8 +9173,8 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", () 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "linux-x64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "linux")
         const artifactPaths = {
           appimage: join(
@@ -9542,8 +9291,8 @@ test("desktop package rejects build layout symlinks that escape the layout", () 
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-link-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "linux-x64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
         const appRoot = join(directory, "apps", "inspector")
         const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
         yield* Effect.promise(() => writeFile(join(appRoot, "secret.txt"), "external"))
@@ -9598,8 +9347,8 @@ test("desktop package maps linux arm64 RPM metadata to aarch64", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "linux-arm64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "linux-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "linux")
         const rpmPath = join(
           outputRoot,
@@ -9643,8 +9392,8 @@ test("desktop package emits Windows per-user MSI with app-specific UpgradeCode",
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "windows-x64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "windows-x64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "windows")
         const msiPath = join(
           outputRoot,
@@ -9703,8 +9452,8 @@ test("desktop package rejects Windows system-mode MSI as deferred scope", () =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
       )
       try {
-        yield* Effect.promise(() => writePlaygroundFixture(directory))
-        yield* Effect.promise(() => writeBuildLayoutFixture(directory, "windows-x64"))
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "windows-x64")
         const stderr: string[] = []
         const exitCode = yield* runCli({
           argv: [
@@ -9732,99 +9481,111 @@ test("desktop package rejects Windows system-mode MSI as deferred scope", () =>
     })
   ))
 
-const writePlaygroundFixture = async (
+const writePlaygroundFixture = (
   directory: string,
   extraConfig: Record<string, unknown> = {}
-): Promise<void> => {
-  const appRoot = join(directory, "apps", "inspector")
-  const config = {
-    app: {
-      id: "dev.effect-desktop.inspector",
-      name: "Effect Desktop Playground",
-      version: "0.0.0"
-    },
-    runtime: { entry: "runtime.ts" },
-    renderer: {
-      entry: "src/renderer/main.tsx",
-      dist: "dist"
-    },
-    ...extraConfig
-  }
-  await mkdir(appRoot, { recursive: true })
-  await mkdir(join(appRoot, "src", "renderer"), { recursive: true })
-  await writeFile(
-    join(appRoot, "desktop.config.ts"),
-    `export default ${stringifyJson(config, 2)} as const\n`
-  )
-  await writeFile(join(appRoot, "package.json"), '{"type":"module"}\n')
-  await writeFile(join(appRoot, "runtime.ts"), "console.log('runtime')\n")
-  await writeFile(join(appRoot, "src/renderer/main.tsx"), "console.log('renderer')\n")
-  await mkdir(join(directory, "target", "debug"), { recursive: true })
-}
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const appRoot = join(directory, "apps", "inspector")
+    const config = {
+      app: {
+        id: "dev.effect-desktop.inspector",
+        name: "Effect Desktop Playground",
+        version: "0.0.0"
+      },
+      runtime: { entry: "runtime.ts" },
+      renderer: {
+        entry: "src/renderer/main.tsx",
+        dist: "dist"
+      },
+      ...extraConfig
+    }
+    yield* Effect.promise(() => mkdir(appRoot, { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(appRoot, "src", "renderer"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(appRoot, "desktop.config.ts"),
+        `export default ${stringifyJson(config, 2)} as const\n`
+      )
+    )
+    yield* Effect.promise(() => writeFile(join(appRoot, "package.json"), '{"type":"module"}\n'))
+    yield* Effect.promise(() => writeFile(join(appRoot, "runtime.ts"), "console.log('runtime')\n"))
+    yield* Effect.promise(() =>
+      writeFile(join(appRoot, "src/renderer/main.tsx"), "console.log('renderer')\n")
+    )
+    yield* Effect.promise(() => mkdir(join(directory, "target", "debug"), { recursive: true }))
+  })
 
-const writeBuildLayoutFixture = async (
+const writeBuildLayoutFixture = (
   directory: string,
   target: Extract<DesktopTargetId, "linux-arm64" | "linux-x64" | "macos-arm64" | "windows-x64">,
   runtimeEngine: "bun" | "node" = "bun"
-): Promise<void> => {
-  const layout = join(directory, "apps", "inspector", "build", "effect-desktop", target)
-  const hostBinary = hostBinaryName(target)
-  await mkdir(join(layout, "renderer"), { recursive: true })
-  await mkdir(join(layout, "runtime"), { recursive: true })
-  await mkdir(join(layout, "native"), { recursive: true })
-  await writeFile(join(layout, "renderer", "index.html"), "<h1>ok</h1>")
-  await writeFile(join(layout, "runtime", "main.js"), "console.log('runtime')\n")
-  await writeFile(join(layout, "native", hostBinary), "host")
-  await writeFile(
-    join(layout, "app-manifest.json"),
-    `${stringifyJson(
-      {
-        id: "dev.effect-desktop.inspector",
-        name: "Effect Desktop Playground",
-        version: "0.0.0",
-        target,
-        renderer: { path: "renderer" },
-        runtimeManifest: {
-          engine: runtimeEngine,
-          entry: "runtime/main.js",
-          executable: runtimeEngine,
-          args: ["runtime/main.js"],
-          env: {}
-        },
-        nativeHost: { binary: `native/${hostBinary}` }
-      },
-      2
-    )}\n`
-  )
-  await writeFile(
-    join(layout, "build-report.json"),
-    `${stringifyJson(
-      {
-        appId: "dev.effect-desktop.inspector",
-        appName: "Effect Desktop Playground",
-        appVersion: "0.0.0",
-        target,
-        providers: {
-          runtime: runtimeEngine,
-          runtimePackaging: "source",
-          webEngine: "system"
-        },
-        providerBudgets: [
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const layout = join(directory, "apps", "inspector", "build", "effect-desktop", target)
+    const hostBinary = hostBinaryName(target)
+    yield* Effect.promise(() => mkdir(join(layout, "renderer"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(layout, "runtime"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(layout, "native"), { recursive: true }))
+    yield* Effect.promise(() => writeFile(join(layout, "renderer", "index.html"), "<h1>ok</h1>"))
+    yield* Effect.promise(() =>
+      writeFile(join(layout, "runtime", "main.js"), "console.log('runtime')\n")
+    )
+    yield* Effect.promise(() => writeFile(join(layout, "native", hostBinary), "host"))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(layout, "app-manifest.json"),
+        `${stringifyJson(
           {
-            id: runtimeEngine,
-            kind: "runtime",
-            package: runtimeEngine === "bun" ? "@effect/platform-bun" : "@effect/platform-node",
-            importPath: `@effect-desktop/core/providers/${runtimeEngine}`,
-            startupBudgetMs: 25,
-            bundleBudgetKb: 64
-          }
-        ],
-        providerMeasurements: []
-      },
-      2
-    )}\n`
-  )
-}
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "0.0.0",
+            target,
+            renderer: { path: "renderer" },
+            runtimeManifest: {
+              engine: runtimeEngine,
+              entry: "runtime/main.js",
+              executable: runtimeEngine,
+              args: ["runtime/main.js"],
+              env: {}
+            },
+            nativeHost: { binary: `native/${hostBinary}` }
+          },
+          2
+        )}\n`
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(layout, "build-report.json"),
+        `${stringifyJson(
+          {
+            appId: "dev.effect-desktop.inspector",
+            appName: "Effect Desktop Playground",
+            appVersion: "0.0.0",
+            target,
+            providers: {
+              runtime: runtimeEngine,
+              runtimePackaging: "source",
+              webEngine: "system"
+            },
+            providerBudgets: [
+              {
+                id: runtimeEngine,
+                kind: "runtime",
+                package: runtimeEngine === "bun" ? "@effect/platform-bun" : "@effect/platform-node",
+                importPath: `@effect-desktop/core/providers/${runtimeEngine}`,
+                startupBudgetMs: 25,
+                bundleBudgetKb: 64
+              }
+            ],
+            providerMeasurements: []
+          },
+          2
+        )}\n`
+      )
+    )
+  })
 
 const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseWorkflowApi => ({
   package: () =>
@@ -9910,114 +9671,130 @@ const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseW
     })
 })
 
-const writePackagedArtifactFixture = async (
+const writePackagedArtifactFixture = (
   directory: string,
   target: Extract<DesktopTargetId, "linux-x64" | "macos-arm64" | "windows-x64">,
   kind: Extract<DesktopArtifactKind, "app" | "appimage" | "dmg" | "msi" | "zip">
-): Promise<string> => {
-  const platform = desktopPlatformDirectory(target)
-  const extension = desktopArtifactExtension(kind)
-  const root = join(
-    directory,
-    "apps",
-    "inspector",
-    "dist",
-    "desktop",
-    platform,
-    `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
-  )
-  const fileName =
-    kind === "app"
-      ? "Effect-Desktop-Playground.app"
-      : `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
-  const artifactPath = join(root, fileName)
-  if (kind === "app") {
-    await mkdir(join(artifactPath, "Contents", "MacOS"), { recursive: true })
-    await mkdir(join(artifactPath, "Contents", "Resources", "effect-desktop", "native"), {
-      recursive: true
-    })
-    await mkdir(join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime"), {
-      recursive: true
-    })
-    await writeFile(join(artifactPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "host")
-    await writeFile(
-      join(artifactPath, "Contents", "Resources", "effect-desktop", "native", "host"),
-      "host"
+): Effect.Effect<string, never, never> =>
+  Effect.gen(function* () {
+    const platform = desktopPlatformDirectory(target)
+    const extension = desktopArtifactExtension(kind)
+    const root = join(
+      directory,
+      "apps",
+      "inspector",
+      "dist",
+      "desktop",
+      platform,
+      `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
     )
-    await writeFile(
-      join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime", "main.js"),
-      "runtime"
-    )
-  } else {
-    await mkdir(root, { recursive: true })
-    await writeFile(artifactPath, kind)
-  }
-  const digest = await digestArtifactFixture(artifactPath)
-  const linuxIntegration =
-    platform === "linux"
-      ? {
-          linuxIntegration: {
-            desktopFile: "dev.effect-desktop.inspector.desktop",
-            appStreamId: "dev.effect-desktop.inspector.metainfo.xml",
-            flatpakAppId: "dev.effect-desktop.inspector",
-            snapName: "dev.effect-desktop.inspector"
+    const fileName =
+      kind === "app"
+        ? "Effect-Desktop-Playground.app"
+        : `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
+    const artifactPath = join(root, fileName)
+    if (kind === "app") {
+      yield* Effect.promise(() =>
+        mkdir(join(artifactPath, "Contents", "MacOS"), { recursive: true })
+      )
+      yield* Effect.promise(() =>
+        mkdir(join(artifactPath, "Contents", "Resources", "effect-desktop", "native"), {
+          recursive: true
+        })
+      )
+      yield* Effect.promise(() =>
+        mkdir(join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime"), {
+          recursive: true
+        })
+      )
+      yield* Effect.promise(() =>
+        writeFile(join(artifactPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "host")
+      )
+      yield* Effect.promise(() =>
+        writeFile(
+          join(artifactPath, "Contents", "Resources", "effect-desktop", "native", "host"),
+          "host"
+        )
+      )
+      yield* Effect.promise(() =>
+        writeFile(
+          join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime", "main.js"),
+          "runtime"
+        )
+      )
+    } else {
+      yield* Effect.promise(() => mkdir(root, { recursive: true }))
+      yield* Effect.promise(() => writeFile(artifactPath, kind))
+    }
+    const digest = yield* digestArtifactFixture(artifactPath)
+    const linuxIntegration =
+      platform === "linux"
+        ? {
+            linuxIntegration: {
+              desktopFile: "dev.effect-desktop.inspector.desktop",
+              appStreamId: "dev.effect-desktop.inspector.metainfo.xml",
+              flatpakAppId: "dev.effect-desktop.inspector",
+              snapName: "dev.effect-desktop.inspector"
+            }
           }
-        }
-      : {}
-  await writeFile(
-    join(root, "artifact.json"),
-    `${stringifyJson(
-      {
-        appId: "dev.effect-desktop.inspector",
-        appName: "Effect Desktop Playground",
-        appVersion: "0.0.0",
-        kind,
-        target,
-        fileName,
-        ...digest,
-        ...linuxIntegration
-      },
-      2
-    )}\n`
-  )
-  return artifactPath
-}
+        : {}
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "artifact.json"),
+        `${stringifyJson(
+          {
+            appId: "dev.effect-desktop.inspector",
+            appName: "Effect Desktop Playground",
+            appVersion: "0.0.0",
+            kind,
+            target,
+            fileName,
+            ...digest,
+            ...linuxIntegration
+          },
+          2
+        )}\n`
+      )
+    )
+    return artifactPath
+  })
 
-const digestArtifactFixture = async (
+const digestArtifactFixture = (
   path: string
-): Promise<{ readonly sizeBytes: number; readonly sha256: string }> => {
-  const pathStat = await stat(path)
-  if (!pathStat.isDirectory()) {
-    const bytes = await readFile(path)
-    return {
-      sizeBytes: bytes.byteLength,
-      sha256: createHash("sha256").update(bytes).digest("hex")
+): Effect.Effect<{ readonly sizeBytes: number; readonly sha256: string }, never, never> =>
+  Effect.gen(function* () {
+    const pathStat = yield* Effect.promise(() => stat(path))
+    if (!pathStat.isDirectory()) {
+      const bytes = yield* Effect.promise(() => readFile(path))
+      return {
+        sizeBytes: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex")
+      }
     }
-  }
-  const files = await listFixtureFiles(path)
-  const hash = createHash("sha256")
-  let sizeBytes = 0
-  for (const file of files.toSorted((left, right) =>
-    left.relativePath.localeCompare(right.relativePath)
-  )) {
-    hash.update(file.kind)
-    hash.update("\0")
-    hash.update(file.relativePath)
-    hash.update("\0")
-    hash.update((file.mode & 0o777).toString(8))
-    hash.update("\0")
-    if (file.kind !== "file") {
-      hash.update(file.target)
+    const files = yield* listFixtureFiles(path)
+    const hash = createHash("sha256")
+    let sizeBytes = 0
+    for (const file of files.toSorted((left, right) =>
+      left.relativePath.localeCompare(right.relativePath)
+    )) {
+      hash.update(file.kind)
       hash.update("\0")
-      continue
+      hash.update(file.relativePath)
+      hash.update("\0")
+      hash.update((file.mode & 0o777).toString(8))
+      hash.update("\0")
+      if (file.kind !== "file") {
+        hash.update(file.target)
+        hash.update("\0")
+        continue
+      }
+      const content = yield* Effect.promise(() => readFile(file.absolutePath))
+      sizeBytes += content.byteLength
+      hash.update(content)
+      hash.update("\0")
     }
-    const content = await readFile(file.absolutePath)
-    sizeBytes += content.byteLength
-    hash.update(content)
-    hash.update("\0")
-  }
-  return { sizeBytes, sha256: hash.digest("hex") }
-}
+    return { sizeBytes, sha256: hash.digest("hex") }
+  })
 
 type FixtureDirectoryEntryKind = "directory" | "file" | "symlink"
 
@@ -10029,127 +9806,139 @@ interface FixtureDirectoryEntry {
   readonly target: string
 }
 
-const listFixtureFiles = async (path: string): Promise<readonly FixtureDirectoryEntry[]> =>
-  walkFixtureFiles(path, path)
+const listFixtureFiles = (
+  path: string
+): Effect.Effect<readonly FixtureDirectoryEntry[], never, never> => walkFixtureFiles(path, path)
 
-const walkFixtureFiles = async (
+const walkFixtureFiles = (
   rootPath: string,
   currentPath: string
-): Promise<readonly FixtureDirectoryEntry[]> => {
-  const entries = await readdir(currentPath)
-  const files: FixtureDirectoryEntry[] = []
-  for (const entry of entries.toSorted()) {
-    const child = join(currentPath, entry)
-    const childStat = await lstat(child)
-    const childRelativePath = relative(rootPath, child)
-    if (childStat.isDirectory()) {
-      files.push({
-        absolutePath: child,
-        kind: "directory",
-        relativePath: childRelativePath,
-        mode: Number(childStat.mode),
-        target: ""
-      })
-      files.push(...(await walkFixtureFiles(rootPath, child)))
-    } else if (childStat.isSymbolicLink()) {
-      files.push({
-        absolutePath: child,
-        kind: "symlink",
-        relativePath: childRelativePath,
-        mode: Number(childStat.mode),
-        target: await readlink(child)
-      })
-    } else {
-      files.push({
-        absolutePath: child,
-        kind: "file",
-        relativePath: childRelativePath,
-        mode: Number(childStat.mode),
-        target: ""
-      })
+): Effect.Effect<readonly FixtureDirectoryEntry[], never, never> =>
+  Effect.gen(function* () {
+    const entries = yield* Effect.promise(() => readdir(currentPath))
+    const files: FixtureDirectoryEntry[] = []
+    for (const entry of entries.toSorted()) {
+      const child = join(currentPath, entry)
+      const childStat = yield* Effect.promise(() => lstat(child))
+      const childRelativePath = relative(rootPath, child)
+      if (childStat.isDirectory()) {
+        files.push({
+          absolutePath: child,
+          kind: "directory",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: ""
+        })
+        files.push(...(yield* walkFixtureFiles(rootPath, child)))
+      } else if (childStat.isSymbolicLink()) {
+        const linkTarget = yield* Effect.promise(() => readlink(child))
+        files.push({
+          absolutePath: child,
+          kind: "symlink",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: linkTarget
+        })
+      } else {
+        files.push({
+          absolutePath: child,
+          kind: "file",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: ""
+        })
+      }
     }
-  }
-  return files
-}
+    return files
+  })
 
-const writeApiFixturePackage = async (root: string, source: string): Promise<void> => {
-  const packageRoot = join(root, "packages", "fixture")
-  await mkdir(join(packageRoot, "src"), { recursive: true })
-  await writeFile(
-    join(packageRoot, "package.json"),
-    stringifyJson(
-      {
-        name: "@effect-desktop/fixture",
-        type: "module",
-        exports: {
-          ".": {
-            types: "./src/index.ts",
-            default: "./src/index.ts"
-          }
-        }
-      },
-      2
+const writeApiFixturePackage = (root: string, source: string): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const packageRoot = join(root, "packages", "fixture")
+    yield* Effect.promise(() => mkdir(join(packageRoot, "src"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(packageRoot, "package.json"),
+        stringifyJson(
+          {
+            name: "@effect-desktop/fixture",
+            type: "module",
+            exports: {
+              ".": {
+                types: "./src/index.ts",
+                default: "./src/index.ts"
+              }
+            }
+          },
+          2
+        )
+      )
     )
-  )
-  await writeFile(
-    join(packageRoot, "tsconfig.json"),
-    stringifyJson(
-      {
-        compilerOptions: {
-          target: "ESNext",
-          module: "NodeNext",
-          moduleResolution: "NodeNext",
-          strict: true,
-          noEmit: true,
-          skipLibCheck: true,
-          types: []
-        },
-        include: ["src"]
-      },
-      2
+    yield* Effect.promise(() =>
+      writeFile(
+        join(packageRoot, "tsconfig.json"),
+        stringifyJson(
+          {
+            compilerOptions: {
+              target: "ESNext",
+              module: "NodeNext",
+              moduleResolution: "NodeNext",
+              strict: true,
+              noEmit: true,
+              skipLibCheck: true,
+              types: []
+            },
+            include: ["src"]
+          },
+          2
+        )
+      )
     )
-  )
-  await writeFile(join(packageRoot, "src", "index.ts"), source)
-}
+    yield* Effect.promise(() => writeFile(join(packageRoot, "src", "index.ts"), source))
+  })
 
-const writeDocsFixture = async (
+const writeDocsFixture = (
   root: string,
   pages: Readonly<Record<string, string>>
-): Promise<void> => {
-  await writeDocsManifest(
-    root,
-    Object.keys(pages).map((path) => ({
-      id: "installation",
-      title: "Installation",
-      path
-    }))
-  )
-  for (const [path, body] of Object.entries(pages)) {
-    await mkdir(dirname(join(root, path)), { recursive: true })
-    await writeFile(join(root, path), body)
-  }
-}
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* writeDocsManifest(
+      root,
+      Object.keys(pages).map((path) => ({
+        id: "installation",
+        title: "Installation",
+        path
+      }))
+    )
+    for (const [path, body] of Object.entries(pages)) {
+      yield* Effect.promise(() => mkdir(dirname(join(root, path)), { recursive: true }))
+      yield* Effect.promise(() => writeFile(join(root, path), body))
+    }
+  })
 
-const writeDocsManifest = async (
+const writeDocsManifest = (
   root: string,
   pages: readonly unknown[],
   source = "test"
-): Promise<void> => {
-  await mkdir(join(root, "docs"), { recursive: true })
-  await writeFile(
-    join(root, "docs", "docs-manifest.json"),
-    stringifyJson(
-      {
-        schemaVersion: 1,
-        source,
-        pages
-      },
-      2
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* Effect.promise(() => mkdir(join(root, "docs"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "docs", "docs-manifest.json"),
+        stringifyJson(
+          {
+            schemaVersion: 1,
+            source,
+            pages
+          },
+          2
+        )
+      )
     )
-  )
-}
+  })
 
-const writeReleaseFixture = async (
+const writeReleaseFixture = (
   root: string,
   overrides: {
     readonly checklist?: unknown
@@ -10158,33 +9947,44 @@ const writeReleaseFixture = async (
     readonly keyManagement?: string
     readonly releaseSettings?: string
   } = {}
-): Promise<void> => {
-  await mkdir(join(root, "release"), { recursive: true })
-  await mkdir(join(root, ".github", "workflows"), { recursive: true })
-  await mkdir(join(root, "engineering", "security"), { recursive: true })
-  await writeFile(
-    join(root, "release", "checklist.json"),
-    stringifyJson(overrides.checklist ?? releaseChecklistFixture(), 2)
-  )
-  await writeFile(
-    join(root, ".github", "workflows", "ci.yml"),
-    overrides.ciWorkflow ?? ciWorkflowFixture()
-  )
-  await writeFile(
-    join(root, ".github", "workflows", "release.yml"),
-    overrides.releaseWorkflow ?? releaseWorkflowFixture()
-  )
-  await writeFile(
-    join(root, "engineering", "security", "key-management.md"),
-    overrides.keyManagement ?? keyManagementFixture()
-  )
-  await writeFile(
-    join(root, "engineering", "security", "release-settings.md"),
-    overrides.releaseSettings ?? releaseSettingsFixture()
-  )
-}
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* Effect.promise(() => mkdir(join(root, "release"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(root, ".github", "workflows"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(root, "engineering", "security"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "release", "checklist.json"),
+        stringifyJson(overrides.checklist ?? releaseChecklistFixture(), 2)
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, ".github", "workflows", "ci.yml"),
+        overrides.ciWorkflow ?? ciWorkflowFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, ".github", "workflows", "release.yml"),
+        overrides.releaseWorkflow ?? releaseWorkflowFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "engineering", "security", "key-management.md"),
+        overrides.keyManagement ?? keyManagementFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "engineering", "security", "release-settings.md"),
+        overrides.releaseSettings ?? releaseSettingsFixture()
+      )
+    )
+  })
 
-const writeAccessibilityFixture = async (
+const writeAccessibilityFixture = (
   root: string,
   overrides: {
     readonly manifest?: unknown
@@ -10196,38 +9996,55 @@ const writeAccessibilityFixture = async (
     readonly axeUrlForMode?: (mode: string) => string
     readonly pa11yUrlForMode?: (mode: string) => string
   } = {}
-): Promise<void> => {
-  const auditRoot = join(root, "engineering", "audits", "v1.0.0", "fixture-a11y")
-  const sourceRoot = join(root, "apps", "fixture-a11y", "src")
-  await mkdir(join(root, "release"), { recursive: true })
-  await mkdir(auditRoot, { recursive: true })
-  await mkdir(sourceRoot, { recursive: true })
-  await writeFile(
-    join(root, "release", "accessibility.json"),
-    stringifyJson(overrides.manifest ?? accessibilityManifestFixture(), 2)
-  )
-  await writeFile(join(sourceRoot, "App.tsx"), overrides.appSource ?? accessibilityAppFixture())
-  await writeFile(join(sourceRoot, "styles.css"), overrides.styles ?? accessibilityStylesFixture())
-  await writeFile(
-    join(sourceRoot, "messages.ts"),
-    overrides.messages ?? accessibilityMessagesFixture()
-  )
-  await writeFile(
-    join(auditRoot, "manual-keyboard.md"),
-    overrides.manualAudit ?? accessibilityManualAuditFixture()
-  )
-  await writeFile(join(auditRoot, "keyboard-walkthrough.webm"), "fixture screencast\n")
-  for (const mode of ["light-ltr", "dark-ltr", "light-rtl", "dark-rtl"]) {
-    await writeFile(
-      join(auditRoot, `axe.${mode}.json`),
-      stringifyJson(axeAuditFixture(mode, overrides.axePasses, overrides.axeUrlForMode), 2)
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const auditRoot = join(root, "engineering", "audits", "v1.0.0", "fixture-a11y")
+    const sourceRoot = join(root, "apps", "fixture-a11y", "src")
+    yield* Effect.promise(() => mkdir(join(root, "release"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(auditRoot, { recursive: true }))
+    yield* Effect.promise(() => mkdir(sourceRoot, { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "release", "accessibility.json"),
+        stringifyJson(overrides.manifest ?? accessibilityManifestFixture(), 2)
+      )
     )
-    await writeFile(
-      join(auditRoot, `pa11y.${mode}.json`),
-      stringifyJson(pa11yAuditFixture(mode, overrides.pa11yUrlForMode), 2)
+    yield* Effect.promise(() =>
+      writeFile(join(sourceRoot, "App.tsx"), overrides.appSource ?? accessibilityAppFixture())
     )
-  }
-}
+    yield* Effect.promise(() =>
+      writeFile(join(sourceRoot, "styles.css"), overrides.styles ?? accessibilityStylesFixture())
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(sourceRoot, "messages.ts"),
+        overrides.messages ?? accessibilityMessagesFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(auditRoot, "manual-keyboard.md"),
+        overrides.manualAudit ?? accessibilityManualAuditFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(join(auditRoot, "keyboard-walkthrough.webm"), "fixture screencast\n")
+    )
+    for (const mode of ["light-ltr", "dark-ltr", "light-rtl", "dark-rtl"]) {
+      yield* Effect.promise(() =>
+        writeFile(
+          join(auditRoot, `axe.${mode}.json`),
+          stringifyJson(axeAuditFixture(mode, overrides.axePasses, overrides.axeUrlForMode), 2)
+        )
+      )
+      yield* Effect.promise(() =>
+        writeFile(
+          join(auditRoot, `pa11y.${mode}.json`),
+          stringifyJson(pa11yAuditFixture(mode, overrides.pa11yUrlForMode), 2)
+        )
+      )
+    }
+  })
 
 const accessibilityManifestFixture = (): unknown => ({
   schemaVersion: 1,
@@ -10364,31 +10181,38 @@ const pa11yAuditFixture = (
   issues: []
 })
 
-const writeSemverFixture = async (
+const writeSemverFixture = (
   root: string,
   overrides: {
     readonly manifest?: unknown
     readonly matrix?: unknown
     readonly packageVersion?: string
   } = {}
-): Promise<void> => {
-  await mkdir(join(root, "release"), { recursive: true })
-  await mkdir(join(root, "engineering"), { recursive: true })
-  await mkdir(join(root, "packages", "core"), { recursive: true })
-  await writeFile(
-    join(root, "release", "semver.json"),
-    stringifyJson(overrides.manifest ?? semverManifestFixture(), 2)
-  )
-  await writeFile(
-    join(root, "engineering", "verification-matrix.json"),
-    stringifyJson(overrides.matrix ?? semverMatrixFixture(), 2)
-  )
-  const packageVersion = overrides.packageVersion ?? "0.0.0"
-  await writeFile(
-    join(root, "packages", "core", "package.json"),
-    stringifyJson({ name: "@effect-desktop/core", version: packageVersion }, 2)
-  )
-}
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* Effect.promise(() => mkdir(join(root, "release"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(root, "engineering"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(root, "packages", "core"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "release", "semver.json"),
+        stringifyJson(overrides.manifest ?? semverManifestFixture(), 2)
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "engineering", "verification-matrix.json"),
+        stringifyJson(overrides.matrix ?? semverMatrixFixture(), 2)
+      )
+    )
+    const packageVersion = overrides.packageVersion ?? "0.0.0"
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "packages", "core", "package.json"),
+        stringifyJson({ name: "@effect-desktop/core", version: packageVersion }, 2)
+      )
+    )
+  })
 
 const semverManifestFixture = (): unknown => ({
   schemaVersion: 1,
