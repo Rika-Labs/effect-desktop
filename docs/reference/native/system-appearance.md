@@ -11,23 +11,30 @@ effect_version: 4
 Theme and appearance information.
 
 The Rust host system appearance adapter implements read-only snapshot methods on
-macOS. Windows, Linux, and native OS appearance-change events remain unsupported.
-The host binary includes a macOS-only `--system-appearance-smoke-test` mode that
-reads the snapshot methods on the main thread and exits before starting the
-renderer runtime.
+macOS and Windows. Linux and native OS appearance-change events remain
+unsupported. The host binary includes a macOS-only
+`--system-appearance-smoke-test` mode that reads the snapshot methods on the
+main thread and exits before starting the renderer runtime.
 
 ## Methods
 
 | Method                   | Success                  | Runtime support |
 | ------------------------ | ------------------------ | --------------- |
-| `getAppearance`          | `{ appearance }`         | macOS           |
-| `getAccentColor`         | `{ color }`              | macOS           |
-| `getReducedMotion`       | `{ enabled: boolean }`   | macOS           |
-| `getReducedTransparency` | `{ enabled: boolean }`   | macOS           |
+| `getAppearance`          | `{ appearance }`         | macOS, Windows  |
+| `getAccentColor`         | `{ color }`              | macOS, Windows  |
+| `getReducedMotion`       | `{ enabled: boolean }`   | macOS, Windows  |
+| `getReducedTransparency` | `{ enabled: boolean }`   | macOS, Windows  |
 | `isSupported`            | `{ supported: boolean }` | supported       |
 
 `appearance` is `"light"`, `"dark"`, or `"highContrast"`. `color` is either
 `null` or an RGBA object.
+
+On Windows, `getAppearance` uses high-contrast state plus the current user's
+`AppsUseLightTheme` setting, `getAccentColor` uses the DWM colorization color,
+`getReducedMotion` reflects client-area animation settings, and
+`getReducedTransparency` uses the current user's `EnableTransparency` setting.
+Missing optional registry values fall back to light appearance, no accent color,
+and transparency enabled.
 
 ## Events
 

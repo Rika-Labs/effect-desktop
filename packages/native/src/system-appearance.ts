@@ -30,7 +30,7 @@ import {
 export type SystemAppearanceError = HostProtocolError
 
 const UnsupportedReason = "host-adapter-unimplemented"
-const MacOsSnapshotReason = "macos-system-appearance-snapshot"
+const HostSnapshotReason = "host-system-appearance-snapshot"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
 const SystemAppearanceUnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
@@ -40,10 +40,10 @@ const SystemAppearanceUnsupportedSupport = NativeSurface.support.unsupported(Uns
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
 })
-const SystemAppearanceSnapshotSupport = NativeSurface.support.partial(MacOsSnapshotReason, {
+const SystemAppearanceSnapshotSupport = NativeSurface.support.partial(HostSnapshotReason, {
   platforms: [
     { platform: "macos", status: "supported" },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "supported" },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
 }) satisfies RpcSupportMetadata

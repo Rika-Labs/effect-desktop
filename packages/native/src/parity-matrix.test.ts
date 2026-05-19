@@ -113,7 +113,7 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
   })
   expect(result.rows.find((row) => row.tag === "SystemAppearance.getAppearance")).toMatchObject({
     hostStatus: "routed",
-    support: { status: "partial", reason: "macos-system-appearance-snapshot" }
+    support: { status: "partial", reason: "host-system-appearance-snapshot" }
   })
   expect(result.rows.find((row) => row.tag === "SystemAppearance.isSupported")).toMatchObject({
     hostStatus: "routed",

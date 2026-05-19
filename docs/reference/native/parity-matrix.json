@@ -2767,7 +2767,7 @@
       "capability": "native",
       "support": {
         "status": "partial",
-        "reason": "macos-system-appearance-snapshot",
+        "reason": "host-system-appearance-snapshot",
         "platforms": [
           {
             "platform": "macos",
@@ -2775,8 +2775,7 @@
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "linux",
@@ -2794,7 +2793,7 @@
       "capability": "native",
       "support": {
         "status": "partial",
-        "reason": "macos-system-appearance-snapshot",
+        "reason": "host-system-appearance-snapshot",
         "platforms": [
           {
             "platform": "macos",
@@ -2802,8 +2801,7 @@
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "linux",
@@ -2821,7 +2819,7 @@
       "capability": "native",
       "support": {
         "status": "partial",
-        "reason": "macos-system-appearance-snapshot",
+        "reason": "host-system-appearance-snapshot",
         "platforms": [
           {
             "platform": "macos",
@@ -2829,8 +2827,7 @@
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "linux",
@@ -2848,7 +2845,7 @@
       "capability": "native",
       "support": {
         "status": "partial",
-        "reason": "macos-system-appearance-snapshot",
+        "reason": "host-system-appearance-snapshot",
         "platforms": [
           {
             "platform": "macos",
@@ -2856,8 +2853,7 @@
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "linux",

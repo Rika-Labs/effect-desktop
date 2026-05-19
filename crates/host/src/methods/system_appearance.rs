@@ -14,6 +14,8 @@ use serde_json::{to_value, Value};
 use tracing::info;
 
 const SYSTEM_APPEARANCE_SMOKE_OPERATION: &str = "SystemAppearance.smoke";
+#[cfg(any(test, target_os = "windows"))]
+const WINDOWS_COLOR_CHANNEL_MAX: f64 = 255.0;
 
 pub(crate) fn get_appearance(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     reject_unexpected_payload(
@@ -187,12 +189,12 @@ fn supports_method(method: SystemAppearanceMethodPayload) -> bool {
     }
 }
 
-#[cfg(all(target_os = "macos", not(test)))]
+#[cfg(all(any(target_os = "macos", target_os = "windows"), not(test)))]
 fn has_host_snapshot() -> bool {
     true
 }
 
-#[cfg(not(all(target_os = "macos", not(test))))]
+#[cfg(not(all(any(target_os = "macos", target_os = "windows"), not(test))))]
 fn has_host_snapshot() -> bool {
     test_snapshot().is_some()
 }
@@ -207,7 +209,12 @@ fn snapshot(operation: &'static str) -> Result<SystemAppearanceSnapshot, HostPro
         macos_system_appearance::snapshot(operation)
     }
 
-    #[cfg(not(all(target_os = "macos", not(test))))]
+    #[cfg(all(target_os = "windows", not(test)))]
+    {
+        windows_system_appearance::snapshot(operation)
+    }
+
+    #[cfg(not(all(any(target_os = "macos", target_os = "windows"), not(test))))]
     {
         Err(unsupported(operation))
     }
@@ -320,11 +327,154 @@ mod macos_system_appearance {
     }
 }
 
+#[cfg(all(target_os = "windows", not(test)))]
+mod windows_system_appearance {
+    use super::{windows_colorization_color, HostProtocolError, SystemAppearanceSnapshot};
+    use host_protocol::SystemAppearanceModePayload;
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::{
+        Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS},
+        System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD},
+        UI::{
+            Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW},
+            WindowsAndMessaging::{
+                SystemParametersInfoW, SPI_GETCLIENTAREAANIMATION, SPI_GETHIGHCONTRAST,
+            },
+        },
+    };
+
+    const PERSONALIZE_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+    const DWM_KEY: &str = r"Software\Microsoft\Windows\DWM";
+
+    pub(super) fn snapshot(
+        operation: &'static str,
+    ) -> Result<SystemAppearanceSnapshot, HostProtocolError> {
+        let high_contrast = high_contrast_enabled(operation)?;
+        let apps_use_light_theme =
+            read_current_user_dword(PERSONALIZE_KEY, "AppsUseLightTheme", operation)?;
+        let enable_transparency =
+            read_current_user_dword(PERSONALIZE_KEY, "EnableTransparency", operation)?;
+        let colorization_color = read_current_user_dword(DWM_KEY, "ColorizationColor", operation)?;
+
+        Ok(SystemAppearanceSnapshot {
+            appearance: if high_contrast {
+                SystemAppearanceModePayload::HighContrast
+            } else if apps_use_light_theme == Some(0) {
+                SystemAppearanceModePayload::Dark
+            } else {
+                SystemAppearanceModePayload::Light
+            },
+            accent_color: colorization_color.map(windows_colorization_color),
+            reduced_motion: !client_area_animation_enabled(operation)?,
+            reduced_transparency: enable_transparency == Some(0),
+        })
+    }
+
+    fn high_contrast_enabled(operation: &'static str) -> Result<bool, HostProtocolError> {
+        let mut contrast = HIGHCONTRASTW {
+            cbSize: std::mem::size_of::<HIGHCONTRASTW>() as u32,
+            ..Default::default()
+        };
+        let result = unsafe {
+            SystemParametersInfoW(
+                SPI_GETHIGHCONTRAST,
+                contrast.cbSize,
+                (&mut contrast as *mut HIGHCONTRASTW).cast(),
+                0,
+            )
+        };
+        if result == 0 {
+            return Err(last_os_error(
+                "SystemParametersInfoW(SPI_GETHIGHCONTRAST)",
+                operation,
+            ));
+        }
+        Ok(contrast.dwFlags & HCF_HIGHCONTRASTON != 0)
+    }
+
+    fn client_area_animation_enabled(operation: &'static str) -> Result<bool, HostProtocolError> {
+        let mut enabled = 0;
+        let result = unsafe {
+            SystemParametersInfoW(
+                SPI_GETCLIENTAREAANIMATION,
+                0,
+                (&mut enabled as *mut i32).cast(),
+                0,
+            )
+        };
+        if result == 0 {
+            return Err(last_os_error(
+                "SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)",
+                operation,
+            ));
+        }
+        Ok(enabled != 0)
+    }
+
+    fn read_current_user_dword(
+        key: &str,
+        value_name: &str,
+        operation: &'static str,
+    ) -> Result<Option<u32>, HostProtocolError> {
+        let key_name = key;
+        let value_name_str = value_name;
+        let key = wide_null(key_name);
+        let value_name = wide_null(value_name_str);
+        let mut value = 0_u32;
+        let mut value_type = 0_u32;
+        let mut size = std::mem::size_of::<u32>() as u32;
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                value_name.as_ptr(),
+                RRF_RT_REG_DWORD,
+                &mut value_type,
+                (&mut value as *mut u32).cast(),
+                &mut size,
+            )
+        };
+
+        match status {
+            ERROR_SUCCESS => Ok(Some(value)),
+            ERROR_FILE_NOT_FOUND | ERROR_PATH_NOT_FOUND => Ok(None),
+            error => Err(HostProtocolError::internal(
+                format!("RegGetValueW failed for {key_name}/{value_name_str}: error {error}"),
+                operation,
+            )),
+        }
+    }
+
+    fn wide_null(value: &str) -> Vec<u16> {
+        OsStr::new(value).encode_wide().chain([0]).collect()
+    }
+
+    fn last_os_error(operation_name: &'static str, operation: &'static str) -> HostProtocolError {
+        HostProtocolError::internal(
+            format!(
+                "{operation_name} failed: {}",
+                std::io::Error::last_os_error()
+            ),
+            operation,
+        )
+    }
+}
+
+#[cfg(any(test, target_os = "windows"))]
+fn windows_colorization_color(value: u32) -> SystemAppearanceColorPayload {
+    let alpha = f64::from((value >> 24) & 0xff) / WINDOWS_COLOR_CHANNEL_MAX;
+    let red = f64::from((value >> 16) & 0xff) / WINDOWS_COLOR_CHANNEL_MAX;
+    let green = f64::from((value >> 8) & 0xff) / WINDOWS_COLOR_CHANNEL_MAX;
+    let blue = f64::from(value & 0xff) / WINDOWS_COLOR_CHANNEL_MAX;
+    SystemAppearanceColorPayload::new(red, green, blue, alpha)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         get_accent_color, get_appearance, get_reduced_motion, get_reduced_transparency,
-        is_supported, SystemAppearanceSnapshot, TEST_SYSTEM_APPEARANCE,
+        is_supported, windows_colorization_color, SystemAppearanceSnapshot, TEST_SYSTEM_APPEARANCE,
     };
     use host_protocol::{
         HostProtocolError, SystemAppearanceColorPayload, SystemAppearanceIsSupportedPayload,
@@ -449,5 +599,20 @@ mod tests {
         let error = is_supported(Some(json!({ "method": "theme" })))
             .expect_err("unknown method should reject");
         assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    #[test]
+    fn system_appearance_converts_windows_colorization_color() {
+        let color = windows_colorization_color(0x8040_80ff);
+
+        assert_eq!(
+            serde_json::to_value(color).expect("color should encode"),
+            json!({
+                "r": 64.0 / 255.0,
+                "g": 128.0 / 255.0,
+                "b": 1.0,
+                "a": 128.0 / 255.0
+            })
+        );
     }
 }
