@@ -347,7 +347,7 @@ import { makeClipboardBridgeClientLayer, makeHostClipboardRpcRuntime } from "./c
 import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
 import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
 import { makeDialogBridgeClientLayer, makeHostDialogRpcRuntime } from "./dialog.js"
-import { makeDockBridgeClientLayer } from "./dock.js"
+import { makeDockBridgeClientLayer, makeHostDockRpcRuntime } from "./dock.js"
 import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
 import { makeMenuBridgeClientLayer } from "./menu.js"
 import {
@@ -8756,6 +8756,97 @@ test("Dock bridge client rejects malformed jump-list items before transport", as
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   }
   expect(requests).toEqual([])
+})
+
+test("native host RPC runtime denies protected Dock calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostDockRpcRuntime(
+    {
+      "Dock.setBadgeCount": (input) =>
+        Effect.sync(() => {
+          calls.push(`setBadgeCount:${input.count}`)
+        }),
+      "Dock.setBadgeText": (input) =>
+        Effect.sync(() => {
+          calls.push(`setBadgeText:${input.text ?? ""}`)
+        }),
+      "Dock.setProgress": (input) =>
+        Effect.sync(() => {
+          calls.push(`setProgress:${input.value ?? ""}`)
+        }),
+      "Dock.setMenu": (input) =>
+        Effect.sync(() => {
+          calls.push(`setMenu:${input.menu?.items.length ?? 0}`)
+        }),
+      "Dock.setJumpList": (input) =>
+        Effect.sync(() => {
+          calls.push(`setJumpList:${input.items.map((item) => item.id).join(",")}`)
+        }),
+      "Dock.requestAttention": (input) =>
+        Effect.sync(() => {
+          calls.push(`requestAttention:${input.critical ?? false}`)
+        }),
+      "Dock.isSupported": () => Effect.succeed(new DockSupportedResult({ supported: true }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "dock-denied",
+          method: "Dock.setBadgeCount",
+          timestamp: 1710000000000,
+          traceId: "trace-dock-denied",
+          payload: { count: 1 }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
+test("Dock service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-adapter-unimplemented",
+    message: "unsupported Dock.setJumpList",
+    operation: "Dock.setJumpList",
+    recoverable: false
+  })
+  const unsupportedClient: DockClientApi = {
+    ...dockClient([]),
+    setJumpList: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: DockClientApi = {
+    ...dockClient([]),
+    setProgress: () => Effect.fail(makeHostProtocolHostUnavailableError("Dock.setProgress"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      return yield* Effect.exit(
+        dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
+      )
+    }).pipe(Effect.provide(makeDockServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dock = yield* Dock
+      return yield* Effect.exit(dock.setProgress(0.5))
+    }).pipe(Effect.provide(makeDockServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("Linux Dock client reports unimplemented partial methods as unsupported", async () => {
