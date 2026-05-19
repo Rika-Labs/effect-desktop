@@ -1,7 +1,6 @@
-import { join } from "node:path"
-
 import { Cause, Context, Data, Effect, Layer, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
+import { Path } from "effect/Path"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 import { BackupManifestJson } from "./backup.js"
 
@@ -55,10 +54,11 @@ const wrapError =
 export const RestoreWorkflowLayer: Layer.Layer<
   never,
   never,
-  WorkflowEngine.WorkflowEngine | RestoreConfigService | FileSystem | WriterQuiesceService
+  WorkflowEngine.WorkflowEngine | RestoreConfigService | FileSystem | Path | WriterQuiesceService
 > = RestoreWorkflow.toLayer((payload) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem
+    const path = yield* Path
     const config = yield* RestoreConfigService
     const quiesce = yield* WriterQuiesceService
 
@@ -70,7 +70,7 @@ export const RestoreWorkflowLayer: Layer.Layer<
       success: Schema.Struct({ manifestLabel: Schema.String }),
       error: RestoreErrorSchema,
       execute: Effect.gen(function* () {
-        const manifestPath = join(payload.archivePath, "manifest.json")
+        const manifestPath = path.join(payload.archivePath, "manifest.json")
         const manifestBytes = yield* fs
           .readFile(manifestPath)
           .pipe(Effect.mapError(wrapError("validate")))
@@ -123,7 +123,7 @@ export const RestoreWorkflowLayer: Layer.Layer<
       error: RestoreErrorSchema,
       execute: Effect.gen(function* () {
         const dbBytes = yield* fs
-          .readFile(join(payload.archivePath, "db.sqlite"))
+          .readFile(path.join(payload.archivePath, "db.sqlite"))
           .pipe(Effect.mapError(wrapError("database")))
         yield* fs.writeFile(config.dbPath, dbBytes).pipe(Effect.mapError(wrapError("database")))
       })
@@ -133,7 +133,7 @@ export const RestoreWorkflowLayer: Layer.Layer<
       name: "restoreFiles",
       error: RestoreErrorSchema,
       execute: fs
-        .copy(join(payload.archivePath, "files"), config.userDataDir, { overwrite: true })
+        .copy(path.join(payload.archivePath, "files"), config.userDataDir, { overwrite: true })
         .pipe(Effect.mapError(wrapError("files")))
     })
 

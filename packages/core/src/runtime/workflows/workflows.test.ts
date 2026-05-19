@@ -46,6 +46,7 @@ const makeBackupLayer = (options: {
           }),
           sqliteLayer({ filename: options.dbPath }),
           BunFileSystem.layer,
+          BunPath.layer,
           WorkflowEngine.layerMemory
         )
       )
@@ -68,6 +69,7 @@ const makeRestoreLayer = (options: {
           }),
           Layer.succeed(WriterQuiesceService, options.quiesce),
           BunFileSystem.layer,
+          BunPath.layer,
           WorkflowEngine.layerMemory
         )
       )
