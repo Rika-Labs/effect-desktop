@@ -24,7 +24,6 @@ import {
   WindowCreatePayload,
   decodeHostProtocolFrame,
   decodeHostProtocolEnvelope,
-  encodeHostProtocolEnvelope,
   encodeHostProtocolFrame,
   hostProtocolErrorRecoverableDefault,
   rpcCapability,
@@ -41,9 +40,11 @@ const FIXTURE_DIR = fileURLToPath(
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const TextEncoderUtf8 = new TextEncoder()
 const HostProtocolErrorsJson = Schema.fromJsonString(Schema.Array(HostProtocolError))
+const HostProtocolEnvelopeJson = Schema.fromJsonString(HostProtocolEnvelope)
 const decodeUnknownHostProtocolError = Schema.decodeUnknownSync(HostProtocolError)
 const decodeHostProtocolErrorsJson = Schema.decodeUnknownSync(HostProtocolErrorsJson)
-const encodeHostProtocolError = Schema.encodeSync(HostProtocolError)
+const encodeHostProtocolEnvelopeJson = Schema.encodeSync(HostProtocolEnvelopeJson)
+const encodeHostProtocolErrorsJson = Schema.encodeSync(HostProtocolErrorsJson)
 
 test("host protocol version matches the bridge package version", () => {
   expect(HOST_PROTOCOL_VERSION).toBe(packageJson.version)
@@ -77,9 +78,8 @@ test("shared host-protocol fixtures decode and encode canonically", () =>
           TextEncoderUtf8.encode(source),
           fixtureName
         )
-        const encoded = encodeHostProtocolEnvelope(decoded)
 
-        expect(JSON.stringify(encoded), fixtureName).toBe(source)
+        expect(encodeHostProtocolEnvelopeJson(decoded), fixtureName).toBe(source)
       }
     })
   ))
@@ -104,7 +104,7 @@ test("host protocol codec round-trips shared fixtures as canonical JSON bytes", 
         const fromFrame = yield* decodeHostProtocolFrame(frame, fixtureName)
 
         expect(decoder.decode(frame), fixtureName).toBe(source)
-        expect(JSON.stringify(encodeHostProtocolEnvelope(fromFrame)), fixtureName).toBe(source)
+        expect(encodeHostProtocolEnvelopeJson(fromFrame), fixtureName).toBe(source)
       }
     })
   ))
@@ -316,9 +316,8 @@ test("shared host-protocol error fixtures decode and encode canonically", () =>
         readFile(join(FIXTURE_DIR, "errors.json"), "utf8")
       )).trim()
       const decoded = decodeHostProtocolErrorsJson(source, StrictParseOptions)
-      const encoded = decoded.map((error) => encodeHostProtocolError(error, StrictParseOptions))
 
-      expect(JSON.stringify(encoded)).toBe(source)
+      expect(encodeHostProtocolErrorsJson(decoded, StrictParseOptions)).toBe(source)
       expect(decoded.map((error) => error.tag)).toEqual(
         HOST_PROTOCOL_ERROR_SPECS.map((spec) => spec.tag)
       )
