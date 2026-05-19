@@ -69,7 +69,7 @@ impl SafeStorageBackend for KeyringSafeStorageBackend {
     fn is_available(&self) -> bool {
         #[cfg(test)]
         {
-            return false;
+            false
         }
 
         #[cfg(not(test))]
