@@ -177,11 +177,11 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Shell`                     | `openPath`                  | `supported`   | `Shell.openPath`                          | `routed`    |
 | `Shell`                     | `showItemInFolder`          | `supported`   | `Shell.showItemInFolder`                  | `routed`    |
 | `Shell`                     | `trashItem`                 | `partial`     | `Shell.trashItem`                         | `routed`    |
-| `SystemAppearance`          | `getAccentColor`            | `unsupported` | `SystemAppearance.getAccentColor`         | `routed`    |
-| `SystemAppearance`          | `getAppearance`             | `unsupported` | `SystemAppearance.getAppearance`          | `routed`    |
-| `SystemAppearance`          | `getReducedMotion`          | `unsupported` | `SystemAppearance.getReducedMotion`       | `routed`    |
-| `SystemAppearance`          | `getReducedTransparency`    | `unsupported` | `SystemAppearance.getReducedTransparency` | `routed`    |
-| `SystemAppearance`          | `isSupported`               | `unsupported` | `SystemAppearance.isSupported`            | `routed`    |
+| `SystemAppearance`          | `getAccentColor`            | `partial`     | `SystemAppearance.getAccentColor`         | `routed`    |
+| `SystemAppearance`          | `getAppearance`             | `partial`     | `SystemAppearance.getAppearance`          | `routed`    |
+| `SystemAppearance`          | `getReducedMotion`          | `partial`     | `SystemAppearance.getReducedMotion`       | `routed`    |
+| `SystemAppearance`          | `getReducedTransparency`    | `partial`     | `SystemAppearance.getReducedTransparency` | `routed`    |
+| `SystemAppearance`          | `isSupported`               | `supported`   | `SystemAppearance.isSupported`            | `routed`    |
 | `TransactionalFileMutation` | `commit`                    | `supported`   | `TransactionalFileMutation.commit`        | `routed`    |
 | `TransactionalFileMutation` | `isSupported`               | `supported`   | `TransactionalFileMutation.isSupported`   | `routed`    |
 | `TransactionalFileMutation` | `prepare`                   | `supported`   | `TransactionalFileMutation.prepare`       | `routed`    |

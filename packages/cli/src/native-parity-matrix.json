@@ -3090,13 +3090,12 @@
       "method": "getAccentColor",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-system-appearance-snapshot",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -3118,13 +3117,12 @@
       "method": "getAppearance",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-system-appearance-snapshot",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -3146,13 +3144,12 @@
       "method": "getReducedMotion",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-system-appearance-snapshot",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -3174,13 +3171,12 @@
       "method": "getReducedTransparency",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-system-appearance-snapshot",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -3202,25 +3198,7 @@
       "method": "isSupported",
       "capability": "none",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4409,8 +4387,8 @@
     "total": 231,
     "routed": 207,
     "missing": 24,
-    "supported": 113,
-    "partial": 31,
-    "unsupported": 87
+    "supported": 114,
+    "partial": 35,
+    "unsupported": 82
   }
 }

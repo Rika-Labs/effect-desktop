@@ -3,7 +3,10 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use host_protocol::{
-    HostProtocolError, SystemAppearanceIsSupportedPayload, SystemAppearanceSupportedPayload,
+    HostProtocolError, SystemAppearanceAccentColorPayload, SystemAppearanceBooleanPayload,
+    SystemAppearanceColorPayload, SystemAppearanceIsSupportedPayload,
+    SystemAppearanceMethodPayload, SystemAppearanceModePayload, SystemAppearanceResultPayload,
+    SystemAppearanceSupportedPayload,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -14,9 +17,12 @@ pub(crate) fn get_appearance(payload: Option<Value>) -> Result<Option<Value>, Ho
         payload,
         host_protocol::SYSTEM_APPEARANCE_GET_APPEARANCE_METHOD,
     )?;
-    Err(unsupported(
+    encode_payload(
+        SystemAppearanceResultPayload::new(
+            snapshot(host_protocol::SYSTEM_APPEARANCE_GET_APPEARANCE_METHOD)?.appearance,
+        ),
         host_protocol::SYSTEM_APPEARANCE_GET_APPEARANCE_METHOD,
-    ))
+    )
 }
 
 pub(crate) fn get_accent_color(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -24,9 +30,12 @@ pub(crate) fn get_accent_color(payload: Option<Value>) -> Result<Option<Value>, 
         payload,
         host_protocol::SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD,
     )?;
-    Err(unsupported(
+    encode_payload(
+        SystemAppearanceAccentColorPayload::new(
+            snapshot(host_protocol::SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD)?.accent_color,
+        ),
         host_protocol::SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD,
-    ))
+    )
 }
 
 pub(crate) fn get_reduced_motion(
@@ -36,9 +45,12 @@ pub(crate) fn get_reduced_motion(
         payload,
         host_protocol::SYSTEM_APPEARANCE_GET_REDUCED_MOTION_METHOD,
     )?;
-    Err(unsupported(
+    encode_payload(
+        SystemAppearanceBooleanPayload::new(
+            snapshot(host_protocol::SYSTEM_APPEARANCE_GET_REDUCED_MOTION_METHOD)?.reduced_motion,
+        ),
         host_protocol::SYSTEM_APPEARANCE_GET_REDUCED_MOTION_METHOD,
-    ))
+    )
 }
 
 pub(crate) fn get_reduced_transparency(
@@ -48,18 +60,26 @@ pub(crate) fn get_reduced_transparency(
         payload,
         host_protocol::SYSTEM_APPEARANCE_GET_REDUCED_TRANSPARENCY_METHOD,
     )?;
-    Err(unsupported(
+    encode_payload(
+        SystemAppearanceBooleanPayload::new(
+            snapshot(host_protocol::SYSTEM_APPEARANCE_GET_REDUCED_TRANSPARENCY_METHOD)?
+                .reduced_transparency,
+        ),
         host_protocol::SYSTEM_APPEARANCE_GET_REDUCED_TRANSPARENCY_METHOD,
-    ))
+    )
 }
 
 pub(crate) fn is_supported(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    let _input = decode_payload::<SystemAppearanceIsSupportedPayload>(
+    let input = decode_payload::<SystemAppearanceIsSupportedPayload>(
         payload,
         host_protocol::SYSTEM_APPEARANCE_IS_SUPPORTED_METHOD,
     )?;
     encode_payload(
-        SystemAppearanceSupportedPayload::unsupported(),
+        if supports_method(input.method()) {
+            SystemAppearanceSupportedPayload::supported()
+        } else {
+            SystemAppearanceSupportedPayload::unsupported()
+        },
         host_protocol::SYSTEM_APPEARANCE_IS_SUPPORTED_METHOD,
     )
 }
@@ -101,6 +121,7 @@ fn encode_payload<T: Serialize>(
     })
 }
 
+#[cfg(any(test, not(target_os = "macos")))]
 fn unsupported(operation: &'static str) -> HostProtocolError {
     HostProtocolError::unsupported(
         host_protocol::SYSTEM_APPEARANCE_UNSUPPORTED_REASON,
@@ -108,10 +129,159 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
     )
 }
 
+fn supports_method(method: SystemAppearanceMethodPayload) -> bool {
+    match method {
+        SystemAppearanceMethodPayload::GetAppearance
+        | SystemAppearanceMethodPayload::GetAccentColor
+        | SystemAppearanceMethodPayload::GetReducedMotion
+        | SystemAppearanceMethodPayload::GetReducedTransparency => has_host_snapshot(),
+        SystemAppearanceMethodPayload::OnAppearanceChanged => false,
+    }
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+fn has_host_snapshot() -> bool {
+    true
+}
+
+#[cfg(not(all(target_os = "macos", not(test))))]
+fn has_host_snapshot() -> bool {
+    test_snapshot().is_some()
+}
+
+fn snapshot(operation: &'static str) -> Result<SystemAppearanceSnapshot, HostProtocolError> {
+    if let Some(snapshot) = test_snapshot() {
+        return Ok(snapshot);
+    }
+
+    #[cfg(all(target_os = "macos", not(test)))]
+    {
+        macos_system_appearance::snapshot(operation)
+    }
+
+    #[cfg(not(all(target_os = "macos", not(test))))]
+    {
+        Err(unsupported(operation))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SystemAppearanceSnapshot {
+    appearance: SystemAppearanceModePayload,
+    accent_color: Option<SystemAppearanceColorPayload>,
+    reduced_motion: bool,
+    reduced_transparency: bool,
+}
+
+#[cfg(not(test))]
+fn test_snapshot() -> Option<SystemAppearanceSnapshot> {
+    None
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_SYSTEM_APPEARANCE: std::cell::RefCell<Option<SystemAppearanceSnapshot>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn test_snapshot() -> Option<SystemAppearanceSnapshot> {
+    TEST_SYSTEM_APPEARANCE.with(|state| state.borrow().clone())
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+mod macos_system_appearance {
+    use super::{HostProtocolError, SystemAppearanceSnapshot};
+    use host_protocol::{SystemAppearanceColorPayload, SystemAppearanceModePayload};
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{
+        NSAppearance, NSAppearanceNameAccessibilityHighContrastAqua,
+        NSAppearanceNameAccessibilityHighContrastDarkAqua,
+        NSAppearanceNameAccessibilityHighContrastVibrantDark,
+        NSAppearanceNameAccessibilityHighContrastVibrantLight, NSAppearanceNameDarkAqua,
+        NSApplication, NSColor, NSColorType, NSWorkspace,
+    };
+    use objc2_foundation::NSArray;
+
+    pub(super) fn snapshot(
+        operation: &'static str,
+    ) -> Result<SystemAppearanceSnapshot, HostProtocolError> {
+        let Some(marker) = MainThreadMarker::new() else {
+            return Err(HostProtocolError::internal(
+                "macOS system appearance must run on the main thread",
+                operation,
+            ));
+        };
+
+        let application = NSApplication::sharedApplication(marker);
+        let appearance = application.effectiveAppearance();
+        let workspace = NSWorkspace::sharedWorkspace();
+
+        Ok(SystemAppearanceSnapshot {
+            appearance: appearance_mode(&appearance),
+            accent_color: accent_color(),
+            reduced_motion: workspace.accessibilityDisplayShouldReduceMotion(),
+            reduced_transparency: workspace.accessibilityDisplayShouldReduceTransparency(),
+        })
+    }
+
+    fn appearance_mode(appearance: &NSAppearance) -> SystemAppearanceModePayload {
+        let high_contrast_aqua = unsafe { NSAppearanceNameAccessibilityHighContrastAqua };
+        let high_contrast_dark = unsafe { NSAppearanceNameAccessibilityHighContrastDarkAqua };
+        let high_contrast_vibrant_light =
+            unsafe { NSAppearanceNameAccessibilityHighContrastVibrantLight };
+        let high_contrast_vibrant_dark =
+            unsafe { NSAppearanceNameAccessibilityHighContrastVibrantDark };
+        let dark = unsafe { NSAppearanceNameDarkAqua };
+        let names = NSArray::from_slice(&[
+            high_contrast_aqua,
+            high_contrast_dark,
+            high_contrast_vibrant_light,
+            high_contrast_vibrant_dark,
+            dark,
+        ]);
+
+        let Some(best_match) = appearance.bestMatchFromAppearancesWithNames(&names) else {
+            return SystemAppearanceModePayload::Light;
+        };
+
+        if best_match.isEqualToString(high_contrast_aqua)
+            || best_match.isEqualToString(high_contrast_dark)
+            || best_match.isEqualToString(high_contrast_vibrant_light)
+            || best_match.isEqualToString(high_contrast_vibrant_dark)
+        {
+            return SystemAppearanceModePayload::HighContrast;
+        }
+
+        if best_match.isEqualToString(dark) {
+            return SystemAppearanceModePayload::Dark;
+        }
+
+        SystemAppearanceModePayload::Light
+    }
+
+    fn accent_color() -> Option<SystemAppearanceColorPayload> {
+        let color = NSColor::controlAccentColor();
+        let component_color = color.colorUsingType(NSColorType::ComponentBased)?;
+        Some(SystemAppearanceColorPayload::new(
+            component_color.redComponent(),
+            component_color.greenComponent(),
+            component_color.blueComponent(),
+            component_color.alphaComponent(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{get_appearance, get_reduced_motion, is_supported};
-    use host_protocol::HostProtocolError;
+    use super::{
+        get_accent_color, get_appearance, get_reduced_motion, get_reduced_transparency,
+        is_supported, SystemAppearanceSnapshot, TEST_SYSTEM_APPEARANCE,
+    };
+    use host_protocol::{
+        HostProtocolError, SystemAppearanceColorPayload, SystemAppearanceIsSupportedPayload,
+        SystemAppearanceMethodPayload, SystemAppearanceModePayload,
+    };
     use serde_json::{json, Value};
 
     #[test]
@@ -153,10 +323,77 @@ mod tests {
     }
 
     #[test]
+    fn system_appearance_reads_snapshot_values() {
+        TEST_SYSTEM_APPEARANCE.with(|state| {
+            *state.borrow_mut() = Some(SystemAppearanceSnapshot {
+                appearance: SystemAppearanceModePayload::Dark,
+                accent_color: Some(SystemAppearanceColorPayload::new(0.1, 0.2, 0.3, 1.0)),
+                reduced_motion: true,
+                reduced_transparency: false,
+            });
+        });
+
+        assert_eq!(
+            get_appearance(None).expect("appearance"),
+            Some(json!({ "appearance": "dark" }))
+        );
+        assert_eq!(
+            get_accent_color(None).expect("accent color"),
+            Some(json!({ "color": { "r": 0.1, "g": 0.2, "b": 0.3, "a": 1.0 } }))
+        );
+        assert_eq!(
+            get_reduced_motion(None).expect("reduced motion"),
+            Some(json!({ "enabled": true }))
+        );
+        assert_eq!(
+            get_reduced_transparency(None).expect("reduced transparency"),
+            Some(json!({ "enabled": false }))
+        );
+
+        TEST_SYSTEM_APPEARANCE.with(|state| {
+            *state.borrow_mut() = None;
+        });
+    }
+
+    #[test]
     fn system_appearance_support_reports_false_for_known_methods() {
         let payload = is_supported(Some(json!({ "method": "getAppearance" })))
             .expect("support query should return payload");
         assert_eq!(payload, Some(json!({ "supported": false })));
+    }
+
+    #[test]
+    fn system_appearance_support_reports_snapshot_test_adapter() {
+        TEST_SYSTEM_APPEARANCE.with(|state| {
+            *state.borrow_mut() = Some(SystemAppearanceSnapshot {
+                appearance: SystemAppearanceModePayload::Light,
+                accent_color: None,
+                reduced_motion: false,
+                reduced_transparency: false,
+            });
+        });
+
+        for method in [
+            SystemAppearanceMethodPayload::GetAppearance,
+            SystemAppearanceMethodPayload::GetAccentColor,
+            SystemAppearanceMethodPayload::GetReducedMotion,
+            SystemAppearanceMethodPayload::GetReducedTransparency,
+        ] {
+            let payload = is_supported(Some(
+                serde_json::to_value(SystemAppearanceIsSupportedPayload::new(method))
+                    .expect("support query should encode"),
+            ))
+            .expect("support query should return payload");
+            assert_eq!(payload, Some(json!({ "supported": true })));
+        }
+
+        let events = is_supported(Some(json!({ "method": "onAppearanceChanged" })))
+            .expect("events support should return payload");
+        assert_eq!(events, Some(json!({ "supported": false })));
+
+        TEST_SYSTEM_APPEARANCE.with(|state| {
+            *state.borrow_mut() = None;
+        });
     }
 
     #[test]
