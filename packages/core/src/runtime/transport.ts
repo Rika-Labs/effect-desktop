@@ -137,67 +137,49 @@ export interface TransportApi {
   ) => Effect.Effect<TransportConnection, TransportError, Socket.Socket | Scope.Scope>
 }
 
-export class FrameTooLargeError extends Error {
-  override readonly name = "FrameTooLargeError"
+export class FrameTooLargeError extends Data.TaggedError("FrameTooLargeError")<{
   readonly size: number
   readonly max: number
+}> {}
 
-  constructor(size: number, max: number) {
-    super(`frame size ${size} exceeds maxFrameBytes ${max}`)
-    this.size = size
-    this.max = max
-  }
-}
-
-export class FrameTruncatedError extends Error {
-  override readonly name = "FrameTruncatedError"
+export class FrameTruncatedError extends Data.TaggedError("FrameTruncatedError")<{
   readonly stage: "length" | "body"
   readonly expected: number
   readonly read: number
+}> {}
 
-  constructor(stage: "length" | "body", expected: number, read: number) {
-    super(`frame ${stage} truncated after ${read} of ${expected} bytes`)
-    this.stage = stage
-    this.expected = expected
-    this.read = read
-  }
-}
-
-export class InvalidFrameLimitError extends Error {
-  override readonly name = "InvalidFrameLimitError"
+export class InvalidFrameLimitError extends Data.TaggedError("InvalidFrameLimitError")<{
   readonly maxFrameBytes: number
-
-  constructor(maxFrameBytes: number) {
-    super(`invalid maxFrameBytes ${maxFrameBytes}; expected an integer from 0 to ${U32_MAX}`)
-    this.maxFrameBytes = maxFrameBytes
-  }
-}
+}> {}
 
 export interface FrameCodecOptions {
   readonly maxFrameBytes?: number
 }
 
+const transportFrame = Effect.fn("Transport.frame")(function* (input: unknown) {
+  const decoded = yield* decodeFrameInput(input, "Transport.frame")
+  return yield* framePayload(decoded.scheme, decoded.payload, decoded, "Transport.frame")
+})
+
+const transportUnframe = Effect.fn("Transport.unframe")(function* (input: unknown) {
+  const decoded = yield* decodeUnframeInput(input, "Transport.unframe")
+  return yield* unframeBytes(decoded.scheme, decoded.bytes, decoded, "Transport.unframe")
+})
+
+const transportConnect = Effect.fn("Transport.connect")(function* (input: unknown) {
+  const decoded = yield* decodeConnectInput(input, "Transport.connect")
+  const socket = yield* Socket.Socket.asEffect()
+  return yield* makeFramedSocketConnection(socket, decoded, "Transport.connect")
+})
+
 export const makeTransport = (): Effect.Effect<TransportApi, never, never> =>
   Effect.sync(() =>
     Object.freeze({
-      frame: (input: unknown) =>
-        Effect.gen(function* () {
-          const decoded = yield* decodeFrameInput(input, "Transport.frame")
-          return yield* framePayload(decoded.scheme, decoded.payload, decoded, "Transport.frame")
-        }).pipe(Effect.withSpan("Transport.frame")),
-      unframe: (input: unknown) =>
-        Effect.gen(function* () {
-          const decoded = yield* decodeUnframeInput(input, "Transport.unframe")
-          return yield* unframeBytes(decoded.scheme, decoded.bytes, decoded, "Transport.unframe")
-        }).pipe(Effect.withSpan("Transport.unframe")),
+      frame: transportFrame,
+      unframe: transportUnframe,
       unframeStream: (input: unknown) =>
         makeUnframeStream(input).pipe(Stream.withSpan("Transport.unframeStream")),
-      connect: (input: unknown) =>
-        Effect.gen(function* () {
-          const decoded = yield* decodeConnectInput(input, "Transport.connect")
-          const socket = yield* Socket.Socket.asEffect()
-          return yield* makeFramedSocketConnection(socket, decoded, "Transport.connect")
-        }).pipe(Effect.withSpan("Transport.connect"))
+      connect: transportConnect
     })
   )
 
@@ -211,8 +193,8 @@ export class Transport extends Context.Service<Transport, TransportApi>()(
 export const instrumentTransportConnection = (
   connection: TransportConnection,
   options: InstrumentTransportConnectionOptions
-): TransportConnection => {
-  return Object.freeze({
+): TransportConnection =>
+  Object.freeze({
     send: (payload: Uint8Array) =>
       connection.send(payload).pipe(
         Effect.tap(() =>
@@ -254,7 +236,6 @@ export const instrumentTransportConnection = (
           )
         )
   })
-}
 
 const emitTransportEvent = (
   inspector: BridgeInspector | undefined,
@@ -297,7 +278,7 @@ const transportErrorTag = (error: unknown): string | undefined =>
 export const encodeFrame = (payload: Uint8Array, options: FrameCodecOptions = {}): Uint8Array => {
   const maxFrameBytes = resolveMaxFrameBytes(options)
   if (payload.byteLength > maxFrameBytes) {
-    throw new FrameTooLargeError(payload.byteLength, maxFrameBytes)
+    throw new FrameTooLargeError({ size: payload.byteLength, max: maxFrameBytes })
   }
 
   const frame = new Uint8Array(LENGTH_PREFIX_BYTES + payload.byteLength)
@@ -345,7 +326,7 @@ export class FrameDecoder {
         ).getUint32(0, false)
 
         if (length > this.#maxFrameBytes) {
-          throw new FrameTooLargeError(length, this.#maxFrameBytes)
+          throw new FrameTooLargeError({ size: length, max: this.#maxFrameBytes })
         }
 
         this.#expectedBodyBytes = length
@@ -366,10 +347,18 @@ export class FrameDecoder {
         return
       }
 
-      throw new FrameTruncatedError("length", LENGTH_PREFIX_BYTES, this.#bufferedBytes)
+      throw new FrameTruncatedError({
+        stage: "length",
+        expected: LENGTH_PREFIX_BYTES,
+        read: this.#bufferedBytes
+      })
     }
 
-    throw new FrameTruncatedError("body", this.#expectedBodyBytes, this.#bufferedBytes)
+    throw new FrameTruncatedError({
+      stage: "body",
+      expected: this.#expectedBodyBytes,
+      read: this.#bufferedBytes
+    })
   }
 
   #readBytes(byteLength: number): Uint8Array {
@@ -477,7 +466,7 @@ export const makeFramedSocketConnection = (
       send: (payload: Uint8Array) =>
         Effect.gen(function* () {
           if (closed) {
-            return yield* Effect.fail(new TransportClosedError({ operation: `${operation}.send` }))
+            return yield* new TransportClosedError({ operation: `${operation}.send` })
           }
           const frame = yield* framePayload(
             "length-prefixed",
@@ -533,7 +522,7 @@ const makeQueuedConnection = (
     send: (payload: Uint8Array) =>
       Effect.gen(function* () {
         if (closed) {
-          return yield* Effect.fail(new TransportClosedError({ operation: `${operation}.send` }))
+          return yield* new TransportClosedError({ operation: `${operation}.send` })
         }
         yield* Queue.offer(outbound, payload.slice()).pipe(
           Effect.mapError(
@@ -561,7 +550,7 @@ const makeQueuedConnection = (
 const resolveMaxFrameBytes = (options: FrameCodecOptions): number => {
   const maxFrameBytes = options.maxFrameBytes ?? MAX_FRAME_BYTES
   if (!Number.isSafeInteger(maxFrameBytes) || maxFrameBytes < 0 || maxFrameBytes > U32_MAX) {
-    throw new InvalidFrameLimitError(maxFrameBytes)
+    throw new InvalidFrameLimitError({ maxFrameBytes: maxFrameBytes })
   }
 
   return maxFrameBytes
@@ -609,29 +598,28 @@ const makeUnframeStream = (input: unknown): Stream.Stream<Uint8Array, TransportE
         decoded.scheme === "length-prefixed"
           ? makeLengthPrefixedStreamingDecoder(decoded)
           : makeJsonRpcStreamingDecoder(decoded)
-      const producer = yield* decoded.chunks
-        .pipe(
-          Stream.runForEach((chunk) =>
-            Effect.gen(function* () {
-              const frames = yield* decoder.push(chunk)
-              for (const frame of frames) {
-                yield* Queue.offer(queue, frame)
-              }
-            })
-          ),
-          Effect.andThen(
-            Effect.gen(function* () {
-              const frames = yield* decoder.finish()
-              for (const frame of frames) {
-                yield* Queue.offer(queue, frame)
-              }
-              yield* Queue.end(queue)
-            })
-          ),
-          Effect.tapError((error: TransportError) => Queue.fail(queue, error)),
-          Effect.ignore
-        )
-        .pipe(Effect.forkScoped)
+      const producer = yield* decoded.chunks.pipe(
+        Stream.runForEach((chunk) =>
+          Effect.gen(function* () {
+            const frames = yield* decoder.push(chunk)
+            for (const frame of frames) {
+              yield* Queue.offer(queue, frame)
+            }
+          })
+        ),
+        Effect.andThen(
+          Effect.gen(function* () {
+            const frames = yield* decoder.finish()
+            for (const frame of frames) {
+              yield* Queue.offer(queue, frame)
+            }
+            yield* Queue.end(queue)
+          })
+        ),
+        Effect.tapError((error: TransportError) => Queue.fail(queue, error)),
+        Effect.ignore,
+        Effect.forkScoped
+      )
 
       return Stream.fromQueue(queue).pipe(
         Stream.ensuring(
@@ -706,7 +694,7 @@ const makeJsonRpcStreamingDecoder = (
 const encodeJsonRpcFrame = (payload: Uint8Array, options: FrameCodecOptions = {}): Uint8Array => {
   const maxFrameBytes = resolveMaxFrameBytes(options)
   if (payload.byteLength > maxFrameBytes) {
-    throw new FrameTooLargeError(payload.byteLength, maxFrameBytes)
+    throw new FrameTooLargeError({ size: payload.byteLength, max: maxFrameBytes })
   }
 
   const header = TEXT_ENCODER.encode(`Content-Length: ${payload.byteLength}\r\n\r\n`)
@@ -747,7 +735,7 @@ class JsonRpcFrameDecoder {
       const headerText = decodeHeaderText(this.#buffer.slice(0, headerEnd))
       const contentLength = parseContentLength(headerText)
       if (contentLength > this.#maxFrameBytes) {
-        throw new FrameTooLargeError(contentLength, this.#maxFrameBytes)
+        throw new FrameTooLargeError({ size: contentLength, max: this.#maxFrameBytes })
       }
 
       const bodyOffset = headerEnd + JSON_RPC_HEADER_END_BYTE_LENGTH
@@ -770,21 +758,21 @@ class JsonRpcFrameDecoder {
 
     const headerEnd = findHeaderEnd(this.#buffer)
     if (headerEnd < 0) {
-      throw new JsonRpcFrameTruncatedError(
-        "header",
-        JSON_RPC_HEADER_END.length,
-        this.#buffer.byteLength
-      )
+      throw new JsonRpcFrameTruncatedError({
+        stage: "header",
+        expected: JSON_RPC_HEADER_END.length,
+        read: this.#buffer.byteLength
+      })
     }
 
     const headerText = decodeHeaderText(this.#buffer.slice(0, headerEnd))
     const contentLength = parseContentLength(headerText)
     const bodyOffset = headerEnd + JSON_RPC_HEADER_END_BYTE_LENGTH
-    throw new JsonRpcFrameTruncatedError(
-      "body",
-      contentLength,
-      this.#buffer.byteLength - bodyOffset
-    )
+    throw new JsonRpcFrameTruncatedError({
+      stage: "body",
+      expected: contentLength,
+      read: this.#buffer.byteLength - bodyOffset
+    })
   }
 }
 
@@ -813,17 +801,17 @@ const parseContentLength = (headerText: string): number => {
     .split("\r\n")
     .filter((candidate) => candidate.toLowerCase().startsWith("content-length:"))
   if (lines.length !== 1) {
-    throw new JsonRpcFrameHeaderError(headerText)
+    throw new JsonRpcFrameHeaderError({ headerText: headerText })
   }
 
   const line = lines[0]
   const value = line === undefined ? undefined : line.slice("content-length:".length).trim()
   if (value === undefined || !DECIMAL_CONTENT_LENGTH.test(value)) {
-    throw new JsonRpcFrameHeaderError(headerText)
+    throw new JsonRpcFrameHeaderError({ headerText: headerText })
   }
   const length = Number.parseInt(value, 10)
   if (!Number.isSafeInteger(length) || length < 0 || length > U32_MAX) {
-    throw new JsonRpcFrameHeaderError(headerText)
+    throw new JsonRpcFrameHeaderError({ headerText: headerText })
   }
 
   return length
@@ -833,7 +821,7 @@ const decodeHeaderText = (headerBytes: Uint8Array): string => {
   try {
     return UTF8_TEXT_DECODER.decode(headerBytes)
   } catch {
-    throw new JsonRpcFrameHeaderError("invalid utf-8")
+    throw new JsonRpcFrameHeaderError({ headerText: "invalid utf-8" })
   }
 }
 
@@ -852,29 +840,15 @@ const findHeaderEnd = (bytes: Uint8Array): number => {
   return -1
 }
 
-class JsonRpcFrameHeaderError extends Error {
-  override readonly name = "JsonRpcFrameHeaderError"
+class JsonRpcFrameHeaderError extends Data.TaggedError("JsonRpcFrameHeaderError")<{
   readonly headerText: string
+}> {}
 
-  constructor(headerText: string) {
-    super("json-rpc frame is missing a valid Content-Length header")
-    this.headerText = headerText
-  }
-}
-
-class JsonRpcFrameTruncatedError extends Error {
-  override readonly name = "JsonRpcFrameTruncatedError"
+class JsonRpcFrameTruncatedError extends Data.TaggedError("JsonRpcFrameTruncatedError")<{
   readonly stage: "header" | "body"
   readonly expected: number
   readonly read: number
-
-  constructor(stage: "header" | "body", expected: number, read: number) {
-    super(`json-rpc frame ${stage} truncated after ${read} of ${expected} bytes`)
-    this.stage = stage
-    this.expected = expected
-    this.read = read
-  }
-}
+}> {}
 
 const decodeFrameInput = (
   input: unknown,
@@ -921,9 +895,7 @@ const decodeUnframeStreamInput = (
     }).pipe(Effect.mapError((error) => invalidArgument(operation, "input", error)))
 
     if (!isStreamLike(fields["chunks"])) {
-      return yield* Effect.fail(
-        invalidArgument(operation, "chunks", "chunks must be an Effect Stream")
-      )
+      return yield* invalidArgument(operation, "chunks", "chunks must be an Effect Stream")
     }
 
     return {

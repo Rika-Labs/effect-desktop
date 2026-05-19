@@ -3,7 +3,7 @@ import {
   hostProtocolErrorRecoverableDefault
 } from "@effect-desktop/bridge"
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Stream } from "effect"
+import { Cause, Effect, Exit, Schema, Stream } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
@@ -130,7 +130,8 @@ test("Secrets writes audit rows without secret values", () =>
       yield* secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
       yield* secrets.get("auth", "token")
 
-      expect(JSON.stringify(rows)).not.toContain("refresh-token")
+      const rowsJson = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(rows)
+      expect(rowsJson).not.toContain("refresh-token")
       expect(rows.map((r) => r.kind)).toEqual(["secrets-accessed", "secrets-accessed"])
       expect(rows[0]?.outcome).toBe("ok")
       expect(rows[0]?.traceId).toBe("trace-1")

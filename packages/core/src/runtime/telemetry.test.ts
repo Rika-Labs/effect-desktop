@@ -41,7 +41,10 @@ test("Telemetry records redacted structured logs and publishes bounded snapshots
 
       expect(snapshots.at(-1)?.map((record) => record.traceId)).toEqual(["trace-1"])
       expect(logs.map((record) => record.traceId)).toEqual(["trace-2"])
-      expect(JSON.stringify(snapshots)).not.toContain("secret-token")
+      const snapshotsJson = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+        snapshots
+      )
+      expect(snapshotsJson).not.toContain("secret-token")
       expect(snapshots.at(-1)?.[0]?.fields).toEqual(
         Option.some({ token: "<redacted:redacted>", safe: "value" })
       )

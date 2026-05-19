@@ -24,7 +24,7 @@ import {
   type NormalizedCapability
 } from "./permission-registry.js"
 import type { ResourceOwnerApi } from "./resource-owner.js"
-import { makeResourceId, makeResourceRegistry, type ResourceRegistryApi } from "./resources.js"
+import { makeResourceId, makeResourceRegistry } from "./resources.js"
 import {
   makeWorker,
   WorkerCapabilityNotHeldError,
@@ -35,7 +35,6 @@ import {
   WorkerStaleHandleError,
   WorkerUnsupportedError,
   type WorkerAdapter,
-  type WorkerApi,
   type WorkerError,
   type WorkerRuntime
 } from "./worker.js"
@@ -256,7 +255,11 @@ test("Worker spawn failure timestamps fall back to the Effect Clock", () =>
         [],
         { inspector, now: () => Number.NaN }
       )
-      const observed = Effect.runFork(inspector.events.pipe(Stream.take(1), Stream.runCollect))
+      const observed = yield* inspector.events.pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkChild({ startImmediately: true })
+      )
       yield* Effect.yieldNow
 
       const exit = yield* Effect.exit(
@@ -881,11 +884,6 @@ test("Bun adapter removes worker event listeners when closed", () =>
     })
   ))
 
-interface Fixture {
-  readonly service: WorkerApi
-  readonly registry: ResourceRegistryApi
-}
-
 const makeFixture = (
   adapter?: WorkerAdapter,
   allowedCapabilities: readonly NormalizedCapability[] = [],
@@ -897,7 +895,7 @@ const makeFixture = (
     readonly nowStart?: number
     readonly workerNowStart?: number
   } = {}
-): Effect.Effect<Fixture> =>
+) =>
   Effect.gen(function* () {
     let resourceNow = 1
     let workerNow = options.workerNowStart ?? options.nowStart ?? 1

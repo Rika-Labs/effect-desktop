@@ -11,8 +11,8 @@ import {
 
 const now = 1_715_000_000_000
 
-test("InspectorCollectors streams typed durable events from persistence workflow and event log feeds", async () => {
-  await Effect.runPromise(
+test("InspectorCollectors streams typed durable events from persistence workflow and event log feeds", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const collectors = yield* makeInspectorCollectors()
       const fiber = yield* collectors.events.pipe(
@@ -70,44 +70,46 @@ test("InspectorCollectors streams typed durable events from persistence workflow
       ).toBe(true)
       expect(events.some((event) => event.eventLog?.status === "failure")).toBe(true)
     })
-  )
-})
+  ))
 
-test("durable Inspector event fixtures decode after a restart boundary", async () => {
-  const fixture: readonly unknown[] = [
-    {
-      channel: "persistence",
-      persistence: {
-        kind: "settings",
-        status: "success",
-        operation: "Settings.migrate",
-        store: "settings",
-        namespace: "default",
-        fromVersion: 1,
-        toVersion: 2,
-        durationMs: 7,
-        timestamp: now
-      }
-    },
-    {
-      channel: "event-log",
-      eventLog: {
-        kind: "recovery",
-        status: "success",
-        operation: "EventLog.recover",
-        namespace: "audit",
-        message: "replayed retained journal entries",
-        timestamp: now + 1
-      }
-    }
-  ]
+test("durable Inspector event fixtures decode after a restart boundary", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture: readonly unknown[] = [
+        {
+          channel: "persistence",
+          persistence: {
+            kind: "settings",
+            status: "success",
+            operation: "Settings.migrate",
+            store: "settings",
+            namespace: "default",
+            fromVersion: 1,
+            toVersion: 2,
+            durationMs: 7,
+            timestamp: now
+          }
+        },
+        {
+          channel: "event-log",
+          eventLog: {
+            kind: "recovery",
+            status: "success",
+            operation: "EventLog.recover",
+            namespace: "audit",
+            message: "replayed retained journal entries",
+            timestamp: now + 1
+          }
+        }
+      ]
 
-  const decoded = await Effect.runPromise(
-    Effect.forEach(fixture, (event) => Schema.decodeUnknownEffect(InspectorEvent)(event), {
-      concurrency: 1
+      const decoded = yield* Effect.forEach(
+        fixture,
+        (event) => Schema.decodeUnknownEffect(InspectorEvent)(event),
+        { concurrency: 1 }
+      )
+
+      expect(decoded[0]?.persistence?.fromVersion).toBe(1)
+      expect(decoded[1]?.eventLog?.kind).toBe("recovery")
     })
-  )
-
-  expect(decoded[0]?.persistence?.fromVersion).toBe(1)
-  expect(decoded[1]?.eventLog?.kind).toBe("recovery")
-})
+  ))

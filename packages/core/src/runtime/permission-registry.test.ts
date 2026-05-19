@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Clock, Deferred, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Clock, Deferred, Effect, Exit, Fiber, Schema, Stream } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
@@ -653,8 +653,9 @@ test("PermissionRegistry expires grants as typed revocation values and audits th
         "permission-granted",
         "permission-expired"
       ])
-      expect(JSON.stringify(rows)).not.toContain("grant-1")
-      expect(JSON.stringify(rows)).toContain("<redacted:PermissionGrantToken>")
+      const encodedRows = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(rows)
+      expect(encodedRows).not.toContain("grant-1")
+      expect(encodedRows).toContain("<redacted:PermissionGrantToken>")
     })
   ))
 

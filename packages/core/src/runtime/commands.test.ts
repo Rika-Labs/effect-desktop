@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
+import {
+  Cause,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Schema,
+  Stream
+} from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
@@ -271,21 +282,25 @@ test("DesktopCommands.layer registers RpcGroup commands as scoped resources", ()
       yield* permissions.declare(commandCapability, { source: "test" })
       const commandRegistration = registration("openProject")
 
-      const result = yield* Effect.scoped(
+      const resourcesLayer = Layer.succeed(ResourceRegistry, resources)
+      const registryLayer = Layer.effect(
+        CommandRegistry,
+        makeCommandRegistry(resources, permissions)
+      )
+      const baseLayer = Layer.mergeAll(resourcesLayer, registryLayer)
+      const commandsLayer = DesktopCommands.layer(
+        commandRegistration.group,
+        commandRegistration.handlers,
+        { ownerScope: "window-1" }
+      ).pipe(Layer.provideMerge(baseLayer))
+      const result = yield* runScoped(
         Effect.gen(function* () {
           const registry = yield* CommandRegistry
           const before = yield* registry.list()
           const output = yield* registry.invoke("openProject", { path: "/tmp/project" }, context)
           return { before, output }
-        }).pipe(
-          Effect.provide(
-            DesktopCommands.layer(commandRegistration.group, commandRegistration.handlers, {
-              ownerScope: "window-1"
-            })
-          ),
-          Effect.provideService(ResourceRegistry, resources),
-          Effect.provideServiceEffect(CommandRegistry, makeCommandRegistry(resources, permissions))
-        )
+        }),
+        commandsLayer
       )
 
       expect(result.before.map((snapshot) => snapshot.id)).toEqual(["openProject"])
@@ -837,6 +852,17 @@ const firstRegisterStalledResourceRegistry = (
     close: () => Effect.void
   }
 }
+
+const runScoped = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit
+  })
 
 const auditTraceIds = (rows: readonly AuditEvent[], kind: string): readonly string[] =>
   rows.flatMap((row) => {

@@ -11,9 +11,10 @@ import { makeInspectorTransport } from "./inspector-transport.js"
 import { InspectorLogEvent, makeTelemetry } from "./telemetry.js"
 
 const now = 1_715_000_000_000
+const isDesktopRuntimeEvent = Schema.is(DesktopRuntimeEvent)
 
-test("DesktopDevtools streams inspector and Effect telemetry runtime events through one feed", async () => {
-  await Effect.runPromise(
+test("DesktopDevtools streams inspector and Effect telemetry runtime events through one feed", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const collectors = yield* makeInspectorCollectors()
       const telemetry = yield* makeTelemetry({ now: () => now })
@@ -51,13 +52,12 @@ test("DesktopDevtools streams inspector and Effect telemetry runtime events thro
       ).toBe(true)
       expect(decoded.some((event) => event.telemetry?.kind === "log")).toBe(true)
     })
-  )
-})
+  ))
 
-test("DesktopDevtools timestamps telemetry fallback events with the Effect Clock", async () => {
+test("DesktopDevtools timestamps telemetry fallback events with the Effect Clock", () => {
   const timestamp = now + 42
 
-  await Effect.runPromise(
+  return Effect.runPromise(
     Effect.gen(function* () {
       const collectors = yield* makeInspectorCollectors()
       const telemetry = yield* makeTelemetry({ now: () => now })
@@ -80,8 +80,8 @@ test("DesktopDevtools timestamps telemetry fallback events with the Effect Clock
   )
 })
 
-test("DesktopDevtools forwards the shared runtime feed into InspectorTransport", async () => {
-  await Effect.runPromise(
+test("DesktopDevtools forwards the shared runtime feed into InspectorTransport", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const collectors = yield* makeInspectorCollectors()
       const telemetry = yield* makeTelemetry({ now: () => now })
@@ -122,10 +122,9 @@ test("DesktopDevtools forwards the shared runtime feed into InspectorTransport",
         "runtime.inspector",
         "runtime.telemetry"
       ])
-      expect(events.every((event) => event.payload instanceof DesktopRuntimeEvent)).toBe(true)
+      expect(events.every((event) => isDesktopRuntimeEvent(event.payload))).toBe(true)
     })
-  )
-})
+  ))
 
 const fixedClock = (timestamp: number): Clock.Clock => ({
   currentTimeMillisUnsafe: () => timestamp,

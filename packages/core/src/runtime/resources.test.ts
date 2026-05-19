@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test"
-import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
+import {
+  Cause,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Schema,
+  Stream
+} from "effect"
 
 import {
   generateUuidV7,
@@ -827,11 +838,16 @@ test("observeLifecycle streams resource, scope, and stale-handle events", () =>
 test("live layer provides the resource registry service", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const registry = yield* Effect.service(ResourceRegistry)
-      const snapshot = yield* registry.list()
+      const snapshot = yield* runScoped(
+        Effect.gen(function* () {
+          const registry = yield* Effect.service(ResourceRegistry)
+          return yield* registry.list()
+        }),
+        ResourceRegistryLive
+      )
 
       expect(snapshot.entries).toEqual([])
-    }).pipe(Effect.provide(ResourceRegistryLive))
+    })
   ))
 
 test("live layer finalization closes leaked registered resources", () =>
@@ -839,7 +855,7 @@ test("live layer finalization closes leaked registered resources", () =>
     Effect.gen(function* () {
       let cleanupCount = 0
 
-      const snapshot = yield* Effect.scoped(
+      const snapshot = yield* runScoped(
         Effect.gen(function* () {
           const registry = yield* Effect.service(ResourceRegistry)
           yield* registry.register({
@@ -853,7 +869,8 @@ test("live layer finalization closes leaked registered resources", () =>
           })
 
           return yield* registry.list()
-        }).pipe(Effect.provide(ResourceRegistryLive))
+        }),
+        ResourceRegistryLive
       )
 
       expect(snapshot.entries.map((entry) => entry.handle.id)).toEqual([
@@ -970,3 +987,14 @@ const stubCryptoRandomValuesWithZeroes = (): void => {
     return array
   }) as Crypto["getRandomValues"]
 }
+
+const runScoped = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit
+  })
