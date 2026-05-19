@@ -1,4 +1,3 @@
-import path from "node:path"
 import { pathToFileURL } from "node:url"
 
 import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
@@ -413,13 +412,15 @@ const parseUrl = (value: string): URL | undefined => {
   }
 }
 
+const isAbsolutePathSegment = (value: string): boolean =>
+  value.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("\\\\")
+
 const isFilesystemPath = (value: string): boolean =>
   value === "." ||
   value === ".." ||
   value.startsWith("./") ||
   value.startsWith("../") ||
-  value.startsWith("/") ||
-  path.isAbsolute(value)
+  isAbsolutePathSegment(value)
 
 const isWindowsDrivePath = (value: string): boolean => /^[a-zA-Z]:[\\/]/.test(value)
 
