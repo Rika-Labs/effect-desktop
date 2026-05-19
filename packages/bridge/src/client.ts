@@ -248,7 +248,7 @@ export type BridgeClientEvent<Spec extends BridgeEventSpec> = Stream.Stream<
 type BridgeUnaryMethodSpec = BridgeMethodSpec<
   BridgeContractCodec,
   BridgeContractCodec,
-  BridgeContractCodec
+  BridgeContractCodec<never, never>
 >
 
 export type BridgeClientFor<Contract extends BridgeContract> =
@@ -288,9 +288,7 @@ const makeContractClient = <Tag extends string, Spec extends BridgeContractSpec>
   for (const [method, methodSpec] of Object.entries(contract.spec) as Array<
     [Extract<keyof Spec, string>, Spec[Extract<keyof Spec, string>]]
   >) {
-    methods[method] = ((
-      input: BridgeContractCodecType<Spec[typeof method]["input"]>
-    ): Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never> =>
+    methods[method] = ((input: BridgeContractCodecType<Spec[typeof method]["input"]>) =>
       isStreamSpec(methodSpec.output)
         ? streamContractMethod(
             contract.tag,
