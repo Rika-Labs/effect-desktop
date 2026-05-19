@@ -30,6 +30,7 @@ import {
   WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_SHADOW_METHOD,
@@ -758,6 +759,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "maximize",
   "restore",
   "setFullscreen",
+  "setSimpleFullscreen",
   "getState"
 ]
 const expectedWindowCapabilityMethods = [...expectedWindowMethods, "subscribeEvents"] as const
@@ -8206,6 +8208,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.maximize",
     "Window.restore",
     "Window.setFullscreen",
+    "Window.setSimpleFullscreen",
     "Window.getState"
   ])
   expect(Array.from(WindowSupportedRpcs.requests.keys())).toEqual(supportedWindowMethods)
@@ -8243,6 +8246,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.maximize"]
     void client["Window.restore"]
     void client["Window.setFullscreen"]
+    void client["Window.setSimpleFullscreen"]
     void client["Window.getState"]
   }
   void assertSupportedWindowClient
@@ -8278,6 +8282,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.maximize",
     "Window.restore",
     "Window.setFullscreen",
+    "Window.setSimpleFullscreen",
     "Window.getState"
   ])
   expect(WindowRpcs.requests.has("Window.show")).toBe(true)
@@ -8325,6 +8330,11 @@ test("WindowPersistence dependency RPCs declare native capabilities", () => {
     windowDocs,
     WINDOW_SET_FULLSCREEN_METHOD,
     P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
+  )
+  expectCapability(
+    windowDocs,
+    WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+    P.nativeInvoke({ primitive: "Window", methods: ["setSimpleFullscreen"] })
   )
   expectCapability(
     screenDocs,
@@ -8396,10 +8406,17 @@ test("Window service delegates through a substitutable WindowClient port", async
     maximize: () => recordVoid(calls, "maximize"),
     restore: () => recordVoid(calls, "restore"),
     setFullscreen: (_window, fullscreen) => recordVoid(calls, `setFullscreen:${fullscreen}`),
+    setSimpleFullscreen: (_window, simpleFullscreen) =>
+      recordVoid(calls, `setSimpleFullscreen:${simpleFullscreen}`),
     getState: () =>
       Effect.sync(() => {
         calls.push("getState")
-        return new WindowState({ minimized: false, maximized: true, fullscreen: true })
+        return new WindowState({
+          minimized: false,
+          maximized: true,
+          fullscreen: true,
+          simpleFullscreen: true
+        })
       }),
     events: () =>
       Stream.make(
@@ -8446,6 +8463,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.minimize(created)
       yield* window.maximize(created)
       yield* window.setFullscreen(created, true)
+      yield* window.setSimpleFullscreen(created, true)
       const state = yield* window.getState(created)
       const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
       yield* window.restore(created)
@@ -8464,7 +8482,12 @@ test("Window service delegates through a substitutable WindowClient port", async
   expect(result.children).toEqual([])
   expect(result.bounds).toEqual(new WindowBounds({ x: 10, y: 20, width: 640, height: 480 }))
   expect(result.state).toEqual(
-    new WindowState({ minimized: false, maximized: true, fullscreen: true })
+    new WindowState({
+      minimized: false,
+      maximized: true,
+      fullscreen: true,
+      simpleFullscreen: true
+    })
   )
   const serviceEvent = Option.getOrThrow(result.event)
   expect(serviceEvent.type).toBe("window-registry-event")
@@ -8500,6 +8523,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "minimize",
     "maximize",
     "setFullscreen:true",
+    "setSimpleFullscreen:true",
     "getState",
     "restore",
     "destroy",
@@ -8556,6 +8580,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "minimize-request",
       "maximize-request",
       "set-fullscreen-request",
+      "set-simple-fullscreen-request",
       "get-state-request",
       "restore-request",
       "destroy-request"
@@ -8583,6 +8608,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "minimize-trace",
       "maximize-trace",
       "set-fullscreen-trace",
+      "set-simple-fullscreen-trace",
       "get-state-trace",
       "restore-trace",
       "destroy-trace"
@@ -8592,7 +8618,8 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       1_710_000_000_005, 1_710_000_000_006, 1_710_000_000_007, 1_710_000_000_008, 1_710_000_000_009,
       1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
       1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019,
-      1_710_000_000_020, 1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024
+      1_710_000_000_020, 1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024,
+      1_710_000_000_025
     ])
   })
   const program = Effect.gen(function* () {
@@ -8634,6 +8661,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     yield* window.minimize(created)
     yield* window.maximize(created)
     yield* window.setFullscreen(created, true)
+    yield* window.setSimpleFullscreen(created, true)
     const state = yield* window.getState(created)
     yield* window.restore(created)
     yield* window.close(created)
@@ -8660,7 +8688,12 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
   ])
   expect(result.afterClose.entries).toEqual([])
   expect(result.state).toEqual(
-    new WindowState({ minimized: false, maximized: true, fullscreen: true })
+    new WindowState({
+      minimized: false,
+      maximized: true,
+      fullscreen: true,
+      simpleFullscreen: true
+    })
   )
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [
@@ -8817,6 +8850,13 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       {
         windowId: "host-window-1",
         fullscreen: true
+      }
+    ],
+    [
+      WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+      {
+        windowId: "host-window-1",
+        simpleFullscreen: true
       }
     ],
     [
@@ -9315,7 +9355,8 @@ test("Window.events closes ResourceRegistry handles for host-originated terminal
             payload: {
               minimized: true,
               maximized: false,
-              fullscreen: false
+              fullscreen: false,
+              simpleFullscreen: false
             }
           })
         : baseExchange.request(request),
@@ -9367,7 +9408,8 @@ test("Window.events attaches host-originated state events to fresh handles", asy
             payload: {
               minimized: true,
               maximized: false,
-              fullscreen: false
+              fullscreen: false,
+              simpleFullscreen: false
             }
           })
         : baseExchange.request(request),
@@ -9385,7 +9427,8 @@ test("Window.events attaches host-originated state events to fresh handles", asy
                 state: {
                   minimized: true,
                   maximized: false,
-                  fullscreen: false
+                  fullscreen: false,
+                  simpleFullscreen: false
                 }
               }
             })
@@ -9415,12 +9458,14 @@ test("Window.events attaches host-originated state events to fresh handles", asy
   expect(event.state).toEqual({
     minimized: true,
     maximized: false,
-    fullscreen: false
+    fullscreen: false,
+    simpleFullscreen: false
   })
   expect(result.state).toEqual({
     minimized: true,
     maximized: false,
-    fullscreen: false
+    fullscreen: false,
+    simpleFullscreen: false
   })
 })
 
@@ -9616,6 +9661,11 @@ test("native host RPC runtime audits WindowPersistence Window dependency permiss
       method: WINDOW_SET_FULLSCREEN_METHOD,
       payload: { window: handleFor("host-window-1"), fullscreen: true },
       capability: P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
+    },
+    {
+      method: WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+      payload: { window: handleFor("host-window-1"), simpleFullscreen: true },
+      capability: P.nativeInvoke({ primitive: "Window", methods: ["setSimpleFullscreen"] })
     }
   ] as const
   const deniedRows: AuditEvent[] = []
@@ -11822,8 +11872,16 @@ const noopWindowClient: WindowClientApi = {
   maximize: () => Effect.void,
   restore: () => Effect.void,
   setFullscreen: () => Effect.void,
+  setSimpleFullscreen: () => Effect.void,
   getState: () =>
-    Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false })),
+    Effect.succeed(
+      new WindowState({
+        minimized: false,
+        maximized: false,
+        fullscreen: false,
+        simpleFullscreen: false
+      })
+    ),
   events: () => Stream.empty
 }
 
@@ -11857,7 +11915,14 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                   : request.method === WINDOW_GET_BOUNDS_METHOD
                     ? { payload: { x: 10, y: 20, width: 640, height: 480 } }
                     : request.method === WINDOW_GET_STATE_METHOD
-                      ? { payload: { minimized: false, maximized: true, fullscreen: true } }
+                      ? {
+                          payload: {
+                            minimized: false,
+                            maximized: true,
+                            fullscreen: true,
+                            simpleFullscreen: true
+                          }
+                        }
                       : {})
       })
     )

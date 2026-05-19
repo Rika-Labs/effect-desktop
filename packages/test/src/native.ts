@@ -448,8 +448,17 @@ const makeWindowScenario = (
     maximize: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
     restore: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
     setFullscreen: (_window, _fullscreen): Effect.Effect<void, WindowError, never> => Effect.void,
+    setSimpleFullscreen: (_window, _simpleFullscreen): Effect.Effect<void, WindowError, never> =>
+      Effect.void,
     getState: (_window): Effect.Effect<WindowState, WindowError, never> =>
-      Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false })),
+      Effect.succeed(
+        new WindowState({
+          minimized: false,
+          maximized: false,
+          fullscreen: false,
+          simpleFullscreen: false
+        })
+      ),
     events: () => Stream.empty
   } satisfies WindowServiceApi)
 

@@ -60,6 +60,7 @@ import {
   WindowRequestAttentionInput,
   WindowShadowInput,
   WindowResource,
+  WindowSimpleFullscreenInput,
   WindowSkipTaskbarInput,
   WindowState,
   WindowStateEvent,
@@ -112,6 +113,18 @@ const WindowShadowSupport = NativeSurface.support.partial(WindowShadowMacosOnlyR
     { platform: "linux", status: "unsupported", reason: WindowShadowMacosOnlyReason }
   ]
 }) satisfies RpcSupportMetadata
+const WindowSimpleFullscreenMacosOnlyReason = "simple-fullscreen-macos-only"
+
+const WindowSimpleFullscreenSupport = NativeSurface.support.partial(
+  WindowSimpleFullscreenMacosOnlyReason,
+  {
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported", reason: WindowSimpleFullscreenMacosOnlyReason },
+      { platform: "linux", status: "unsupported", reason: WindowSimpleFullscreenMacosOnlyReason }
+    ]
+  }
+) satisfies RpcSupportMetadata
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type WindowError = HostProtocolError
 
@@ -305,6 +318,13 @@ export const WindowSetFullscreen = windowRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
 )
+export const WindowSetSimpleFullscreen = windowRpc(
+  "setSimpleFullscreen",
+  WindowSimpleFullscreenInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setSimpleFullscreen"] }),
+  WindowSimpleFullscreenSupport
+)
 export const WindowGetState = windowRpc(
   "getState",
   WindowHandleInput,
@@ -345,6 +365,7 @@ const makeWindowRpcGroup = () =>
     WindowMaximize,
     WindowRestore,
     WindowSetFullscreen,
+    WindowSetSimpleFullscreen,
     WindowGetState
   )
 
@@ -399,6 +420,7 @@ export const WindowMethodNames = Object.freeze([
   "maximize",
   "restore",
   "setFullscreen",
+  "setSimpleFullscreen",
   "getState"
 ] as const)
 
@@ -480,6 +502,10 @@ export interface WindowClientApi {
   readonly setFullscreen: (
     window: WindowHandle,
     fullscreen: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setSimpleFullscreen: (
+    window: WindowHandle,
+    simpleFullscreen: boolean
   ) => Effect.Effect<void, WindowError, never>
   readonly getState: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
   readonly events: () => Stream.Stream<WindowEvent, WindowError, never>
@@ -686,6 +712,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       yield* window.setFullscreen(input.window, input.fullscreen)
     }),
+  "Window.setSimpleFullscreen": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setSimpleFullscreen(input.window, input.simpleFullscreen)
+    }),
   "Window.getState": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -758,6 +789,8 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     maximize: (window) => client.maximize(window),
     restore: (window) => client.restore(window),
     setFullscreen: (window, fullscreen) => client.setFullscreen(window, fullscreen),
+    setSimpleFullscreen: (window, simpleFullscreen) =>
+      client.setSimpleFullscreen(window, simpleFullscreen),
     getState: (window) => client.getState(window),
     events: () => client.events()
   }
@@ -963,6 +996,18 @@ function windowClientFromRpcClient(
           "Window.setFullscreen"
         )
         yield* runWindowRpc(client["Window.setFullscreen"](decoded), "Window.setFullscreen")
+      }),
+    setSimpleFullscreen: (window, simpleFullscreen) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowSimpleFullscreenInput(
+          window,
+          simpleFullscreen,
+          "Window.setSimpleFullscreen"
+        )
+        yield* runWindowRpc(
+          client["Window.setSimpleFullscreen"](decoded),
+          "Window.setSimpleFullscreen"
+        )
       }),
     getState: (window) =>
       Effect.gen(function* () {
@@ -1171,6 +1216,20 @@ const decodeWindowFullscreenInput = (
 ): Effect.Effect<WindowFullscreenInput, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowFullscreenInput)(
     { window, fullscreen },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowSimpleFullscreenInput = (
+  window: WindowHandle,
+  simpleFullscreen: boolean,
+  operation: string
+): Effect.Effect<WindowSimpleFullscreenInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowSimpleFullscreenInput)(
+    { window, simpleFullscreen },
     StrictParseOptions
   ).pipe(
     Effect.mapError((error) =>
@@ -1729,6 +1788,15 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           "Window.setFullscreen"
         )
         yield* host.setFullscreen(window.id, input.fullscreen)
+      }),
+    "Window.setSimpleFullscreen": (input: WindowSimpleFullscreenInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setSimpleFullscreen"
+        )
+        yield* host.setSimpleFullscreen(window.id, input.simpleFullscreen)
       }),
     "Window.getState": (input: WindowHandleInput) =>
       Effect.gen(function* () {

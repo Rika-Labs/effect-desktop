@@ -51,7 +51,14 @@ const windowClient: WindowClientApi = {
   maximize: () => Effect.void,
   restore: () => Effect.void,
   setFullscreen: () => Effect.void,
-  getState: () => Effect.succeed({ minimized: false, maximized: false, fullscreen: false }),
+  setSimpleFullscreen: () => Effect.void,
+  getState: () =>
+    Effect.succeed({
+      minimized: false,
+      maximized: false,
+      fullscreen: false,
+      simpleFullscreen: false
+    }),
   events: () => Stream.empty
 }
 

@@ -30,6 +30,7 @@ import {
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_SHADOW_METHOD,
+  WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
   WINDOW_SET_SKIP_TASKBAR_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
@@ -142,7 +143,8 @@ export class WindowRegistryEventPayload extends Schema.Class<WindowRegistryEvent
 export class WindowStatePayload extends Schema.Class<WindowStatePayload>("WindowStatePayload")({
   minimized: Schema.Boolean,
   maximized: Schema.Boolean,
-  fullscreen: Schema.Boolean
+  fullscreen: Schema.Boolean,
+  simpleFullscreen: Schema.Boolean
 }) {}
 
 export class WindowStateEventPayload extends Schema.Class<WindowStateEventPayload>(
@@ -263,6 +265,13 @@ export class WindowSetFullscreenPayload extends Schema.Class<WindowSetFullscreen
   fullscreen: Schema.Boolean
 }) {}
 
+export class WindowSetSimpleFullscreenPayload extends Schema.Class<WindowSetSimpleFullscreenPayload>(
+  "WindowSetSimpleFullscreenPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  simpleFullscreen: Schema.Boolean
+}) {}
+
 export interface WindowCreateInput {
   readonly title?: string
   readonly width?: number
@@ -375,6 +384,10 @@ export interface HostWindowClient {
   readonly setFullscreen: (
     windowId: string,
     fullscreen: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setSimpleFullscreen: (
+    windowId: string,
+    simpleFullscreen: boolean
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly getState: (
     windowId: string
@@ -584,6 +597,14 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
+    setSimpleFullscreen: (windowId, simpleFullscreen) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetSimpleFullscreenPayload(windowId, simpleFullscreen)
+        const request = yield* makeRequest(WINDOW_SET_SIMPLE_FULLSCREEN_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     getState: (windowId) =>
       Effect.gen(function* () {
         const payload = yield* encodeWindowIdPayload(windowId, WINDOW_GET_STATE_METHOD)
@@ -684,6 +705,9 @@ const decodeUnknownWindowRequestAttentionPayload = Schema.decodeUnknownSync(
   WindowRequestAttentionPayload
 )
 const decodeUnknownWindowSetFullscreenPayload = Schema.decodeUnknownSync(WindowSetFullscreenPayload)
+const decodeUnknownWindowSetSimpleFullscreenPayload = Schema.decodeUnknownSync(
+  WindowSetSimpleFullscreenPayload
+)
 const decodeUnknownWindowStatePayload = Schema.decodeUnknownSync(WindowStatePayload)
 
 const encodeCreatePayload = (
@@ -842,6 +866,19 @@ const encodeSetFullscreenPayload = (
     try: () =>
       decodeUnknownWindowSetFullscreenPayload({ windowId, fullscreen }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_FULLSCREEN_METHOD)
+  })
+
+const encodeSetSimpleFullscreenPayload = (
+  windowId: string,
+  simpleFullscreen: boolean
+): Effect.Effect<WindowSetSimpleFullscreenPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetSimpleFullscreenPayload(
+        { windowId, simpleFullscreen },
+        StrictParseOptions
+      ),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_SIMPLE_FULLSCREEN_METHOD)
   })
 
 const decodeCreateResponse = (

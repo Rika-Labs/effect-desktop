@@ -51,6 +51,7 @@ import {
   WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_SHADOW_METHOD,
@@ -857,6 +858,8 @@ export const runHeadless = <A, E, R>(
         maximize: (windowId) => rawWindow.maximize(windowId),
         restore: (windowId) => rawWindow.restore(windowId),
         setFullscreen: (windowId, fullscreen) => rawWindow.setFullscreen(windowId, fullscreen),
+        setSimpleFullscreen: (windowId, simpleFullscreen) =>
+          rawWindow.setSimpleFullscreen(windowId, simpleFullscreen),
         getState: (windowId) => rawWindow.getState(windowId),
         events: () => rawWindow.events()
       }
@@ -1014,10 +1017,11 @@ const defaultFixture = (method: string): HeadlessFixture => {
           if (!state.windows.has(windowId)) {
             return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
           }
-          return { minimized: false, maximized: false, fullscreen: false }
+          return { minimized: false, maximized: false, fullscreen: false, simpleFullscreen: false }
         })
     case WINDOW_SET_BOUNDS_METHOD:
     case WINDOW_SET_FULLSCREEN_METHOD:
+    case WINDOW_SET_SIMPLE_FULLSCREEN_METHOD:
       return (request, state) =>
         Effect.gen(function* () {
           const windowId = yield* readWindowId(request.payload, request.method)

@@ -4124,6 +4124,33 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setSimpleFullscreen",
+      "surface": "Window",
+      "method": "setSimpleFullscreen",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "simple-fullscreen-macos-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "simple-fullscreen-macos-only"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "simple-fullscreen-macos-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.setSkipTaskbar",
       "surface": "Window",
       "method": "setSkipTaskbar",
@@ -4276,11 +4303,11 @@
     }
   ],
   "summary": {
-    "total": 233,
-    "routed": 233,
+    "total": 234,
+    "routed": 234,
     "missing": 0,
     "supported": 123,
-    "partial": 37,
+    "partial": 38,
     "unsupported": 73
   }
 }

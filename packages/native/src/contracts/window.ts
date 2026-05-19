@@ -99,7 +99,8 @@ export class WindowRegistryEvent extends Schema.Class<WindowRegistryEvent>("Wind
 export class WindowState extends Schema.Class<WindowState>("WindowState")({
   minimized: Schema.Boolean,
   maximized: Schema.Boolean,
-  fullscreen: Schema.Boolean
+  fullscreen: Schema.Boolean,
+  simpleFullscreen: Schema.Boolean
 }) {}
 
 export class WindowStateEvent extends Schema.Class<WindowStateEvent>("WindowStateEvent")({
@@ -136,6 +137,13 @@ export class WindowFullscreenInput extends Schema.Class<WindowFullscreenInput>(
 )({
   window: WindowResource,
   fullscreen: Schema.Boolean
+}) {}
+
+export class WindowSimpleFullscreenInput extends Schema.Class<WindowSimpleFullscreenInput>(
+  "WindowSimpleFullscreenInput"
+)({
+  window: WindowResource,
+  simpleFullscreen: Schema.Boolean
 }) {}
 
 export class WindowTitleInput extends Schema.Class<WindowTitleInput>("WindowTitleInput")({

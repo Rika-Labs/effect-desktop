@@ -81,7 +81,12 @@ test("WindowPersistence saves and restores stale display state onto the current 
             getBounds: () => Effect.succeed(bounds),
             getState: () =>
               Effect.succeed(
-                new WindowState({ minimized: false, maximized: false, fullscreen: hostFullscreen })
+                new WindowState({
+                  minimized: false,
+                  maximized: false,
+                  fullscreen: hostFullscreen,
+                  simpleFullscreen: false
+                })
               ),
             setBounds: (_window, next) =>
               Effect.sync(() => {
@@ -516,7 +521,7 @@ const windowPersistenceBridgeResponse = (
     case WINDOW_GET_STATE_METHOD:
       return Effect.succeed({
         kind: "success",
-        payload: { minimized: false, maximized: false, fullscreen: false }
+        payload: { minimized: false, maximized: false, fullscreen: false, simpleFullscreen: false }
       })
     case WINDOW_SET_BOUNDS_METHOD:
       return Effect.succeed({ kind: "success", payload: undefined })
@@ -570,8 +575,16 @@ const makeWindowClient = (
     Effect.sync(() => {
       calls.fullscreen.push(fullscreen)
     }),
+  setSimpleFullscreen: () => Effect.void,
   getState: () =>
-    Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false })),
+    Effect.succeed(
+      new WindowState({
+        minimized: false,
+        maximized: false,
+        fullscreen: false,
+        simpleFullscreen: false
+      })
+    ),
   events: () => Stream.empty,
   ...overrides
 })

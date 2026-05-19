@@ -189,6 +189,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         fullscreen: bool,
     ) -> std::result::Result<(), HostProtocolError>;
 
+    fn set_simple_fullscreen(
+        &self,
+        window_id: &str,
+        simple_fullscreen: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
     fn get_state(
         &self,
         window_id: &str,
@@ -427,6 +433,11 @@ enum WindowCommand {
     SetFullscreen {
         window_id: String,
         fullscreen: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetSimpleFullscreen {
+        window_id: String,
+        simple_fullscreen: bool,
         reply: Sender<WindowCommandReply>,
     },
     GetState {
@@ -1215,6 +1226,24 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_FULLSCREEN_METHOD)
+    }
+
+    fn set_simple_fullscreen(
+        &self,
+        window_id: &str,
+        simple_fullscreen: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetSimpleFullscreen {
+            window_id: window_id.to_string(),
+            simple_fullscreen,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(
+            reply_rx,
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        )
     }
 
     fn get_state(
@@ -2436,7 +2465,12 @@ impl WindowRegistry {
 
         resources._window.set_minimized(true);
         self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(true, state.maximized(), state.fullscreen())
+            WindowStatePayload::new(
+                true,
+                state.maximized(),
+                state.fullscreen(),
+                state.simple_fullscreen(),
+            )
         });
         Ok(())
     }
@@ -2451,7 +2485,12 @@ impl WindowRegistry {
 
         resources._window.set_maximized(true);
         self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(state.minimized(), true, state.fullscreen())
+            WindowStatePayload::new(
+                state.minimized(),
+                true,
+                state.fullscreen(),
+                state.simple_fullscreen(),
+            )
         });
         Ok(())
     }
@@ -2467,9 +2506,10 @@ impl WindowRegistry {
         resources._window.set_minimized(false);
         resources._window.set_maximized(false);
         resources._window.set_fullscreen(None);
+        clear_simple_fullscreen(&resources._window)?;
         self.window_states.insert(
             window_id.to_string(),
-            WindowStatePayload::new(false, false, false),
+            WindowStatePayload::new(false, false, false, false),
         );
         Ok(())
     }
@@ -2492,7 +2532,40 @@ impl WindowRegistry {
             None
         });
         self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(state.minimized(), state.maximized(), fullscreen)
+            WindowStatePayload::new(
+                state.minimized(),
+                state.maximized(),
+                fullscreen,
+                state.simple_fullscreen(),
+            )
+        });
+        Ok(())
+    }
+
+    fn set_simple_fullscreen(
+        &mut self,
+        window_id: &str,
+        simple_fullscreen: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+            ));
+        };
+
+        set_simple_fullscreen(
+            &resources._window,
+            simple_fullscreen,
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        )?;
+        self.update_window_state(window_id, |state| {
+            WindowStatePayload::new(
+                state.minimized(),
+                state.maximized(),
+                state.fullscreen(),
+                simple_fullscreen,
+            )
         });
         Ok(())
     }
@@ -2537,7 +2610,7 @@ impl WindowRegistry {
                     .get(window_id)
                     .map(|resources| tao_window_state(&resources._window))
             })
-            .unwrap_or_else(|| WindowStatePayload::new(false, false, false));
+            .unwrap_or_else(|| WindowStatePayload::new(false, false, false, false));
         self.window_states
             .insert(window_id.to_string(), update(&current));
     }
@@ -3307,6 +3380,23 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::SetSimpleFullscreen {
+                window_id,
+                simple_fullscreen,
+                reply,
+            } => {
+                let result = self
+                    .set_simple_fullscreen(&window_id, simple_fullscreen)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                if result.is_ok() {
+                    self.emit_window_state_snapshot(
+                        &window_id,
+                        host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+                    );
+                }
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::GetState { window_id, reply } => {
                 let result = self
                     .get_state(&window_id)
@@ -3542,7 +3632,73 @@ fn tao_window_state(window: &Window) -> WindowStatePayload {
         window.is_minimized(),
         window.is_maximized(),
         window.fullscreen().is_some(),
+        simple_fullscreen(window),
     )
+}
+
+#[cfg(target_os = "macos")]
+fn simple_fullscreen(window: &Window) -> bool {
+    use tao::platform::macos::WindowExtMacOS;
+
+    WindowExtMacOS::simple_fullscreen(window)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn simple_fullscreen(_window: &Window) -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn set_simple_fullscreen(
+    window: &Window,
+    simple_fullscreen: bool,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    use tao::platform::macos::WindowExtMacOS;
+
+    if WindowExtMacOS::set_simple_fullscreen(window, simple_fullscreen) {
+        Ok(())
+    } else {
+        Err(HostProtocolError::InvalidState {
+            current: "native-fullscreen-or-unchanged".to_string(),
+            attempted: if simple_fullscreen {
+                "simple-fullscreen"
+            } else {
+                "not-simple-fullscreen"
+            }
+            .to_string(),
+            message: "window simple fullscreen transition was rejected".to_string(),
+            operation: operation.to_string(),
+            platform: None,
+            code: None,
+            cause: None,
+            recoverable: false,
+            remediation: None,
+            docs_url: None,
+        })
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_simple_fullscreen(
+    _window: &Window,
+    _simple_fullscreen: bool,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    Err(HostProtocolError::unsupported(
+        "simple-fullscreen-macos-only",
+        operation,
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn clear_simple_fullscreen(window: &Window) -> std::result::Result<(), HostProtocolError> {
+    set_simple_fullscreen(window, false, host_protocol::WINDOW_RESTORE_METHOD)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn clear_simple_fullscreen(_window: &Window) -> std::result::Result<(), HostProtocolError> {
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -4869,7 +5025,7 @@ mod tests {
 
         super::emit_window_state_event(
             "window-1",
-            host_protocol::WindowStatePayload::new(true, false, false),
+            host_protocol::WindowStatePayload::new(true, false, false, false),
         )
         .expect("window state event should emit");
 
@@ -4896,7 +5052,8 @@ mod tests {
                 "state": {
                     "minimized": true,
                     "maximized": false,
-                    "fullscreen": false
+                    "fullscreen": false,
+                    "simpleFullscreen": false
                 }
             })
         );
@@ -4907,11 +5064,16 @@ mod tests {
         let mut registry = WindowRegistry::new();
         registry.window_states.insert(
             "window-1".to_string(),
-            host_protocol::WindowStatePayload::new(false, false, false),
+            host_protocol::WindowStatePayload::new(false, false, false, false),
         );
 
         registry.update_window_state("window-1", |state| {
-            host_protocol::WindowStatePayload::new(true, state.maximized(), state.fullscreen())
+            host_protocol::WindowStatePayload::new(
+                true,
+                state.maximized(),
+                state.fullscreen(),
+                state.simple_fullscreen(),
+            )
         });
 
         let state = registry
@@ -4920,6 +5082,7 @@ mod tests {
         assert!(state.minimized());
         assert!(!state.maximized());
         assert!(!state.fullscreen());
+        assert!(!state.simple_fullscreen());
     }
 
     #[test]

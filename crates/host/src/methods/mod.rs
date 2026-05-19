@@ -384,6 +384,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::set_fullscreen),
     ),
     route(
+        host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        HostMethodDispatcher::Window(window::set_simple_fullscreen),
+    ),
+    route(
         host_protocol::WINDOW_GET_STATE_METHOD,
         HostMethodDispatcher::Window(window::get_state),
     ),
@@ -4009,7 +4013,8 @@ mod tests {
                 payload: Some(serde_json::json!({
                     "minimized": false,
                     "maximized": false,
-                    "fullscreen": false
+                    "fullscreen": false,
+                    "simpleFullscreen": false
                 })),
                 error: None,
             }
@@ -4030,6 +4035,11 @@ mod tests {
                 "request-window-set-fullscreen",
                 host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
                 serde_json::json!({ "windowId": "window-1", "fullscreen": true }),
+            ),
+            (
+                "request-window-set-simple-fullscreen",
+                host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+                serde_json::json!({ "windowId": "window-1", "simpleFullscreen": true }),
             ),
             (
                 "request-window-restore",
@@ -4056,6 +4066,10 @@ mod tests {
         assert_eq!(fake.minimized(), vec!["window-1".to_string()]);
         assert_eq!(fake.maximized(), vec!["window-1".to_string()]);
         assert_eq!(fake.fullscreen(), vec![("window-1".to_string(), true)]);
+        assert_eq!(
+            fake.simple_fullscreen(),
+            vec![("window-1".to_string(), true)]
+        );
         assert_eq!(fake.restored(), vec!["window-1".to_string()]);
     }
 
@@ -7083,6 +7097,7 @@ mod tests {
         maximized: Mutex<Vec<String>>,
         restored: Mutex<Vec<String>>,
         fullscreen: Mutex<Vec<(String, bool)>>,
+        simple_fullscreen: Mutex<Vec<(String, bool)>>,
         dock_badge_labels: Mutex<Vec<Option<String>>>,
     }
 
@@ -7114,6 +7129,7 @@ mod tests {
                 maximized: Mutex::new(Vec::new()),
                 restored: Mutex::new(Vec::new()),
                 fullscreen: Mutex::new(Vec::new()),
+                simple_fullscreen: Mutex::new(Vec::new()),
                 dock_badge_labels: Mutex::new(Vec::new()),
             }
         }
@@ -7262,6 +7278,13 @@ mod tests {
             self.fullscreen
                 .lock()
                 .expect("fake fullscreen requests should lock")
+                .clone()
+        }
+
+        fn simple_fullscreen(&self) -> Vec<(String, bool)> {
+            self.simple_fullscreen
+                .lock()
+                .expect("fake simple fullscreen requests should lock")
                 .clone()
         }
     }
@@ -7530,11 +7553,25 @@ mod tests {
             Ok(())
         }
 
+        fn set_simple_fullscreen(
+            &self,
+            window_id: &str,
+            simple_fullscreen: bool,
+        ) -> Result<(), HostProtocolError> {
+            self.simple_fullscreen
+                .lock()
+                .expect("fake simple fullscreen requests should lock")
+                .push((window_id.to_string(), simple_fullscreen));
+            Ok(())
+        }
+
         fn get_state(
             &self,
             _window_id: &str,
         ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
-            Ok(host_protocol::WindowStatePayload::new(false, false, false))
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
         fn set_dock_badge_label(

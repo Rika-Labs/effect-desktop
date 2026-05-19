@@ -74,6 +74,7 @@ pub const WINDOW_MINIMIZE_METHOD: &str = "Window.minimize";
 pub const WINDOW_MAXIMIZE_METHOD: &str = "Window.maximize";
 pub const WINDOW_RESTORE_METHOD: &str = "Window.restore";
 pub const WINDOW_SET_FULLSCREEN_METHOD: &str = "Window.setFullscreen";
+pub const WINDOW_SET_SIMPLE_FULLSCREEN_METHOD: &str = "Window.setSimpleFullscreen";
 pub const WINDOW_GET_STATE_METHOD: &str = "Window.getState";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const WINDOW_EVENT: &str = "Window.Event";
@@ -3832,18 +3833,49 @@ impl WindowSetFullscreenPayload {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetSimpleFullscreenPayload {
+    window_id: String,
+    simple_fullscreen: bool,
+}
+
+impl WindowSetSimpleFullscreenPayload {
+    pub fn new(window_id: impl Into<String>, simple_fullscreen: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            simple_fullscreen,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn simple_fullscreen(&self) -> bool {
+        self.simple_fullscreen
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowStatePayload {
     minimized: bool,
     maximized: bool,
     fullscreen: bool,
+    simple_fullscreen: bool,
 }
 
 impl WindowStatePayload {
-    pub fn new(minimized: bool, maximized: bool, fullscreen: bool) -> Self {
+    pub fn new(
+        minimized: bool,
+        maximized: bool,
+        fullscreen: bool,
+        simple_fullscreen: bool,
+    ) -> Self {
         Self {
             minimized,
             maximized,
             fullscreen,
+            simple_fullscreen,
         }
     }
 
@@ -3857,6 +3889,10 @@ impl WindowStatePayload {
 
     pub fn fullscreen(&self) -> bool {
         self.fullscreen
+    }
+
+    pub fn simple_fullscreen(&self) -> bool {
+        self.simple_fullscreen
     }
 }
 
@@ -11725,12 +11761,12 @@ mod tests {
         WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
         WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
         WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
-        WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSkipTaskbarPayload,
-        WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowSetVibrancyPayload,
-        WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
-        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
-        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
-        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSimpleFullscreenPayload,
+        WindowSetSkipTaskbarPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
+        WindowSetVibrancyPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
+        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
+        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
+        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
         WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
@@ -13142,13 +13178,23 @@ mod tests {
             r#"{"windowId":"window-1","fullscreen":true}"#
         );
 
-        let state = WindowStatePayload::new(false, true, true);
+        let set_simple_fullscreen = WindowSetSimpleFullscreenPayload::new("window-1", true);
+        assert_eq!(set_simple_fullscreen.window_id(), "window-1");
+        assert!(set_simple_fullscreen.simple_fullscreen());
+        assert_eq!(
+            serde_json::to_string(&set_simple_fullscreen)
+                .expect("window set simple fullscreen payload should encode"),
+            r#"{"windowId":"window-1","simpleFullscreen":true}"#
+        );
+
+        let state = WindowStatePayload::new(false, true, true, true);
         assert!(!state.minimized());
         assert!(state.maximized());
         assert!(state.fullscreen());
+        assert!(state.simple_fullscreen());
         assert_eq!(
             serde_json::to_string(&state).expect("window state payload should encode"),
-            r#"{"minimized":false,"maximized":true,"fullscreen":true}"#
+            r#"{"minimized":false,"maximized":true,"fullscreen":true,"simpleFullscreen":true}"#
         );
 
         let state_event = WindowStateEventPayload::new("window-1", state);
@@ -13157,11 +13203,11 @@ mod tests {
         assert!(state_event.state().maximized());
         assert_eq!(
             serde_json::to_string(&state_event).expect("window state event should encode"),
-            r#"{"type":"window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true}}"#
+            r#"{"type":"window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true,"simpleFullscreen":true}}"#
         );
 
         let error = serde_json::from_str::<WindowStateEventPayload>(
-            r#"{"type":"not-window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true}}"#,
+            r#"{"type":"not-window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true,"simpleFullscreen":true}}"#,
         )
         .expect_err("invalid window state event type must fail");
         assert!(

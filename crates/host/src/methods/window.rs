@@ -9,8 +9,8 @@ use host_protocol::{
     WindowParentResponse, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
     WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
     WindowSetProgressPayload, WindowSetResizablePayload, WindowSetShadowPayload,
-    WindowSetSkipTaskbarPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
-    WindowSetVibrancyPayload, WindowStatePayload,
+    WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload, WindowSetTitlePayload,
+    WindowSetTrafficLightsPayload, WindowSetVibrancyPayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -314,6 +314,16 @@ pub(crate) fn set_fullscreen(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_fullscreen_payload(payload)?;
     handler.set_fullscreen(payload.window_id(), payload.fullscreen())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_simple_fullscreen(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_simple_fullscreen_payload(payload)?;
+    handler.set_simple_fullscreen(payload.window_id(), payload.simple_fullscreen())?;
 
     Ok(None)
 }
@@ -975,6 +985,40 @@ fn encode_bounds_response(payload: WindowBoundsPayload) -> Result<Value, HostPro
             host_protocol::WINDOW_GET_BOUNDS_METHOD,
         )
     })
+}
+
+fn decode_required_set_simple_fullscreen_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetSimpleFullscreenPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_simple_fullscreen_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            "Window.setSimpleFullscreen requires payload",
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        )),
+    }
+}
+
+fn decode_set_simple_fullscreen_payload(
+    payload: Value,
+) -> Result<WindowSetSimpleFullscreenPayload, HostProtocolError> {
+    let payload: WindowSetSimpleFullscreenPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                format!("invalid Window.setSimpleFullscreen payload: {error}"),
+                host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        ));
+    }
+    Ok(payload)
 }
 
 fn encode_state_response(payload: WindowStatePayload) -> Result<Value, HostProtocolError> {

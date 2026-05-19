@@ -30,6 +30,7 @@ import {
   WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_SHADOW_METHOD,
@@ -261,7 +262,8 @@ test("host window client decodes Window.Event subscriptions", async () => {
       state: {
         minimized: true,
         maximized: false,
-        fullscreen: false
+        fullscreen: false,
+        simpleFullscreen: false
       }
     }
   ])
@@ -439,6 +441,7 @@ test("host window client requests Window.minimize, Window.maximize, Window.resto
       "request-window-minimize",
       "request-window-maximize",
       "request-window-set-fullscreen",
+      "request-window-set-simple-fullscreen",
       "request-window-get-state",
       "request-window-restore"
     ]),
@@ -446,11 +449,13 @@ test("host window client requests Window.minimize, Window.maximize, Window.resto
       "trace-window-minimize",
       "trace-window-maximize",
       "trace-window-set-fullscreen",
+      "trace-window-set-simple-fullscreen",
       "trace-window-get-state",
       "trace-window-restore"
     ]),
     now: nextNumber([
-      1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019, 1_710_000_000_020
+      1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019, 1_710_000_000_020,
+      1_710_000_000_021
     ])
   })
 
@@ -459,17 +464,24 @@ test("host window client requests Window.minimize, Window.maximize, Window.resto
       yield* client.minimize("window-1")
       yield* client.maximize("window-1")
       yield* client.setFullscreen("window-1", true)
+      yield* client.setSimpleFullscreen("window-1", true)
       const current = yield* client.getState("window-1")
       yield* client.restore("window-1")
       return current
     })
   )
 
-  expect(state).toEqual({ minimized: false, maximized: true, fullscreen: true })
+  expect(state).toEqual({
+    minimized: false,
+    maximized: true,
+    fullscreen: true,
+    simpleFullscreen: true
+  })
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [WINDOW_MINIMIZE_METHOD, { windowId: "window-1" }],
     [WINDOW_MAXIMIZE_METHOD, { windowId: "window-1" }],
     [WINDOW_SET_FULLSCREEN_METHOD, { windowId: "window-1", fullscreen: true }],
+    [WINDOW_SET_SIMPLE_FULLSCREEN_METHOD, { windowId: "window-1", simpleFullscreen: true }],
     [WINDOW_GET_STATE_METHOD, { windowId: "window-1" }],
     [WINDOW_RESTORE_METHOD, { windowId: "window-1" }]
   ])
@@ -679,7 +691,8 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                           payload: {
                             minimized: false,
                             maximized: true,
-                            fullscreen: true
+                            fullscreen: true,
+                            simpleFullscreen: true
                           }
                         }
                       : base
@@ -726,7 +739,8 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
               state: {
                 minimized: true,
                 maximized: false,
-                fullscreen: false
+                fullscreen: false,
+                simpleFullscreen: false
               }
             }
           })
