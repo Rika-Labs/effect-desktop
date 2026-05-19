@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Clock, Effect } from "effect"
+import { Clock, Effect, Schema } from "effect"
 
 import {
   HOST_PING_METHOD,
@@ -70,7 +70,7 @@ test("host version negotiation fails on protocol mismatch", async () => {
   await expectEffectFailure(
     negotiateHostVersion(client),
     (error) =>
-      error instanceof HostProtocolInvalidStateError &&
+      Schema.is(HostProtocolInvalidStateError)(error) &&
       error.current === "9.9.9" &&
       error.attempted === HOST_PROTOCOL_VERSION
   )
@@ -85,7 +85,7 @@ test("host version response rejects control bytes", async () => {
 
   await expectEffectFailure(
     client.version(),
-    (error) => error instanceof HostProtocolInvalidOutputError
+    (error) => Schema.is(HostProtocolInvalidOutputError)(error)
   )
 })
 
@@ -98,7 +98,7 @@ test("host handshake client rejects mismatched response ids", async () => {
 
   await expectEffectFailure(
     client.version(),
-    (error) => error instanceof HostProtocolInvalidOutputError
+    (error) => Schema.is(HostProtocolInvalidOutputError)(error)
   )
 })
 
@@ -111,7 +111,7 @@ test("host handshake client propagates response errors", async () => {
 
   await expectEffectFailure(
     client.version(),
-    (error) => error instanceof HostProtocolUnsupportedError
+    (error) => Schema.is(HostProtocolUnsupportedError)(error)
   )
 })
 

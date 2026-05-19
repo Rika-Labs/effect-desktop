@@ -299,7 +299,7 @@ test("makeDesktopRpcHandlerRuntime interrupts pending dispatches on cancel", asy
   await Effect.runPromise(Deferred.await(interrupted))
 
   const exit = await Effect.runPromiseExit(Fiber.join(fiber))
-  expectExitFailure(exit, (error) => error instanceof HostProtocolCancelledError)
+  expectExitFailure(exit, (error) => Schema.is(HostProtocolCancelledError)(error))
 })
 
 test("makeDesktopRpcHandlerRuntime rejects duplicate late request ids", async () => {

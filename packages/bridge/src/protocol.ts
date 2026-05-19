@@ -1301,11 +1301,14 @@ const hostProtocolErrorToRpcClientError = (
 export const hostProtocolErrorFromRpcClientError = (
   error: unknown
 ): HostProtocolError | undefined => {
-  if (!(error instanceof RpcClientError.RpcClientError)) {
+  if (!Schema.is(RpcClientError.RpcClientError)(error)) {
     return undefined
   }
   const reason = error.reason
-  if (!(reason instanceof RpcClientError.RpcClientDefect) || !isHostProtocolError(reason.cause)) {
+  if (
+    !Schema.is(RpcClientError.RpcClientDefect)(reason) ||
+    !isHostProtocolError(reason.cause)
+  ) {
     return undefined
   }
   return decodeUnknownHostProtocolError(reason.cause, StrictParseOptions)

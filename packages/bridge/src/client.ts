@@ -557,9 +557,9 @@ const isTerminalStreamEnvelope = (
     ),
     Effect.map(
       (frame) =>
-        frame instanceof BridgeStreamErrorFrame ||
-        frame instanceof BridgeStreamCompleteFrame ||
-        frame instanceof BridgeStreamClosedFrame
+        Schema.is(BridgeStreamErrorFrame)(frame) ||
+        Schema.is(BridgeStreamCompleteFrame)(frame) ||
+        Schema.is(BridgeStreamClosedFrame)(frame)
     )
   )
 }
@@ -594,14 +594,14 @@ const decodeStreamEnvelope = <Spec extends BridgeStreamSpec>(
     )
   ).pipe(
     Stream.flatMap((frame) => {
-      if (frame instanceof BridgeStreamDataFrame) {
+      if (Schema.is(BridgeStreamDataFrame)(frame)) {
         return Stream.fromEffect(decodeStreamChunk(operation, spec.chunk, frame.chunk))
       }
-      if (frame instanceof BridgeStreamErrorFrame) {
+      if (Schema.is(BridgeStreamErrorFrame)(frame)) {
         onTerminal()
         return Stream.fromEffect(decodeStreamError(operation, spec.error, frame.error))
       }
-      if (frame instanceof BridgeStreamCompleteFrame) {
+      if (Schema.is(BridgeStreamCompleteFrame)(frame)) {
         onTerminal()
         return Stream.empty
       }

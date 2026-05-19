@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Clock, Effect, Stream } from "effect"
+import { Clock, Effect, Schema, Stream } from "effect"
 
 import {
   HostProtocolInvalidArgumentError,
@@ -282,7 +282,7 @@ test("host window client fails Window.Event subscriptions when exchange cannot s
   await expectEffectFailure(
     client.events().pipe(Stream.runDrain),
     (error) =>
-      error instanceof HostProtocolInvalidOutputError && error.operation === WINDOW_EVENT_METHOD
+      Schema.is(HostProtocolInvalidOutputError)(error) && error.operation === WINDOW_EVENT_METHOD
   )
 })
 
@@ -548,7 +548,7 @@ test("host window client rejects invalid create bounds before crossing the host 
 
     await expectEffectFailure(
       client.create(input as Parameters<typeof client.create>[0]),
-      (error) => error instanceof HostProtocolInvalidArgumentError && error.field === "payload"
+      (error) => Schema.is(HostProtocolInvalidArgumentError)(error) && error.field === "payload"
     )
     expect(requests).toEqual([])
   }
@@ -560,7 +560,7 @@ test("host window client rejects empty destroy window ids before crossing the ho
 
   await expectEffectFailure(
     client.destroy(""),
-    (error) => error instanceof HostProtocolInvalidArgumentError
+    (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
   )
   expect(requests).toEqual([])
 })
@@ -571,15 +571,15 @@ test("host window client rejects empty lifecycle window ids before crossing the 
 
   await expectEffectFailure(
     client.show(""),
-    (error) => error instanceof HostProtocolInvalidArgumentError
+    (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
   )
   await expectEffectFailure(
     client.hide(""),
-    (error) => error instanceof HostProtocolInvalidArgumentError
+    (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
   )
   await expectEffectFailure(
     client.focus(""),
-    (error) => error instanceof HostProtocolInvalidArgumentError
+    (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
   )
   expect(requests).toEqual([])
 })
@@ -590,7 +590,7 @@ test("host window client rejects invalid setBounds payload before crossing the h
 
   await expectEffectFailure(
     client.setBounds("window-1", { x: 0, y: 0, width: 0, height: 100 }),
-    (error) => error instanceof HostProtocolInvalidArgumentError
+    (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
   )
   expect(requests).toEqual([])
 })
@@ -601,11 +601,11 @@ test("host window client rejects invalid attention payloads before crossing the 
 
   await expectEffectFailure(
     client.setProgress("window-1", { progress: 101 }),
-    (error) => error instanceof HostProtocolInvalidArgumentError
+    (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
   )
   await expectEffectFailure(
     client.requestAttention("window-1", "urgent" as Parameters<typeof client.requestAttention>[1]),
-    (error) => error instanceof HostProtocolInvalidArgumentError
+    (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
   )
   expect(requests).toEqual([])
 })
@@ -619,7 +619,7 @@ test("host window client propagates destroy response errors", async () => {
 
   await expectEffectFailure(
     client.destroy("missing"),
-    (error) => error instanceof HostProtocolNotFoundError && error.resource === "Window:missing"
+    (error) => Schema.is(HostProtocolNotFoundError)(error) && error.resource === "Window:missing"
   )
 })
 
@@ -628,7 +628,7 @@ test("host window client rejects malformed create output", async () => {
 
   await expectEffectFailure(
     client.create(),
-    (error) => error instanceof HostProtocolInvalidOutputError
+    (error) => Schema.is(HostProtocolInvalidOutputError)(error)
   )
 })
 
@@ -637,7 +637,7 @@ test("host window client rejects empty create response window ids", async () => 
 
   await expectEffectFailure(
     client.create(),
-    (error) => error instanceof HostProtocolInvalidOutputError
+    (error) => Schema.is(HostProtocolInvalidOutputError)(error)
   )
 })
 
@@ -651,7 +651,7 @@ test("host window client rejects mismatched response ids", async () => {
   await expectEffectFailure(
     client.create(),
     (error) =>
-      error instanceof HostProtocolInvalidOutputError && error.operation === WINDOW_CREATE_METHOD
+      Schema.is(HostProtocolInvalidOutputError)(error) && error.operation === WINDOW_CREATE_METHOD
   )
 })
 
@@ -668,7 +668,7 @@ test("host window client rejects mismatched response trace ids", async () => {
   await expectEffectFailure(
     client.create(),
     (error) =>
-      error instanceof HostProtocolInvalidOutputError && error.operation === WINDOW_CREATE_METHOD
+      Schema.is(HostProtocolInvalidOutputError)(error) && error.operation === WINDOW_CREATE_METHOD
   )
 })
 
