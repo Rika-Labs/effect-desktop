@@ -172,6 +172,13 @@ pub(crate) fn set_shadow(
     platform::set_shadow(window, has_shadow)
 }
 
+pub(crate) fn set_title_bar_style(
+    window: &Window,
+    title_bar_style: WindowTitleBarStyle,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_title_bar_style(window, title_bar_style)
+}
+
 pub(crate) fn set_title_bar_transparent(
     window: &Window,
     title_bar_transparent: bool,
@@ -247,9 +254,15 @@ fn invalid_argument_for_operation(
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{HostProtocolError, MacosScreenWorkArea, MacosTrafficLights, MacosWindowPolish};
+    use super::{
+        HostProtocolError, MacosScreenWorkArea, MacosTrafficLights, MacosWindowPolish,
+        WindowTitleBarStyle,
+    };
     use objc2::rc::Retained;
-    use objc2_app_kit::NSScreen;
+    use objc2_app_kit::{
+        NSScreen, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTitleVisibility,
+    };
+    use std::ptr::NonNull;
     use tao::{
         dpi::LogicalPosition,
         monitor::MonitorHandle,
@@ -359,12 +372,98 @@ mod platform {
         Ok(())
     }
 
+    pub(super) fn set_title_bar_style(
+        window: &Window,
+        title_bar_style: WindowTitleBarStyle,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let ns_window = ns_window(window)?;
+        match title_bar_style {
+            WindowTitleBarStyle::Default => {
+                set_style_mask(ns_window, |mask| {
+                    (mask
+                        | NSWindowStyleMask::Titled
+                        | NSWindowStyleMask::Closable
+                        | NSWindowStyleMask::Miniaturizable)
+                        & !NSWindowStyleMask::FullSizeContentView
+                });
+                ns_window.setTitlebarAppearsTransparent(false);
+                ns_window.setTitleVisibility(NSWindowTitleVisibility::Visible);
+                set_standard_buttons_hidden(ns_window, false);
+            }
+            WindowTitleBarStyle::Hidden => {
+                set_style_mask(ns_window, |mask| {
+                    (mask & !NSWindowStyleMask::Titled) & !NSWindowStyleMask::FullSizeContentView
+                });
+                ns_window.setTitlebarAppearsTransparent(false);
+                ns_window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
+                set_standard_buttons_hidden(ns_window, true);
+            }
+            WindowTitleBarStyle::HiddenInset => {
+                set_style_mask(ns_window, |mask| {
+                    mask | NSWindowStyleMask::Titled
+                        | NSWindowStyleMask::Closable
+                        | NSWindowStyleMask::Miniaturizable
+                        | NSWindowStyleMask::FullSizeContentView
+                });
+                ns_window.setTitlebarAppearsTransparent(true);
+                ns_window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
+                set_standard_buttons_hidden(ns_window, false);
+            }
+            WindowTitleBarStyle::CustomButtonsOnHover => {
+                set_style_mask(ns_window, |mask| {
+                    (mask
+                        | NSWindowStyleMask::Titled
+                        | NSWindowStyleMask::Closable
+                        | NSWindowStyleMask::Miniaturizable)
+                        & !NSWindowStyleMask::FullSizeContentView
+                });
+                ns_window.setTitlebarAppearsTransparent(false);
+                ns_window.setTitleVisibility(NSWindowTitleVisibility::Visible);
+                set_standard_buttons_hidden(ns_window, true);
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn set_title_bar_transparent(
         window: &Window,
         title_bar_transparent: bool,
     ) -> std::result::Result<(), HostProtocolError> {
         WindowExtMacOS::set_titlebar_transparent(window, title_bar_transparent);
         Ok(())
+    }
+
+    fn ns_window(window: &Window) -> std::result::Result<&NSWindow, HostProtocolError> {
+        let pointer = window.ns_window();
+        let Some(pointer) = NonNull::new(pointer) else {
+            return Err(HostProtocolError::internal(
+                "tao returned a null NSWindow pointer",
+                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+            ));
+        };
+
+        // Safety: Tao's macOS `WindowExtMacOS::ns_window` contract returns the
+        // live `NSWindow` backing this `Window` until the `Window` is destroyed.
+        Ok(unsafe { pointer.cast::<NSWindow>().as_ref() })
+    }
+
+    fn set_style_mask(
+        ns_window: &NSWindow,
+        update: impl FnOnce(NSWindowStyleMask) -> NSWindowStyleMask,
+    ) {
+        ns_window.setStyleMask(update(ns_window.styleMask()));
+    }
+
+    fn set_standard_buttons_hidden(ns_window: &NSWindow, hidden: bool) {
+        for titlebar_button in &[
+            NSWindowButton::MiniaturizeButton,
+            NSWindowButton::CloseButton,
+            NSWindowButton::ZoomButton,
+        ] {
+            if let Some(button) = ns_window.standardWindowButton(*titlebar_button) {
+                button.setHidden(hidden);
+            }
+        }
     }
 
     pub(super) fn set_dock_badge_label(
@@ -589,6 +688,16 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "window shadow control is only supported on macOS",
             host_protocol::WINDOW_SET_SHADOW_METHOD,
+        ))
+    }
+
+    pub(super) fn set_title_bar_style(
+        _window: &Window,
+        _title_bar_style: host_protocol::WindowTitleBarStyle,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window titlebar style is only supported on macOS",
+            host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
         ))
     }
 

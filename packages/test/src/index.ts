@@ -56,6 +56,7 @@ import {
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_SHADOW_METHOD,
+  WINDOW_SET_TITLE_BAR_STYLE_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
   WINDOW_SET_VIBRANCY_METHOD,
@@ -256,6 +257,7 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           request.method === WINDOW_SET_VIBRANCY_METHOD ||
           request.method === WINDOW_CLEAR_VIBRANCY_METHOD ||
           request.method === WINDOW_SET_SHADOW_METHOD ||
+          request.method === WINDOW_SET_TITLE_BAR_STYLE_METHOD ||
           request.method === WINDOW_SET_ALWAYS_ON_TOP_METHOD ||
           request.method === WINDOW_SET_PROGRESS_METHOD ||
           request.method === WINDOW_REQUEST_ATTENTION_METHOD ||
@@ -851,6 +853,8 @@ export const runHeadless = <A, E, R>(
         setVibrancy: (windowId, material) => rawWindow.setVibrancy(windowId, material),
         clearVibrancy: (windowId) => rawWindow.clearVibrancy(windowId),
         setShadow: (windowId, hasShadow) => rawWindow.setShadow(windowId, hasShadow),
+        setTitleBarStyle: (windowId, titleBarStyle) =>
+          rawWindow.setTitleBarStyle(windowId, titleBarStyle),
         setTitleBarTransparent: (windowId, titleBarTransparent) =>
           rawWindow.setTitleBarTransparent(windowId, titleBarTransparent),
         setAlwaysOnTop: (windowId, alwaysOnTop) => rawWindow.setAlwaysOnTop(windowId, alwaysOnTop),
@@ -963,6 +967,7 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_SET_VIBRANCY_METHOD:
     case WINDOW_CLEAR_VIBRANCY_METHOD:
     case WINDOW_SET_SHADOW_METHOD:
+    case WINDOW_SET_TITLE_BAR_STYLE_METHOD:
     case WINDOW_SET_ALWAYS_ON_TOP_METHOD:
     case WINDOW_SET_PROGRESS_METHOD:
     case WINDOW_REQUEST_ATTENTION_METHOD:

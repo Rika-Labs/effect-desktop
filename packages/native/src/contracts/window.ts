@@ -12,6 +12,7 @@ const WindowTitleBarStyle = Schema.Literals([
   "hiddenInset",
   "customButtonsOnHover"
 ])
+export type WindowTitleBarStyleValue = Schema.Schema.Type<typeof WindowTitleBarStyle>
 const WindowVibrancyMaterial = Schema.Literals([
   "appearanceBased",
   "appearance-based",
@@ -247,6 +248,13 @@ export class WindowVibrancyInput extends Schema.Class<WindowVibrancyInput>("Wind
 export class WindowShadowInput extends Schema.Class<WindowShadowInput>("WindowShadowInput")({
   window: WindowResource,
   hasShadow: Schema.Boolean
+}) {}
+
+export class WindowTitleBarStyleInput extends Schema.Class<WindowTitleBarStyleInput>(
+  "WindowTitleBarStyleInput"
+)({
+  window: WindowResource,
+  titleBarStyle: WindowTitleBarStyle
 }) {}
 
 export class WindowTitleBarTransparentInput extends Schema.Class<WindowTitleBarTransparentInput>(

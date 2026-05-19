@@ -50,6 +50,14 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
       { platform: "linux", status: "unsupported" }
     ]
   })
+  expect(rpcSupport(request("Window.setTitleBarStyle"))).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
   expect(rpcSupport(request("Window.setTitleBarTransparent"))).toMatchObject({
     status: "partial",
     platforms: [

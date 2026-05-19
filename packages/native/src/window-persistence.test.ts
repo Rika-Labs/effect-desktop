@@ -564,6 +564,7 @@ const makeWindowClient = (
   setVibrancy: () => Effect.void,
   clearVibrancy: () => Effect.void,
   setShadow: () => Effect.void,
+  setTitleBarStyle: () => Effect.void,
   setTitleBarTransparent: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
   setSkipTaskbar: () => Effect.void,

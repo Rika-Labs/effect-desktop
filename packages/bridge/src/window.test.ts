@@ -36,6 +36,7 @@ import {
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_SHADOW_METHOD,
   WINDOW_SET_SKIP_TASKBAR_METHOD,
+  WINDOW_SET_TITLE_BAR_STYLE_METHOD,
   WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
@@ -334,6 +335,7 @@ test("host window client requests mutable chrome commands", async () => {
       "request-window-set-vibrancy",
       "request-window-clear-vibrancy",
       "request-window-set-shadow",
+      "request-window-set-title-bar-style",
       "request-window-set-title-bar-transparent"
     ]),
     nextTraceId: nextId([
@@ -344,11 +346,12 @@ test("host window client requests mutable chrome commands", async () => {
       "trace-window-set-vibrancy",
       "trace-window-clear-vibrancy",
       "trace-window-set-shadow",
+      "trace-window-set-title-bar-style",
       "trace-window-set-title-bar-transparent"
     ]),
     now: nextNumber([
       1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019, 1_710_000_000_020,
-      1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023
+      1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024
     ])
   })
 
@@ -361,6 +364,7 @@ test("host window client requests mutable chrome commands", async () => {
       yield* client.setVibrancy("window-1", "windowBackground")
       yield* client.clearVibrancy("window-1")
       yield* client.setShadow("window-1", false)
+      yield* client.setTitleBarStyle("window-1", "hiddenInset")
       yield* client.setTitleBarTransparent("window-1", true)
     })
   )
@@ -373,6 +377,7 @@ test("host window client requests mutable chrome commands", async () => {
     [WINDOW_SET_VIBRANCY_METHOD, { windowId: "window-1", material: "windowBackground" }],
     [WINDOW_CLEAR_VIBRANCY_METHOD, { windowId: "window-1" }],
     [WINDOW_SET_SHADOW_METHOD, { windowId: "window-1", hasShadow: false }],
+    [WINDOW_SET_TITLE_BAR_STYLE_METHOD, { windowId: "window-1", titleBarStyle: "hiddenInset" }],
     [WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD, { windowId: "window-1", titleBarTransparent: true }]
   ])
 })

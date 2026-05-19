@@ -33,6 +33,7 @@ import {
   WINDOW_SET_SHADOW_METHOD,
   WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
   WINDOW_SET_SKIP_TASKBAR_METHOD,
+  WINDOW_SET_TITLE_BAR_STYLE_METHOD,
   WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
@@ -241,6 +242,13 @@ export class WindowSetShadowPayload extends Schema.Class<WindowSetShadowPayload>
   hasShadow: Schema.Boolean
 }) {}
 
+export class WindowSetTitleBarStylePayload extends Schema.Class<WindowSetTitleBarStylePayload>(
+  "WindowSetTitleBarStylePayload"
+)({
+  windowId: Schema.NonEmptyString,
+  titleBarStyle: WindowTitleBarStyle
+}) {}
+
 export class WindowSetTitleBarTransparentPayload extends Schema.Class<WindowSetTitleBarTransparentPayload>(
   "WindowSetTitleBarTransparentPayload"
 )({
@@ -318,6 +326,7 @@ export interface WindowProgressInput {
 }
 
 export type WindowVibrancyInput = Schema.Schema.Type<typeof WindowVibrancyMaterial>
+export type WindowTitleBarStyleInput = Schema.Schema.Type<typeof WindowTitleBarStyle>
 export type WindowAttentionTypeInput = Schema.Schema.Type<typeof WindowAttentionType>
 
 export interface HostWindowExchange {
@@ -383,6 +392,10 @@ export interface HostWindowClient {
   readonly setShadow: (
     windowId: string,
     hasShadow: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setTitleBarStyle: (
+    windowId: string,
+    titleBarStyle: WindowTitleBarStyleInput
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly setTitleBarTransparent: (
     windowId: string,
@@ -584,6 +597,14 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
+    setTitleBarStyle: (windowId, titleBarStyle) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetTitleBarStylePayload(windowId, titleBarStyle)
+        const request = yield* makeRequest(WINDOW_SET_TITLE_BAR_STYLE_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     setTitleBarTransparent: (windowId, titleBarTransparent) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetTitleBarTransparentPayload(windowId, titleBarTransparent)
@@ -742,6 +763,9 @@ const decodeUnknownWindowSetTrafficLightsPayload = Schema.decodeUnknownSync(
 const decodeUnknownWindowSetVibrancyPayload = Schema.decodeUnknownSync(WindowSetVibrancyPayload)
 const decodeUnknownWindowClearVibrancyPayload = Schema.decodeUnknownSync(WindowClearVibrancyPayload)
 const decodeUnknownWindowSetShadowPayload = Schema.decodeUnknownSync(WindowSetShadowPayload)
+const decodeUnknownWindowSetTitleBarStylePayload = Schema.decodeUnknownSync(
+  WindowSetTitleBarStylePayload
+)
 const decodeUnknownWindowSetTitleBarTransparentPayload = Schema.decodeUnknownSync(
   WindowSetTitleBarTransparentPayload
 )
@@ -867,6 +891,16 @@ const encodeSetShadowPayload = (
   Effect.try({
     try: () => decodeUnknownWindowSetShadowPayload({ windowId, hasShadow }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_SHADOW_METHOD)
+  })
+
+const encodeSetTitleBarStylePayload = (
+  windowId: string,
+  titleBarStyle: WindowTitleBarStyleInput
+): Effect.Effect<WindowSetTitleBarStylePayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetTitleBarStylePayload({ windowId, titleBarStyle }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_TITLE_BAR_STYLE_METHOD)
   })
 
 const encodeSetTitleBarTransparentPayload = (

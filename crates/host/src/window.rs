@@ -13,7 +13,8 @@ use host_protocol::{
     WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
     WindowCreateResponse, WindowListResponse, WindowLookupResponse, WindowParentResponse,
     WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
-    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTrafficLights,
+    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
+    WindowTrafficLights,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -176,6 +177,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         window_id: &str,
         has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_title_bar_style(
+        &self,
+        window_id: &str,
+        title_bar_style: WindowTitleBarStyle,
     ) -> std::result::Result<(), HostProtocolError>;
 
     fn set_title_bar_transparent(
@@ -433,6 +440,11 @@ enum WindowCommand {
     SetShadow {
         window_id: String,
         has_shadow: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTitleBarStyle {
+        window_id: String,
+        title_bar_style: WindowTitleBarStyle,
         reply: Sender<WindowCommandReply>,
     },
     SetTitleBarTransparent {
@@ -1177,6 +1189,21 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_SHADOW_METHOD)
+    }
+
+    fn set_title_bar_style(
+        &self,
+        window_id: &str,
+        title_bar_style: WindowTitleBarStyle,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTitleBarStyle {
+            window_id: window_id.to_string(),
+            title_bar_style,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD)
     }
 
     fn set_title_bar_transparent(
@@ -2500,6 +2527,21 @@ impl WindowRegistry {
         macos::set_title_bar_transparent(&resources._window, title_bar_transparent)
     }
 
+    fn set_title_bar_style(
+        &self,
+        window_id: &str,
+        title_bar_style: WindowTitleBarStyle,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+            ));
+        };
+
+        macos::set_title_bar_style(&resources._window, title_bar_style)
+    }
+
     fn set_always_on_top(
         &self,
         window_id: &str,
@@ -3455,6 +3497,17 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_shadow(&window_id, has_shadow)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTitleBarStyle {
+                window_id,
+                title_bar_style,
+                reply,
+            } => {
+                let result = self
+                    .set_title_bar_style(&window_id, title_bar_style)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other

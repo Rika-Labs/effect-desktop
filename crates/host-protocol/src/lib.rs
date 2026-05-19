@@ -66,6 +66,7 @@ pub const WINDOW_SET_TRAFFIC_LIGHTS_METHOD: &str = "Window.setTrafficLights";
 pub const WINDOW_SET_VIBRANCY_METHOD: &str = "Window.setVibrancy";
 pub const WINDOW_CLEAR_VIBRANCY_METHOD: &str = "Window.clearVibrancy";
 pub const WINDOW_SET_SHADOW_METHOD: &str = "Window.setShadow";
+pub const WINDOW_SET_TITLE_BAR_STYLE_METHOD: &str = "Window.setTitleBarStyle";
 pub const WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD: &str = "Window.setTitleBarTransparent";
 pub const WINDOW_SET_ALWAYS_ON_TOP_METHOD: &str = "Window.setAlwaysOnTop";
 pub const WINDOW_SET_SKIP_TASKBAR_METHOD: &str = "Window.setSkipTaskbar";
@@ -3700,6 +3701,30 @@ impl WindowSetShadowPayload {
 
     pub fn has_shadow(&self) -> bool {
         self.has_shadow
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetTitleBarStylePayload {
+    window_id: String,
+    title_bar_style: WindowTitleBarStyle,
+}
+
+impl WindowSetTitleBarStylePayload {
+    pub fn new(window_id: impl Into<String>, title_bar_style: WindowTitleBarStyle) -> Self {
+        Self {
+            window_id: window_id.into(),
+            title_bar_style,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn title_bar_style(&self) -> WindowTitleBarStyle {
+        self.title_bar_style
     }
 }
 
@@ -11972,12 +11997,13 @@ mod tests {
         WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
         WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
         WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSimpleFullscreenPayload,
-        WindowSetSkipTaskbarPayload, WindowSetTitleBarTransparentPayload, WindowSetTitlePayload,
-        WindowSetTrafficLightsPayload, WindowSetVibrancyPayload, WindowStateEventPayload,
-        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
-        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
-        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
-        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowSetSkipTaskbarPayload, WindowSetTitleBarStylePayload,
+        WindowSetTitleBarTransparentPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
+        WindowSetVibrancyPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
+        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
+        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
+        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
         CRASH_REPORTER_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS,
@@ -13392,6 +13418,19 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&set_shadow).expect("window set shadow payload should encode"),
             r#"{"windowId":"window-1","hasShadow":false}"#
+        );
+
+        let set_title_bar_style =
+            WindowSetTitleBarStylePayload::new("window-1", WindowTitleBarStyle::HiddenInset);
+        assert_eq!(set_title_bar_style.window_id(), "window-1");
+        assert_eq!(
+            set_title_bar_style.title_bar_style(),
+            WindowTitleBarStyle::HiddenInset
+        );
+        assert_eq!(
+            serde_json::to_string(&set_title_bar_style)
+                .expect("window set titlebar style payload should encode"),
+            r#"{"windowId":"window-1","titleBarStyle":"hiddenInset"}"#
         );
 
         let set_title_bar_transparent = WindowSetTitleBarTransparentPayload::new("window-1", true);

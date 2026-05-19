@@ -36,6 +36,7 @@ import {
   WINDOW_SET_RESIZABLE_METHOD,
   WINDOW_SET_SHADOW_METHOD,
   WINDOW_SET_SKIP_TASKBAR_METHOD,
+  WINDOW_SET_TITLE_BAR_STYLE_METHOD,
   WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
@@ -754,6 +755,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "setVibrancy",
   "clearVibrancy",
   "setShadow",
+  "setTitleBarStyle",
   "setTitleBarTransparent",
   "setAlwaysOnTop",
   "setSkipTaskbar",
@@ -8320,6 +8322,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setVibrancy",
     "Window.clearVibrancy",
     "Window.setShadow",
+    "Window.setTitleBarStyle",
     "Window.setTitleBarTransparent",
     "Window.setAlwaysOnTop",
     "Window.setSkipTaskbar",
@@ -8360,6 +8363,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.setVibrancy"]
     void client["Window.clearVibrancy"]
     void client["Window.setShadow"]
+    void client["Window.setTitleBarStyle"]
     void client["Window.setTitleBarTransparent"]
     void client["Window.setAlwaysOnTop"]
     void client["Window.setSkipTaskbar"]
@@ -8398,6 +8402,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setVibrancy",
     "Window.clearVibrancy",
     "Window.setShadow",
+    "Window.setTitleBarStyle",
     "Window.setTitleBarTransparent",
     "Window.setAlwaysOnTop",
     "Window.setSkipTaskbar",
@@ -8523,6 +8528,8 @@ test("Window service delegates through a substitutable WindowClient port", async
     setVibrancy: (_window, material) => recordVoid(calls, `setVibrancy:${material}`),
     clearVibrancy: () => recordVoid(calls, "clearVibrancy"),
     setShadow: (_window, hasShadow) => recordVoid(calls, `setShadow:${hasShadow}`),
+    setTitleBarStyle: (_window, titleBarStyle) =>
+      recordVoid(calls, `setTitleBarStyle:${titleBarStyle}`),
     setTitleBarTransparent: (_window, titleBarTransparent) =>
       recordVoid(calls, `setTitleBarTransparent:${titleBarTransparent}`),
     setAlwaysOnTop: (_window, alwaysOnTop) => recordVoid(calls, `setAlwaysOnTop:${alwaysOnTop}`),
@@ -8585,6 +8592,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.setVibrancy(created, "windowBackground")
       yield* window.clearVibrancy(created)
       yield* window.setShadow(created, false)
+      yield* window.setTitleBarStyle(created, "hiddenInset")
       yield* window.setTitleBarTransparent(created, true)
       yield* window.setAlwaysOnTop(created, true)
       yield* window.setSkipTaskbar(created, true)
@@ -8647,6 +8655,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "setVibrancy:windowBackground",
     "clearVibrancy",
     "setShadow:false",
+    "setTitleBarStyle:hiddenInset",
     "setTitleBarTransparent:true",
     "setAlwaysOnTop:true",
     "setSkipTaskbar:true",
@@ -8706,6 +8715,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-vibrancy-request",
       "clear-vibrancy-request",
       "set-shadow-request",
+      "set-title-bar-style-request",
       "set-title-bar-transparent-request",
       "set-always-on-top-request",
       "set-skip-taskbar-request",
@@ -8736,6 +8746,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-vibrancy-trace",
       "clear-vibrancy-trace",
       "set-shadow-trace",
+      "set-title-bar-style-trace",
       "set-title-bar-transparent-trace",
       "set-always-on-top-trace",
       "set-skip-taskbar-trace",
@@ -8756,7 +8767,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
       1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019,
       1_710_000_000_020, 1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024,
-      1_710_000_000_025, 1_710_000_000_026, 1_710_000_000_027
+      1_710_000_000_025, 1_710_000_000_026, 1_710_000_000_027, 1_710_000_000_028
     ])
   })
   const program = Effect.gen(function* () {
@@ -8787,6 +8798,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     yield* window.setVibrancy(created, "windowBackground")
     yield* window.clearVibrancy(created)
     yield* window.setShadow(created, false)
+    yield* window.setTitleBarStyle(created, "hiddenInset")
     yield* window.setTitleBarTransparent(created, true)
     yield* window.setAlwaysOnTop(created, true)
     yield* window.setSkipTaskbar(created, true)
@@ -8941,6 +8953,13 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       {
         windowId: "host-window-1",
         hasShadow: false
+      }
+    ],
+    [
+      WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+      {
+        windowId: "host-window-1",
+        titleBarStyle: "hiddenInset"
       }
     ],
     [
@@ -10875,6 +10894,7 @@ test("host WindowClient adapter exposes only supported callable methods", async 
   expect("setVibrancy" in client).toBe(true)
   expect("clearVibrancy" in client).toBe(true)
   expect("setShadow" in client).toBe(true)
+  expect("setTitleBarStyle" in client).toBe(true)
   expect("setTitleBarTransparent" in client).toBe(true)
 })
 
@@ -12103,6 +12123,7 @@ const noopWindowClient: WindowClientApi = {
   setVibrancy: () => Effect.void,
   clearVibrancy: () => Effect.void,
   setShadow: () => Effect.void,
+  setTitleBarStyle: () => Effect.void,
   setTitleBarTransparent: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,
   setSkipTaskbar: () => Effect.void,

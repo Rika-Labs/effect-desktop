@@ -4138,6 +4138,33 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setTitleBarStyle",
+      "surface": "Window",
+      "method": "setTitleBarStyle",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "titlebar-style-macos-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "titlebar-style-macos-only"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "titlebar-style-macos-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.setTitleBarTransparent",
       "surface": "Window",
       "method": "setTitleBarTransparent",
@@ -4281,11 +4308,11 @@
     }
   ],
   "summary": {
-    "total": 236,
-    "routed": 236,
+    "total": 237,
+    "routed": 237,
     "missing": 0,
     "supported": 127,
-    "partial": 51,
+    "partial": 52,
     "unsupported": 58
   }
 }

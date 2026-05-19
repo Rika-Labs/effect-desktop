@@ -352,6 +352,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::set_shadow),
     ),
     route(
+        host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+        HostMethodDispatcher::Window(window::set_title_bar_style),
+    ),
+    route(
         host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
         HostMethodDispatcher::Window(window::set_title_bar_transparent),
     ),
@@ -3897,6 +3901,11 @@ mod tests {
                 "request-window-set-shadow",
                 host_protocol::WINDOW_SET_SHADOW_METHOD,
                 serde_json::json!({ "windowId": "window-1", "hasShadow": false }),
+            ),
+            (
+                "request-window-set-title-bar-style",
+                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+                serde_json::json!({ "windowId": "window-1", "titleBarStyle": "hiddenInset" }),
             ),
             (
                 "request-window-set-title-bar-transparent",
@@ -7534,6 +7543,14 @@ mod tests {
                 .lock()
                 .expect("fake shadow requests should lock")
                 .push((window_id.to_string(), has_shadow));
+            Ok(())
+        }
+
+        fn set_title_bar_style(
+            &self,
+            _window_id: &str,
+            _title_bar_style: host_protocol::WindowTitleBarStyle,
+        ) -> Result<(), HostProtocolError> {
             Ok(())
         }
 

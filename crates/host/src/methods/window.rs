@@ -10,8 +10,8 @@ use host_protocol::{
     WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
     WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
     WindowSetShadowPayload, WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
-    WindowSetTitleBarTransparentPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
-    WindowSetVibrancyPayload, WindowStatePayload,
+    WindowSetTitleBarStylePayload, WindowSetTitleBarTransparentPayload, WindowSetTitlePayload,
+    WindowSetTrafficLightsPayload, WindowSetVibrancyPayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -234,6 +234,16 @@ pub(crate) fn set_shadow(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_shadow_payload(payload)?;
     handler.set_shadow(payload.window_id(), payload.has_shadow())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_title_bar_style(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_title_bar_style_payload(payload)?;
+    handler.set_title_bar_style(payload.window_id(), payload.title_bar_style())?;
 
     Ok(None)
 }
@@ -779,6 +789,43 @@ fn decode_set_shadow_payload(payload: Value) -> Result<WindowSetShadowPayload, H
             "payload",
             "windowId must be non-empty",
             host_protocol::WINDOW_SET_SHADOW_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_title_bar_style_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetTitleBarStylePayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_title_bar_style_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD
+            ),
+            host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+        )),
+    }
+}
+
+fn decode_set_title_bar_style_payload(
+    payload: Value,
+) -> Result<WindowSetTitleBarStylePayload, HostProtocolError> {
+    let payload: WindowSetTitleBarStylePayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
         ));
     }
     Ok(payload)
