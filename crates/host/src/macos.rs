@@ -47,7 +47,9 @@ impl MacosWindowPolish {
 
         Ok(Some(Self {
             title_bar_style: title_bar_style.unwrap_or(WindowTitleBarStyle::Default),
-            vibrancy: vibrancy.map(MacosVibrancyMaterial::parse).transpose()?,
+            vibrancy: vibrancy
+                .map(|value| MacosVibrancyMaterial::parse(value, MACOS_POLISH_OPERATION))
+                .transpose()?,
             traffic_lights: traffic_lights
                 .map(MacosTrafficLights::try_from)
                 .transpose()?,
@@ -71,7 +73,7 @@ impl MacosWindowPolish {
 }
 
 impl MacosVibrancyMaterial {
-    fn parse(value: &str) -> std::result::Result<Self, HostProtocolError> {
+    fn parse(value: &str, operation: &'static str) -> std::result::Result<Self, HostProtocolError> {
         match value.trim() {
             "appearanceBased" | "appearance-based" => Ok(Self::AppearanceBased),
             "contentBackground" | "content-background" => Ok(Self::ContentBackground),
@@ -83,10 +85,15 @@ impl MacosVibrancyMaterial {
             "sidebar" => Ok(Self::Sidebar),
             "titlebar" => Ok(Self::Titlebar),
             "windowBackground" | "window-background" => Ok(Self::WindowBackground),
-            "" => Err(invalid_argument("vibrancy", "must not be empty")),
-            _ => Err(invalid_argument(
+            "" => Err(invalid_argument_for_operation(
+                "vibrancy",
+                "must not be empty",
+                operation,
+            )),
+            _ => Err(invalid_argument_for_operation(
                 "vibrancy",
                 "unsupported macOS vibrancy material",
+                operation,
             )),
         }
     }
@@ -145,6 +152,15 @@ pub(crate) fn set_traffic_lights(
     platform::set_traffic_lights(window, traffic_lights)
 }
 
+pub(crate) fn set_vibrancy(
+    window: &Window,
+    material: &str,
+) -> std::result::Result<(), HostProtocolError> {
+    let material =
+        MacosVibrancyMaterial::parse(material, host_protocol::WINDOW_SET_VIBRANCY_METHOD)?;
+    platform::set_vibrancy(window, material)
+}
+
 pub(crate) fn set_dock_badge_label(
     window: &Window,
     label: Option<String>,
@@ -161,7 +177,15 @@ pub(crate) fn set_dock_menu(template: Option<Value>) -> std::result::Result<(), 
 }
 
 fn invalid_argument(field: &str, reason: &str) -> HostProtocolError {
-    HostProtocolError::invalid_argument(field, reason, MACOS_POLISH_OPERATION)
+    invalid_argument_for_operation(field, reason, MACOS_POLISH_OPERATION)
+}
+
+fn invalid_argument_for_operation(
+    field: &str,
+    reason: &str,
+    operation: &'static str,
+) -> HostProtocolError {
+    HostProtocolError::invalid_argument(field, reason, operation)
 }
 
 #[cfg(target_os = "macos")]
@@ -236,6 +260,24 @@ mod platform {
             LogicalPosition::new(traffic_lights.x, traffic_lights.y),
         );
         Ok(())
+    }
+
+    pub(super) fn set_vibrancy(
+        window: &Window,
+        material: super::MacosVibrancyMaterial,
+    ) -> std::result::Result<(), HostProtocolError> {
+        window_vibrancy::apply_vibrancy(
+            window,
+            vibrancy_material(material),
+            Some(window_vibrancy::NSVisualEffectState::FollowsWindowActiveState),
+            None,
+        )
+        .map_err(|error| {
+            HostProtocolError::internal(
+                format!("failed to apply macOS vibrancy: {error}"),
+                host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+            )
+        })
     }
 
     pub(super) fn set_dock_badge_label(
@@ -417,6 +459,16 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "traffic-light placement is only supported on macOS",
             host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+        ))
+    }
+
+    pub(super) fn set_vibrancy(
+        _window: &Window,
+        _material: super::MacosVibrancyMaterial,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window vibrancy is only supported on macOS",
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
         ))
     }
 

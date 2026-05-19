@@ -29,6 +29,7 @@ const WindowVibrancyMaterial = Schema.Literals([
   "windowBackground",
   "window-background"
 ])
+export type WindowVibrancyMaterialInput = Schema.Schema.Type<typeof WindowVibrancyMaterial>
 const WindowProgressStateLiteral = Schema.Literals([
   "none",
   "normal",
@@ -218,7 +219,7 @@ export class WindowBackgroundColorInput extends Schema.Class<WindowBackgroundCol
 
 export class WindowVibrancyInput extends Schema.Class<WindowVibrancyInput>("WindowVibrancyInput")({
   window: WindowResource,
-  material: Schema.String
+  material: WindowVibrancyMaterial
 }) {}
 
 export class WindowShadowInput extends Schema.Class<WindowShadowInput>("WindowShadowInput")({

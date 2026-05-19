@@ -9,7 +9,8 @@ use host_protocol::{
     WindowParentResponse, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
     WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
     WindowSetProgressPayload, WindowSetResizablePayload, WindowSetSkipTaskbarPayload,
-    WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowStatePayload,
+    WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowSetVibrancyPayload,
+    WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -202,6 +203,16 @@ pub(crate) fn set_traffic_lights(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_traffic_lights_payload(payload)?;
     handler.set_traffic_lights(payload.window_id(), payload.traffic_lights())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_vibrancy(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_vibrancy_payload(payload)?;
+    handler.set_vibrancy(payload.window_id(), payload.material())?;
 
     Ok(None)
 }
@@ -614,6 +625,49 @@ fn decode_set_traffic_lights_payload(
             "payload",
             "windowId must be non-empty",
             host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_vibrancy_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetVibrancyPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_vibrancy_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_VIBRANCY_METHOD
+            ),
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        )),
+    }
+}
+
+fn decode_set_vibrancy_payload(
+    payload: Value,
+) -> Result<WindowSetVibrancyPayload, HostProtocolError> {
+    let payload: WindowSetVibrancyPayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        )
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        ));
+    }
+    if payload.material().trim().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "material must be non-empty",
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
         ));
     }
     Ok(payload)

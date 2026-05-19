@@ -134,6 +134,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         traffic_lights: &WindowTrafficLights,
     ) -> std::result::Result<(), HostProtocolError>;
 
+    fn set_vibrancy(
+        &self,
+        window_id: &str,
+        material: &str,
+    ) -> std::result::Result<(), HostProtocolError>;
+
     fn set_always_on_top(
         &self,
         window_id: &str,
@@ -350,6 +356,11 @@ enum WindowCommand {
     SetTrafficLights {
         window_id: String,
         traffic_lights: WindowTrafficLights,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetVibrancy {
+        window_id: String,
+        material: String,
         reply: Sender<WindowCommandReply>,
     },
     SetAlwaysOnTop {
@@ -1008,6 +1019,21 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD)
+    }
+
+    fn set_vibrancy(
+        &self,
+        window_id: &str,
+        material: &str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetVibrancy {
+            window_id: window_id.to_string(),
+            material: material.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_VIBRANCY_METHOD)
     }
 
     fn set_always_on_top(
@@ -2165,6 +2191,21 @@ impl WindowRegistry {
         macos::set_traffic_lights(&resources._window, traffic_lights)
     }
 
+    fn set_vibrancy(
+        &self,
+        window_id: &str,
+        material: &str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+            ));
+        };
+
+        macos::set_vibrancy(&resources._window, material)
+    }
+
     fn set_always_on_top(
         &self,
         window_id: &str,
@@ -2961,6 +3002,17 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_traffic_lights(&window_id, &traffic_lights)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetVibrancy {
+                window_id,
+                material,
+                reply,
+            } => {
+                let result = self
+                    .set_vibrancy(&window_id, &material)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other

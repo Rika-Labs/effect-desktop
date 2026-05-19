@@ -64,7 +64,9 @@ import {
   WindowStateEvent,
   WindowSubscribeEventsResult,
   WindowTitleInput,
-  WindowTrafficLightsInput
+  WindowTrafficLightsInput,
+  WindowVibrancyInput,
+  type WindowVibrancyMaterialInput
 } from "./contracts/window.js"
 
 const WindowTrafficLightsMacosOnlyReason = "traffic-light-placement-macos-only"
@@ -91,6 +93,15 @@ const WindowSkipTaskbarSupport = NativeSurface.support.partial(
     ]
   }
 ) satisfies RpcSupportMetadata
+const WindowVibrancyMacosOnlyReason = "vibrancy-macos-only"
+
+const WindowVibrancySupport = NativeSurface.support.partial(WindowVibrancyMacosOnlyReason, {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: WindowVibrancyMacosOnlyReason },
+    { platform: "linux", status: "unsupported", reason: WindowVibrancyMacosOnlyReason }
+  ]
+}) satisfies RpcSupportMetadata
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type WindowError = HostProtocolError
 
@@ -215,6 +226,13 @@ export const WindowSetTrafficLights = windowRpc(
   P.nativeInvoke({ primitive: "Window", methods: ["setTrafficLights"] }),
   WindowTrafficLightsSupport
 )
+export const WindowSetVibrancy = windowRpc(
+  "setVibrancy",
+  WindowVibrancyInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["setVibrancy"] }),
+  WindowVibrancySupport
+)
 export const WindowSetAlwaysOnTop = windowRpc(
   "setAlwaysOnTop",
   WindowAlwaysOnTopInput,
@@ -299,6 +317,7 @@ const makeWindowRpcGroup = () =>
     WindowSetResizable,
     WindowSetDecorations,
     WindowSetTrafficLights,
+    WindowSetVibrancy,
     WindowSetAlwaysOnTop,
     WindowSetSkipTaskbar,
     WindowSetProgress,
@@ -351,6 +370,7 @@ export const WindowMethodNames = Object.freeze([
   "setResizable",
   "setDecorations",
   "setTrafficLights",
+  "setVibrancy",
   "setAlwaysOnTop",
   "setSkipTaskbar",
   "setProgress",
@@ -409,6 +429,10 @@ export interface WindowClientApi {
   readonly setTrafficLights: (
     window: WindowHandle,
     trafficLights: { readonly x: number; readonly y: number }
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setVibrancy: (
+    window: WindowHandle,
+    material: WindowVibrancyMaterialInput
   ) => Effect.Effect<void, WindowError, never>
   readonly setAlwaysOnTop: (
     window: WindowHandle,
@@ -584,6 +608,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       yield* window.setTrafficLights(input.window, input.trafficLights)
     }),
+  "Window.setVibrancy": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setVibrancy(input.window, input.material)
+    }),
   "Window.setAlwaysOnTop": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -690,6 +719,7 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     setResizable: (window, resizable) => client.setResizable(window, resizable),
     setDecorations: (window, decorations) => client.setDecorations(window, decorations),
     setTrafficLights: (window, trafficLights) => client.setTrafficLights(window, trafficLights),
+    setVibrancy: (window, material) => client.setVibrancy(window, material),
     setAlwaysOnTop: (window, alwaysOnTop) => client.setAlwaysOnTop(window, alwaysOnTop),
     setSkipTaskbar: (window, skipTaskbar) => client.setSkipTaskbar(window, skipTaskbar),
     setProgress: (window, input) => client.setProgress(window, input),
@@ -850,6 +880,11 @@ function windowClientFromRpcClient(
         )
         yield* runWindowRpc(client["Window.setTrafficLights"](decoded), "Window.setTrafficLights")
       }),
+    setVibrancy: (window, material) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowVibrancyInput(window, material, "Window.setVibrancy")
+        yield* runWindowRpc(client["Window.setVibrancy"](decoded), "Window.setVibrancy")
+      }),
     setAlwaysOnTop: (window, alwaysOnTop) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowAlwaysOnTopInput(
@@ -1007,6 +1042,17 @@ const decodeWindowTrafficLightsInput = (
     { window, trafficLights },
     StrictParseOptions
   ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowVibrancyInput = (
+  window: WindowHandle,
+  material: WindowVibrancyMaterialInput,
+  operation: string
+): Effect.Effect<WindowVibrancyInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowVibrancyInput)({ window, material }, StrictParseOptions).pipe(
     Effect.mapError((error) =>
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
@@ -1551,6 +1597,15 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           "Window.setTrafficLights"
         )
         yield* host.setTrafficLights(window.id, input.trafficLights)
+      }),
+    "Window.setVibrancy": (input: WindowVibrancyInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setVibrancy"
+        )
+        yield* host.setVibrancy(window.id, input.material)
       }),
     "Window.setAlwaysOnTop": (input: WindowAlwaysOnTopInput) =>
       Effect.gen(function* () {

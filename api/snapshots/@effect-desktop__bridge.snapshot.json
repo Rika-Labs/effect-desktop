@@ -651,7 +651,7 @@
     {
       "name": "HostWindowClient",
       "kind": "interface",
-      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getCurrent: () => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly getById: ( windowId: string ) => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly list: () => Effect.Effect<WindowListResponse, HostProtocolError, never> readonly getParent: ( windowId: string ) => Effect.Effect<WindowParentResponse, HostProtocolError, never> readonly getChildren: ( windowId: string ) => Effect.Effect<WindowChildrenResponse, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly centerOnDisplay: ( windowId: string, displayId: string ) => Effect.Effect<void, HostProtocolError, never> readonly setTitle: ( windowId: string, title: string ) => Effect.Effect<void, HostProtocolError, never> readonly setResizable: ( windowId: string, resizable: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setDecorations: ( windowId: string, decorations: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setTrafficLights: ( windowId: string, trafficLights: Schema.Schema.Type<typeof WindowTrafficLights> ) => Effect.Effect<void, HostProtocolError, never> readonly setAlwaysOnTop: ( windowId: string, alwaysOnTop: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setSkipTaskbar: ( windowId: string, skipTaskbar: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setProgress: ( windowId: string, input: WindowProgressInput ) => Effect.Effect<void, HostProtocolError, never> readonly requestAttention: ( windowId: string, requestType: WindowAttentionTypeInput ) => Effect.Effect<void, HostProtocolError, never> readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setFullscreen: ( windowId: string, fullscreen: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly getState: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly events: () => Stream.Stream<WindowEventPayload, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getCurrent: () => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly getById: ( windowId: string ) => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly list: () => Effect.Effect<WindowListResponse, HostProtocolError, never> readonly getParent: ( windowId: string ) => Effect.Effect<WindowParentResponse, HostProtocolError, never> readonly getChildren: ( windowId: string ) => Effect.Effect<WindowChildrenResponse, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly centerOnDisplay: ( windowId: string, displayId: string ) => Effect.Effect<void, HostProtocolError, never> readonly setTitle: ( windowId: string, title: string ) => Effect.Effect<void, HostProtocolError, never> readonly setResizable: ( windowId: string, resizable: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setDecorations: ( windowId: string, decorations: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setTrafficLights: ( windowId: string, trafficLights: Schema.Schema.Type<typeof WindowTrafficLights> ) => Effect.Effect<void, HostProtocolError, never> readonly setVibrancy: ( windowId: string, material: WindowVibrancyInput ) => Effect.Effect<void, HostProtocolError, never> readonly setAlwaysOnTop: ( windowId: string, alwaysOnTop: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setSkipTaskbar: ( windowId: string, skipTaskbar: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setProgress: ( windowId: string, input: WindowProgressInput ) => Effect.Effect<void, HostProtocolError, never> readonly requestAttention: ( windowId: string, requestType: WindowAttentionTypeInput ) => Effect.Effect<void, HostProtocolError, never> readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setFullscreen: ( windowId: string, fullscreen: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly getState: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly events: () => Stream.Stream<WindowEventPayload, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "HostWindowClientOptions",
@@ -1204,6 +1204,11 @@
       "signature": "const WINDOW_SET_TRAFFIC_LIGHTS_METHOD: \"Window.setTrafficLights\""
     },
     {
+      "name": "WINDOW_SET_VIBRANCY_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_VIBRANCY_METHOD: \"Window.setVibrancy\""
+    },
+    {
       "name": "WINDOW_SHOW_METHOD",
       "kind": "value",
       "signature": "const WINDOW_SHOW_METHOD: \"Window.show\""
@@ -1339,6 +1344,11 @@
       "signature": "export class WindowSetTrafficLightsPayload extends Schema.Class<WindowSetTrafficLightsPayload>( \"WindowSetTrafficLightsPayload\" )({ windowId: Schema.NonEmptyString, trafficLights: WindowTrafficLights }) {}"
     },
     {
+      "name": "WindowSetVibrancyPayload",
+      "kind": "class",
+      "signature": "export class WindowSetVibrancyPayload extends Schema.Class<WindowSetVibrancyPayload>( \"WindowSetVibrancyPayload\" )({ windowId: Schema.NonEmptyString, material: WindowVibrancyMaterial }) {}"
+    },
+    {
       "name": "WindowStateEventPayload",
       "kind": "class",
       "signature": "export class WindowStateEventPayload extends Schema.Class<WindowStateEventPayload>( \"WindowStateEventPayload\" )({ type: Schema.Literal(\"window-state-event\"), windowId: Schema.NonEmptyString, window: Schema.optionalKey(WindowResourcePayload), state: WindowStatePayload }) {}"
@@ -1347,6 +1357,11 @@
       "name": "WindowStatePayload",
       "kind": "class",
       "signature": "export class WindowStatePayload extends Schema.Class<WindowStatePayload>(\"WindowStatePayload\")({ minimized: Schema.Boolean, maximized: Schema.Boolean, fullscreen: Schema.Boolean }) {}"
+    },
+    {
+      "name": "WindowVibrancyInput",
+      "kind": "type",
+      "signature": "export type WindowVibrancyInput = Schema.Schema.Type<typeof WindowVibrancyMaterial>"
     },
     {
       "name": "wipeSecretBytes",

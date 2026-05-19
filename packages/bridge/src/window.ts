@@ -32,6 +32,7 @@ import {
   WINDOW_SET_SKIP_TASKBAR_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+  WINDOW_SET_VIBRANCY_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -208,6 +209,13 @@ export class WindowSetTrafficLightsPayload extends Schema.Class<WindowSetTraffic
   trafficLights: WindowTrafficLights
 }) {}
 
+export class WindowSetVibrancyPayload extends Schema.Class<WindowSetVibrancyPayload>(
+  "WindowSetVibrancyPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  material: WindowVibrancyMaterial
+}) {}
+
 export class WindowSetAlwaysOnTopPayload extends Schema.Class<WindowSetAlwaysOnTopPayload>(
   "WindowSetAlwaysOnTopPayload"
 )({
@@ -270,6 +278,7 @@ export interface WindowProgressInput {
   readonly desktopFilename?: string
 }
 
+export type WindowVibrancyInput = Schema.Schema.Type<typeof WindowVibrancyMaterial>
 export type WindowAttentionTypeInput = Schema.Schema.Type<typeof WindowAttentionType>
 
 export interface HostWindowExchange {
@@ -326,6 +335,10 @@ export interface HostWindowClient {
   readonly setTrafficLights: (
     windowId: string,
     trafficLights: Schema.Schema.Type<typeof WindowTrafficLights>
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setVibrancy: (
+    windowId: string,
+    material: WindowVibrancyInput
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly setAlwaysOnTop: (
     windowId: string,
@@ -495,6 +508,14 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
+    setVibrancy: (windowId, material) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetVibrancyPayload(windowId, material)
+        const request = yield* makeRequest(WINDOW_SET_VIBRANCY_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     setAlwaysOnTop: (windowId, alwaysOnTop) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetAlwaysOnTopPayload(windowId, alwaysOnTop)
@@ -630,6 +651,7 @@ const decodeUnknownWindowSetDecorationsPayload = Schema.decodeUnknownSync(
 const decodeUnknownWindowSetTrafficLightsPayload = Schema.decodeUnknownSync(
   WindowSetTrafficLightsPayload
 )
+const decodeUnknownWindowSetVibrancyPayload = Schema.decodeUnknownSync(WindowSetVibrancyPayload)
 const decodeUnknownWindowSetAlwaysOnTopPayload = Schema.decodeUnknownSync(
   WindowSetAlwaysOnTopPayload
 )
@@ -723,6 +745,15 @@ const encodeSetTrafficLightsPayload = (
     try: () =>
       decodeUnknownWindowSetTrafficLightsPayload({ windowId, trafficLights }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_TRAFFIC_LIGHTS_METHOD)
+  })
+
+const encodeSetVibrancyPayload = (
+  windowId: string,
+  material: WindowVibrancyInput
+): Effect.Effect<WindowSetVibrancyPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowSetVibrancyPayload({ windowId, material }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_VIBRANCY_METHOD)
   })
 
 const encodeSetAlwaysOnTopPayload = (

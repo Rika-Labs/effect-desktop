@@ -4322,6 +4322,33 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.setVibrancy",
+      "surface": "Window",
+      "method": "setVibrancy",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "vibrancy-macos-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "vibrancy-macos-only"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "vibrancy-macos-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.show",
       "surface": "Window",
       "method": "show",
@@ -4384,11 +4411,11 @@
     }
   ],
   "summary": {
-    "total": 231,
-    "routed": 207,
+    "total": 232,
+    "routed": 208,
     "missing": 24,
     "supported": 114,
-    "partial": 35,
+    "partial": 36,
     "unsupported": 82
   }
 }

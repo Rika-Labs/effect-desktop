@@ -35,6 +35,7 @@ import {
   WINDOW_SET_SKIP_TASKBAR_METHOD,
   WINDOW_SET_TITLE_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+  WINDOW_SET_VIBRANCY_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
@@ -324,15 +325,19 @@ test("host window client requests mutable chrome commands", async () => {
       "request-window-set-title",
       "request-window-set-resizable",
       "request-window-set-decorations",
-      "request-window-set-traffic-lights"
+      "request-window-set-traffic-lights",
+      "request-window-set-vibrancy"
     ]),
     nextTraceId: nextId([
       "trace-window-set-title",
       "trace-window-set-resizable",
       "trace-window-set-decorations",
-      "trace-window-set-traffic-lights"
+      "trace-window-set-traffic-lights",
+      "trace-window-set-vibrancy"
     ]),
-    now: nextNumber([1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019])
+    now: nextNumber([
+      1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019, 1_710_000_000_020
+    ])
   })
 
   await Effect.runPromise(
@@ -341,6 +346,7 @@ test("host window client requests mutable chrome commands", async () => {
       yield* client.setResizable("window-1", false)
       yield* client.setDecorations("window-1", true)
       yield* client.setTrafficLights("window-1", { x: 12, y: 13 })
+      yield* client.setVibrancy("window-1", "windowBackground")
     })
   )
 
@@ -348,7 +354,8 @@ test("host window client requests mutable chrome commands", async () => {
     [WINDOW_SET_TITLE_METHOD, { windowId: "window-1", title: "Renamed" }],
     [WINDOW_SET_RESIZABLE_METHOD, { windowId: "window-1", resizable: false }],
     [WINDOW_SET_DECORATIONS_METHOD, { windowId: "window-1", decorations: true }],
-    [WINDOW_SET_TRAFFIC_LIGHTS_METHOD, { windowId: "window-1", trafficLights: { x: 12, y: 13 } }]
+    [WINDOW_SET_TRAFFIC_LIGHTS_METHOD, { windowId: "window-1", trafficLights: { x: 12, y: 13 } }],
+    [WINDOW_SET_VIBRANCY_METHOD, { windowId: "window-1", material: "windowBackground" }]
   ])
 })
 

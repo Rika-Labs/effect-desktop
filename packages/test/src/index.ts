@@ -839,6 +839,7 @@ export const runHeadless = <A, E, R>(
         setDecorations: (windowId, decorations) => rawWindow.setDecorations(windowId, decorations),
         setTrafficLights: (windowId, trafficLights) =>
           rawWindow.setTrafficLights(windowId, trafficLights),
+        setVibrancy: (windowId, material) => rawWindow.setVibrancy(windowId, material),
         setAlwaysOnTop: (windowId, alwaysOnTop) => rawWindow.setAlwaysOnTop(windowId, alwaysOnTop),
         setSkipTaskbar: (windowId, skipTaskbar) => rawWindow.setSkipTaskbar(windowId, skipTaskbar),
         setProgress: (windowId, input) => rawWindow.setProgress(windowId, input),

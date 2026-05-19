@@ -63,6 +63,7 @@ pub const WINDOW_SET_TITLE_METHOD: &str = "Window.setTitle";
 pub const WINDOW_SET_RESIZABLE_METHOD: &str = "Window.setResizable";
 pub const WINDOW_SET_DECORATIONS_METHOD: &str = "Window.setDecorations";
 pub const WINDOW_SET_TRAFFIC_LIGHTS_METHOD: &str = "Window.setTrafficLights";
+pub const WINDOW_SET_VIBRANCY_METHOD: &str = "Window.setVibrancy";
 pub const WINDOW_SET_ALWAYS_ON_TOP_METHOD: &str = "Window.setAlwaysOnTop";
 pub const WINDOW_SET_SKIP_TASKBAR_METHOD: &str = "Window.setSkipTaskbar";
 pub const WINDOW_SET_PROGRESS_METHOD: &str = "Window.setProgress";
@@ -3436,6 +3437,30 @@ impl WindowSetTrafficLightsPayload {
 
     pub fn traffic_lights(&self) -> &WindowTrafficLights {
         &self.traffic_lights
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetVibrancyPayload {
+    window_id: String,
+    material: String,
+}
+
+impl WindowSetVibrancyPayload {
+    pub fn new(window_id: impl Into<String>, material: impl Into<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+            material: material.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn material(&self) -> &str {
+        &self.material
     }
 }
 
@@ -11408,8 +11433,8 @@ mod tests {
         WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
         WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
         WindowSetResizablePayload, WindowSetSkipTaskbarPayload, WindowSetTitlePayload,
-        WindowSetTrafficLightsPayload, WindowStateEventPayload, WindowStatePayload,
-        WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
+        WindowSetTrafficLightsPayload, WindowSetVibrancyPayload, WindowStateEventPayload,
+        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
         WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
         WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
         WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
@@ -12749,6 +12774,15 @@ mod tests {
             serde_json::to_string(&traffic_lights)
                 .expect("window set traffic lights payload should encode"),
             r#"{"windowId":"window-1","trafficLights":{"x":12.0,"y":13.0}}"#
+        );
+
+        let set_vibrancy = WindowSetVibrancyPayload::new("window-1", "windowBackground");
+        assert_eq!(set_vibrancy.window_id(), "window-1");
+        assert_eq!(set_vibrancy.material(), "windowBackground");
+        assert_eq!(
+            serde_json::to_string(&set_vibrancy)
+                .expect("window set vibrancy payload should encode"),
+            r#"{"windowId":"window-1","material":"windowBackground"}"#
         );
 
         let set_always_on_top = WindowSetAlwaysOnTopPayload::new("window-1", true);
