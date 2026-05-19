@@ -348,7 +348,10 @@ import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
 import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
 import { makeDialogBridgeClientLayer, makeHostDialogRpcRuntime } from "./dialog.js"
 import { makeDockBridgeClientLayer, makeHostDockRpcRuntime } from "./dock.js"
-import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
+import {
+  makeGlobalShortcutBridgeClientLayer,
+  makeHostGlobalShortcutRpcRuntime
+} from "./global-shortcut.js"
 import { makeMenuBridgeClientLayer } from "./menu.js"
 import {
   makeHostNativeFileSystemRpcRuntime,
@@ -9119,6 +9122,55 @@ test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as
   expect(requests).toEqual([])
 })
 
+test("native host RPC runtime denies protected GlobalShortcut calls before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostGlobalShortcutRpcRuntime(
+    {
+      "GlobalShortcut.register": (input) =>
+        Effect.sync(() => {
+          calls.push(`register:${input.accelerator}:${input.registrarWindow.id}`)
+        }),
+      "GlobalShortcut.unregister": (input) =>
+        Effect.sync(() => {
+          calls.push(`unregister:${input.accelerator}`)
+        }),
+      "GlobalShortcut.unregisterAll": () =>
+        Effect.sync(() => {
+          calls.push("unregisterAll")
+        }),
+      "GlobalShortcut.isRegistered": (input) =>
+        Effect.sync(() => {
+          calls.push(`isRegistered:${input.accelerator}`)
+          return new GlobalShortcutRegisteredResult({ registered: true })
+        }),
+      "GlobalShortcut.isSupported": () =>
+        Effect.succeed(new GlobalShortcutSupportedResult({ supported: true }))
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "global-shortcut-denied",
+          method: "GlobalShortcut.register",
+          timestamp: 1710000000000,
+          traceId: "trace-global-shortcut-denied",
+          payload: { accelerator: "CmdOrCtrl+K", registrarWindow: windowHandle }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
+})
+
 test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events, keeps listening after command failure, and unregisters on scope close", async () => {
   const calls: string[] = []
   const rows: AuditEvent[] = []
@@ -9402,6 +9454,40 @@ test("GlobalShortcut conflicts are typed Effect values", async () => {
   )
   expectExitFailure(conflictExit, (error) => hasErrorTag(error, "AlreadyExists"))
   expectExitFailure(bindConflictExit, (error) => hasErrorTag(error, "AlreadyExists"))
+})
+
+test("GlobalShortcut service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-adapter-unimplemented",
+    message: "unsupported GlobalShortcut.register",
+    operation: "GlobalShortcut.register",
+    recoverable: false
+  })
+  const unsupportedClient: GlobalShortcutClientApi = {
+    ...globalShortcutClient([]),
+    register: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: GlobalShortcutClientApi = {
+    ...globalShortcutClient([]),
+    register: () => Effect.fail(makeHostProtocolHostUnavailableError("GlobalShortcut.register"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+    }).pipe(Effect.provide(makeGlobalShortcutServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+    }).pipe(Effect.provide(makeGlobalShortcutServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("Linux GlobalShortcut client reports missing host adapters as typed unsupported values", async () => {
