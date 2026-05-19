@@ -437,6 +437,7 @@ import {
   UpdaterPreparingRestartEvent,
   UpdaterStatusResult,
   UpdaterStatusState,
+  WebViewApiCallEvent,
   WebViewNavigationBlockedEvent,
   WebViewScreenshot,
   WindowBounds,
@@ -2050,7 +2051,7 @@ test("AppMetadata service propagates unsupported platform and host failure", asy
 test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => {
   expect([...WebViewMethodNames]).toEqual(expectedWebViewMethods)
   expect(rpcMethodNames("WebView", WebViewRpcs)).toEqual(expectedWebViewMethods)
-  expect(Object.keys(WebViewRpcEvents)).toEqual(["NavigationBlocked"])
+  expect(Object.keys(WebViewRpcEvents)).toEqual(["NavigationBlocked", "ApiCall"])
 })
 
 test("WebView service delegates through a substitutable WebViewClient port", async () => {
@@ -2073,9 +2074,10 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       })
       const linuxAutofill = yield* webview.capability("autofill", { platform: "linux" })
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+      const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
       yield* webview.destroy(created)
 
-      return { blocked, created, linuxAutofill, navigationState, screenshot }
+      return { apiCalls, blocked, created, linuxAutofill, navigationState, screenshot }
     }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
   )
 
@@ -2094,6 +2096,14 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
       reason: "origin not allowed"
     })
   ])
+  expect(Array.from(result.apiCalls)).toEqual([
+    new WebViewApiCallEvent({
+      webview: webviewHandle,
+      api: "desktop",
+      method: "ping",
+      payload: '{"ok":true}'
+    })
+  ])
   expect(calls).toEqual([
     "create:app://localhost/",
     "loadRoute:/settings",
@@ -2107,6 +2117,40 @@ test("WebView service delegates through a substitutable WebViewClient port", asy
     "setNavigationPolicy:app://localhost:block",
     "destroy"
   ])
+})
+
+test("WebView service propagates unsupported platform and host failure", async () => {
+  const unsupported = new HostProtocolUnsupportedError({
+    tag: "Unsupported",
+    reason: "host-adapter-unimplemented",
+    message: "unsupported WebView.create",
+    operation: "WebView.create",
+    recoverable: false
+  })
+  const unsupportedClient: WebViewClientApi = {
+    ...webViewClient([]),
+    create: () => Effect.fail(unsupported)
+  }
+  const hostFailureClient: WebViewClientApi = {
+    ...webViewClient([]),
+    create: () => Effect.fail(makeHostProtocolHostUnavailableError("WebView.create"))
+  }
+
+  const unsupportedExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.create(windowHandle))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+  )
+  const hostFailureExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      return yield* Effect.exit(webview.create(windowHandle))
+    }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
+  )
+
+  expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
+  expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
 })
 
 test("WebView bridge client sends typed host envelopes and decodes event streams", async () => {
@@ -2130,7 +2174,8 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       const webview = yield* WebView
       const created = yield* webview.create(windowHandle, {
         url: "app://localhost/settings",
-        originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
+        originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" },
+        isolation: { exposedApis: [{ name: "desktop", methods: ["ping"] }] }
       })
       yield* webview.loadRoute(created, "/settings")
       yield* webview.stop(created)
@@ -2142,8 +2187,9 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       const screenshot = yield* webview.captureScreenshot(created)
       const canOpenDevtools = yield* webview.capability("devtools open", { platform: "windows" })
       const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+      const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
 
-      return { blocked, canOpenDevtools, created, navigationState, screenshot }
+      return { apiCalls, blocked, canOpenDevtools, created, navigationState, screenshot }
     }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
   )
 
@@ -2162,13 +2208,22 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
       reason: "origin not allowed"
     })
   ])
+  expect(Array.from(result.apiCalls)).toEqual([
+    new WebViewApiCallEvent({
+      webview: webviewHandle,
+      api: "desktop",
+      method: "ping",
+      payload: '{"ok":true}'
+    })
+  ])
   expect(requests.map((request) => [request.method, request.payload])).toEqual([
     [
       "WebView.create",
       {
         window: windowHandle,
         url: "app://localhost/settings",
-        originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
+        originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" },
+        isolation: { exposedApis: [{ name: "desktop", methods: ["ping"] }] }
       }
     ],
     ["WebView.loadRoute", { webview: webviewHandle, route: "/settings" }],
@@ -2357,6 +2412,50 @@ test("WebView bridge client rejects invalid navigation-blocked event URLs", asyn
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
 })
 
+test("WebView bridge client rejects undeclared API-call event names", async () => {
+  const exchange: BridgeClientExchange = {
+    request: (request) =>
+      Effect.succeed(
+        request.method === "WebView.create"
+          ? { kind: "success", payload: webviewHandle }
+          : { kind: "success", payload: undefined }
+      ),
+    subscribe: (method) =>
+      method === "WebView.ApiCall"
+        ? Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1710000000202,
+              traceId: "event-trace",
+              method,
+              payload: {
+                webview: webviewHandle,
+                api: "desktop-api",
+                method: "ping",
+                payload: "{}"
+              }
+            })
+          )
+        : Stream.empty
+  }
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.create(windowHandle)
+      return yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+        )
+      )
+    )
+  )
+
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+})
+
 test("WebView bridge client rejects unsafe navigation inputs before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = webViewExchange(requests, () => ({
@@ -2397,6 +2496,15 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
       onDisallowed: "block"
     })
   )
+  const isolationExit = await Effect.runPromiseExit(
+    client.create(windowHandle, {
+      url: "app://localhost/",
+      originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" },
+      isolation: {
+        exposedApis: [{ name: "desktop-api", methods: ["ping"] }]
+      }
+    })
+  )
 
   expectExitFailure(javascriptCreateExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(fileUrlExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -2404,6 +2512,7 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
   expectExitFailure(emptyOriginExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(javascriptOriginExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(policyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(isolationExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
 })
 
@@ -12180,6 +12289,15 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
         url: "https://blocked.example",
         reason: "origin not allowed"
       })
+    ),
+  onApiCall: () =>
+    Stream.make(
+      new WebViewApiCallEvent({
+        webview: webviewHandle,
+        api: "desktop",
+        method: "ping",
+        payload: '{"ok":true}'
+      })
     )
 })
 
@@ -12883,22 +13001,40 @@ const webViewExchange = (
     requests.push(request)
     return Effect.succeed(respond(request))
   },
-  subscribe: (method) =>
-    method === "WebView.NavigationBlocked"
-      ? Stream.make(
-          new HostProtocolEventEnvelope({
-            kind: "event",
-            timestamp: 1710000000200,
-            traceId: "event-trace",
-            method,
-            payload: {
-              webview: webviewHandle,
-              url: "https://blocked.example",
-              reason: "origin not allowed"
-            }
-          })
-        )
-      : Stream.empty
+  subscribe: (method) => {
+    if (method === "WebView.NavigationBlocked") {
+      return Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          timestamp: 1710000000200,
+          traceId: "event-trace",
+          method,
+          payload: {
+            webview: webviewHandle,
+            url: "https://blocked.example",
+            reason: "origin not allowed"
+          }
+        })
+      )
+    }
+    if (method === "WebView.ApiCall") {
+      return Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          timestamp: 1710000000201,
+          traceId: "event-trace-api",
+          method,
+          payload: {
+            webview: webviewHandle,
+            api: "desktop",
+            method: "ping",
+            payload: '{"ok":true}'
+          }
+        })
+      )
+    }
+    return Stream.empty
+  }
 })
 
 const menuExchange = (

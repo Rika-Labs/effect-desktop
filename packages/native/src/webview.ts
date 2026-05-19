@@ -20,6 +20,7 @@ import {
   WebViewCapabilityResult,
   WebViewCapabilityInput,
   type WebViewCapabilityOptions,
+  WebViewApiCallEvent,
   type WebViewCreateNavigationOptions,
   type WebViewCreateOptions,
   WebViewCreateInput,
@@ -165,7 +166,8 @@ export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
 })
 
 export const WebViewRpcEvents = Object.freeze({
-  NavigationBlocked: { payload: WebViewNavigationBlockedEvent }
+  NavigationBlocked: { payload: WebViewNavigationBlockedEvent },
+  ApiCall: { payload: WebViewApiCallEvent }
 })
 
 export type WebViewRpcEvents = typeof WebViewRpcEvents
@@ -251,6 +253,7 @@ export interface WebViewClientApi {
     WebViewError,
     never
   >
+  readonly onApiCall: () => Stream.Stream<WebViewApiCallEvent, WebViewError, never>
 }
 
 export class WebViewClient extends Context.Service<WebViewClient, WebViewClientApi>()(
@@ -302,7 +305,8 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
       const webview = yield* WebView
       return yield* webview.create(input.window, {
         url: input.url,
-        originPolicy: input.originPolicy
+        originPolicy: input.originPolicy,
+        ...(input.isolation === undefined ? {} : { isolation: input.isolation })
       })
     }),
   "WebView.loadRoute": (input) =>
@@ -410,7 +414,8 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
         })
         .pipe(Effect.map((result) => result.supported)),
     destroy: (webview) => client.destroy(webview),
-    onNavigationBlocked: () => client.onNavigationBlocked()
+    onNavigationBlocked: () => client.onNavigationBlocked(),
+    onApiCall: () => client.onApiCall()
   }
 
   return Object.freeze(service)
@@ -496,21 +501,27 @@ const webViewClientFromRpcClient = (
           runWebViewRpc(client["WebView.destroy"](decoded), "WebView.destroy")
         )
       ),
-    onNavigationBlocked: () => subscribeWebViewEvent(exchange, "WebView.NavigationBlocked")
+    onNavigationBlocked: () => subscribeWebViewNavigationBlockedEvent(exchange),
+    onApiCall: () => subscribeWebViewApiCallEvent(exchange)
   }
 
   return Object.freeze(webViewClient)
 }
 
-const subscribeWebViewEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: "WebView.NavigationBlocked"
+const subscribeWebViewNavigationBlockedEvent = (
+  exchange: BridgeClientExchange | undefined
 ): Stream.Stream<WebViewNavigationBlockedEvent, WebViewError, never> =>
-  subscribeNativeEvent(exchange, method, WebViewNavigationBlockedEvent)
+  subscribeNativeEvent(exchange, "WebView.NavigationBlocked", WebViewNavigationBlockedEvent)
+
+const subscribeWebViewApiCallEvent = (
+  exchange: BridgeClientExchange | undefined
+): Stream.Stream<WebViewApiCallEvent, WebViewError, never> =>
+  subscribeNativeEvent(exchange, "WebView.ApiCall", WebViewApiCallEvent)
 
 const defaultWebViewCreateOptions = (
   input?: WebViewCreateNavigationOptions
 ): WebViewCreateNavigationOptions => ({
+  ...input,
   url: input?.url ?? "app://localhost/",
   originPolicy: input?.originPolicy ?? {
     allowedOrigins: ["app://localhost"],

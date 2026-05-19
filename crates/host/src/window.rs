@@ -488,15 +488,45 @@ pub(crate) struct WebViewCreateRequest {
     window_id: String,
     url: String,
     policy: WebViewNavigationPolicy,
+    isolation: Option<WebViewIsolationPolicy>,
 }
 
 impl WebViewCreateRequest {
-    pub(crate) fn new(window_id: String, url: String, policy: WebViewNavigationPolicy) -> Self {
+    pub(crate) fn new(
+        window_id: String,
+        url: String,
+        policy: WebViewNavigationPolicy,
+        isolation: Option<WebViewIsolationPolicy>,
+    ) -> Self {
         Self {
             window_id,
             url,
             policy,
+            isolation,
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewIsolationPolicy {
+    exposed_apis: Vec<WebViewExposedApi>,
+}
+
+impl WebViewIsolationPolicy {
+    pub(crate) fn new(exposed_apis: Vec<WebViewExposedApi>) -> Self {
+        Self { exposed_apis }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewExposedApi {
+    name: String,
+    methods: Vec<String>,
+}
+
+impl WebViewExposedApi {
+    pub(crate) fn new(name: String, methods: Vec<String>) -> Self {
+        Self { name, methods }
     }
 }
 
@@ -3979,6 +4009,9 @@ impl WindowRegistry {
         let webview_id_for_new_window = webview_id.clone();
         let owner_scope_for_event = owner_scope.clone();
         let owner_scope_for_new_window = owner_scope.clone();
+        let isolation = request
+            .isolation
+            .map(|policy| webview_isolation(&webview_id, &owner_scope, policy));
         let webview = webview::attach_child_webview(
             &window._window,
             webview::ChildWebViewRequest {
@@ -4007,6 +4040,7 @@ impl WindowRegistry {
                     }
                     wry::NewWindowResponse::Deny
                 }),
+                isolation,
                 page_load_handler: Box::new(move |event, url| match event {
                     wry::PageLoadEvent::Started => {
                         navigation_for_load.borrow_mut().mark_loading(&url);
@@ -5077,6 +5111,110 @@ fn origin_allowed(url: &str, policy: &WebViewNavigationPolicy) -> bool {
     })
 }
 
+fn webview_isolation(
+    webview_id: &str,
+    owner_scope: &str,
+    policy: WebViewIsolationPolicy,
+) -> webview::ChildWebViewIsolation {
+    let manifest = serde_json::json!(policy
+        .exposed_apis
+        .iter()
+        .map(|api| serde_json::json!({ "name": api.name.clone(), "methods": api.methods.clone() }))
+        .collect::<Vec<_>>());
+    let initialization_script = webview_isolation_script(&manifest.to_string());
+    let webview_id = webview_id.to_string();
+    let owner_scope = owner_scope.to_string();
+    webview::ChildWebViewIsolation {
+        initialization_script,
+        ipc_handler: Box::new(move |request| {
+            handle_webview_isolation_ipc(&webview_id, &owner_scope, &policy, request.body());
+        }),
+    }
+}
+
+fn webview_isolation_script(manifest_json: &str) -> String {
+    format!(
+        r#"(() => {{
+  const rawIpc = window.ipc;
+  const manifest = {manifest_json};
+  const exposed = Object.create(null);
+  for (const entry of manifest) {{
+    const api = Object.create(null);
+    for (const method of entry.methods) {{
+      Object.defineProperty(api, method, {{
+        enumerable: true,
+        value: (payload = null) => {{
+          rawIpc.postMessage(JSON.stringify({{
+            kind: "effect-desktop.webview-api",
+            api: entry.name,
+            method,
+            payload: JSON.stringify(payload)
+          }}));
+        }}
+      }});
+    }}
+    Object.defineProperty(exposed, entry.name, {{
+      enumerable: true,
+      value: Object.freeze(api)
+    }});
+  }}
+  Object.defineProperty(window, "EffectDesktop", {{
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: Object.freeze(exposed)
+  }});
+  try {{
+    Object.defineProperty(window, "ipc", {{
+      configurable: false,
+      enumerable: false,
+      writable: false,
+      value: undefined
+    }});
+  }} catch (_error) {{}}
+}})();"#
+    )
+}
+
+fn handle_webview_isolation_ipc(
+    webview_id: &str,
+    owner_scope: &str,
+    policy: &WebViewIsolationPolicy,
+    body: &str,
+) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return;
+    };
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    if object.get("kind").and_then(serde_json::Value::as_str) != Some("effect-desktop.webview-api")
+    {
+        return;
+    }
+    let Some(api) = object.get("api").and_then(serde_json::Value::as_str) else {
+        return;
+    };
+    let Some(method) = object.get("method").and_then(serde_json::Value::as_str) else {
+        return;
+    };
+    if !policy
+        .exposed_apis
+        .iter()
+        .any(|entry| entry.name == api && entry.methods.iter().any(|name| name == method))
+    {
+        return;
+    }
+    let payload = object
+        .get("payload")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("null");
+    if payload.contains('\0') {
+        return;
+    }
+    emit_webview_api_call_event(webview_id, owner_scope, api, method, payload);
+}
+
 fn origin_for_url(url: &str) -> Option<String> {
     let (scheme, rest) = url.split_once("://")?;
     let authority = rest
@@ -6012,6 +6150,47 @@ fn emit_webview_navigation_blocked_event(
     });
 }
 
+fn emit_webview_api_call_event(
+    webview_id: &str,
+    owner_scope: &str,
+    api: &str,
+    method: &str,
+    payload: &str,
+) {
+    let sender = match webview_event_sender() {
+        Ok(Some(sender)) => sender,
+        Ok(None) => return,
+        Err(error) => {
+            warn!(
+                event = "host.webview.api_call_event_sender_failed",
+                error = ?error,
+                "failed to read webview event sender"
+            );
+            return;
+        }
+    };
+    let event_payload = serde_json::json!({
+        "webview": {
+            "kind": "webview",
+            "id": webview_id,
+            "generation": 0,
+            "ownerScope": owner_scope,
+            "state": "open"
+        },
+        "api": api,
+        "method": method,
+        "payload": payload
+    });
+    let timestamp = timestamp_millis();
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::WEBVIEW_API_CALL_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("webview-api-call-{webview_id}-{timestamp}"),
+        window_id: None,
+        payload: Some(event_payload),
+    });
+}
+
 fn emit_window_state_event(
     window_id: &str,
     state: WindowStatePayload,
@@ -6721,17 +6900,18 @@ mod tests {
         centered_physical_axis, clear_webview_runtime_event_state,
         clear_window_runtime_event_state, clip_window_bounds_to_logical_area,
         control_flow_for_lifecycle_event, control_flow_for_window_state,
-        display_relative_physical_axis, emit_webview_navigation_blocked_event,
-        emit_window_registry_event, handle_native_window_close_requested,
+        display_relative_physical_axis, emit_webview_api_call_event,
+        emit_webview_navigation_blocked_event, emit_window_registry_event,
+        handle_native_window_close_requested, handle_webview_isolation_ipc,
         install_webview_event_sender, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
         lifecycle_for_create_result, resident_lifecycle, rounded_i32, rounded_u32,
         screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
         validate_positive_finite, LogicalScreenArea, PhysicalScreenArea, RunMode,
-        WebViewNavigationDecision, WebViewNavigationPolicy, WebViewNavigationState, WindowCommand,
-        WindowCommandResponse, WindowCreateRequest, WindowId, WindowLifecycleEvent,
-        WindowMethodPort, WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
-        WINDOW_SMOKE_TEST_TIMEOUT,
+        WebViewExposedApi, WebViewIsolationPolicy, WebViewNavigationDecision,
+        WebViewNavigationPolicy, WebViewNavigationState, WindowCommand, WindowCommandResponse,
+        WindowCreateRequest, WindowId, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
+        WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
     };
     use host_protocol::{
         DockProgressState, DockSetProgressOptionsPayload, DockSetProgressPayload,
@@ -6800,6 +6980,7 @@ mod tests {
 
     #[test]
     fn webview_navigation_blocked_event_uses_typed_payload() {
+        let _guard = WINDOW_EVENT_TEST_LOCK.lock().expect("window event lock");
         let (sender, receiver) = mpsc::channel();
         install_webview_event_sender(sender).expect("webview event sender should install");
 
@@ -6833,6 +7014,96 @@ mod tests {
                 },
                 "url": "https://evil.example.com/path",
                 "reason": "origin-policy"
+            })
+        );
+    }
+
+    #[test]
+    fn webview_api_call_event_uses_typed_payload() {
+        let _guard = WINDOW_EVENT_TEST_LOCK.lock().expect("window event lock");
+        let (sender, receiver) = mpsc::channel();
+        install_webview_event_sender(sender).expect("webview event sender should install");
+
+        emit_webview_api_call_event(
+            "webview-1",
+            "window:window-1",
+            "desktop",
+            "ping",
+            "{\"ok\":true}",
+        );
+
+        let event = receiver.recv().expect("api call event should be emitted");
+        clear_webview_runtime_event_state().expect("webview event sender should clear");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = event
+        else {
+            panic!("expected event envelope");
+        };
+        assert_eq!(method, host_protocol::WEBVIEW_API_CALL_EVENT);
+        assert_eq!(
+            payload.expect("event should include payload"),
+            serde_json::json!({
+                "webview": {
+                    "kind": "webview",
+                    "id": "webview-1",
+                    "generation": 0,
+                    "ownerScope": "window:window-1",
+                    "state": "open"
+                },
+                "api": "desktop",
+                "method": "ping",
+                "payload": "{\"ok\":true}"
+            })
+        );
+    }
+
+    #[test]
+    fn webview_isolation_ipc_emits_only_declared_api_calls() {
+        let _guard = WINDOW_EVENT_TEST_LOCK.lock().expect("window event lock");
+        let (sender, receiver) = mpsc::channel();
+        install_webview_event_sender(sender).expect("webview event sender should install");
+        let policy = WebViewIsolationPolicy::new(vec![WebViewExposedApi::new(
+            "desktop".to_string(),
+            vec!["ping".to_string()],
+        )]);
+
+        handle_webview_isolation_ipc(
+            "webview-1",
+            "window:window-1",
+            &policy,
+            r#"{"kind":"effect-desktop.webview-api","api":"desktop","method":"ping","payload":"{\"ok\":true}"}"#,
+        );
+        handle_webview_isolation_ipc(
+            "webview-1",
+            "window:window-1",
+            &policy,
+            r#"{"kind":"effect-desktop.webview-api","api":"desktop","method":"deleteEverything","payload":"{}"}"#,
+        );
+
+        let event = receiver.recv().expect("declared api call should emit");
+        assert!(receiver.try_recv().is_err());
+        clear_webview_runtime_event_state().expect("webview event sender should clear");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = event
+        else {
+            panic!("expected event envelope");
+        };
+        assert_eq!(method, host_protocol::WEBVIEW_API_CALL_EVENT);
+        assert_eq!(
+            payload.expect("event should include payload"),
+            serde_json::json!({
+                "webview": {
+                    "kind": "webview",
+                    "id": "webview-1",
+                    "generation": 0,
+                    "ownerScope": "window:window-1",
+                    "state": "open"
+                },
+                "api": "desktop",
+                "method": "ping",
+                "payload": "{\"ok\":true}"
             })
         );
     }

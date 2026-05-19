@@ -25,9 +25,10 @@ WebViews, cookies, cache, permissions, storage, downloads, or requests to a
 partition.
 
 `WebView.NavigationBlocked` is a navigation-policy event, not request/response
-interception. There is no `WebRequest` service yet for ordered interceptors,
-subresource inspection, response-header mutation, blocking, redirects, or
-request audit.
+interception. `WebView.ApiCall` is a preload-isolation event emitted only for
+API names and method names declared in the `WebView.create` isolation manifest.
+There is no `WebRequest` service yet for ordered interceptors, subresource
+inspection, response-header mutation, blocking, redirects, or request audit.
 
 Navigation controls are host-backed for child WebViews. `WebView.create`
 registers a generation-stamped handle scoped to the owner window, enforces the
@@ -69,11 +70,15 @@ metadata only; Effect Desktop has no `WebViewInspection` service,
 `openDevTools`, `closeDevTools`, debugger attach/detach contract, or audited
 host permission path for inspector access.
 
-Preload isolation is not exposed today. Effect Desktop has no
-`WebViewIsolation` service, preload registration contract, isolated-world
-policy, or Schema-declared API exposure surface. The installed WebView provider
-has raw initialization-script and IPC hooks, but they are not a permission-gated
-native boundary for renderer/native API exposure.
+Preload isolation is create-time and host-backed for child WebViews.
+`WebView.create` accepts an optional `isolation.exposedApis` manifest. The host
+injects a generated preload script through Wry initialization scripts, captures
+renderer calls through Wry IPC, and emits `WebView.ApiCall` only when the API
+name and method match the Schema-decoded manifest. The underlying provider does
+not expose a portable runtime hook for replacing preload scripts after WebView
+creation, so isolation policy is part of `create` rather than a later mutation.
+This is not a full isolated-world implementation; platform WebView engines still
+own the native JavaScript context model.
 
 Proxy configuration, HTTP authentication challenges, and certificate decisions
 are also not part of `WebView`. Those hooks are absent; adding them would
@@ -102,20 +107,20 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 
 ## Methods
 
-| Method                | Payload                         | Success                  |
-| --------------------- | ------------------------------- | ------------------------ |
-| `create`              | `{ window, url, originPolicy }` | webview handle           |
-| `loadRoute`           | `{ webview, route }`            | `void`                   |
-| `loadUrl`             | `{ webview, url }`              | `void`                   |
-| `reload`              | `{ webview }`                   | `void`                   |
-| `stop`                | `{ webview }`                   | `void`                   |
-| `goBack`              | `{ webview }`                   | `void`                   |
-| `goForward`           | `{ webview }`                   | `void`                   |
-| `getNavigationState`  | `{ webview }`                   | navigation state         |
-| `captureScreenshot`   | `{ webview }`                   | screenshot data          |
-| `setNavigationPolicy` | `{ webview, policy }`           | `void`                   |
-| `capability`          | `{ name, platform?, mode? }`    | `{ supported: boolean }` |
-| `destroy`             | `{ webview }`                   | `void`                   |
+| Method                | Payload                                     | Success                  |
+| --------------------- | ------------------------------------------- | ------------------------ |
+| `create`              | `{ window, url, originPolicy, isolation? }` | webview handle           |
+| `loadRoute`           | `{ webview, route }`                        | `void`                   |
+| `loadUrl`             | `{ webview, url }`                          | `void`                   |
+| `reload`              | `{ webview }`                               | `void`                   |
+| `stop`                | `{ webview }`                               | `void`                   |
+| `goBack`              | `{ webview }`                               | `void`                   |
+| `goForward`           | `{ webview }`                               | `void`                   |
+| `getNavigationState`  | `{ webview }`                               | navigation state         |
+| `captureScreenshot`   | `{ webview }`                               | screenshot data          |
+| `setNavigationPolicy` | `{ webview, policy }`                       | `void`                   |
+| `capability`          | `{ name, platform?, mode? }`                | `{ supported: boolean }` |
+| `destroy`             | `{ webview }`                               | `void`                   |
 
 ## App composition
 
@@ -131,6 +136,29 @@ Desktop.make({
 `Native.WebView` registers the WebView surface. `Native.Permissions.webView.all` grants WebView authority.
 `webViewCapability(...)` is a platform and runtime-mode support helper; it does not grant permission.
 
+## Preload Isolation
+
+```ts
+const webview = yield * WebView
+const child =
+  yield *
+  webview.create(window, {
+    url: "app://localhost/",
+    originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" },
+    isolation: {
+      exposedApis: [{ name: "desktop", methods: ["ping"] }]
+    }
+  })
+
+const calls = webview.onApiCall()
+```
+
+The preload script exposes the declared methods under `window.EffectDesktop`.
+For the example above, renderer code can call
+`window.EffectDesktop.desktop.ping(payload)`. Calls arrive as
+`WebView.ApiCall` events with `{ webview, api, method, payload }`, where
+`payload` is the JSON string produced by the generated preload wrapper.
+
 ## Errors
 
 `WebViewError`.
@@ -143,6 +171,8 @@ through host-backed resources and report `partial` support with
 `host-navigation-state-tracked`. `setNavigationPolicy` is also host-backed for
 those resources and shares the same partial support reason because popup
 approval and external-open delegation are still intentionally conservative.
+Create-time preload isolation is host-backed through Wry initialization-script
+and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
 `captureScreenshot` and `capability` remain validation-first unsupported routes
 until their own host adapters land. `webViewCapability(...)` remains a local
 platform and runtime-mode feature helper; it does not grant permission.

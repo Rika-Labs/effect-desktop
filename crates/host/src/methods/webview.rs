@@ -3,20 +3,22 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use crate::window::{
-    WebViewCreateRequest, WebViewHandleRequest, WebViewLoadRouteRequest, WebViewLoadUrlRequest,
-    WebViewNavigationDecision, WebViewNavigationPolicy, WebViewSetNavigationPolicyRequest,
-    WindowMethodHandler,
+    WebViewCreateRequest, WebViewExposedApi, WebViewHandleRequest, WebViewIsolationPolicy,
+    WebViewLoadRouteRequest, WebViewLoadUrlRequest, WebViewNavigationDecision,
+    WebViewNavigationPolicy, WebViewSetNavigationPolicyRequest, WindowMethodHandler,
 };
 use host_protocol::HostProtocolError;
 use serde_json::{Map, Value};
 
-const ALLOWED_CREATE_FIELDS: &[&str] = &["window", "url", "originPolicy"];
+const ALLOWED_CREATE_FIELDS: &[&str] = &["window", "url", "originPolicy", "isolation"];
 const ALLOWED_HANDLE_FIELDS: &[&str] = &["webview"];
 const ALLOWED_LOAD_ROUTE_FIELDS: &[&str] = &["webview", "route"];
 const ALLOWED_LOAD_URL_FIELDS: &[&str] = &["webview", "url"];
 const ALLOWED_POLICY_FIELDS: &[&str] = &["webview", "policy"];
 const ALLOWED_CAPABILITY_FIELDS: &[&str] = &["name", "platform", "mode"];
 const ALLOWED_ORIGIN_POLICY_FIELDS: &[&str] = &["allowedOrigins", "onDisallowed"];
+const ALLOWED_ISOLATION_FIELDS: &[&str] = &["exposedApis"];
+const ALLOWED_EXPOSED_API_FIELDS: &[&str] = &["name", "methods"];
 const ALLOWED_WEBVIEW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
 const ALLOWED_WINDOW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
 
@@ -37,6 +39,7 @@ pub(crate) fn create(
         "originPolicy",
         host_protocol::WEBVIEW_CREATE_METHOD,
     )?;
+    validate_isolation_field(&payload, host_protocol::WEBVIEW_CREATE_METHOD)?;
     let request = decode_create_request(&payload)?;
     let response = handler.create_webview(request)?;
 
@@ -239,6 +242,7 @@ fn decode_create_request(
             "originPolicy",
             host_protocol::WEBVIEW_CREATE_METHOD,
         )?,
+        decode_isolation(payload, host_protocol::WEBVIEW_CREATE_METHOD)?,
     ))
 }
 
@@ -325,6 +329,63 @@ fn decode_policy(
         }
     };
     Ok(WebViewNavigationPolicy::new(origins, on_disallowed))
+}
+
+fn decode_isolation(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<Option<WebViewIsolationPolicy>, HostProtocolError> {
+    let Some(isolation) = payload.get("isolation").and_then(Value::as_object) else {
+        return Ok(None);
+    };
+    let apis = isolation
+        .get("exposedApis")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument(
+                "isolation.exposedApis",
+                "must be an array",
+                operation,
+            )
+        })?
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let api = value.as_object().ok_or_else(|| {
+                HostProtocolError::invalid_argument(
+                    format!("isolation.exposedApis[{index}]"),
+                    "must be an object",
+                    operation,
+                )
+            })?;
+            let methods = api
+                .get("methods")
+                .and_then(Value::as_array)
+                .ok_or_else(|| {
+                    HostProtocolError::invalid_argument(
+                        format!("isolation.exposedApis[{index}].methods"),
+                        "must be an array",
+                        operation,
+                    )
+                })?
+                .iter()
+                .map(|method| {
+                    method.as_str().map(ToOwned::to_owned).ok_or_else(|| {
+                        HostProtocolError::invalid_argument(
+                            format!("isolation.exposedApis[{index}].methods"),
+                            "must contain only strings",
+                            operation,
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(WebViewExposedApi::new(
+                required_string(api, "name", operation)?.to_string(),
+                methods,
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(WebViewIsolationPolicy::new(apis)))
 }
 
 fn required_string<'a>(
@@ -479,6 +540,79 @@ fn validate_policy_field(
         ));
     }
 
+    Ok(())
+}
+
+fn validate_isolation_field(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    let Some(isolation) = payload.get("isolation") else {
+        return Ok(());
+    };
+    let isolation = isolation.as_object().ok_or_else(|| {
+        HostProtocolError::invalid_argument("isolation", "must be an object", operation)
+    })?;
+    validate_allowed_fields(isolation, ALLOWED_ISOLATION_FIELDS, operation)?;
+    let apis = isolation
+        .get("exposedApis")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument(
+                "isolation.exposedApis",
+                "must be an array",
+                operation,
+            )
+        })?;
+    if apis.is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "isolation.exposedApis",
+            "must not be empty",
+            operation,
+        ));
+    }
+    for (index, api) in apis.iter().enumerate() {
+        let api = api.as_object().ok_or_else(|| {
+            HostProtocolError::invalid_argument(
+                format!("isolation.exposedApis[{index}]"),
+                "must be an object",
+                operation,
+            )
+        })?;
+        validate_allowed_fields(api, ALLOWED_EXPOSED_API_FIELDS, operation)?;
+        validate_js_api_name(api, "name", "isolation.exposedApis.name", operation)?;
+        let methods = api
+            .get("methods")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                HostProtocolError::invalid_argument(
+                    format!("isolation.exposedApis[{index}].methods"),
+                    "must be an array",
+                    operation,
+                )
+            })?;
+        if methods.is_empty() {
+            return Err(HostProtocolError::invalid_argument(
+                format!("isolation.exposedApis[{index}].methods"),
+                "must not be empty",
+                operation,
+            ));
+        }
+        for method in methods {
+            let Some(method) = method.as_str() else {
+                return Err(HostProtocolError::invalid_argument(
+                    format!("isolation.exposedApis[{index}].methods"),
+                    "must contain only strings",
+                    operation,
+                ));
+            };
+            validate_js_identifier(
+                method,
+                format!("isolation.exposedApis[{index}].methods"),
+                operation,
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -638,6 +772,50 @@ fn validate_origin(
         return Err(HostProtocolError::invalid_argument(
             field,
             "must not include path, query, fragment, or whitespace",
+            operation,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_js_api_name(
+    payload: &Map<String, Value>,
+    field: &'static str,
+    error_field: &'static str,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    let value = payload.get(field).and_then(Value::as_str).ok_or_else(|| {
+        HostProtocolError::invalid_argument(error_field, "must be a string", operation)
+    })?;
+    validate_printable_value(error_field, value, operation)?;
+    validate_js_identifier(value, error_field, operation)
+}
+
+fn validate_js_identifier(
+    value: &str,
+    field: impl Into<String>,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    let field = field.into();
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must not be empty",
+            operation,
+        ));
+    };
+    if !(first == '_' || first == '$' || first.is_ascii_alphabetic()) {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must be a JavaScript identifier",
+            operation,
+        ));
+    }
+    if !chars.all(|char| char == '_' || char == '$' || char.is_ascii_alphanumeric()) {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must be a JavaScript identifier",
             operation,
         ));
     }

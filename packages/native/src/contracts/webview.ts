@@ -32,6 +32,9 @@ const WebViewOrigin = BridgeSafeNonEmptyString.check(
 const WebViewRoute = BridgeSafeNonEmptyString.check(
   Schema.isPattern(/^\/(?!.*(?:^|\/)\.\.(?:\/|$))[^?#]*$/u)
 )
+const WebViewApiName = BridgeSafeNonEmptyString.check(Schema.isPattern(/^[A-Za-z_$][\w$]*$/u))
+const WebViewApiMethodName = BridgeSafeNonEmptyString.check(Schema.isPattern(/^[A-Za-z_$][\w$]*$/u))
+const WebViewApiPayload = BridgeSafeString
 export type WebViewHandle = ResourceHandle<"webview", "open">
 
 export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolicy>(
@@ -43,10 +46,24 @@ export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolic
 
 export type WebViewNavigationPolicyOptions = Schema.Schema.Type<typeof WebViewNavigationPolicy>
 
+export class WebViewExposedApi extends Schema.Class<WebViewExposedApi>("WebViewExposedApi")({
+  name: WebViewApiName,
+  methods: Schema.NonEmptyArray(WebViewApiMethodName)
+}) {}
+
+export class WebViewIsolationPolicy extends Schema.Class<WebViewIsolationPolicy>(
+  "WebViewIsolationPolicy"
+)({
+  exposedApis: Schema.NonEmptyArray(WebViewExposedApi)
+}) {}
+
+export type WebViewIsolationPolicyOptions = Schema.Schema.Type<typeof WebViewIsolationPolicy>
+
 export class WebViewCreateInput extends Schema.Class<WebViewCreateInput>("WebViewCreateInput")({
   window: WindowResource,
   url: WebViewNavigationUrl,
-  originPolicy: WebViewNavigationPolicy
+  originPolicy: WebViewNavigationPolicy,
+  isolation: Schema.optionalKey(WebViewIsolationPolicy)
 }) {}
 
 export type WebViewCreateOptions = Schema.Schema.Type<typeof WebViewCreateInput>
@@ -113,6 +130,13 @@ export class WebViewNavigationBlockedEvent extends Schema.Class<WebViewNavigatio
   webview: WebViewResource,
   url: WebViewNavigationUrl,
   reason: WebViewNavigationBlockedReason
+}) {}
+
+export class WebViewApiCallEvent extends Schema.Class<WebViewApiCallEvent>("WebViewApiCallEvent")({
+  webview: WebViewResource,
+  api: WebViewApiName,
+  method: WebViewApiMethodName,
+  payload: WebViewApiPayload
 }) {}
 
 const isAbsoluteUrl = (value: string): boolean => {

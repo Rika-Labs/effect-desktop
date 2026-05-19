@@ -4206,7 +4206,7 @@
     {
       "name": "WebViewClientApi",
       "kind": "interface",
-      "signature": "export interface WebViewClientApi { readonly create: ( input: WebViewCreateOptions ) => Effect.Effect<WebViewHandle, WebViewError, never> readonly loadRoute: ( webview: WebViewHandle, route: string ) => Effect.Effect<void, WebViewError, never> readonly loadUrl: ( webview: WebViewHandle, url: string ) => Effect.Effect<void, WebViewError, never> readonly reload: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly stop: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly goBack: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly goForward: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly getNavigationState: ( webview: WebViewHandle ) => Effect.Effect<WebViewNavigationState, WebViewError, never> readonly captureScreenshot: ( webview: WebViewHandle ) => Effect.Effect<WebViewScreenshot, WebViewError, never> readonly setNavigationPolicy: ( webview: WebViewHandle, policy: WebViewNavigationPolicyOptions ) => Effect.Effect<void, WebViewError, never> readonly capability: ( input: WebViewCapabilityOptions ) => Effect.Effect<WebViewCapabilityResult, WebViewError, never> readonly destroy: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly onNavigationBlocked: () => Stream.Stream< WebViewNavigationBlockedEvent, WebViewError, never > }"
+      "signature": "export interface WebViewClientApi { readonly create: ( input: WebViewCreateOptions ) => Effect.Effect<WebViewHandle, WebViewError, never> readonly loadRoute: ( webview: WebViewHandle, route: string ) => Effect.Effect<void, WebViewError, never> readonly loadUrl: ( webview: WebViewHandle, url: string ) => Effect.Effect<void, WebViewError, never> readonly reload: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly stop: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly goBack: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly goForward: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly getNavigationState: ( webview: WebViewHandle ) => Effect.Effect<WebViewNavigationState, WebViewError, never> readonly captureScreenshot: ( webview: WebViewHandle ) => Effect.Effect<WebViewScreenshot, WebViewError, never> readonly setNavigationPolicy: ( webview: WebViewHandle, policy: WebViewNavigationPolicyOptions ) => Effect.Effect<void, WebViewError, never> readonly capability: ( input: WebViewCapabilityOptions ) => Effect.Effect<WebViewCapabilityResult, WebViewError, never> readonly destroy: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never> readonly onNavigationBlocked: () => Stream.Stream< WebViewNavigationBlockedEvent, WebViewError, never > readonly onApiCall: () => Stream.Stream<WebViewApiCallEvent, WebViewError, never> }"
     },
     {
       "name": "WebViewHandlersLive",
@@ -4231,7 +4231,7 @@
     {
       "name": "WebViewRpcEvents",
       "kind": "type",
-      "signature": "const WebViewRpcEvents: Readonly<{ NavigationBlocked: { payload: typeof WebViewNavigationBlockedEvent; }; }>"
+      "signature": "const WebViewRpcEvents: Readonly<{ NavigationBlocked: { payload: typeof WebViewNavigationBlockedEvent; }; ApiCall: { payload: typeof WebViewApiCallEvent; }; }>"
     },
     {
       "name": "WebViewRpcHandlers",

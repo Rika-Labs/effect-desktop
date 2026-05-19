@@ -322,6 +322,7 @@ pub const WEBVIEW_SET_NAVIGATION_POLICY_METHOD: &str = "WebView.setNavigationPol
 pub const WEBVIEW_CAPABILITY_METHOD: &str = "WebView.capability";
 pub const WEBVIEW_DESTROY_METHOD: &str = "WebView.destroy";
 pub const WEBVIEW_NAVIGATION_BLOCKED_EVENT: &str = "WebView.NavigationBlocked";
+pub const WEBVIEW_API_CALL_EVENT: &str = "WebView.ApiCall";
 pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";

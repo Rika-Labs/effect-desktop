@@ -5097,6 +5097,11 @@ mod tests {
                     "originPolicy": {
                         "allowedOrigins": ["app://localhost"],
                         "onDisallowed": "block"
+                    },
+                    "isolation": {
+                        "exposedApis": [
+                            { "name": "desktop", "methods": ["ping"] }
+                        ]
                     }
                 }),
             ),
@@ -5173,6 +5178,23 @@ mod tests {
                     "originPolicy": {
                         "allowedOrigins": ["app://localhost"],
                         "onDisallowed": "block"
+                    }
+                }),
+            ),
+            (
+                "request-webview-create-invalid-isolation",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+                serde_json::json!({
+                    "window": window,
+                    "url": "app://localhost/settings",
+                    "originPolicy": {
+                        "allowedOrigins": ["app://localhost"],
+                        "onDisallowed": "block"
+                    },
+                    "isolation": {
+                        "exposedApis": [
+                            { "name": "desktop", "methods": ["bad-name"] }
+                        ]
                     }
                 }),
             ),

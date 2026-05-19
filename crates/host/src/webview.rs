@@ -46,7 +46,13 @@ pub(crate) struct ChildWebViewRequest {
     pub(crate) url: String,
     pub(crate) navigation_handler: Box<dyn Fn(String) -> bool>,
     pub(crate) new_window_handler: Box<dyn Fn(String, NewWindowFeatures) -> NewWindowResponse>,
+    pub(crate) isolation: Option<ChildWebViewIsolation>,
     pub(crate) page_load_handler: Box<dyn Fn(PageLoadEvent, String)>,
+}
+
+pub(crate) struct ChildWebViewIsolation {
+    pub(crate) initialization_script: String,
+    pub(crate) ipc_handler: Box<dyn Fn(wry::http::Request<String>)>,
 }
 
 struct SystemWebEngineProvider;
@@ -155,8 +161,14 @@ pub(crate) fn attach_child_webview(
     let builder = scheme::register_app_scheme(WebViewBuilder::new())
         .with_url(request.url)
         .with_navigation_handler(request.navigation_handler)
-        .with_new_window_req_handler(request.new_window_handler)
-        .with_on_page_load_handler(request.page_load_handler);
+        .with_new_window_req_handler(request.new_window_handler);
+    let builder = match request.isolation {
+        Some(isolation) => builder
+            .with_initialization_script(isolation.initialization_script)
+            .with_ipc_handler(isolation.ipc_handler),
+        None => builder,
+    }
+    .with_on_page_load_handler(request.page_load_handler);
     let webview = build_webview(builder, window).map_err(|error| {
         Box::new(HostProtocolError::internal(
             format!("failed to attach child WebView provider: {error}"),
