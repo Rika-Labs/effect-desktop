@@ -10,11 +10,10 @@ effect_version: 4
 
 Theme and appearance information.
 
-The Rust host system appearance adapter implements read-only snapshot methods on
-macOS and Windows. Linux and native OS appearance-change events remain
-unsupported. The host binary includes a macOS-only
-`--system-appearance-smoke-test` mode that reads the snapshot methods on the
-main thread and exits before starting the renderer runtime.
+The Rust host system appearance adapter implements read-only snapshot methods
+and appearance-change events on macOS and Windows. Linux remains unsupported.
+The host binary includes a macOS-only `--system-appearance-smoke-test` mode that
+reads the snapshot methods and exits before starting the renderer runtime.
 
 ## Methods
 
@@ -36,6 +35,13 @@ On Windows, `getAppearance` uses high-contrast state plus the current user's
 Missing optional registry values fall back to light appearance, no accent color,
 and transparency enabled.
 
+On macOS, `getAppearance` uses accessibility contrast state plus the current
+user's `AppleInterfaceStyle`, `getAccentColor` uses `NSColor.controlAccentColor`,
+and reduced-motion/transparency values come from `NSWorkspace` accessibility
+display options.
+
+`isSupported` is protected by `native.invoke:SystemAppearance.isSupported`.
+
 ## Events
 
 The current TypeScript event stream is `onAppearanceChanged()`, which emits a
@@ -50,27 +56,29 @@ The current TypeScript event stream is `onAppearanceChanged()`, which emits a
 }
 ```
 
-Native OS appearance delivery is currently unsupported until the host can publish
-platform appearance-change events.
+On macOS and Windows the Rust host installs a runtime-scoped snapshot poller and
+publishes `SystemAppearance.AppearanceChanged` when the snapshot changes. The
+first observed snapshot is also published so subscribers receive the same typed
+shape as later changes. The poller is cleared on renderer disconnect, runtime
+restart, and host resource cleanup.
 
 ## Errors
 
 `SystemAppearanceError` is the host protocol error union. Unsupported platforms
 decode through Rust `SystemAppearance.*` routes and fail closed as typed
 `Unsupported`. `isSupported` decodes through the Rust host and reports method
-support; `onAppearanceChanged` remains unsupported because subscriptions do not
-have a native OS event source.
+support.
 
 `onAppearanceChanged()` checks `isSupported("onAppearanceChanged")` before it
-subscribes. When the host reports that appearance events are unsupported, the
-stream fails as typed `Unsupported` and does not open a native event
-subscription.
+subscribes. When the host reports that appearance events are unsupported, such
+as on Linux, the stream fails as typed `Unsupported` and does not open a native
+event subscription.
 
 ## React hook
 
 `useTheme()` and `useThemeMode()` from `@effect-desktop/react` consume the
-TypeScript appearance stream, but do not provide native OS appearance events
-until host event delivery is implemented.
+TypeScript appearance stream. Native appearance events are host-backed on macOS
+and Windows and fail as typed unsupported on Linux.
 
 ## Related
 

@@ -358,7 +358,10 @@ import { makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
 import { makeHostShellRpcRuntime, makeShellBridgeClientLayer } from "./shell.js"
-import { makeSystemAppearanceBridgeClientLayer } from "./system-appearance.js"
+import {
+  makeHostSystemAppearanceRpcRuntime,
+  makeSystemAppearanceBridgeClientLayer
+} from "./system-appearance.js"
 import { makeHostTrayRpcRuntime, makeTrayBridgeClientLayer } from "./tray.js"
 import { makeUpdaterBridgeClientLayer } from "./updater.js"
 import { makeWebViewBridgeClientLayer, webViewCapability } from "./webview.js"
@@ -7533,6 +7536,49 @@ test("SystemAppearance bridge client fails unsupported appearance events before 
   expectExitFailure(result, (error) => hasErrorTag(error, "Unsupported"))
   expect(requests).toEqual(["SystemAppearance.isSupported"])
   expect(subscriptions).toEqual([])
+})
+
+test("native host RPC runtime denies protected SystemAppearance support queries before handlers run", async () => {
+  const calls: string[] = []
+  const runtime = makeHostSystemAppearanceRpcRuntime(
+    {
+      "SystemAppearance.getAppearance": () =>
+        Effect.succeed(new SystemAppearanceResult({ appearance: "dark" })),
+      "SystemAppearance.getAccentColor": () =>
+        Effect.succeed(new SystemAppearanceAccentColorResult({ color: null })),
+      "SystemAppearance.getReducedMotion": () =>
+        Effect.succeed(new SystemAppearanceBooleanResult({ enabled: false })),
+      "SystemAppearance.getReducedTransparency": () =>
+        Effect.succeed(new SystemAppearanceBooleanResult({ enabled: false })),
+      "SystemAppearance.isSupported": () =>
+        Effect.sync(() => {
+          calls.push("isSupported")
+          return new SystemAppearanceSupportedResult({ supported: true })
+        })
+    },
+    { originAuth: RendererOriginAuth.unsafeDisabledForTests }
+  )
+
+  const response = await Effect.runPromise(
+    runtime
+      .dispatch(
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "system-appearance-denied",
+          method: "SystemAppearance.isSupported",
+          timestamp: 1710000000000,
+          traceId: "trace-system-appearance-denied",
+          payload: { method: "onAppearanceChanged" }
+        })
+      )
+      .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
+  )
+
+  expect(response.kind).toBe("failure")
+  if (response.kind === "failure") {
+    expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
+  }
+  expect(calls).toEqual([])
 })
 
 const systemAppearanceEventExchange = (payload: Record<string, unknown>): BridgeClientExchange => ({

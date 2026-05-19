@@ -51,6 +51,7 @@ features = [
   "NSObject",
   "NSNotification",
   "NSOperation",
+  "NSUserDefaults",
   "NSString",
   "NSURL",
   "block2"

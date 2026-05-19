@@ -3,14 +3,15 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use host_protocol::{
-    HostProtocolError, SystemAppearanceAccentColorPayload, SystemAppearanceBooleanPayload,
-    SystemAppearanceColorPayload, SystemAppearanceIsSupportedPayload,
-    SystemAppearanceMethodPayload, SystemAppearanceModePayload, SystemAppearanceResultPayload,
-    SystemAppearanceSupportedPayload,
+    HostProtocolEnvelope, HostProtocolError, SystemAppearanceAccentColorPayload,
+    SystemAppearanceBooleanPayload, SystemAppearanceChangedPayload, SystemAppearanceColorPayload,
+    SystemAppearanceIsSupportedPayload, SystemAppearanceMethodPayload, SystemAppearanceModePayload,
+    SystemAppearanceResultPayload, SystemAppearanceSupportedPayload,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{to_value, Value};
+use std::sync::mpsc::Sender;
 use tracing::info;
 
 const SYSTEM_APPEARANCE_SMOKE_OPERATION: &str = "SystemAppearance.smoke";
@@ -87,6 +88,16 @@ pub(crate) fn is_supported(payload: Option<Value>) -> Result<Option<Value>, Host
         },
         host_protocol::SYSTEM_APPEARANCE_IS_SUPPORTED_METHOD,
     )
+}
+
+pub(crate) fn install_runtime_event_sender(
+    sender: Sender<HostProtocolEnvelope>,
+) -> Result<(), HostProtocolError> {
+    platform_events::install_runtime_event_sender(sender)
+}
+
+pub(crate) fn clear_runtime_event_sender() -> Result<(), HostProtocolError> {
+    platform_events::clear_runtime_event_sender()
 }
 
 pub(crate) fn run_main_thread_smoke() -> Result<(), HostProtocolError> {
@@ -171,6 +182,56 @@ fn encode_payload<T: Serialize>(
     })
 }
 
+fn event_frame(
+    snapshot: SystemAppearanceSnapshot,
+) -> Result<HostProtocolEnvelope, HostProtocolError> {
+    Ok(HostProtocolEnvelope::Event {
+        method: host_protocol::SYSTEM_APPEARANCE_APPEARANCE_CHANGED_EVENT.to_string(),
+        timestamp: timestamp_millis(host_protocol::SYSTEM_APPEARANCE_APPEARANCE_CHANGED_EVENT)?,
+        trace_id: "host-system-appearance".to_string(),
+        window_id: None,
+        payload: Some(
+            to_value(SystemAppearanceChangedPayload::new(
+                snapshot.appearance,
+                snapshot.accent_color,
+                snapshot.reduced_motion,
+                snapshot.reduced_transparency,
+            ))
+            .map_err(|error| {
+                HostProtocolError::internal(
+                    format!("failed to encode system appearance event payload: {error}"),
+                    host_protocol::SYSTEM_APPEARANCE_APPEARANCE_CHANGED_EVENT,
+                )
+            })?,
+        ),
+    })
+}
+
+fn send_snapshot_event(sender: &Sender<HostProtocolEnvelope>, snapshot: SystemAppearanceSnapshot) {
+    match event_frame(snapshot) {
+        Ok(frame) => {
+            if sender.send(frame).is_err() {
+                tracing::debug!("dropped system appearance event after runtime disconnect");
+            }
+        }
+        Err(error) => {
+            tracing::warn!(error = ?error, "failed to encode system appearance event");
+        }
+    }
+}
+
+fn timestamp_millis(operation: &'static str) -> Result<u64, HostProtocolError> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .map_err(|error| {
+            HostProtocolError::internal(
+                format!("system time is before Unix epoch: {error}"),
+                operation,
+            )
+        })
+}
+
 #[cfg(any(test, not(target_os = "macos")))]
 fn unsupported(operation: &'static str) -> HostProtocolError {
     HostProtocolError::unsupported(
@@ -185,7 +246,7 @@ fn supports_method(method: SystemAppearanceMethodPayload) -> bool {
         | SystemAppearanceMethodPayload::GetAccentColor
         | SystemAppearanceMethodPayload::GetReducedMotion
         | SystemAppearanceMethodPayload::GetReducedTransparency => has_host_snapshot(),
-        SystemAppearanceMethodPayload::OnAppearanceChanged => false,
+        SystemAppearanceMethodPayload::OnAppearanceChanged => has_event_stream(),
     }
 }
 
@@ -196,6 +257,16 @@ fn has_host_snapshot() -> bool {
 
 #[cfg(not(all(any(target_os = "macos", target_os = "windows"), not(test))))]
 fn has_host_snapshot() -> bool {
+    test_snapshot().is_some()
+}
+
+#[cfg(all(any(target_os = "macos", target_os = "windows"), not(test)))]
+fn has_event_stream() -> bool {
+    true
+}
+
+#[cfg(not(all(any(target_os = "macos", target_os = "windows"), not(test))))]
+fn has_event_stream() -> bool {
     test_snapshot().is_some()
 }
 
@@ -248,67 +319,35 @@ fn test_snapshot() -> Option<SystemAppearanceSnapshot> {
 mod macos_system_appearance {
     use super::{HostProtocolError, SystemAppearanceSnapshot};
     use host_protocol::{SystemAppearanceColorPayload, SystemAppearanceModePayload};
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::{
-        NSAppearance, NSAppearanceNameAccessibilityHighContrastAqua,
-        NSAppearanceNameAccessibilityHighContrastDarkAqua,
-        NSAppearanceNameAccessibilityHighContrastVibrantDark,
-        NSAppearanceNameAccessibilityHighContrastVibrantLight, NSAppearanceNameDarkAqua,
-        NSApplication, NSColor, NSColorType, NSWorkspace,
-    };
-    use objc2_foundation::NSArray;
+    use objc2_app_kit::{NSColor, NSColorType, NSWorkspace};
+    use objc2_foundation::{ns_string, NSUserDefaults};
 
     pub(super) fn snapshot(
-        operation: &'static str,
+        _operation: &'static str,
     ) -> Result<SystemAppearanceSnapshot, HostProtocolError> {
-        let Some(marker) = MainThreadMarker::new() else {
-            return Err(HostProtocolError::internal(
-                "macOS system appearance must run on the main thread",
-                operation,
-            ));
-        };
-
-        let application = NSApplication::sharedApplication(marker);
-        let appearance = application.effectiveAppearance();
         let workspace = NSWorkspace::sharedWorkspace();
+        let defaults = NSUserDefaults::standardUserDefaults();
 
         Ok(SystemAppearanceSnapshot {
-            appearance: appearance_mode(&appearance),
+            appearance: appearance_mode(&workspace, &defaults),
             accent_color: accent_color(),
             reduced_motion: workspace.accessibilityDisplayShouldReduceMotion(),
             reduced_transparency: workspace.accessibilityDisplayShouldReduceTransparency(),
         })
     }
 
-    fn appearance_mode(appearance: &NSAppearance) -> SystemAppearanceModePayload {
-        let high_contrast_aqua = unsafe { NSAppearanceNameAccessibilityHighContrastAqua };
-        let high_contrast_dark = unsafe { NSAppearanceNameAccessibilityHighContrastDarkAqua };
-        let high_contrast_vibrant_light =
-            unsafe { NSAppearanceNameAccessibilityHighContrastVibrantLight };
-        let high_contrast_vibrant_dark =
-            unsafe { NSAppearanceNameAccessibilityHighContrastVibrantDark };
-        let dark = unsafe { NSAppearanceNameDarkAqua };
-        let names = NSArray::from_slice(&[
-            high_contrast_aqua,
-            high_contrast_dark,
-            high_contrast_vibrant_light,
-            high_contrast_vibrant_dark,
-            dark,
-        ]);
-
-        let Some(best_match) = appearance.bestMatchFromAppearancesWithNames(&names) else {
-            return SystemAppearanceModePayload::Light;
-        };
-
-        if best_match.isEqualToString(high_contrast_aqua)
-            || best_match.isEqualToString(high_contrast_dark)
-            || best_match.isEqualToString(high_contrast_vibrant_light)
-            || best_match.isEqualToString(high_contrast_vibrant_dark)
-        {
+    fn appearance_mode(
+        workspace: &NSWorkspace,
+        defaults: &NSUserDefaults,
+    ) -> SystemAppearanceModePayload {
+        if workspace.accessibilityDisplayShouldIncreaseContrast() {
             return SystemAppearanceModePayload::HighContrast;
         }
 
-        if best_match.isEqualToString(dark) {
+        let Some(style) = defaults.stringForKey(ns_string!("AppleInterfaceStyle")) else {
+            return SystemAppearanceModePayload::Light;
+        };
+        if style.isEqualToString(ns_string!("Dark")) {
             return SystemAppearanceModePayload::Dark;
         }
 
@@ -324,6 +363,115 @@ mod macos_system_appearance {
             component_color.blueComponent(),
             component_color.alphaComponent(),
         ))
+    }
+}
+
+#[cfg(all(any(target_os = "macos", target_os = "windows"), not(test)))]
+mod platform_events {
+    use super::{
+        send_snapshot_event, snapshot, HostProtocolEnvelope, HostProtocolError,
+        SystemAppearanceSnapshot,
+    };
+    use std::{
+        sync::{
+            mpsc::{self, Sender},
+            LazyLock, Mutex,
+        },
+        thread::{self, JoinHandle},
+        time::Duration,
+    };
+
+    static SYSTEM_APPEARANCE_EVENTS: LazyLock<Mutex<Option<SystemAppearanceEventState>>> =
+        LazyLock::new(|| Mutex::new(None));
+
+    struct SystemAppearanceEventState {
+        poller: SnapshotPoller,
+    }
+
+    struct SnapshotPoller {
+        stop: Sender<()>,
+        handle: JoinHandle<()>,
+    }
+
+    pub(crate) fn install_runtime_event_sender(
+        sender: Sender<HostProtocolEnvelope>,
+    ) -> Result<(), HostProtocolError> {
+        clear_runtime_event_sender()?;
+        *SYSTEM_APPEARANCE_EVENTS.lock().map_err(|_| {
+            HostProtocolError::internal(
+                "system appearance event state lock poisoned",
+                host_protocol::SYSTEM_APPEARANCE_APPEARANCE_CHANGED_EVENT,
+            )
+        })? = Some(SystemAppearanceEventState {
+            poller: start_snapshot_poller(sender),
+        });
+        Ok(())
+    }
+
+    pub(crate) fn clear_runtime_event_sender() -> Result<(), HostProtocolError> {
+        let Some(state) = SYSTEM_APPEARANCE_EVENTS
+            .lock()
+            .map_err(|_| {
+                HostProtocolError::internal(
+                    "system appearance event state lock poisoned",
+                    host_protocol::SYSTEM_APPEARANCE_APPEARANCE_CHANGED_EVENT,
+                )
+            })?
+            .take()
+        else {
+            return Ok(());
+        };
+
+        let _ = state.poller.stop.send(());
+        let _ = state.poller.handle.join();
+        Ok(())
+    }
+
+    fn start_snapshot_poller(sender: Sender<HostProtocolEnvelope>) -> SnapshotPoller {
+        let (stop, stop_rx) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            let mut last_snapshot = None;
+            emit_if_changed(&sender, &mut last_snapshot);
+            loop {
+                if stop_rx.recv_timeout(Duration::from_secs(2)).is_ok() {
+                    break;
+                }
+                emit_if_changed(&sender, &mut last_snapshot);
+            }
+        });
+        SnapshotPoller { stop, handle }
+    }
+
+    fn emit_if_changed(
+        sender: &Sender<HostProtocolEnvelope>,
+        last_snapshot: &mut Option<SystemAppearanceSnapshot>,
+    ) {
+        match snapshot(host_protocol::SYSTEM_APPEARANCE_APPEARANCE_CHANGED_EVENT) {
+            Ok(next_snapshot) if last_snapshot.as_ref() != Some(&next_snapshot) => {
+                *last_snapshot = Some(next_snapshot.clone());
+                send_snapshot_event(sender, next_snapshot);
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(error = ?error, "failed to poll system appearance snapshot");
+            }
+        }
+    }
+}
+
+#[cfg(not(all(any(target_os = "macos", target_os = "windows"), not(test))))]
+mod platform_events {
+    use super::{HostProtocolEnvelope, HostProtocolError};
+    use std::sync::mpsc::Sender;
+
+    pub(crate) fn install_runtime_event_sender(
+        _sender: Sender<HostProtocolEnvelope>,
+    ) -> Result<(), HostProtocolError> {
+        Ok(())
+    }
+
+    pub(crate) fn clear_runtime_event_sender() -> Result<(), HostProtocolError> {
+        Ok(())
     }
 }
 
@@ -474,11 +622,13 @@ fn windows_colorization_color(value: u32) -> SystemAppearanceColorPayload {
 mod tests {
     use super::{
         get_accent_color, get_appearance, get_reduced_motion, get_reduced_transparency,
-        is_supported, windows_colorization_color, SystemAppearanceSnapshot, TEST_SYSTEM_APPEARANCE,
+        is_supported, send_snapshot_event, windows_colorization_color, SystemAppearanceSnapshot,
+        TEST_SYSTEM_APPEARANCE,
     };
     use host_protocol::{
-        HostProtocolError, SystemAppearanceColorPayload, SystemAppearanceIsSupportedPayload,
-        SystemAppearanceMethodPayload, SystemAppearanceModePayload,
+        HostProtocolEnvelope, HostProtocolError, SystemAppearanceColorPayload,
+        SystemAppearanceIsSupportedPayload, SystemAppearanceMethodPayload,
+        SystemAppearanceModePayload,
     };
     use serde_json::{json, Value};
 
@@ -576,6 +726,7 @@ mod tests {
             SystemAppearanceMethodPayload::GetAccentColor,
             SystemAppearanceMethodPayload::GetReducedMotion,
             SystemAppearanceMethodPayload::GetReducedTransparency,
+            SystemAppearanceMethodPayload::OnAppearanceChanged,
         ] {
             let payload = is_supported(Some(
                 serde_json::to_value(SystemAppearanceIsSupportedPayload::new(method))
@@ -585,13 +736,46 @@ mod tests {
             assert_eq!(payload, Some(json!({ "supported": true })));
         }
 
-        let events = is_supported(Some(json!({ "method": "onAppearanceChanged" })))
-            .expect("events support should return payload");
-        assert_eq!(events, Some(json!({ "supported": false })));
-
         TEST_SYSTEM_APPEARANCE.with(|state| {
             *state.borrow_mut() = None;
         });
+    }
+
+    #[test]
+    fn system_appearance_event_payload_matches_snapshot_shape() {
+        let (sender, receiver) = std::sync::mpsc::channel::<HostProtocolEnvelope>();
+        send_snapshot_event(
+            &sender,
+            SystemAppearanceSnapshot {
+                appearance: SystemAppearanceModePayload::HighContrast,
+                accent_color: Some(SystemAppearanceColorPayload::new(0.4, 0.5, 0.6, 1.0)),
+                reduced_motion: true,
+                reduced_transparency: false,
+            },
+        );
+
+        let event = receiver.recv().expect("system appearance event");
+        let HostProtocolEnvelope::Event {
+            method,
+            payload: Some(payload),
+            ..
+        } = event
+        else {
+            panic!("expected system appearance event");
+        };
+        assert_eq!(
+            method,
+            host_protocol::SYSTEM_APPEARANCE_APPEARANCE_CHANGED_EVENT
+        );
+        assert_eq!(
+            payload,
+            json!({
+                "appearance": "highContrast",
+                "accentColor": { "r": 0.4, "g": 0.5, "b": 0.6, "a": 1.0 },
+                "reducedMotion": true,
+                "reducedTransparency": false
+            })
+        );
     }
 
     #[test]

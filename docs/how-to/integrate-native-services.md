@@ -132,8 +132,10 @@ function StatusBar(props: {
 
 These are convenience hooks over the matching RPC clients; under the hood they
 call `Screen.getDisplays`, the TypeScript `SystemAppearance` stream, and the
-TypeScript `PowerMonitor` event streams. Native OS power-event delivery is
-available on macOS and reports typed unsupported failures on Windows and Linux.
+TypeScript `PowerMonitor` event streams. Native appearance delivery is
+host-backed on macOS and Windows and reports typed unsupported failures on
+Linux. Native OS power-event delivery is available on macOS and reports typed
+unsupported failures on Windows and Linux.
 
 ## Support checks
 

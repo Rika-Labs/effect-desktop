@@ -2810,7 +2810,7 @@
       "tag": "SystemAppearance.isSupported",
       "surface": "SystemAppearance",
       "method": "isSupported",
-      "capability": "none",
+      "capability": "native",
       "support": {
         "status": "supported"
       },

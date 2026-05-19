@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
-  type RpcCapabilityMetadata,
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
@@ -33,13 +32,6 @@ const UnsupportedReason = "host-adapter-unimplemented"
 const HostSnapshotReason = "host-system-appearance-snapshot"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
-const SystemAppearanceUnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
 const SystemAppearanceSnapshotSupport = NativeSurface.support.partial(HostSnapshotReason, {
   platforms: [
     { platform: "macos", status: "supported" },
@@ -48,41 +40,67 @@ const SystemAppearanceSnapshotSupport = NativeSurface.support.partial(HostSnapsh
   ]
 }) satisfies RpcSupportMetadata
 
-export const SystemAppearanceGetAppearance = systemAppearanceRpc(
+export const SystemAppearanceGetAppearance = NativeSurface.rpc(
+  "SystemAppearance",
   "getAppearance",
-  Schema.Void,
-  SystemAppearanceResult,
-  P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getAppearance"] }),
-  SystemAppearanceSnapshotSupport
+  {
+    payload: Schema.Void,
+    success: SystemAppearanceResult,
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getAppearance"] })
+    ),
+    endpoint: "mutation",
+    support: SystemAppearanceSnapshotSupport
+  }
 )
-export const SystemAppearanceGetAccentColor = systemAppearanceRpc(
+export const SystemAppearanceGetAccentColor = NativeSurface.rpc(
+  "SystemAppearance",
   "getAccentColor",
-  Schema.Void,
-  SystemAppearanceAccentColorResult,
-  P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getAccentColor"] }),
-  SystemAppearanceSnapshotSupport
+  {
+    payload: Schema.Void,
+    success: SystemAppearanceAccentColorResult,
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getAccentColor"] })
+    ),
+    endpoint: "mutation",
+    support: SystemAppearanceSnapshotSupport
+  }
 )
-export const SystemAppearanceGetReducedMotion = systemAppearanceRpc(
+export const SystemAppearanceGetReducedMotion = NativeSurface.rpc(
+  "SystemAppearance",
   "getReducedMotion",
-  Schema.Void,
-  SystemAppearanceBooleanResult,
-  P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getReducedMotion"] }),
-  SystemAppearanceSnapshotSupport
+  {
+    payload: Schema.Void,
+    success: SystemAppearanceBooleanResult,
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getReducedMotion"] })
+    ),
+    endpoint: "mutation",
+    support: SystemAppearanceSnapshotSupport
+  }
 )
-export const SystemAppearanceGetReducedTransparency = systemAppearanceRpc(
+export const SystemAppearanceGetReducedTransparency = NativeSurface.rpc(
+  "SystemAppearance",
   "getReducedTransparency",
-  Schema.Void,
-  SystemAppearanceBooleanResult,
-  P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getReducedTransparency"] }),
-  SystemAppearanceSnapshotSupport
+  {
+    payload: Schema.Void,
+    success: SystemAppearanceBooleanResult,
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getReducedTransparency"] })
+    ),
+    endpoint: "mutation",
+    support: SystemAppearanceSnapshotSupport
+  }
 )
-export const SystemAppearanceIsSupported = systemAppearanceRpc(
-  "isSupported",
-  SystemAppearanceIsSupportedInput,
-  SystemAppearanceSupportedResult,
-  { kind: "none" },
-  NativeSurface.support.supported
-)
+export const SystemAppearanceIsSupported = NativeSurface.rpc("SystemAppearance", "isSupported", {
+  payload: SystemAppearanceIsSupportedInput,
+  success: SystemAppearanceSupportedResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "SystemAppearance", methods: ["isSupported"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
 export const SystemAppearanceRpcEvents = Object.freeze({
   AppearanceChanged: { payload: SystemAppearanceChangedEvent }
@@ -112,7 +130,8 @@ const SystemAppearanceCapabilityMethods = Object.freeze([
   "getAppearance",
   "getAccentColor",
   "getReducedMotion",
-  "getReducedTransparency"
+  "getReducedTransparency",
+  "isSupported"
 ] as const satisfies readonly (typeof SystemAppearanceMethodNames)[number][])
 
 export interface SystemAppearanceClientApi {
@@ -317,26 +336,6 @@ const subscribeSystemAppearanceEvent = (
   method: "SystemAppearance.AppearanceChanged"
 ): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> =>
   subscribeNativeEvent(exchange, method, SystemAppearanceChangedEvent, StrictParseOptions)
-
-function systemAppearanceRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(
-  method: Method,
-  payload: Payload,
-  success: Success,
-  capability: RpcCapabilityMetadata,
-  support: RpcSupportMetadata = SystemAppearanceUnsupportedSupport
-) {
-  return NativeSurface.rpc("SystemAppearance", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support
-  })
-}
 
 const runSystemAppearanceRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
