@@ -254,15 +254,15 @@ test("canonical RpcGroup carries endpoint, capability, support, stream, and even
     "Test.Metadata.open",
     "Test.Metadata.watch"
   ])
-  expect(rpcEndpointKind(request(NotesRpcs, "Test.Metadata.list"))).toBe("query")
-  expect(rpcEndpointKind(request(NotesRpcs, "Test.Metadata.open"))).toBe("mutation")
+  expect(request(NotesRpcs, "Test.Metadata.list").pipe(rpcEndpointKind)).toBe("query")
+  expect(request(NotesRpcs, "Test.Metadata.open").pipe(rpcEndpointKind)).toBe("mutation")
   expect(
     Option.match(rpcCapability(request(NotesRpcs, "Test.Metadata.open")), {
       onNone: () => undefined,
       onSome: (capability) => capability
     })
   ).toEqual({ kind: "notes:open" })
-  expect(rpcSupport(request(NotesRpcs, "Test.Metadata.open"))).toEqual({
+  expect(request(NotesRpcs, "Test.Metadata.open").pipe(rpcSupport)).toEqual({
     status: "partial",
     reason: "platform implementations differ",
     platforms: [

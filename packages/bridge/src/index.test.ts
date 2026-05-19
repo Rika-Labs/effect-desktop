@@ -542,9 +542,9 @@ test("RpcEndpoint annotates query and mutation intent on Effect RPC contracts", 
   const List = Rpc.make("Terminal.List").pipe(RpcEndpoint.query)
   const Create = Rpc.make("Terminal.Create").pipe(RpcEndpoint.mutation)
 
-  expect(rpcEndpointKind(List)).toBe("query")
-  expect(rpcEndpointKind(Create)).toBe("mutation")
-  expect(rpcEndpointKind(Rpc.make("Terminal.Default"))).toBe("mutation")
+  expect(List.pipe(rpcEndpointKind)).toBe("query")
+  expect(Create.pipe(rpcEndpointKind)).toBe("mutation")
+  expect(Rpc.make("Terminal.Default").pipe(rpcEndpointKind)).toBe("mutation")
 })
 
 test("RpcCapability and RpcSupport keep boundary metadata on Effect RPC contracts", () => {
@@ -564,7 +564,7 @@ test("RpcCapability and RpcSupport keep boundary metadata on Effect RPC contract
   if (Option.isSome(capability)) {
     expect(capability.value).toEqual({ kind: "filesystem:read", path: "/notes" })
   }
-  expect(rpcSupport(Open)).toEqual({
+  expect(Open.pipe(rpcSupport)).toEqual({
     status: "partial",
     reason: "platform implementations differ",
     platforms: [
@@ -572,7 +572,7 @@ test("RpcCapability and RpcSupport keep boundary metadata on Effect RPC contract
       { platform: "linux", status: "unsupported", reason: "portal missing" }
     ]
   })
-  expect(rpcSupport(Rpc.make("Filesystem.Stat"))).toEqual({ status: "supported" })
+  expect(Rpc.make("Filesystem.Stat").pipe(rpcSupport)).toEqual({ status: "supported" })
 })
 
 test("rpcEndpointName derives renderer method names from Effect RPC tags", () => {
