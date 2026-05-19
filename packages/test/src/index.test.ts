@@ -1171,79 +1171,82 @@ test("MemoryFilesystem resolves relative symlink fixtures from the link director
   expect(text(output)).toBe("relative")
 })
 
-test("MemoryFilesystem preserves symlink stat identity", async () => {
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, TEST_OWNER, {
-      directories: ["/workspace"],
-      files: [{ path: "/workspace/target.txt", bytes: bytes("target content") }],
-      symlinks: [{ path: "/workspace/link.txt", target: "target.txt" }],
-      permissions: {
-        readRoots: ["/workspace"]
+test("MemoryFilesystem preserves symlink stat identity", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const filesystem = yield* makeMemoryFilesystem(registry, TEST_OWNER, {
+        directories: ["/workspace"],
+        files: [{ path: "/workspace/target.txt", bytes: bytes("target content") }],
+        symlinks: [{ path: "/workspace/link.txt", target: "target.txt" }],
+        permissions: {
+          readRoots: ["/workspace"]
+        }
+      })
+
+      const stat = yield* filesystem.stat("/workspace/link.txt")
+      const output = yield* filesystem.read("/workspace/link.txt")
+
+      expect(stat.kind).toBe("symlink")
+      expect(stat.path.replaceAll("\\", "/")).toBe("/workspace/link.txt")
+      expect(text(output)).toBe("target content")
+    })
+  ))
+
+test("MemoryFilesystem writeAtomic replaces symlink without changing target", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const filesystem = yield* makeMemoryFilesystem(registry, TEST_OWNER, {
+        directories: ["/workspace"],
+        files: [{ path: "/workspace/target.txt", bytes: bytes("target") }],
+        symlinks: [{ path: "/workspace/link.txt", target: "target.txt" }],
+        permissions: {
+          readRoots: ["/workspace"],
+          writeRoots: ["/workspace"]
+        }
+      })
+
+      yield* filesystem.writeAtomic("/workspace/link.txt", bytes("replacement"))
+      const target = yield* filesystem.read("/workspace/target.txt")
+      const link = yield* filesystem.read("/workspace/link.txt")
+      const linkStat = yield* filesystem.stat("/workspace/link.txt")
+
+      expect(text(target)).toBe("target")
+      expect(text(link)).toBe("replacement")
+      expect(linkStat.kind).toBe("file")
+    })
+  ))
+
+test("MemoryFilesystem rejects directory targets for writes and atomic renames", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const filesystem = yield* makeMemoryFilesystem(registry, TEST_OWNER, {
+        directories: ["/workspace/target"],
+        permissions: {
+          readRoots: ["/workspace"],
+          writeRoots: ["/workspace"]
+        }
+      })
+
+      const writeExit = yield* Effect.exit(filesystem.write("/workspace/target", bytes("x")))
+      const atomicExit = yield* Effect.exit(
+        filesystem.writeAtomic("/workspace/target", bytes("x"))
+      )
+      const stat = yield* filesystem.stat("/workspace/target")
+
+      expect(Exit.isFailure(writeExit)).toBe(true)
+      expect(Exit.isFailure(atomicExit)).toBe(true)
+      expect(stat.kind).toBe("directory")
+      if (Exit.isFailure(writeExit)) {
+        expect(JSON.stringify(writeExit.cause.toJSON())).toContain("InvalidArgument")
+      }
+      if (Exit.isFailure(atomicExit)) {
+        expect(JSON.stringify(atomicExit.cause.toJSON())).toContain("InvalidArgument")
       }
     })
-  )
-
-  const stat = await Effect.runPromise(filesystem.stat("/workspace/link.txt"))
-  const output = await Effect.runPromise(filesystem.read("/workspace/link.txt"))
-
-  expect(stat.kind).toBe("symlink")
-  expect(stat.path.replaceAll("\\", "/")).toBe("/workspace/link.txt")
-  expect(text(output)).toBe("target content")
-})
-
-test("MemoryFilesystem writeAtomic replaces symlink without changing target", async () => {
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, TEST_OWNER, {
-      directories: ["/workspace"],
-      files: [{ path: "/workspace/target.txt", bytes: bytes("target") }],
-      symlinks: [{ path: "/workspace/link.txt", target: "target.txt" }],
-      permissions: {
-        readRoots: ["/workspace"],
-        writeRoots: ["/workspace"]
-      }
-    })
-  )
-
-  await Effect.runPromise(filesystem.writeAtomic("/workspace/link.txt", bytes("replacement")))
-  const target = await Effect.runPromise(filesystem.read("/workspace/target.txt"))
-  const link = await Effect.runPromise(filesystem.read("/workspace/link.txt"))
-  const linkStat = await Effect.runPromise(filesystem.stat("/workspace/link.txt"))
-
-  expect(text(target)).toBe("target")
-  expect(text(link)).toBe("replacement")
-  expect(linkStat.kind).toBe("file")
-})
-
-test("MemoryFilesystem rejects directory targets for writes and atomic renames", async () => {
-  const registry = await Effect.runPromise(makeResourceRegistry())
-  const filesystem = await Effect.runPromise(
-    makeMemoryFilesystem(registry, TEST_OWNER, {
-      directories: ["/workspace/target"],
-      permissions: {
-        readRoots: ["/workspace"],
-        writeRoots: ["/workspace"]
-      }
-    })
-  )
-
-  const writeExit = await Effect.runPromiseExit(filesystem.write("/workspace/target", bytes("x")))
-  const atomicExit = await Effect.runPromiseExit(
-    filesystem.writeAtomic("/workspace/target", bytes("x"))
-  )
-  const stat = await Effect.runPromise(filesystem.stat("/workspace/target"))
-
-  expect(Exit.isFailure(writeExit)).toBe(true)
-  expect(Exit.isFailure(atomicExit)).toBe(true)
-  expect(stat.kind).toBe("directory")
-  if (Exit.isFailure(writeExit)) {
-    expect(JSON.stringify(writeExit.cause.toJSON())).toContain("InvalidArgument")
-  }
-  if (Exit.isFailure(atomicExit)) {
-    expect(JSON.stringify(atomicExit.cause.toJSON())).toContain("InvalidArgument")
-  }
-})
+  ))
 
 test("MemoryFilesystem mkdir preserves existing nodes instead of clobbering them", async () => {
   const registry = await Effect.runPromise(makeResourceRegistry())
