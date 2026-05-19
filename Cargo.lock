@@ -1489,6 +1489,7 @@ dependencies = [
  "base64",
  "cpal",
  "ed25519-dalek",
+ "gtk",
  "host-protocol",
  "image",
  "libc",

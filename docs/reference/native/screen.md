@@ -52,17 +52,17 @@ ScreenPoint = { x: number; y: number }
 The Rust host reports Tao monitor geometry in physical host coordinates. On
 macOS, `workArea` uses AppKit `NSScreen.visibleFrame`, so menu-bar and Dock
 reserved areas are excluded. On Windows, `workArea` uses Win32 `rcWork`, so
-taskbar and app desktop toolbar reservations are excluded. On Linux, Tao does
-not expose monitor work areas through its public monitor API yet, so `workArea`
-currently matches `bounds`.
+taskbar and app desktop toolbar reservations are excluded. On Linux, `workArea`
+uses GDK monitor work areas, so desktop-panel reservations reported by the
+active GTK backend are excluded.
 
 ## Platform matrix
 
-| Platform | Status    | Notes                                                                                                                                                        |
-| -------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| macOS    | supported | Tao-backed monitors, AppKit-backed work areas, and pointer position.                                                                                         |
-| Windows  | supported | Tao-backed monitors, Win32-backed work areas, and pointer position.                                                                                          |
-| Linux    | partial   | Monitor enumeration is supported and `workArea` currently matches `bounds`; pointer position may report unsupported on compositors that deny cursor queries. |
+| Platform | Status    | Notes                                                                                                                                         |
+| -------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | supported | Tao-backed monitors, AppKit-backed work areas, and pointer position.                                                                          |
+| Windows  | supported | Tao-backed monitors, Win32-backed work areas, and pointer position.                                                                           |
+| Linux    | partial   | Monitor enumeration and GDK-backed work areas are supported; pointer position may report unsupported on compositors that deny cursor queries. |
 
 ## Errors
 

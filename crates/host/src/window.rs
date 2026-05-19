@@ -3,7 +3,7 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use crate::methods::resident_lifecycle::{self, ResidentWindowCloseAction};
-use crate::{macos, webview, windows};
+use crate::{linux, macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{
     AppBeforeQuitEventPayload, DockProgressState, DockSetProgressPayload, HostProtocolEnvelope,
@@ -4189,6 +4189,16 @@ fn monitor_work_area(monitor: &MonitorHandle) -> PhysicalScreenArea {
         })
         .or_else(|| {
             windows::screen_work_area(monitor).and_then(|work_area| {
+                PhysicalScreenArea::new(
+                    work_area.x(),
+                    work_area.y(),
+                    work_area.width(),
+                    work_area.height(),
+                )
+            })
+        })
+        .or_else(|| {
+            linux::screen_work_area(monitor).and_then(|work_area| {
                 PhysicalScreenArea::new(
                     work_area.x(),
                     work_area.y(),
