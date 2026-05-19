@@ -47,8 +47,40 @@ pub(crate) fn set_window_menu(
 
 pub(crate) fn clear(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     validate_clear_payload(payload)?;
+    platform_clear()?;
+    Ok(None)
+}
 
-    Err(unsupported(host_protocol::MENU_CLEAR_METHOD))
+#[cfg(all(target_os = "macos", not(test)))]
+fn platform_clear() -> Result<(), HostProtocolError> {
+    crate::macos::clear_application_menu()
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn platform_clear() -> Result<(), HostProtocolError> {
+    test_clear_application_menu().unwrap_or_else(|| {
+        Err(HostProtocolError::unsupported(
+            "Menu.clear is only implemented on macOS in the host adapter",
+            host_protocol::MENU_CLEAR_METHOD,
+        ))
+    })
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn test_clear_application_menu() -> Option<Result<(), HostProtocolError>> {
+    #[cfg(test)]
+    {
+        tests::TEST_MENU_CLEAR_CALLS.with(|state| {
+            let mut state = state.borrow_mut();
+            let counter = state.as_mut()?;
+            *counter += 1;
+            Some(Ok(()))
+        })
+    }
+    #[cfg(not(test))]
+    {
+        None
+    }
 }
 
 pub(crate) fn bind_command(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -301,6 +333,25 @@ mod tests {
     };
     use host_protocol::HostProtocolError;
     use serde_json::json;
+    use std::cell::RefCell;
+
+    thread_local! {
+        pub(super) static TEST_MENU_CLEAR_CALLS: RefCell<Option<u32>> = const { RefCell::new(None) };
+    }
+
+    fn with_menu_clear_recording<R>(f: impl FnOnce() -> R) -> (R, u32) {
+        TEST_MENU_CLEAR_CALLS.with(|state| {
+            *state.borrow_mut() = Some(0);
+        });
+        let result = f();
+        let calls = TEST_MENU_CLEAR_CALLS.with(|state| {
+            state
+                .borrow_mut()
+                .take()
+                .expect("test menu clear recorder was reset")
+        });
+        (result, calls)
+    }
 
     #[test]
     fn application_menu_template_requires_items() {
@@ -342,10 +393,6 @@ mod tests {
     #[test]
     fn unsupported_menu_methods_validate_payloads_first() {
         assert!(matches!(
-            clear(Some(json!({ "window": { "id": "window-1" } }))),
-            Err(HostProtocolError::Unsupported { .. })
-        ));
-        assert!(matches!(
             bind_command(Some(
                 json!({ "itemId": "file.open", "commandId": "app.open" })
             )),
@@ -357,6 +404,28 @@ mod tests {
             )),
             Err(HostProtocolError::Unsupported { .. })
         ));
+    }
+
+    #[test]
+    fn menu_clear_rejects_unexpected_payload_before_macos_clear() {
+        let (result, calls) = with_menu_clear_recording(|| {
+            clear(Some(json!({ "window": { "id": "" } })))
+        });
+
+        assert!(matches!(
+            result,
+            Err(HostProtocolError::InvalidArgument { .. })
+        ));
+        assert_eq!(calls, 0, "validation must precede the macOS clear path");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn menu_clear_routes_to_macos_when_supported() {
+        let (result, calls) = with_menu_clear_recording(|| clear(None));
+
+        assert!(matches!(result, Ok(None)), "clear should succeed on macOS");
+        assert_eq!(calls, 1, "clear must invoke the macOS application-menu path");
     }
 
     #[test]

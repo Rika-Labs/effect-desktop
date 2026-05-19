@@ -49,6 +49,7 @@ import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const HostAdapterUnimplementedReason = "host-adapter-unimplemented"
+const MacosMenuClearOnlyReason = "macos-menu-clear-only"
 const MenuHostUnsupportedSupport = NativeSurface.support.unsupported(
   HostAdapterUnimplementedReason,
   {
@@ -59,6 +60,13 @@ const MenuHostUnsupportedSupport = NativeSurface.support.unsupported(
     ]
   }
 )
+const MenuClearSupport = NativeSurface.support.partial(MacosMenuClearOnlyReason, {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: HostAdapterUnimplementedReason },
+    { platform: "linux", status: "unsupported", reason: HostAdapterUnimplementedReason }
+  ]
+})
 export type MenuError = HostProtocolError
 export type MenuCommandBindingError = MenuError | CommandRegistryError
 
@@ -431,7 +439,9 @@ function menuRpc<
   const support =
     method === "setApplicationMenu" || method === "setWindowMenu"
       ? NativeSurface.support.supported
-      : MenuHostUnsupportedSupport
+      : method === "clear"
+        ? MenuClearSupport
+        : MenuHostUnsupportedSupport
   return NativeSurface.rpc("Menu", method, {
     payload,
     success,

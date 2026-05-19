@@ -204,6 +204,11 @@ pub(crate) fn set_application_menu(template: Value) -> std::result::Result<(), H
     platform::set_application_menu(template)
 }
 
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
+    platform::clear_application_menu()
+}
+
 pub(crate) fn set_dock_menu(template: Option<Value>) -> std::result::Result<(), HostProtocolError> {
     platform::set_dock_menu(template)
 }
@@ -507,6 +512,13 @@ mod platform {
         Ok(())
     }
 
+    #[cfg_attr(test, allow(dead_code))]
+    pub(super) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
+        let menu = muda::Menu::new();
+        menu.init_for_nsapp();
+        Ok(())
+    }
+
     pub(super) fn set_dock_menu(
         _template: Option<serde_json::Value>,
     ) -> std::result::Result<(), HostProtocolError> {
@@ -762,6 +774,13 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "application menus are macOS-only in the host adapter",
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
+        ))
+    }
+
+    pub(super) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "application menus are macOS-only in the host adapter",
+            host_protocol::MENU_CLEAR_METHOD,
         ))
     }
 

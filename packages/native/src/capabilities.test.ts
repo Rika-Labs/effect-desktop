@@ -94,10 +94,10 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     ]
   })
   expect(result.menuClear).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
+    status: "partial",
+    reason: "macos-menu-clear-only",
     platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "macos", status: "supported" },
       { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
       { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
     ]

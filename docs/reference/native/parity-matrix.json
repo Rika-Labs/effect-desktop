@@ -1976,13 +1976,12 @@
       "method": "clear",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-menu-clear-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "supported"
           },
           {
             "platform": "windows",
@@ -5279,7 +5278,7 @@
     "routed": 291,
     "missing": 0,
     "supported": 157,
-    "partial": 70,
-    "unsupported": 64
+    "partial": 71,
+    "unsupported": 63
   }
 }
