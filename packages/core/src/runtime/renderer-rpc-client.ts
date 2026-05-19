@@ -46,12 +46,12 @@ export interface RendererRpcClientsApi {
 export class RendererRpcClients extends Context.Service<
   RendererRpcClients,
   RendererRpcClientsApi
->()("@effect-desktop/core/RendererRpcClients") {}
+>()("@effect-desktop/core/runtime/renderer-rpc-client/RendererRpcClients") {}
 
 export class RendererRpcTransport extends Context.Service<
   RendererRpcTransport,
   DesktopRendererRpcTransport
->()("@effect-desktop/core/RendererRpcTransport") {}
+>()("@effect-desktop/core/runtime/renderer-rpc-client/RendererRpcTransport") {}
 
 export interface DesktopRendererRpcClientLayerOptions extends DesktopProtocolOptions {
   readonly framework: DesktopFramework

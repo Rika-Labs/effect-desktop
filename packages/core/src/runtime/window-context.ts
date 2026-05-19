@@ -6,7 +6,7 @@ export interface WindowContextApi {
 }
 
 export class WindowContext extends Context.Service<WindowContext, WindowContextApi>()(
-  "@effect-desktop/core/WindowContext"
+  "@effect-desktop/core/runtime/window-context/WindowContext"
 ) {}
 
 export const makeWindowContext = (input: {

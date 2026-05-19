@@ -366,7 +366,9 @@ export const makeProcess = (
     })
   })
 
-export class Process extends Context.Service<Process, ProcessApi>()("Process") {}
+export class Process extends Context.Service<Process, ProcessApi>()(
+  "@effect-desktop/core/runtime/process"
+) {}
 
 export const ProcessLive = Layer.effect(
   Process,

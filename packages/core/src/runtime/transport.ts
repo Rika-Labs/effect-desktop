@@ -201,9 +201,12 @@ export const makeTransport = (): Effect.Effect<TransportApi, never, never> =>
     })
   )
 
-export class Transport extends Context.Service<Transport, TransportApi>()("Transport", {
-  make: makeTransport()
-}) {}
+export class Transport extends Context.Service<Transport, TransportApi>()(
+  "@effect-desktop/core/runtime/transport",
+  {
+    make: makeTransport()
+  }
+) {}
 
 export const instrumentTransportConnection = (
   connection: TransportConnection,

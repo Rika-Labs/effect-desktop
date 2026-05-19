@@ -89,7 +89,7 @@ export const DesktopEventLogHandlersLive = EventLog.group(DesktopEventLogGroup, 
 )
 
 export class DesktopEventLog extends Context.Service<DesktopEventLog, DesktopEventLogApi>()(
-  "DesktopEventLog"
+  "@effect-desktop/core/runtime/event-log/DesktopEventLog"
 ) {}
 
 export const makeDesktopEventLog = (

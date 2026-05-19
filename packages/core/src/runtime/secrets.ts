@@ -112,7 +112,7 @@ export interface SecretsSafeStorageApi {
 export class SecretsSafeStorage extends Context.Service<
   SecretsSafeStorage,
   SecretsSafeStorageApi
->()("SecretsSafeStorage") {}
+>()("@effect-desktop/core/runtime/secrets/SecretsSafeStorage") {}
 
 export interface SecretsPermissionPolicy {
   readonly read?: readonly string[]
@@ -271,7 +271,9 @@ export const makeSecrets = (
     } satisfies SecretsApi)
   })
 
-export class Secrets extends Context.Service<Secrets, SecretsApi>()("Secrets") {}
+export class Secrets extends Context.Service<Secrets, SecretsApi>()(
+  "@effect-desktop/core/runtime/secrets"
+) {}
 
 export const SecretsLayer = (
   options: SecretsOptions

@@ -670,7 +670,7 @@ export const makeResourceRegistry = (
   Effect.map(makeResourceRegistryInstance(options), (instance) => instance.api)
 
 export class ResourceRegistry extends Context.Service<ResourceRegistry, ResourceRegistryApi>()(
-  "ResourceRegistry"
+  "@effect-desktop/core/runtime/resources/ResourceRegistry"
 ) {}
 
 export const ResourceRegistryLive = Layer.effect(ResourceRegistry)(

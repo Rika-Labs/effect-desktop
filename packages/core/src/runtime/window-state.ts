@@ -259,7 +259,9 @@ const makeWindowStateRepository = (
     })
   })
 
-export class WindowState extends Context.Service<WindowState, WindowStateApi>()("WindowState") {
+export class WindowState extends Context.Service<WindowState, WindowStateApi>()(
+  "@effect-desktop/core/runtime/window-state/WindowState"
+) {
   static window(
     options: WindowStateOptions = {}
   ): Layer.Layer<

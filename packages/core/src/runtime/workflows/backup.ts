@@ -26,7 +26,7 @@ export interface BackupConfig {
 }
 
 export class BackupConfigService extends Context.Service<BackupConfigService, BackupConfig>()(
-  "BackupConfigService"
+  "@effect-desktop/core/runtime/workflows/backup/BackupConfigService"
 ) {}
 
 const BackupResultSchema = Schema.Struct({

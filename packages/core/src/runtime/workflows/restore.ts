@@ -27,7 +27,7 @@ export interface RestoreConfig {
 }
 
 export class RestoreConfigService extends Context.Service<RestoreConfigService, RestoreConfig>()(
-  "RestoreConfigService"
+  "@effect-desktop/core/runtime/workflows/restore/RestoreConfigService"
 ) {}
 
 export interface WriterQuiescePort {
@@ -38,7 +38,7 @@ export interface WriterQuiescePort {
 export class WriterQuiesceService extends Context.Service<
   WriterQuiesceService,
   WriterQuiescePort
->()("WriterQuiesceService") {}
+>()("@effect-desktop/core/runtime/workflows/restore/WriterQuiesceService") {}
 
 export const RestoreWorkflow = Workflow.make({
   name: "Restore",

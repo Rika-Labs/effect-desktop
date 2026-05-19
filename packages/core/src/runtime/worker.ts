@@ -402,7 +402,9 @@ export const makeWorker = (
     } satisfies WorkerApi)
   })
 
-export class Worker extends Context.Service<Worker, WorkerApi>()("Worker") {}
+export class Worker extends Context.Service<Worker, WorkerApi>()(
+  "@effect-desktop/core/runtime/worker"
+) {}
 
 export const WorkerLive = Layer.effect(
   Worker,

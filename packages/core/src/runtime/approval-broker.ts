@@ -212,7 +212,7 @@ export const makeApprovalBroker = (
   }).pipe(Effect.withSpan("ApprovalBroker.make"))
 
 export class ApprovalBroker extends Context.Service<ApprovalBroker, ApprovalBrokerApi>()(
-  "ApprovalBroker",
+  "@effect-desktop/core/runtime/approval-broker/ApprovalBroker",
   {
     make: Effect.fail(
       new ApprovalBrokerInvalidArgumentError({

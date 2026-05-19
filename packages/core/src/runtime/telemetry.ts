@@ -550,14 +550,17 @@ export const makeTelemetry = (
     } satisfies TelemetryApi)
   })
 
-export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()("Telemetry", {
-  make: makeTelemetry()
-}) {}
+export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()(
+  "@effect-desktop/core/runtime/telemetry",
+  {
+    make: makeTelemetry()
+  }
+) {}
 
 export class EffectTelemetryCollector extends Context.Service<
   EffectTelemetryCollector,
   EffectTelemetryCollectorApi
->()("EffectTelemetryCollector") {}
+>()("@effect-desktop/core/runtime/telemetry/EffectTelemetryCollector") {}
 
 export const withDesktopSpan =
   (

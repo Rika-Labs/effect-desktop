@@ -319,7 +319,9 @@ export const makePty = (
     return api
   })
 
-export class PTY extends Context.Service<PTY, PtyApi>()("PTY") {}
+export class PTY extends Context.Service<PTY, PtyApi>()(
+  "@effect-desktop/core/runtime/pty"
+) {}
 
 export const PtyLayer = (
   options: PtyOptions

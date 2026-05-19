@@ -333,10 +333,12 @@ export interface DesktopAppApi {
   readonly rpcRegistrations: ReadonlyArray<AnyDesktopRpcRegistration>
 }
 
-export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()("DesktopApp") {}
+export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()(
+  "@effect-desktop/core/runtime/desktop-app/DesktopApp"
+) {}
 
 export class DesktopRuntime extends Context.Service<DesktopRuntime, DesktopRuntimeApi>()(
-  "DesktopRuntime"
+  "@effect-desktop/core/runtime/desktop-app/DesktopRuntime"
 ) {}
 
 const TelemetryLive: Layer.Layer<Telemetry, never, never> = Layer.effect(Telemetry)(

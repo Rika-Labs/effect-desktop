@@ -341,7 +341,7 @@ export const makePermissionRegistry = (
 export class PermissionRegistry extends Context.Service<
   PermissionRegistry,
   PermissionRegistryApi
->()("PermissionRegistry", {
+>()("@effect-desktop/core/runtime/permission-registry/PermissionRegistry", {
   make: makePermissionRegistry()
 }) {}
 

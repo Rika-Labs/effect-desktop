@@ -381,7 +381,9 @@ export const makeSettings = (
   )
 }
 
-export class Settings extends Context.Service<Settings, SettingsApi>()("Settings") {
+export class Settings extends Context.Service<Settings, SettingsApi>()(
+  "@effect-desktop/core/runtime/settings"
+) {
   static layer(
     options: SettingsOptions
   ): Layer.Layer<

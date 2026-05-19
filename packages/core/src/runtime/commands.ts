@@ -254,7 +254,7 @@ export const makeCommandRegistry = (
   })
 
 export class CommandRegistry extends Context.Service<CommandRegistry, CommandRegistryApi>()(
-  "CommandRegistry",
+  "@effect-desktop/core/runtime/commands/CommandRegistry",
   {
     make: Effect.gen(function* () {
       const resources = yield* ResourceRegistry

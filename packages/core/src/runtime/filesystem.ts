@@ -423,7 +423,9 @@ export const makeFilesystem = (
     })
   })
 
-export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()("Filesystem") {}
+export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()(
+  "@effect-desktop/core/runtime/filesystem"
+) {}
 
 export const FilesystemLive: Layer.Layer<
   Filesystem,
