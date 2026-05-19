@@ -50,10 +50,10 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `ContextMenu`               | `bindCommand`               | `unsupported` | `ContextMenu.bindCommand`                 | `routed`    |
 | `ContextMenu`               | `buildFromTemplate`         | `unsupported` | `ContextMenu.buildFromTemplate`           | `routed`    |
 | `ContextMenu`               | `show`                      | `unsupported` | `ContextMenu.show`                        | `routed`    |
-| `CrashReporter`             | `flush`                     | `unsupported` | `CrashReporter.flush`                     | `routed`    |
-| `CrashReporter`             | `getReports`                | `unsupported` | `CrashReporter.getReports`                | `routed`    |
-| `CrashReporter`             | `recordBreadcrumb`          | `unsupported` | `CrashReporter.recordBreadcrumb`          | `routed`    |
-| `CrashReporter`             | `start`                     | `unsupported` | `CrashReporter.start`                     | `routed`    |
+| `CrashReporter`             | `flush`                     | `partial`     | `CrashReporter.flush`                     | `routed`    |
+| `CrashReporter`             | `getReports`                | `partial`     | `CrashReporter.getReports`                | `routed`    |
+| `CrashReporter`             | `recordBreadcrumb`          | `partial`     | `CrashReporter.recordBreadcrumb`          | `routed`    |
+| `CrashReporter`             | `start`                     | `partial`     | `CrashReporter.start`                     | `routed`    |
 | `DiagnosticsBundle`         | `collect`                   | `supported`   | `DiagnosticsBundle.collect`               | `routed`    |
 | `DiagnosticsBundle`         | `isSupported`               | `supported`   | `DiagnosticsBundle.isSupported`           | `routed`    |
 | `DiagnosticsBundle`         | `redact`                    | `supported`   | `DiagnosticsBundle.redact`                | `routed`    |

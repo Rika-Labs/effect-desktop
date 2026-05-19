@@ -127,12 +127,12 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
     ]
   })
   expect(result.crashReporterStart).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
+    status: "partial",
+    reason: "native-crash-capture-unavailable",
     platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+      { platform: "macos", status: "partial", reason: "native-crash-capture-unavailable" },
+      { platform: "windows", status: "partial", reason: "native-crash-capture-unavailable" },
+      { platform: "linux", status: "partial", reason: "native-crash-capture-unavailable" }
     ]
   })
   expect(result.powerMonitorIsSupported).toEqual({

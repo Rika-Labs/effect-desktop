@@ -32,13 +32,13 @@ export type CrashReporterBreadcrumb = Schema.Schema.Type<typeof CrashReporterBre
 
 export type CrashReporterReport = Schema.Schema.Type<typeof CrashReporterReportSchema>
 
-const UnsupportedReason = "host-adapter-unimplemented"
+const PartialSupportReason = "native-crash-capture-unavailable"
 
-const CrashReporterSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const CrashReporterSupport = NativeSurface.support.partial(PartialSupportReason, {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+    { platform: "macos", status: "partial", reason: PartialSupportReason },
+    { platform: "windows", status: "partial", reason: PartialSupportReason },
+    { platform: "linux", status: "partial", reason: PartialSupportReason }
   ]
 })
 

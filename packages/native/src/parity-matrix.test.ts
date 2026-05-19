@@ -105,7 +105,7 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
   })
   expect(result.rows.find((row) => row.tag === "CrashReporter.start")).toMatchObject({
     hostStatus: "routed",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
+    support: { status: "partial", reason: "native-crash-capture-unavailable" }
   })
   expect(result.rows.find((row) => row.tag === "PowerMonitor.isSupported")).toMatchObject({
     hostStatus: "routed",

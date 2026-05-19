@@ -5045,7 +5045,7 @@ mod tests {
     }
 
     #[test]
-    fn crash_reporter_start_routes_to_typed_unsupported() {
+    fn crash_reporter_start_routes_to_host_state() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -5064,16 +5064,13 @@ mod tests {
                 timestamp: 1710000000112,
                 trace_id: "trace-request-crash-reporter-start".to_string(),
                 payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::CRASH_REPORTER_UNSUPPORTED_REASON,
-                    host_protocol::CRASH_REPORTER_START_METHOD,
-                )),
+                error: None,
             }
         );
     }
 
     #[test]
-    fn crash_reporter_get_reports_routes_to_typed_unsupported() {
+    fn crash_reporter_get_reports_routes_to_host_state() {
         let response = test_router()
             .dispatch_at(
                 request(
@@ -5090,11 +5087,8 @@ mod tests {
                 id: "request-crash-reporter-get-reports".to_string(),
                 timestamp: 1710000000112,
                 trace_id: "trace-request-crash-reporter-get-reports".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::CRASH_REPORTER_UNSUPPORTED_REASON,
-                    host_protocol::CRASH_REPORTER_GET_REPORTS_METHOD,
-                )),
+                payload: Some(serde_json::json!({ "reports": [] })),
+                error: None,
             }
         );
     }
