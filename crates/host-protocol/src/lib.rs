@@ -78,7 +78,9 @@ pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const WINDOW_EVENT: &str = "Window.Event";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
 pub const DOCK_SET_BADGE_TEXT_METHOD: &str = "Dock.setBadgeText";
+pub const DOCK_SET_PROGRESS_METHOD: &str = "Dock.setProgress";
 pub const DOCK_SET_MENU_METHOD: &str = "Dock.setMenu";
+pub const DOCK_SET_JUMP_LIST_METHOD: &str = "Dock.setJumpList";
 pub const DOCK_REQUEST_ATTENTION_METHOD: &str = "Dock.requestAttention";
 pub const DOCK_IS_SUPPORTED_METHOD: &str = "Dock.isSupported";
 pub const GLOBAL_SHORTCUT_REGISTER_METHOD: &str = "GlobalShortcut.register";
@@ -3563,6 +3565,104 @@ impl WindowSetProgressPayload {
 
     pub fn desktop_filename(&self) -> Option<&str> {
         self.desktop_filename.as_deref()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DockProgressState {
+    Normal,
+    Indeterminate,
+    Error,
+    Paused,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DockSetProgressOptionsPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<DockProgressState>,
+}
+
+impl DockSetProgressOptionsPayload {
+    pub fn new(state: Option<DockProgressState>) -> Self {
+        Self { state }
+    }
+
+    pub fn state(&self) -> Option<DockProgressState> {
+        self.state
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DockSetProgressPayload {
+    value: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<DockSetProgressOptionsPayload>,
+}
+
+impl DockSetProgressPayload {
+    pub fn new(value: serde_json::Value, options: Option<DockSetProgressOptionsPayload>) -> Self {
+        Self { value, options }
+    }
+
+    pub fn value(&self) -> &serde_json::Value {
+        &self.value
+    }
+
+    pub fn options(&self) -> Option<&DockSetProgressOptionsPayload> {
+        self.options.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DockJumpListItemPayload {
+    id: String,
+    title: String,
+    command_id: String,
+}
+
+impl DockJumpListItemPayload {
+    pub fn new(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        command_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            title: title.into(),
+            command_id: command_id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn command_id(&self) -> &str {
+        &self.command_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DockSetJumpListPayload {
+    items: Vec<DockJumpListItemPayload>,
+}
+
+impl DockSetJumpListPayload {
+    pub fn new(items: Vec<DockJumpListItemPayload>) -> Self {
+        Self { items }
+    }
+
+    pub fn items(&self) -> &[DockJumpListItemPayload] {
+        &self.items
     }
 }
 
@@ -11381,26 +11481,28 @@ mod tests {
         DistributionParityEventPayload, DistributionParityEventPhase,
         DistributionParityEvidenceKind, DistributionParityEvidencePayload,
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
-        DistributionParityVerifyResultPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
-        EgressPolicyDecisionPayload, EgressPolicyDecisionRecordedEventPayload,
-        EgressPolicyDecisionResultPayload, EgressPolicyDestinationPayload, EgressPolicyOutcome,
-        EgressPolicyProtocol, EgressPolicyRecordPayload, EgressPolicyRecordResultPayload,
-        EgressPolicyRuleEffect, EgressPolicyRulePayload, EgressPolicySupportedPayload,
-        ExecutionSandboxActorKind, ExecutionSandboxActorPayload,
-        ExecutionSandboxBudgetPolicyPayload, ExecutionSandboxCleanupPolicyPayload,
-        ExecutionSandboxCreatePayload, ExecutionSandboxEnvironmentEntryPayload,
-        ExecutionSandboxEventPayload, ExecutionSandboxEventPhase,
-        ExecutionSandboxFilesystemPolicyPayload, ExecutionSandboxNetworkPolicyPayload,
-        ExecutionSandboxPolicyPayload, ExecutionSandboxRunPayload, ExecutionSandboxRunStatus,
-        ExecutionSandboxSupportedPayload, ExtensionConfigActorKind, ExtensionConfigActorPayload,
-        ExtensionConfigEventPayload, ExtensionConfigEventPhase, ExtensionConfigExportPolicy,
-        ExtensionConfigFieldPayload, ExtensionConfigReadPayload,
-        ExtensionConfigRedactResultPayload, ExtensionConfigRedactionEvidencePayload,
-        ExtensionConfigResetResultPayload, ExtensionConfigSupportedPayload,
-        ExtensionConfigValueEntryPayload, ExtensionConfigValueType, ExtensionConfigWritePayload,
-        ExtensionPackageActorKind, ExtensionPackageActorPayload,
-        ExtensionPackageCapabilityDeclarationPayload, ExtensionPackageCompatibilityPayload,
-        ExtensionPackageEventPayload, ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
+        DistributionParityVerifyResultPayload, DockJumpListItemPayload, DockProgressState,
+        DockSetJumpListPayload, DockSetProgressOptionsPayload, DockSetProgressPayload,
+        EgressPolicyActorKind, EgressPolicyActorPayload, EgressPolicyDecisionPayload,
+        EgressPolicyDecisionRecordedEventPayload, EgressPolicyDecisionResultPayload,
+        EgressPolicyDestinationPayload, EgressPolicyOutcome, EgressPolicyProtocol,
+        EgressPolicyRecordPayload, EgressPolicyRecordResultPayload, EgressPolicyRuleEffect,
+        EgressPolicyRulePayload, EgressPolicySupportedPayload, ExecutionSandboxActorKind,
+        ExecutionSandboxActorPayload, ExecutionSandboxBudgetPolicyPayload,
+        ExecutionSandboxCleanupPolicyPayload, ExecutionSandboxCreatePayload,
+        ExecutionSandboxEnvironmentEntryPayload, ExecutionSandboxEventPayload,
+        ExecutionSandboxEventPhase, ExecutionSandboxFilesystemPolicyPayload,
+        ExecutionSandboxNetworkPolicyPayload, ExecutionSandboxPolicyPayload,
+        ExecutionSandboxRunPayload, ExecutionSandboxRunStatus, ExecutionSandboxSupportedPayload,
+        ExtensionConfigActorKind, ExtensionConfigActorPayload, ExtensionConfigEventPayload,
+        ExtensionConfigEventPhase, ExtensionConfigExportPolicy, ExtensionConfigFieldPayload,
+        ExtensionConfigReadPayload, ExtensionConfigRedactResultPayload,
+        ExtensionConfigRedactionEvidencePayload, ExtensionConfigResetResultPayload,
+        ExtensionConfigSupportedPayload, ExtensionConfigValueEntryPayload,
+        ExtensionConfigValueType, ExtensionConfigWritePayload, ExtensionPackageActorKind,
+        ExtensionPackageActorPayload, ExtensionPackageCapabilityDeclarationPayload,
+        ExtensionPackageCompatibilityPayload, ExtensionPackageEventPayload,
+        ExtensionPackageEventPhase, ExtensionPackageInstallPayload,
         ExtensionPackageInstallResultPayload, ExtensionPackageManifestPayload,
         ExtensionPackageRemoveResultPayload, ExtensionPackageSourceKind,
         ExtensionPackageSourcePayload, ExtensionPackageSupportedPayload,
@@ -12910,6 +13012,66 @@ mod tests {
                 .to_string()
                 .contains("window state event type must be window-state-event"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn dock_taskbar_payloads_serialize_canonically() {
+        let progress = DockSetProgressPayload::new(
+            serde_json::json!(0.5),
+            Some(DockSetProgressOptionsPayload::new(Some(
+                DockProgressState::Indeterminate,
+            ))),
+        );
+        assert_eq!(progress.value(), &serde_json::json!(0.5));
+        assert_eq!(
+            progress
+                .options()
+                .and_then(DockSetProgressOptionsPayload::state),
+            Some(DockProgressState::Indeterminate)
+        );
+        assert_eq!(
+            serde_json::to_string(&progress).expect("dock progress payload should encode"),
+            r#"{"value":0.5,"options":{"state":"indeterminate"}}"#
+        );
+
+        let clear_progress = DockSetProgressPayload::new(serde_json::Value::Null, None);
+        assert_eq!(
+            serde_json::to_string(&clear_progress)
+                .expect("dock clear progress payload should encode"),
+            r#"{"value":null}"#
+        );
+
+        let item = DockJumpListItemPayload::new("open", "Open", "app.open");
+        assert_eq!(item.id(), "open");
+        assert_eq!(item.title(), "Open");
+        assert_eq!(item.command_id(), "app.open");
+
+        let jump_list = DockSetJumpListPayload::new(vec![item]);
+        assert_eq!(jump_list.items()[0].command_id(), "app.open");
+        assert_eq!(
+            serde_json::to_string(&jump_list).expect("dock jump list payload should encode"),
+            r#"{"items":[{"id":"open","title":"Open","commandId":"app.open"}]}"#
+        );
+    }
+
+    #[test]
+    fn dock_taskbar_payloads_reject_excess_fields() {
+        let progress_error =
+            serde_json::from_str::<DockSetProgressPayload>(r#"{"value":0.5,"unexpected":true}"#)
+                .expect_err("dock progress excess fields should reject");
+        assert!(
+            progress_error.to_string().contains("unknown field"),
+            "unexpected progress error: {progress_error}"
+        );
+
+        let item_error = serde_json::from_str::<DockSetJumpListPayload>(
+            r#"{"items":[{"id":"open","title":"Open","commandId":"app.open","unexpected":true}]}"#,
+        )
+        .expect_err("dock jump list item excess fields should reject");
+        assert!(
+            item_error.to_string().contains("unknown field"),
+            "unexpected jump list error: {item_error}"
         );
     }
 

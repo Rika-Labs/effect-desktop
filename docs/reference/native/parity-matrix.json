@@ -1125,7 +1125,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "Dock.setMenu",
@@ -1181,7 +1181,7 @@
           }
         ]
       },
-      "hostStatus": "missing"
+      "hostStatus": "routed"
     },
     {
       "tag": "EgressPolicy.decide",
@@ -4358,8 +4358,8 @@
   ],
   "summary": {
     "total": 232,
-    "routed": 208,
-    "missing": 24,
+    "routed": 210,
+    "missing": 22,
     "supported": 117,
     "partial": 36,
     "unsupported": 79

@@ -319,9 +319,19 @@
       "signature": "const DOCK_SET_BADGE_TEXT_METHOD: \"Dock.setBadgeText\""
     },
     {
+      "name": "DOCK_SET_JUMP_LIST_METHOD",
+      "kind": "value",
+      "signature": "const DOCK_SET_JUMP_LIST_METHOD: \"Dock.setJumpList\""
+    },
+    {
       "name": "DOCK_SET_MENU_METHOD",
       "kind": "value",
       "signature": "const DOCK_SET_MENU_METHOD: \"Dock.setMenu\""
+    },
+    {
+      "name": "DOCK_SET_PROGRESS_METHOD",
+      "kind": "value",
+      "signature": "const DOCK_SET_PROGRESS_METHOD: \"Dock.setProgress\""
     },
     {
       "name": "encodeHostProtocolEnvelope",

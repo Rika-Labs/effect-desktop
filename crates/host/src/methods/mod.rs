@@ -394,8 +394,16 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(dock::set_badge_text),
     ),
     route(
+        host_protocol::DOCK_SET_PROGRESS_METHOD,
+        HostMethodDispatcher::Payload(dock::set_progress),
+    ),
+    route(
         host_protocol::DOCK_SET_MENU_METHOD,
         HostMethodDispatcher::Window(dock::set_menu),
+    ),
+    route(
+        host_protocol::DOCK_SET_JUMP_LIST_METHOD,
+        HostMethodDispatcher::Payload(dock::set_jump_list),
     ),
     route(
         host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
@@ -3960,6 +3968,104 @@ mod tests {
                 )),
             }
         );
+    }
+
+    #[test]
+    fn dock_progress_and_jump_list_routes_fail_closed_after_validation() {
+        let router = test_router();
+        let progress_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-progress",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                    serde_json::json!({
+                        "value": 0.5,
+                        "options": { "state": "normal" }
+                    }),
+                ),
+                1710000000114,
+            )
+            .expect("dock progress request should return response");
+        assert_eq!(
+            progress_response,
+            HostProtocolEnvelope::Response {
+                id: "request-dock-progress".to_string(),
+                timestamp: 1710000000114,
+                trace_id: "trace-request-dock-progress".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    "host-adapter-unimplemented",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                )),
+            }
+        );
+
+        let jump_list_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-jump-list",
+                    host_protocol::DOCK_SET_JUMP_LIST_METHOD,
+                    serde_json::json!({
+                        "items": [{ "id": "open", "title": "Open", "commandId": "app.open" }]
+                    }),
+                ),
+                1710000000115,
+            )
+            .expect("dock jump list request should return response");
+        assert_eq!(
+            jump_list_response,
+            HostProtocolEnvelope::Response {
+                id: "request-dock-jump-list".to_string(),
+                timestamp: 1710000000115,
+                trace_id: "trace-request-dock-jump-list".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::unsupported(
+                    "host-adapter-unimplemented",
+                    host_protocol::DOCK_SET_JUMP_LIST_METHOD,
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn dock_progress_and_jump_list_reject_invalid_payloads_before_unsupported() {
+        let progress_response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-progress-invalid",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                    serde_json::json!({ "value": 1.5 }),
+                ),
+                1710000000116,
+            )
+            .expect("dock progress invalid request should return response");
+        assert!(matches!(
+            progress_response,
+            HostProtocolEnvelope::Response {
+                error: Some(HostProtocolError::InvalidArgument { .. }),
+                ..
+            }
+        ));
+
+        let jump_list_response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-jump-list-invalid",
+                    host_protocol::DOCK_SET_JUMP_LIST_METHOD,
+                    serde_json::json!({
+                        "items": [{ "id": "", "title": "Open", "commandId": "app.open" }]
+                    }),
+                ),
+                1710000000117,
+            )
+            .expect("dock jump list invalid request should return response");
+        assert!(matches!(
+            jump_list_response,
+            HostProtocolEnvelope::Response {
+                error: Some(HostProtocolError::InvalidArgument { .. }),
+                ..
+            }
+        ));
     }
 
     #[test]

@@ -31,6 +31,13 @@ pub(crate) fn set_badge_text(
     Ok(None)
 }
 
+pub(crate) fn set_progress(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_progress(payload)?;
+    validate_progress_value(payload.value())?;
+
+    Err(unsupported(host_protocol::DOCK_SET_PROGRESS_METHOD))
+}
+
 pub(crate) fn request_attention(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
@@ -39,6 +46,13 @@ pub(crate) fn request_attention(
     handler.request_dock_attention(critical)?;
 
     Ok(None)
+}
+
+pub(crate) fn set_jump_list(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_jump_list(payload)?;
+    validate_jump_list(&payload)?;
+
+    Err(unsupported(host_protocol::DOCK_SET_JUMP_LIST_METHOD))
 }
 
 pub(crate) fn set_menu(
@@ -80,6 +94,94 @@ fn validate_template(template: &Value) -> Result<(), HostProtocolError> {
             "menu.items",
             "must not be empty",
             host_protocol::DOCK_SET_MENU_METHOD,
+        ));
+    }
+    Ok(())
+}
+
+fn decode_progress(
+    payload: Option<Value>,
+) -> Result<host_protocol::DockSetProgressPayload, HostProtocolError> {
+    let payload = required_payload(payload, host_protocol::DOCK_SET_PROGRESS_METHOD)?;
+    serde_json::from_value::<host_protocol::DockSetProgressPayload>(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::DOCK_SET_PROGRESS_METHOD,
+        )
+    })
+}
+
+fn validate_progress_value(value: &Value) -> Result<(), HostProtocolError> {
+    match value {
+        Value::Null => Ok(()),
+        Value::Number(number) => {
+            let Some(progress) = number.as_f64() else {
+                return Err(HostProtocolError::invalid_argument(
+                    "value",
+                    "must be null or a finite number between 0 and 1",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                ));
+            };
+            if !progress.is_finite() || !(0.0..=1.0).contains(&progress) {
+                return Err(HostProtocolError::invalid_argument(
+                    "value",
+                    "must be null or a finite number between 0 and 1",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(HostProtocolError::invalid_argument(
+            "value",
+            "must be null or a finite number between 0 and 1",
+            host_protocol::DOCK_SET_PROGRESS_METHOD,
+        )),
+    }
+}
+
+fn decode_jump_list(
+    payload: Option<Value>,
+) -> Result<host_protocol::DockSetJumpListPayload, HostProtocolError> {
+    let payload = required_payload(payload, host_protocol::DOCK_SET_JUMP_LIST_METHOD)?;
+    serde_json::from_value::<host_protocol::DockSetJumpListPayload>(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::DOCK_SET_JUMP_LIST_METHOD,
+        )
+    })
+}
+
+fn validate_jump_list(
+    payload: &host_protocol::DockSetJumpListPayload,
+) -> Result<(), HostProtocolError> {
+    for (index, item) in payload.items().iter().enumerate() {
+        validate_jump_list_text(index, "id", item.id())?;
+        validate_jump_list_text(index, "title", item.title())?;
+        validate_jump_list_text(index, "commandId", item.command_id())?;
+    }
+    Ok(())
+}
+
+fn validate_jump_list_text(
+    index: usize,
+    field: &'static str,
+    value: &str,
+) -> Result<(), HostProtocolError> {
+    let field_name = format!("items[{index}].{field}");
+    if value.is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            field_name,
+            "must not be empty",
+            host_protocol::DOCK_SET_JUMP_LIST_METHOD,
+        ));
+    }
+    if has_ascii_control_characters(value) {
+        return Err(HostProtocolError::invalid_argument(
+            field_name,
+            "must not include control characters",
+            host_protocol::DOCK_SET_JUMP_LIST_METHOD,
         ));
     }
     Ok(())
@@ -162,9 +264,16 @@ fn required_payload(payload: Option<Value>, operation: &str) -> Result<Value, Ho
     payload.ok_or_else(|| HostProtocolError::invalid_argument("payload", "is required", operation))
 }
 
+fn unsupported(operation: &'static str) -> HostProtocolError {
+    HostProtocolError::unsupported("host-adapter-unimplemented", operation)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{decode_count, decode_critical, decode_menu, decode_text};
+    use super::{
+        decode_count, decode_critical, decode_jump_list, decode_menu, decode_progress, decode_text,
+        validate_jump_list, validate_progress_value,
+    };
     use serde_json::json;
 
     #[test]
@@ -224,5 +333,62 @@ mod tests {
     #[test]
     fn dock_menu_requires_items() {
         assert!(decode_menu(Some(json!({ "menu": { "items": [] } }))).is_err());
+    }
+
+    #[test]
+    fn progress_accepts_null_and_fractional_values() {
+        let clear = decode_progress(Some(json!({ "value": null }))).expect("clear progress");
+        validate_progress_value(clear.value()).expect("clear progress should validate");
+
+        let progress = decode_progress(Some(json!({
+            "value": 0.5,
+            "options": { "state": "normal" }
+        })))
+        .expect("fractional progress");
+        validate_progress_value(progress.value()).expect("fractional progress should validate");
+    }
+
+    #[test]
+    fn progress_rejects_invalid_shape_before_unsupported() {
+        assert!(decode_progress(Some(json!({}))).is_err());
+        assert!(decode_progress(Some(json!({ "value": 0.5, "extra": true }))).is_err());
+        assert!(decode_progress(Some(json!({
+            "value": 0.5,
+            "options": { "state": "bogus" }
+        })))
+        .is_err());
+        assert!(validate_progress_value(&json!(-0.1)).is_err());
+        assert!(validate_progress_value(&json!(1.1)).is_err());
+        assert!(validate_progress_value(&json!("0.5")).is_err());
+    }
+
+    #[test]
+    fn jump_list_accepts_empty_clear_and_items() {
+        let empty = decode_jump_list(Some(json!({ "items": [] }))).expect("empty jump list");
+        validate_jump_list(&empty).expect("empty jump list should validate");
+
+        let list = decode_jump_list(Some(json!({
+            "items": [{ "id": "open", "title": "Open", "commandId": "app.open" }]
+        })))
+        .expect("jump list");
+        validate_jump_list(&list).expect("jump list should validate");
+    }
+
+    #[test]
+    fn jump_list_rejects_invalid_shape_before_unsupported() {
+        assert!(decode_jump_list(Some(json!({}))).is_err());
+        assert!(decode_jump_list(Some(json!({ "items": [], "extra": true }))).is_err());
+
+        let empty_id = decode_jump_list(Some(json!({
+            "items": [{ "id": "", "title": "Open", "commandId": "app.open" }]
+        })))
+        .expect("empty id shape");
+        assert!(validate_jump_list(&empty_id).is_err());
+
+        let control_command = decode_jump_list(Some(json!({
+            "items": [{ "id": "open", "title": "Open", "commandId": "bad\ncommand" }]
+        })))
+        .expect("control command shape");
+        assert!(validate_jump_list(&control_command).is_err());
     }
 }
