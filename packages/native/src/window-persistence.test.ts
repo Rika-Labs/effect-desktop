@@ -1,4 +1,3 @@
-/** @effect-diagnostics strictEffectProvide:off */
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,

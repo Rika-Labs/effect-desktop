@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test"
-import path from "node:path"
 import {
   type BridgeClientExchange,
   type HostProtocolError,
@@ -14,7 +13,7 @@ import {
   makeResourceRegistry,
   P
 } from "@effect-desktop/core"
-import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, type Layer, ManagedRuntime, Stream } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 
 import {
@@ -39,8 +38,11 @@ import {
 } from "./contracts/transactional-file-mutation.js"
 
 const Text = new TextEncoder()
-const testPath = (...segments: string[]): string =>
-  path.resolve(...segments).replaceAll(path.sep, "/")
+const testPath = (...segments: string[]): string => {
+  const cwd = process.cwd().replaceAll("\\", "/")
+  const joined = segments.join("/")
+  return joined.startsWith("/") ? joined : `${cwd}/${joined}`
+}
 const WORKSPACE_ROOT = testPath("workspace", "app")
 const WORKSPACE_FILE = testPath("workspace", "app", "src", "main.ts")
 const initialFiles = (): Record<string, string> => ({ [WORKSPACE_FILE]: "old\n" })
@@ -78,7 +80,7 @@ test("TransactionalFileMutation prepares diffs, commits atomically, detects conf
         const events = yield* files.events().pipe(Stream.take(6), Stream.runCollect)
         return { committed, conflicted, events, first }
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             audit: memoryAudit(rows),
@@ -147,7 +149,9 @@ test("TransactionalFileMutation denies prepare before host side effects", () =>
       const exit = yield* Effect.gen(function* () {
         const files = yield* TransactionalFileMutation
         return yield* Effect.exit(files.prepare(prepareRequest("next\n")))
-      }).pipe(Effect.provide(makeTransactionalFileMutationServiceLayer(client, { permissions })))
+      }).pipe(
+        provideScopedLayer(makeTransactionalFileMutationServiceLayer(client, { permissions }))
+      )
 
       expect(calls).toBe(0)
       expectExitFailure(exit, (error) => {
@@ -225,7 +229,7 @@ test("TransactionalFileMutation claims a prepared mutation before concurrent com
           { concurrency: "unbounded" }
         )
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             audit: memoryAudit(rows)
@@ -295,7 +299,7 @@ test("TransactionalFileMutation registers or rolls back host prepare when interr
           )
         )
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             resources,
@@ -356,7 +360,7 @@ test("TransactionalFileMutation disposes the actual registered resource id after
         )
         return yield* resources.list()
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             resources,
@@ -414,7 +418,7 @@ test("TransactionalFileMutation restores a commit claim when interrupted before 
           )
         )
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             audit
@@ -472,7 +476,7 @@ test("TransactionalFileMutation restores a rollback claim when interrupted befor
           )
         )
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             audit
@@ -532,7 +536,7 @@ test("TransactionalFileMutation does not let owner-scope cleanup rollback an in-
         yield* Deferred.succeed(releaseCommit, undefined)
         return yield* Fiber.join(commitFiber)
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             resources,
@@ -602,7 +606,7 @@ test("TransactionalFileMutation does not restore a failed commit after owner-sco
         )
         return { commitExit, retryExit }
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             resources,
@@ -689,7 +693,7 @@ test("TransactionalFileMutation does not restore a failed rollback after owner-s
         )
         return { retryExit, rollbackExit }
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             resources,
@@ -750,7 +754,7 @@ test("TransactionalFileMutation rolls back prepared mutations when their resourc
           )
         )
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             resources,
@@ -815,7 +819,7 @@ test("TransactionalFileMutation rolls back host state when a returned mutation I
         yield* files.prepare(prepareRequest("first\n"))
         return yield* Effect.exit(files.prepare(prepareRequest("second\n")))
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             audit: memoryAudit(rows)
@@ -850,7 +854,7 @@ test("TransactionalFileMutation uses one generated trace for prepare permission 
           })
         )
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             audit: memoryAudit(rows),
@@ -896,7 +900,7 @@ test("TransactionalFileMutation rejects blank owner scopes before host transport
           )
         )
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             audit: memoryAudit(rows)
@@ -933,7 +937,7 @@ test("TransactionalFileMutation audit failures stop host side effects", () =>
         const files = yield* TransactionalFileMutation
         return yield* Effect.exit(files.prepare(prepareRequest("next\n")))
       }).pipe(
-        Effect.provide(
+        provideScopedLayer(
           makeTransactionalFileMutationServiceLayer(client, {
             permissions,
             audit: failingAuditFor("TransactionalFileMutation.prepare")
@@ -988,7 +992,7 @@ test("TransactionalFileMutation rejects malformed paths before bridge transport"
               })
             )
           )
-        }).pipe(Effect.provide(makeTransactionalFileMutationBridgeClientLayer(exchange)))
+        }).pipe(provideScopedLayer(makeTransactionalFileMutationBridgeClientLayer(exchange)))
 
         expectExitFailure(exit, (error) => {
           expect(error).toMatchObject({
@@ -1139,3 +1143,13 @@ const expectExitFailure = (
     assertion(Cause.squash(exit.cause))
   }
 }
+
+const provideScopedLayer =
+  <R>(layer: Layer.Layer<R, never, never>) =>
+  <A, E>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, never> =>
+    Effect.gen(function* () {
+      const runtime = ManagedRuntime.make(layer)
+      const result = yield* Effect.promise(() => runtime.runPromise(effect))
+      yield* Effect.promise(() => runtime.dispose())
+      return result
+    })
