@@ -217,7 +217,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::APP_FOCUS_METHOD,
-        HostMethodDispatcher::Payload(app::focus),
+        HostMethodDispatcher::Window(app::focus),
     ),
     route(
         host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
@@ -2966,6 +2966,32 @@ mod tests {
                 )),
             }
         );
+    }
+
+    #[test]
+    fn app_focus_routes_to_current_window() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request("request-app-focus", host_protocol::APP_FOCUS_METHOD),
+                1710000000125,
+            )
+            .expect("app focus should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-focus".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-focus".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(window.focused(), vec!["window-current".to_string()]);
     }
 
     #[test]

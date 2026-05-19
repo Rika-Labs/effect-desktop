@@ -11,10 +11,10 @@ effect_version: 4
 App-level lifecycle and host-operation service. `AppMetadata` owns app identity,
 paths, launch context, and environment-shape reads.
 
-The TypeScript surface is present for contract and bridge-client validation
-work, but the Rust host App lifecycle adapter is not implemented. The native
-surface reports `unsupported` on macOS, Windows, and Linux until the host owns
-app lifecycle control, single instance coordination, and lifecycle events.
+The TypeScript surface is present for contract and bridge-client validation.
+The Rust host implements `App.focus` by focusing the current native window.
+Process quit, restart, single instance coordination, and native lifecycle event
+sources are still unsupported until the host owns those lifecycle controls.
 `Association` owns OS-level protocol and file association contracts.
 `Autostart` owns open-at-login and login-item operations.
 
@@ -24,7 +24,7 @@ app lifecycle control, single instance coordination, and lifecycle events.
 | --------------------------- | ------------------------- | --------------- |
 | `quit`                      | `void`                    | unsupported     |
 | `restart`                   | `void`                    | unsupported     |
-| `focus`                     | `void`                    | unsupported     |
+| `focus`                     | `void`                    | supported       |
 | `requestSingleInstanceLock` | `AppSingleInstanceResult` | unsupported     |
 
 ## Events
@@ -46,10 +46,9 @@ the event.
 
 ## Errors
 
-`AppError` is the host protocol error union. Until the host adapter is
-implemented, App methods decode through Rust `App.*` routes and fail closed as
-typed `Unsupported`. Subscriptions still do not have native lifecycle event
-sources.
+`AppError` is the host protocol error union. Unsupported App methods decode
+through Rust `App.*` routes and fail closed as typed `Unsupported`.
+Subscriptions still do not have native lifecycle event sources.
 
 ## Notes
 

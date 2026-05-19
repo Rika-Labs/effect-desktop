@@ -2,6 +2,7 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
+use crate::window::WindowMethodHandler;
 use host_protocol::HostProtocolError;
 use host_protocol::{AppQuitPayload, AppRestartPayload};
 use serde::de::DeserializeOwned;
@@ -20,9 +21,14 @@ pub(crate) fn restart(payload: Option<Value>) -> Result<Option<Value>, HostProto
     Err(unsupported(host_protocol::APP_RESTART_METHOD))
 }
 
-pub(crate) fn focus(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+pub(crate) fn focus(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
     reject_unexpected_payload(payload, host_protocol::APP_FOCUS_METHOD)?;
-    Err(unsupported(host_protocol::APP_FOCUS_METHOD))
+    let current = handler.get_current()?;
+    handler.focus(current.window_id())?;
+    Ok(None)
 }
 
 pub(crate) fn request_single_instance_lock(
@@ -114,17 +120,17 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use super::{focus, quit, restart};
+    use super::{quit, request_single_instance_lock, restart};
     use host_protocol::HostProtocolError;
     use serde_json::{json, Value};
 
     #[test]
     fn app_void_requests_decode_before_unsupported() {
         assert_eq!(
-            focus(None).expect_err("focus"),
+            request_single_instance_lock(None).expect_err("single instance"),
             HostProtocolError::unsupported(
                 host_protocol::APP_UNSUPPORTED_REASON,
-                host_protocol::APP_FOCUS_METHOD,
+                host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
             )
         );
     }
@@ -132,10 +138,10 @@ mod tests {
     #[test]
     fn app_void_requests_accept_null_as_wire_void() {
         assert_eq!(
-            focus(Some(Value::Null)).expect_err("null payload"),
+            request_single_instance_lock(Some(Value::Null)).expect_err("null payload"),
             HostProtocolError::unsupported(
                 host_protocol::APP_UNSUPPORTED_REASON,
-                host_protocol::APP_FOCUS_METHOD,
+                host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
             )
         );
     }
@@ -143,11 +149,11 @@ mod tests {
     #[test]
     fn app_void_requests_reject_non_null_present_payloads() {
         assert_eq!(
-            focus(Some(json!({}))).expect_err("object payload"),
+            request_single_instance_lock(Some(json!({}))).expect_err("object payload"),
             HostProtocolError::invalid_argument(
                 "payload",
                 "must be omitted",
-                host_protocol::APP_FOCUS_METHOD,
+                host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
             )
         );
     }

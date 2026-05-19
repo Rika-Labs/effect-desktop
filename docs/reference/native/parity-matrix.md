@@ -22,7 +22,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `ActivationRegistry`        | `listSurfaces`              | `supported`   | `ActivationRegistry.listSurfaces`         | `routed`    |
 | `ActivationRegistry`        | `registerSurface`           | `supported`   | `ActivationRegistry.registerSurface`      | `routed`    |
 | `ActivationRegistry`        | `unregisterSurface`         | `supported`   | `ActivationRegistry.unregisterSurface`    | `routed`    |
-| `App`                       | `focus`                     | `unsupported` | `App.focus`                               | `routed`    |
+| `App`                       | `focus`                     | `supported`   | `App.focus`                               | `routed`    |
 | `App`                       | `quit`                      | `unsupported` | `App.quit`                                | `routed`    |
 | `App`                       | `requestSingleInstanceLock` | `unsupported` | `App.requestSingleInstanceLock`           | `routed`    |
 | `App`                       | `restart`                   | `unsupported` | `App.restart`                             | `routed`    |

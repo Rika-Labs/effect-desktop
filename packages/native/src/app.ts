@@ -33,13 +33,14 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 
 const UnsupportedReason = "host-adapter-unimplemented"
 
-const AppSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const AppUnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
   platforms: [
     { platform: "macos", status: "unsupported", reason: UnsupportedReason },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
 })
+const AppFocusSupport = NativeSurface.support.supported
 export const AppQuit = appRpc(
   "quit",
   AppQuitInput,
@@ -56,7 +57,8 @@ export const AppFocus = appRpc(
   "focus",
   Schema.Void,
   Schema.Void,
-  P.nativeInvoke({ primitive: "App", methods: ["focus"] })
+  P.nativeInvoke({ primitive: "App", methods: ["focus"] }),
+  AppFocusSupport
 )
 export const AppRequestSingleInstanceLock = appRpc(
   "requestSingleInstanceLock",
@@ -248,13 +250,19 @@ function appRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  capability: RpcCapabilityMetadata,
+  support = AppUnsupportedSupport
+) {
   return NativeSurface.rpc("App", method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: AppSupport
+    support
   })
 }
 
