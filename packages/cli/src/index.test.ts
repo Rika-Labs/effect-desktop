@@ -55,6 +55,18 @@ import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
 const REPO_ROOT = join(import.meta.dir, "../../..")
 
+const testEnv: Record<string, string | undefined> = globalThis.process.env
+
+const readTestEnv = (key: string): string | undefined => testEnv[key]
+
+const writeTestEnv = (key: string, value: string | undefined): void => {
+  if (value === undefined) {
+    delete testEnv[key]
+    return
+  }
+  testEnv[key] = value
+}
+
 const CliJsonError = Schema.fromJsonString(
   Schema.Struct({
     tag: Schema.String,
@@ -4895,9 +4907,13 @@ test("desktop sign resolves Windows PFX password env without recording the secre
       const directory = yield* Effect.promise(() =>
         mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
       )
-      const previousPassword = process.env["EFFECT_DESKTOP_TEST_PFX_PASSWORD"]
+      const previousPassword = yield* Effect.sync(() =>
+        readTestEnv("EFFECT_DESKTOP_TEST_PFX_PASSWORD")
+      )
       try {
-        process.env["EFFECT_DESKTOP_TEST_PFX_PASSWORD"] = "secret-password"
+        yield* Effect.sync(() =>
+          writeTestEnv("EFFECT_DESKTOP_TEST_PFX_PASSWORD", "secret-password")
+        )
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
             signing: {
@@ -4938,9 +4954,11 @@ test("desktop sign resolves Windows PFX password env without recording the secre
         expect(report).not.toContain("secret-password")
       } finally {
         if (previousPassword === undefined) {
-          delete process.env["EFFECT_DESKTOP_TEST_PFX_PASSWORD"]
+          yield* Effect.sync(() => writeTestEnv("EFFECT_DESKTOP_TEST_PFX_PASSWORD", undefined))
         } else {
-          process.env["EFFECT_DESKTOP_TEST_PFX_PASSWORD"] = previousPassword
+          yield* Effect.sync(() =>
+            writeTestEnv("EFFECT_DESKTOP_TEST_PFX_PASSWORD", previousPassword)
+          )
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -5830,8 +5848,8 @@ test("desktop notarize redacts Apple ID password credentials in the persisted re
         mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
       )
       const passwordEnv = "EFFECT_DESKTOP_TEST_NOTARY_PASSWORD"
-      const previousPassword = process.env[passwordEnv]
-      process.env[passwordEnv] = "real-app-specific-password"
+      const previousPassword = yield* Effect.sync(() => readTestEnv(passwordEnv))
+      yield* Effect.sync(() => writeTestEnv(passwordEnv, "real-app-specific-password"))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -5897,9 +5915,9 @@ test("desktop notarize redacts Apple ID password credentials in the persisted re
         expect(submitStep?.command).not.toContain("real-app-specific-password")
       } finally {
         if (previousPassword === undefined) {
-          delete process.env[passwordEnv]
+          yield* Effect.sync(() => writeTestEnv(passwordEnv, undefined))
         } else {
-          process.env[passwordEnv] = previousPassword
+          yield* Effect.sync(() => writeTestEnv(passwordEnv, previousPassword))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6005,8 +6023,8 @@ test("desktop publish writes a byte-stable Ed25519-signed update manifest", () =
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6067,9 +6085,9 @@ test("desktop publish writes a byte-stable Ed25519-signed update manifest", () =
         })
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6092,8 +6110,8 @@ test("desktop publish rejects invalid publish timestamps before writing manifest
         )
         const key = testEd25519Key()
         const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-        const previousPrivateKey = process.env[privateKeyEnv]
-        process.env[privateKeyEnv] = key.privateKeyPem
+        const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+        yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
         try {
           yield* Effect.promise(() =>
             writePlaygroundFixture(directory, {
@@ -6135,9 +6153,9 @@ test("desktop publish rejects invalid publish timestamps before writing manifest
           yield* expectEffectPromiseRejects(readFile(manifestPath, "utf8"))
         } finally {
           if (previousPrivateKey === undefined) {
-            delete process.env[privateKeyEnv]
+            yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
           } else {
-            process.env[privateKeyEnv] = previousPrivateKey
+            yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
           }
           yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
         }
@@ -6190,8 +6208,8 @@ test("desktop publish encodes artifact URLs for query-string feed URLs", () =>
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6229,9 +6247,9 @@ test("desktop publish encodes artifact URLs for query-string feed URLs", () =>
         })
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6246,8 +6264,8 @@ test("desktop publish rejects tampered manifest signatures through canonical byt
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6296,9 +6314,9 @@ test("desktop publish rejects tampered manifest signatures through canonical byt
         expect(verifyUpdateManifest(tampered, key.publicKey)).toBe(false)
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6313,8 +6331,8 @@ test("desktop publish rejects stale package metadata before signing the manifest
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6365,9 +6383,9 @@ test("desktop publish rejects stale package metadata before signing the manifest
         expect(stderr.join("")).toContain("package artifact metadata does not match artifact bytes")
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6428,8 +6446,8 @@ test("desktop publish rejects non-SemVer app versions before writing manifests",
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6473,9 +6491,9 @@ test("desktop publish rejects non-SemVer app versions before writing manifests",
         yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6490,8 +6508,8 @@ test("desktop publish rejects invalid feedUrl", () =>
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6521,9 +6539,9 @@ test("desktop publish rejects invalid feedUrl", () =>
         expect(stderr.join("")).toContain("valid http(s) URL template")
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6538,8 +6556,8 @@ test("desktop publish rejects feedUrl missing the {platform} placeholder", () =>
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6569,9 +6587,9 @@ test("desktop publish rejects feedUrl missing the {platform} placeholder", () =>
         expect(stderr.join("")).toContain("{platform}")
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6586,8 +6604,8 @@ test("desktop publish rejects feedUrl missing the {channel} placeholder", () =>
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6617,9 +6635,9 @@ test("desktop publish rejects feedUrl missing the {channel} placeholder", () =>
         expect(stderr.join("")).toContain("{channel}")
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6634,8 +6652,8 @@ test("desktop publish rejects stale artifacts from a different app identity", ()
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6679,9 +6697,9 @@ test("desktop publish rejects stale artifacts from a different app identity", ()
         yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6696,8 +6714,8 @@ test("desktop publish rejects artifact target mismatching platform directory", (
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6737,9 +6755,9 @@ test("desktop publish rejects artifact target mismatching platform directory", (
         expect(stderr.join("")).toContain("does not match platform directory")
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6754,8 +6772,8 @@ test("desktop publish rejects artifact fileName that escapes the metadata direct
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6820,9 +6838,9 @@ test("desktop publish rejects artifact fileName that escapes the metadata direct
         yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6837,8 +6855,8 @@ test("desktop publish rejects update.minVersion greater than app.version", () =>
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6883,9 +6901,9 @@ test("desktop publish rejects update.minVersion greater than app.version", () =>
         yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6900,8 +6918,8 @@ test("desktop publish rejects rollback manifests without maxVersion", () =>
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -6946,9 +6964,9 @@ test("desktop publish rejects rollback manifests without maxVersion", () =>
         yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -6963,8 +6981,8 @@ test("desktop publish accepts rollback manifests with maxVersion", () =>
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -7018,9 +7036,9 @@ test("desktop publish accepts rollback manifests with maxVersion", () =>
         expect(manifest).toMatchObject({ rollback: true, maxVersion: "2.0.0" })
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -7036,8 +7054,8 @@ test("desktop publish rejects update.publicKey with non-canonical base64", () =>
       const key = testEd25519Key()
       const garbledKey = `${key.publicKey.slice(0, "ed25519:".length + 8)}!!${key.publicKey.slice("ed25519:".length + 10)}`
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -7068,9 +7086,9 @@ test("desktop publish rejects update.publicKey with non-canonical base64", () =>
         expect(stderr.join("")).toContain("canonical base64")
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -7085,8 +7103,8 @@ test("desktop publish accepts update.minVersion equal to app.version", () =>
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -7127,9 +7145,9 @@ test("desktop publish accepts update.minVersion equal to app.version", () =>
         expect(exitCode).toBe(0)
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -7144,8 +7162,8 @@ test("desktop publish signs macOS app directory artifacts with deterministic dir
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -7193,9 +7211,9 @@ test("desktop publish signs macOS app directory artifacts with deterministic dir
         })
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -7210,8 +7228,8 @@ test("desktop publish rejects symbolic links inside directory artifacts", () =>
       )
       const key = testEd25519Key()
       const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-      const previousPrivateKey = process.env[privateKeyEnv]
-      process.env[privateKeyEnv] = key.privateKeyPem
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
       try {
         yield* Effect.promise(() =>
           writePlaygroundFixture(directory, {
@@ -7278,9 +7296,9 @@ test("desktop publish rejects symbolic links inside directory artifacts", () =>
         yield* expectEffectPromiseRejects(stat(manifestPath))
       } finally {
         if (previousPrivateKey === undefined) {
-          delete process.env[privateKeyEnv]
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
         } else {
-          process.env[privateKeyEnv] = previousPrivateKey
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
