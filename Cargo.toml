@@ -39,6 +39,7 @@ features = [
   "NSGraphics",
   "NSResponder",
   "NSRunningApplication",
+  "NSScreen",
   "NSWorkspace"
 ]
 

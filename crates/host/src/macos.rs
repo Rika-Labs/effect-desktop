@@ -4,7 +4,7 @@
 
 use host_protocol::{HostProtocolError, WindowTitleBarStyle, WindowTrafficLights};
 use serde_json::Value;
-use tao::{window::Window, window::WindowBuilder};
+use tao::{monitor::MonitorHandle, window::Window, window::WindowBuilder};
 
 const MACOS_POLISH_OPERATION: &str = "MacosPolish";
 
@@ -183,6 +183,45 @@ pub(crate) fn set_dock_menu(template: Option<Value>) -> std::result::Result<(), 
     platform::set_dock_menu(template)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct MacosScreenWorkArea {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl MacosScreenWorkArea {
+    fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    pub(crate) fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub(crate) fn y(&self) -> f64 {
+        self.y
+    }
+
+    pub(crate) fn width(&self) -> f64 {
+        self.width
+    }
+
+    pub(crate) fn height(&self) -> f64 {
+        self.height
+    }
+}
+
+pub(crate) fn screen_work_area(monitor: &MonitorHandle) -> Option<MacosScreenWorkArea> {
+    platform::screen_work_area(monitor)
+}
+
 fn invalid_argument(field: &str, reason: &str) -> HostProtocolError {
     invalid_argument_for_operation(field, reason, MACOS_POLISH_OPERATION)
 }
@@ -197,10 +236,13 @@ fn invalid_argument_for_operation(
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{HostProtocolError, MacosTrafficLights, MacosWindowPolish};
+    use super::{HostProtocolError, MacosScreenWorkArea, MacosTrafficLights, MacosWindowPolish};
+    use objc2::rc::Retained;
+    use objc2_app_kit::NSScreen;
     use tao::{
         dpi::LogicalPosition,
-        platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS},
+        monitor::MonitorHandle,
+        platform::macos::{MonitorHandleExtMacOS, WindowBuilderExtMacOS, WindowExtMacOS},
         window::{Window, WindowBuilder},
     };
 
@@ -317,6 +359,22 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "macOS Dock menu installation requires an NSApplication delegate bridge that is not part of this host adapter yet",
             host_protocol::DOCK_SET_MENU_METHOD,
+        ))
+    }
+
+    pub(super) fn screen_work_area(monitor: &MonitorHandle) -> Option<MacosScreenWorkArea> {
+        let screen = monitor.ns_screen()?;
+        // SAFETY: Tao returns this pointer with Retained::into_raw, transferring a
+        // retain count to the caller; from_raw balances that ownership locally.
+        let screen = unsafe { Retained::<NSScreen>::from_raw(screen.cast::<NSScreen>())? };
+        let scale = monitor.scale_factor();
+        let visible_frame = screen.visibleFrame();
+
+        Some(MacosScreenWorkArea::new(
+            visible_frame.origin.x * scale,
+            visible_frame.origin.y * scale,
+            visible_frame.size.width * scale,
+            visible_frame.size.height * scale,
         ))
     }
 
@@ -439,9 +497,9 @@ mod platform {
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    use super::{HostProtocolError, MacosWindowPolish};
+    use super::{HostProtocolError, MacosScreenWorkArea, MacosWindowPolish};
     use host_protocol;
-    use tao::window::{Window, WindowBuilder};
+    use tao::{monitor::MonitorHandle, window::Window, window::WindowBuilder};
 
     pub(super) fn apply_window_builder_polish(
         builder: WindowBuilder,
@@ -523,6 +581,10 @@ mod platform {
             "Dock menus are macOS-only",
             host_protocol::DOCK_SET_MENU_METHOD,
         ))
+    }
+
+    pub(super) fn screen_work_area(_monitor: &MonitorHandle) -> Option<MacosScreenWorkArea> {
+        None
     }
 }
 

@@ -25,9 +25,9 @@ permission-free so callers can probe before enabling Screen-dependent features.
 
 ## Events
 
-| Event                     | Payload                         |
-| ------------------------- | ------------------------------- |
-| `Screen.DisplaysChanged`  | `{ displays: ScreenDisplay[] }` |
+| Event                    | Payload                         |
+| ------------------------ | ------------------------------- |
+| `Screen.DisplaysChanged` | `{ displays: ScreenDisplay[] }` |
 
 The native host emits `Screen.DisplaysChanged` from Tao window scale-factor
 changes. The event includes the same `scaleFactor` field as `getDisplays`.
@@ -49,16 +49,19 @@ ScreenDisplay = {
 ScreenPoint = { x: number; y: number }
 ```
 
-The Rust host uses Tao monitor bounds for both `bounds` and `workArea` because
-Tao does not expose monitor work areas through its public monitor API.
+The Rust host reports Tao monitor geometry in physical host coordinates. On
+macOS, `workArea` uses AppKit `NSScreen.visibleFrame`, so menu-bar and Dock
+reserved areas are excluded. On Windows and Linux, Tao does not expose monitor
+work areas through its public monitor API yet, so `workArea` currently matches
+`bounds`.
 
 ## Platform matrix
 
-| Platform | Status    | Notes                                      |
-| -------- | --------- | ------------------------------------------ |
-| macOS    | supported | Tao-backed monitors and pointer position. |
-| Windows  | supported | Tao-backed monitors and pointer position. |
-| Linux    | partial   | Monitor enumeration is supported; pointer position may report unsupported on compositors that deny cursor queries. |
+| Platform | Status    | Notes                                                                                                                                                        |
+| -------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| macOS    | supported | Tao-backed monitors, AppKit-backed work areas, and pointer position.                                                                                         |
+| Windows  | supported | Tao-backed monitors and pointer position; `workArea` currently matches `bounds`.                                                                             |
+| Linux    | partial   | Monitor enumeration is supported and `workArea` currently matches `bounds`; pointer position may report unsupported on compositors that deny cursor queries. |
 
 ## Errors
 

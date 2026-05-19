@@ -3849,12 +3849,11 @@ fn centered_window_bounds_for_operation(
 ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
     let current = window_bounds(window, operation)?;
     let scale = monitor.scale_factor();
-    let position = monitor.position();
-    let size = monitor.size();
-    let monitor_x = f64::from(position.x) / scale;
-    let monitor_y = f64::from(position.y) / scale;
-    let monitor_width = f64::from(size.width) / scale;
-    let monitor_height = f64::from(size.height) / scale;
+    let work_area = monitor_work_area(monitor);
+    let monitor_x = f64::from(work_area.x) / scale;
+    let monitor_y = f64::from(work_area.y) / scale;
+    let monitor_width = f64::from(work_area.width) / scale;
+    let monitor_height = f64::from(work_area.height) / scale;
 
     Ok(WindowBoundsPayload::new(
         monitor_x + ((monitor_width - current.width()) / 2.0),
@@ -3869,19 +3868,18 @@ fn centered_window_physical_position_for_operation(
     monitor: &MonitorHandle,
     operation: &'static str,
 ) -> std::result::Result<PhysicalPosition<i32>, HostProtocolError> {
-    let monitor_position = monitor.position();
-    let monitor_size = monitor.size();
+    let work_area = monitor_work_area(monitor);
     let window_size = window.inner_size();
     let x = centered_physical_axis(
-        monitor_position.x,
-        monitor_size.width,
+        work_area.x,
+        work_area.width,
         window_size.width,
         "x",
         operation,
     )?;
     let y = centered_physical_axis(
-        monitor_position.y,
-        monitor_size.height,
+        work_area.y,
+        work_area.height,
         window_size.height,
         "y",
         operation,
@@ -3912,15 +3910,77 @@ fn screen_display_payload(
     monitor: &MonitorHandle,
     primary: bool,
 ) -> ScreenDisplayPayload {
+    let bounds = screen_bounds_payload(monitor_bounds(monitor));
+    let work_area = screen_bounds_payload(monitor_work_area(monitor));
+    ScreenDisplayPayload::new(id, bounds, work_area, monitor.scale_factor(), primary)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PhysicalScreenArea {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+fn monitor_bounds(monitor: &MonitorHandle) -> PhysicalScreenArea {
     let position = monitor.position();
     let size = monitor.size();
-    let bounds = ScreenBoundsPayload::new(
-        f64::from(position.x),
-        f64::from(position.y),
-        f64::from(size.width),
-        f64::from(size.height),
-    );
-    ScreenDisplayPayload::new(id, bounds.clone(), bounds, monitor.scale_factor(), primary)
+    PhysicalScreenArea {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    }
+}
+
+fn monitor_work_area(monitor: &MonitorHandle) -> PhysicalScreenArea {
+    macos::screen_work_area(monitor)
+        .and_then(|work_area| {
+            PhysicalScreenArea::new(
+                work_area.x(),
+                work_area.y(),
+                work_area.width(),
+                work_area.height(),
+            )
+        })
+        .unwrap_or_else(|| monitor_bounds(monitor))
+}
+
+impl PhysicalScreenArea {
+    fn new(x: f64, y: f64, width: f64, height: f64) -> Option<Self> {
+        Some(Self {
+            x: rounded_i32(x)?,
+            y: rounded_i32(y)?,
+            width: rounded_u32(width)?,
+            height: rounded_u32(height)?,
+        })
+    }
+}
+
+fn rounded_i32(value: f64) -> Option<i32> {
+    let rounded = value.round();
+    if !rounded.is_finite() || rounded < f64::from(i32::MIN) || rounded > f64::from(i32::MAX) {
+        return None;
+    }
+    Some(rounded as i32)
+}
+
+fn rounded_u32(value: f64) -> Option<u32> {
+    let rounded = value.round();
+    if !rounded.is_finite() || rounded < 0.0 || rounded > f64::from(u32::MAX) {
+        return None;
+    }
+    Some(rounded as u32)
+}
+
+fn screen_bounds_payload(area: PhysicalScreenArea) -> ScreenBoundsPayload {
+    ScreenBoundsPayload::new(
+        f64::from(area.x),
+        f64::from(area.y),
+        f64::from(area.width),
+        f64::from(area.height),
+    )
 }
 
 fn screen_display_id(monitor: &MonitorHandle) -> String {
@@ -4745,8 +4805,9 @@ mod tests {
         control_flow_for_window_state, emit_window_registry_event,
         handle_native_window_close_requested, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
-        lifecycle_for_create_result, smoke_deadline_for_mode, to_tao_dock_progress,
-        unsupported_screen, validate_positive_finite, RunMode, WindowCommand,
+        lifecycle_for_create_result, rounded_i32, rounded_u32, screen_bounds_payload,
+        smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
+        validate_positive_finite, PhysicalScreenArea, RunMode, WindowCommand,
         WindowCommandResponse, WindowCreateRequest, WindowId, WindowLifecycleEvent,
         WindowMethodPort, WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
         WINDOW_SMOKE_TEST_TIMEOUT,
@@ -4977,6 +5038,42 @@ mod tests {
                 host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD
             ),
             Ok(-2240)
+        );
+    }
+
+    #[test]
+    fn screen_work_area_payload_can_differ_from_monitor_bounds() {
+        let area = PhysicalScreenArea::new(0.0, 25.0, 3024.0, 1719.0)
+            .expect("macOS visibleFrame should convert to physical screen area");
+
+        assert_eq!(
+            screen_bounds_payload(area),
+            host_protocol::ScreenBoundsPayload::new(0.0, 25.0, 3024.0, 1719.0)
+        );
+    }
+
+    #[test]
+    fn screen_work_area_conversion_rejects_invalid_coordinates() {
+        assert!(PhysicalScreenArea::new(f64::NAN, 0.0, 100.0, 100.0).is_none());
+        assert!(PhysicalScreenArea::new(0.0, 0.0, -1.0, 100.0).is_none());
+        assert!(rounded_i32(f64::from(i32::MAX) + 1.0).is_none());
+        assert!(rounded_u32(f64::from(u32::MAX) + 1.0).is_none());
+    }
+
+    #[test]
+    fn center_on_display_uses_work_area_origin_when_available() {
+        let work_area =
+            PhysicalScreenArea::new(0.0, 25.0, 3024.0, 1719.0).expect("work area should convert");
+
+        assert_eq!(
+            centered_physical_axis(
+                work_area.y,
+                work_area.height,
+                900,
+                "y",
+                host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD
+            ),
+            Ok(434)
         );
     }
 

@@ -45,7 +45,7 @@ import {
 | `getBounds`           | `WindowHandle`                | `WindowBounds`       | Read logical window bounds.                                         |
 | `setBounds`           | `WindowBoundsInput`           | `void`               | Move and resize a window.                                           |
 | `center`              | `WindowHandle`                | `void`               | Center in the current display.                                      |
-| `centerOnDisplay`     | `WindowDisplayInput`          | `void`               | Center in a specific display's bounds.                              |
+| `centerOnDisplay`     | `WindowDisplayInput`          | `void`               | Center in a specific display's work area.                           |
 | `setTitle`            | `WindowTitleInput`            | `void`               | Set the window title.                                               |
 | `setResizable`        | `WindowResizableInput`        | `void`               | Enable or disable user resizing.                                    |
 | `setDecorations`      | `WindowDecorationsInput`      | `void`               | Enable or disable native window decorations.                        |
@@ -71,9 +71,9 @@ import {
 The placement surface is not complete. `getBounds`, `setBounds`, and `center`
 are host-routed logical-coordinate operations. `centerOnDisplay` uses the host's
 `ScreenDisplay.id` to choose the monitor, then centers the current window size
-inside that display's physical monitor bounds. The current Screen adapter
-reports `workArea` from Tao monitor bounds, so placement code cannot yet
-distinguish reserved OS work areas from full display bounds. Effect Desktop also
+inside that display's work area. On macOS, the host derives `workArea` from
+AppKit `NSScreen.visibleFrame`; on Windows and Linux, Tao does not expose work
+areas yet, so `workArea` still matches the full monitor bounds. Effect Desktop
 does not yet expose general display-relative placement, work-area clipping for
 arbitrary bounds, or move/resize state events.
 
