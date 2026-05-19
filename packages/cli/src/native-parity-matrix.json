@@ -3946,6 +3946,100 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "WebRequest.isSupported",
+      "surface": "WebRequest",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WebRequest.onBeforeRequest",
+      "surface": "WebRequest",
+      "method": "onBeforeRequest",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-web-request-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-web-request-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-web-request-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-web-request-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WebRequest.onHeadersReceived",
+      "surface": "WebRequest",
+      "method": "onHeadersReceived",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-web-request-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-web-request-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-web-request-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-web-request-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "WebRequest.removeListener",
+      "surface": "WebRequest",
+      "method": "removeListener",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-web-request-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-web-request-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-web-request-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-web-request-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "WebView.attachDebugger",
       "surface": "WebView",
       "method": "attachDebugger",
@@ -5193,11 +5287,11 @@
     }
   ],
   "summary": {
-    "total": 281,
-    "routed": 281,
+    "total": 285,
+    "routed": 285,
     "missing": 0,
-    "supported": 146,
+    "supported": 147,
     "partial": 70,
-    "unsupported": 65
+    "unsupported": 68
   }
 }

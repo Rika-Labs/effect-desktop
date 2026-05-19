@@ -787,6 +787,32 @@ export {
   type NetworkAuthServiceOptions
 } from "./network-auth.js"
 export {
+  makeHostWebRequestRpcRuntime,
+  makeWebRequestBridgeClientLayer,
+  makeWebRequestClientLayer,
+  makeWebRequestMemoryClient,
+  makeWebRequestServiceLayer,
+  makeWebRequestUnsupportedClient,
+  WebRequest,
+  WebRequestClient,
+  WebRequestHandlersLive,
+  WebRequestLive,
+  WebRequestMethodNames,
+  WebRequestOnBeforeRequest,
+  WebRequestOnHeadersReceived,
+  WebRequestRemoveListener,
+  WebRequestRpcEvents,
+  WebRequestRpcs,
+  WebRequestSurface,
+  type WebRequestClientApi,
+  type WebRequestError,
+  type WebRequestMemoryClientOptions,
+  type WebRequestRpc,
+  type WebRequestRpcHandlers,
+  type WebRequestServiceApi,
+  type WebRequestServiceOptions
+} from "./web-request.js"
+export {
   Notification,
   NotificationClient,
   NotificationHandlersLive,

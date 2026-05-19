@@ -369,6 +369,11 @@ pub const NETWORK_AUTH_HANDLE_AUTH_METHOD: &str = "NetworkAuth.handleAuth";
 pub const NETWORK_AUTH_HANDLE_CERTIFICATE_METHOD: &str = "NetworkAuth.handleCertificate";
 pub const NETWORK_AUTH_IS_SUPPORTED_METHOD: &str = "NetworkAuth.isSupported";
 pub const NETWORK_AUTH_EVENT: &str = "NetworkAuth.Event";
+pub const WEB_REQUEST_ON_BEFORE_REQUEST_METHOD: &str = "WebRequest.onBeforeRequest";
+pub const WEB_REQUEST_ON_HEADERS_RECEIVED_METHOD: &str = "WebRequest.onHeadersReceived";
+pub const WEB_REQUEST_REMOVE_LISTENER_METHOD: &str = "WebRequest.removeListener";
+pub const WEB_REQUEST_IS_SUPPORTED_METHOD: &str = "WebRequest.isSupported";
+pub const WEB_REQUEST_EVENT: &str = "WebRequest.Event";
 pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
@@ -10703,6 +10708,251 @@ impl NetworkAuthEventPayload {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestInterceptorResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl WebRequestInterceptorResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "web-request-interceptor".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum WebRequestPhasePayload {
+    BeforeRequest,
+    HeadersReceived,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum WebRequestActionPayload {
+    Allow,
+    Block,
+    Redirect,
+    ModifyHeaders,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum WebRequestEventPhasePayload {
+    Registered,
+    Removed,
+    Matched,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestHeaderPayload {
+    name: String,
+    value: String,
+}
+
+impl WebRequestHeaderPayload {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestBeforeRequestPayload {
+    profile: SessionProfileResourcePayload,
+    url_pattern: String,
+    action: WebRequestActionPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    redirect_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl WebRequestBeforeRequestPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        url_pattern: impl Into<String>,
+        action: WebRequestActionPayload,
+    ) -> Self {
+        Self {
+            profile,
+            url_pattern: url_pattern.into(),
+            action,
+            redirect_url: None,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_redirect_url(mut self, redirect_url: impl Into<String>) -> Self {
+        self.redirect_url = Some(redirect_url.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestHeadersReceivedPayload {
+    profile: SessionProfileResourcePayload,
+    url_pattern: String,
+    response_headers: Vec<WebRequestHeaderPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl WebRequestHeadersReceivedPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        url_pattern: impl Into<String>,
+        response_headers: Vec<WebRequestHeaderPayload>,
+    ) -> Self {
+        Self {
+            profile,
+            url_pattern: url_pattern.into(),
+            response_headers,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestRemoveListenerPayload {
+    interceptor: WebRequestInterceptorResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl WebRequestRemoveListenerPayload {
+    pub fn new(interceptor: WebRequestInterceptorResourcePayload) -> Self {
+        Self {
+            interceptor,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestInterceptorSnapshotPayload {
+    interceptor: WebRequestInterceptorResourcePayload,
+    profile: SessionProfileResourcePayload,
+    phase: WebRequestPhasePayload,
+    url_pattern: String,
+    action: WebRequestActionPayload,
+    order: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    redirect_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_headers: Option<Vec<WebRequestHeaderPayload>>,
+}
+
+impl WebRequestInterceptorSnapshotPayload {
+    pub fn new(
+        interceptor: WebRequestInterceptorResourcePayload,
+        profile: SessionProfileResourcePayload,
+        phase: WebRequestPhasePayload,
+        url_pattern: impl Into<String>,
+        action: WebRequestActionPayload,
+        order: u64,
+    ) -> Self {
+        Self {
+            interceptor,
+            profile,
+            phase,
+            url_pattern: url_pattern.into(),
+            action,
+            order,
+            redirect_url: None,
+            response_headers: None,
+        }
+    }
+
+    pub fn with_redirect_url(mut self, redirect_url: impl Into<String>) -> Self {
+        self.redirect_url = Some(redirect_url.into());
+        self
+    }
+
+    pub fn with_response_headers(mut self, headers: Vec<WebRequestHeaderPayload>) -> Self {
+        self.response_headers = Some(headers);
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl WebRequestSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: WebRequestEventPhasePayload,
+    interceptor: WebRequestInterceptorResourcePayload,
+    profile: SessionProfileResourcePayload,
+    request_phase: WebRequestPhasePayload,
+    url_pattern: String,
+    action: WebRequestActionPayload,
+    order: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl WebRequestEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: WebRequestEventPhasePayload,
+        snapshot: WebRequestInterceptorSnapshotPayload,
+    ) -> Self {
+        Self {
+            r#type: "web-request-event".to_string(),
+            timestamp,
+            phase,
+            interceptor: snapshot.interceptor,
+            profile: snapshot.profile,
+            request_phase: snapshot.phase,
+            url_pattern: snapshot.url_pattern,
+            action: snapshot.action,
+            order: snapshot.order,
+            message: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceIndexEventPayload {
     r#type: String,
     timestamp: u64,
@@ -13266,12 +13516,16 @@ mod tests {
         TransientWindowZOrderPolicy, TrayActivatedEventPayload, TrayCreatePayload,
         TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
-        UpdaterStatusPayload, UpdaterStatusState, UpdaterTrustAnchorPayload, WindowAttentionType,
-        WindowBoundsEventPayload, WindowBoundsPayload, WindowCenterOnDisplayPayload,
-        WindowClearVibrancyPayload, WindowCreatePayload, WindowCreateResponse,
-        WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowParentResponse,
-        WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
-        WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
+        UpdaterStatusPayload, UpdaterStatusState, UpdaterTrustAnchorPayload,
+        WebRequestActionPayload, WebRequestBeforeRequestPayload, WebRequestEventPayload,
+        WebRequestEventPhasePayload, WebRequestHeaderPayload, WebRequestHeadersReceivedPayload,
+        WebRequestInterceptorResourcePayload, WebRequestInterceptorSnapshotPayload,
+        WebRequestPhasePayload, WebRequestRemoveListenerPayload, WebRequestSupportedPayload,
+        WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload,
+        WindowCenterOnDisplayPayload, WindowClearVibrancyPayload, WindowCreatePayload,
+        WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
+        WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
+        WindowRegistryEventPhase, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
         WindowSetBoundsOnDisplayPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
         WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
         WindowSetShadowPayload, WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
@@ -16582,6 +16836,81 @@ mod tests {
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-network-auth-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn web_request_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let interceptor = WebRequestInterceptorResourcePayload::new(
+            "web-request-interceptor:1",
+            0,
+            "workspace:1",
+        );
+        let headers = vec![WebRequestHeaderPayload::new("x-audit", "1")];
+        assert_eq!(
+            serde_json::to_string(
+                &WebRequestBeforeRequestPayload::new(
+                    profile.clone(),
+                    "https://example.test/*",
+                    WebRequestActionPayload::Redirect
+                )
+                .with_redirect_url("https://redirect.example.test/")
+            )
+            .expect("before request payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"urlPattern":"https://example.test/*","action":"redirect","redirectUrl":"https://redirect.example.test/"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&WebRequestHeadersReceivedPayload::new(
+                profile.clone(),
+                "https://example.test/*",
+                headers.clone()
+            ))
+            .expect("headers received payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"urlPattern":"https://example.test/*","responseHeaders":[{"name":"x-audit","value":"1"}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&WebRequestRemoveListenerPayload::new(interceptor.clone()))
+                .expect("remove listener payload should encode"),
+            r#"{"interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        let headers_snapshot = WebRequestInterceptorSnapshotPayload::new(
+            interceptor.clone(),
+            profile.clone(),
+            WebRequestPhasePayload::HeadersReceived,
+            "https://example.test/*",
+            WebRequestActionPayload::ModifyHeaders,
+            2,
+        )
+        .with_response_headers(headers);
+        assert_eq!(
+            serde_json::to_string(&headers_snapshot).expect("snapshot should encode"),
+            r#"{"interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"phase":"headers-received","urlPattern":"https://example.test/*","action":"modify-headers","order":2,"responseHeaders":[{"name":"x-audit","value":"1"}]}"#
+        );
+        let before_snapshot = WebRequestInterceptorSnapshotPayload::new(
+            interceptor,
+            profile,
+            WebRequestPhasePayload::BeforeRequest,
+            "https://example.test/*",
+            WebRequestActionPayload::Block,
+            1,
+        );
+        assert_eq!(
+            serde_json::to_string(&WebRequestEventPayload::new(
+                1710000000002,
+                WebRequestEventPhasePayload::Registered,
+                before_snapshot,
+            ))
+            .expect("event should encode"),
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"registered","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&WebRequestSupportedPayload::unsupported(
+                "host-web-request-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-web-request-unavailable"}"#
         );
     }
 

@@ -52,6 +52,7 @@ import { ShellSurface } from "./shell.js"
 import { SystemAppearanceSurface } from "./system-appearance.js"
 import { TraySurface } from "./tray.js"
 import { UpdaterSurface } from "./updater.js"
+import { WebRequestSurface } from "./web-request.js"
 import { WebViewSurface } from "./webview.js"
 import { WindowSurface } from "./window.js"
 import type { NativeSurfaceSelection } from "./native-surface.js"
@@ -105,6 +106,7 @@ const BuiltInSurfaces = Object.freeze([
   SystemAppearanceSurface,
   TraySurface,
   UpdaterSurface,
+  WebRequestSurface,
   WebViewSurface,
   WindowSurface
 ])
@@ -164,6 +166,7 @@ const Shell = ShellSurface.selection
 const SystemAppearance = SystemAppearanceSurface.selection
 const Tray = TraySurface.selection
 const Updater = UpdaterSurface.selection
+const WebRequest = WebRequestSurface.selection
 const WebView = WebViewSurface.selection
 const Window = WindowSurface.selection
 
@@ -223,6 +226,7 @@ export const Permissions = Object.freeze({
   systemAppearance: SystemAppearanceSurface.permissions,
   tray: TraySurface.permissions,
   updater: UpdaterSurface.permissions,
+  webRequest: WebRequestSurface.permissions,
   webView: WebViewSurface.permissions,
   window: WindowSurface.permissions,
   all: permissionAll
@@ -277,6 +281,7 @@ export const Native = Object.freeze({
   SystemAppearance,
   Tray,
   Updater,
+  WebRequest,
   WebView,
   Window,
   Permissions,

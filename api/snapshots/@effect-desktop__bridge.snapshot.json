@@ -1299,6 +1299,31 @@
       "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never>"
     },
     {
+      "name": "WEB_REQUEST_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEB_REQUEST_EVENT_METHOD: \"WebRequest.Event\""
+    },
+    {
+      "name": "WEB_REQUEST_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const WEB_REQUEST_IS_SUPPORTED_METHOD: \"WebRequest.isSupported\""
+    },
+    {
+      "name": "WEB_REQUEST_ON_BEFORE_REQUEST_METHOD",
+      "kind": "value",
+      "signature": "const WEB_REQUEST_ON_BEFORE_REQUEST_METHOD: \"WebRequest.onBeforeRequest\""
+    },
+    {
+      "name": "WEB_REQUEST_ON_HEADERS_RECEIVED_METHOD",
+      "kind": "value",
+      "signature": "const WEB_REQUEST_ON_HEADERS_RECEIVED_METHOD: \"WebRequest.onHeadersReceived\""
+    },
+    {
+      "name": "WEB_REQUEST_REMOVE_LISTENER_METHOD",
+      "kind": "value",
+      "signature": "const WEB_REQUEST_REMOVE_LISTENER_METHOD: \"WebRequest.removeListener\""
+    },
+    {
       "name": "WEBVIEW_API_CALL_EVENT_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_API_CALL_EVENT_METHOD: \"WebView.ApiCall\""

@@ -45,6 +45,7 @@ mod transactional_file_mutation;
 mod transient_window_role;
 mod tray;
 mod updater;
+mod web_request;
 mod webview;
 mod window;
 mod workspace_index;
@@ -1334,6 +1335,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::NETWORK_AUTH_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(network_auth::is_supported),
+    ),
+    route(
+        host_protocol::WEB_REQUEST_ON_BEFORE_REQUEST_METHOD,
+        HostMethodDispatcher::Payload(web_request::on_before_request),
+    ),
+    route(
+        host_protocol::WEB_REQUEST_ON_HEADERS_RECEIVED_METHOD,
+        HostMethodDispatcher::Payload(web_request::on_headers_received),
+    ),
+    route(
+        host_protocol::WEB_REQUEST_REMOVE_LISTENER_METHOD,
+        HostMethodDispatcher::Payload(web_request::remove_listener),
+    ),
+    route(
+        host_protocol::WEB_REQUEST_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(web_request::is_supported),
     ),
 ];
 

@@ -71,6 +71,14 @@ contracts scoped to `SessionProfileHandle`, but the host adapter is still
 validation-first unsupported until profile-bound WebViews can route provider
 download callbacks through retained native resources.
 
+Request and response interception are also separate from `WebView`.
+`WebRequest` exposes ordered `onBeforeRequest`, `onHeadersReceived`,
+`removeListener`, and event contracts scoped to `SessionProfileHandle`.
+Interceptors register as ResourceRegistry resources and emit ordered lifecycle
+events. The host adapter is validation-first unsupported until profile-bound
+WebViews can route provider request and response callbacks through retained
+native resources.
+
 `setAudioMuted` and `respondToPermission` are permission-gated and
 handle-validated, but return typed unsupported. `setAudioMuted` uses
 `host-runtime-media-control-unavailable`; `respondToPermission` uses
