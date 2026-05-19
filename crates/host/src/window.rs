@@ -2375,12 +2375,19 @@ impl WindowRegistry {
             ));
         };
 
+        let clipped_bounds = resources
+            ._window
+            .current_monitor()
+            .map(|monitor| clip_window_bounds_to_monitor_work_area(bounds, &monitor))
+            .unwrap_or_else(|| bounds.clone());
+
         resources
             ._window
-            .set_outer_position(LogicalPosition::new(bounds.x(), bounds.y()));
-        resources
-            ._window
-            .set_inner_size(LogicalSize::new(bounds.width(), bounds.height()));
+            .set_outer_position(LogicalPosition::new(clipped_bounds.x(), clipped_bounds.y()));
+        resources._window.set_inner_size(LogicalSize::new(
+            clipped_bounds.width(),
+            clipped_bounds.height(),
+        ));
         Ok(())
     }
 
@@ -4308,6 +4315,59 @@ fn centered_window_bounds(
     centered_window_bounds_for_operation(window, monitor, host_protocol::WINDOW_CENTER_METHOD)
 }
 
+fn clip_window_bounds_to_monitor_work_area(
+    bounds: &WindowBoundsPayload,
+    monitor: &MonitorHandle,
+) -> WindowBoundsPayload {
+    let scale = monitor.scale_factor();
+    if !scale.is_finite() || scale <= 0.0 {
+        return bounds.clone();
+    }
+
+    let work_area = LogicalScreenArea::from_physical(monitor_work_area(monitor), scale);
+    clip_window_bounds_to_logical_area(bounds, work_area)
+}
+
+fn clip_window_bounds_to_logical_area(
+    bounds: &WindowBoundsPayload,
+    area: LogicalScreenArea,
+) -> WindowBoundsPayload {
+    if area.width <= 0.0 || area.height <= 0.0 {
+        return bounds.clone();
+    }
+
+    let width = bounds.width().min(area.width);
+    let height = bounds.height().min(area.height);
+    let max_x = area.x + area.width - width;
+    let max_y = area.y + area.height - height;
+
+    WindowBoundsPayload::new(
+        bounds.x().clamp(area.x, max_x),
+        bounds.y().clamp(area.y, max_y),
+        width,
+        height,
+    )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LogicalScreenArea {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl LogicalScreenArea {
+    fn from_physical(area: PhysicalScreenArea, scale: f64) -> Self {
+        Self {
+            x: f64::from(area.x) / scale,
+            y: f64::from(area.y) / scale,
+            width: f64::from(area.width) / scale,
+            height: f64::from(area.height) / scale,
+        }
+    }
+}
+
 fn centered_window_bounds_for_operation(
     window: &Window,
     monitor: &MonitorHandle,
@@ -5367,21 +5427,22 @@ mod tests {
     #[cfg(target_os = "linux")]
     use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
-        centered_physical_axis, clear_window_runtime_event_state, control_flow_for_lifecycle_event,
+        centered_physical_axis, clear_window_runtime_event_state,
+        clip_window_bounds_to_logical_area, control_flow_for_lifecycle_event,
         control_flow_for_window_state, emit_window_registry_event,
         handle_native_window_close_requested, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
         lifecycle_for_create_result, resident_lifecycle, rounded_i32, rounded_u32,
         screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
-        validate_positive_finite, PhysicalScreenArea, RunMode, WindowCommand,
+        validate_positive_finite, LogicalScreenArea, PhysicalScreenArea, RunMode, WindowCommand,
         WindowCommandResponse, WindowCreateRequest, WindowId, WindowLifecycleEvent,
         WindowMethodPort, WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
         WINDOW_SMOKE_TEST_TIMEOUT,
     };
     use host_protocol::{
         DockProgressState, DockSetProgressOptionsPayload, DockSetProgressPayload,
-        HostProtocolEnvelope, HostProtocolError, WindowCreatePayload, WindowCreateResponse,
-        WindowRegistryEventPhase,
+        HostProtocolEnvelope, HostProtocolError, WindowBoundsPayload, WindowCreatePayload,
+        WindowCreateResponse, WindowRegistryEventPhase,
     };
     use std::collections::HashSet;
     use std::sync::{mpsc, Mutex};
@@ -5705,6 +5766,38 @@ mod tests {
                 host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD
             ),
             Ok(434)
+        );
+    }
+
+    #[test]
+    fn set_bounds_clips_to_logical_work_area() {
+        let work_area = LogicalScreenArea {
+            x: 100.0,
+            y: 50.0,
+            width: 1200.0,
+            height: 800.0,
+        };
+
+        assert_eq!(
+            clip_window_bounds_to_logical_area(
+                &WindowBoundsPayload::new(0.0, 0.0, 1400.0, 900.0),
+                work_area
+            ),
+            WindowBoundsPayload::new(100.0, 50.0, 1200.0, 800.0)
+        );
+        assert_eq!(
+            clip_window_bounds_to_logical_area(
+                &WindowBoundsPayload::new(1000.0, 700.0, 400.0, 300.0),
+                work_area
+            ),
+            WindowBoundsPayload::new(900.0, 550.0, 400.0, 300.0)
+        );
+        assert_eq!(
+            clip_window_bounds_to_logical_area(
+                &WindowBoundsPayload::new(300.0, 200.0, 400.0, 300.0),
+                work_area
+            ),
+            WindowBoundsPayload::new(300.0, 200.0, 400.0, 300.0)
         );
     }
 

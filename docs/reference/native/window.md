@@ -77,11 +77,12 @@ are host-routed logical-coordinate operations. `centerOnDisplay` uses the host's
 `ScreenDisplay.id` to choose the monitor, then centers the current window size
 inside that display's work area. On macOS, the host derives `workArea` from
 AppKit `NSScreen.visibleFrame`; on Windows, it derives `workArea` from Win32
-`rcWork`; on Linux, it derives `workArea` from GDK monitor work areas. Effect
-Desktop does not yet expose general display-relative placement, work-area
-clipping for arbitrary bounds, or refusal-aware placement confirmation. Native
-move and resize notifications are exposed as `window-bounds-event` events with
-the current logical bounds.
+`rcWork`; on Linux, it derives `workArea` from GDK monitor work areas.
+`setBounds` clips requested logical bounds to the current display work area
+before applying the native move and resize commands. Effect Desktop does not
+yet expose general display-relative placement or refusal-aware placement
+confirmation. Native move and resize notifications are exposed as
+`window-bounds-event` events with the current logical bounds.
 
 The chrome surface is not complete. `Window.create` accepts macOS creation-time
 `titleBarStyle`, `vibrancy`, and `trafficLights` options, `setDecorations` is
