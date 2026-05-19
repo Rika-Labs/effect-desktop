@@ -3,6 +3,7 @@ import {
   Clock,
   Context,
   Data,
+  DateTime,
   Deferred,
   Effect,
   Exit,
@@ -10,6 +11,7 @@ import {
   Layer,
   Option,
   Queue,
+  Schema,
   Sink,
   Stream
 } from "effect"
@@ -460,7 +462,7 @@ export const makeMemoryFilesystem = (
     const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     const memory = makeMemoryFilesystemRuntime(options, now)
     return yield* makeFilesystem(registry, owner, memory.options).pipe(
-      Effect.provide(memory.fileSystem)
+      Effect.provideService(FileSystem.FileSystem, memory.fileSystem)
     )
   })
 
@@ -652,8 +654,8 @@ export const runHeadlessRuntime = <A, E, R>(
 ) =>
   Effect.gen(function* () {
     const registry = yield* makeResourceRegistry(options.registry)
-    const layer = Layer.effectContext(makeHeadlessRuntimeContext(options, registry))
-    const result = yield* Effect.exit(effect.pipe(Effect.provide(layer)))
+    const context = yield* makeHeadlessRuntimeContext(options, registry)
+    const result = yield* Effect.exit(effect.pipe(Effect.provideContext(context)))
     if (options.leakDetection !== false) {
       yield* assertNoOpenResourcesIn(registry, {
         testName: "HeadlessRuntime.run",
@@ -685,39 +687,15 @@ const makeHeadlessRuntimeContext = (
     const process = yield* makeMockProcess(registry, owner, options.process)
     const pty = yield* makeMockPty(registry, owner, options.pty)
 
-    return Context.add(
-      PermissionRegistry,
-      permissions
-    )(
-      Context.add(
-        Telemetry,
-        telemetry
-      )(
-        Context.add(
-          ResourceRegistry,
-          registry
-        )(
-          Context.add(
-            PTY,
-            pty
-          )(
-            Context.add(
-              Process,
-              process
-            )(
-              Context.add(
-                Filesystem,
-                filesystem
-              )(
-                Context.add(
-                  ResourceOwner,
-                  owner
-                )(Context.add(MockBridge, bridge)(Context.make(MockHost, host)))
-              )
-            )
-          )
-        )
-      )
+    return Context.make(MockHost, host).pipe(
+      Context.add(MockBridge, bridge),
+      Context.add(ResourceOwner, owner),
+      Context.add(Filesystem, filesystem),
+      Context.add(Process, process),
+      Context.add(PTY, pty),
+      Context.add(ResourceRegistry, registry),
+      Context.add(Telemetry, telemetry),
+      Context.add(PermissionRegistry, permissions)
     )
   })
 
@@ -903,13 +881,11 @@ export const assertNoOpenResources = (
     if (leaks.length > 0) {
       const report = formatLeakedHandleReport(leaks, options.testName)
 
-      return yield* Effect.fail(
-        new ResourceLeakError({
-          leaks,
-          message: report,
-          report
-        })
-      )
+      return yield* new ResourceLeakError({
+        leaks,
+        message: report,
+        report
+      })
     }
   })
 
@@ -924,13 +900,11 @@ export const assertNoOpenResourcesIn = (
     if (leaks.length > 0) {
       const report = formatLeakedHandleReport(leaks, options.testName)
 
-      return yield* Effect.fail(
-        new ResourceLeakError({
-          leaks,
-          message: report,
-          report
-        })
-      )
+      return yield* new ResourceLeakError({
+        leaks,
+        message: report,
+        report
+      })
     }
   })
 
@@ -939,9 +913,7 @@ export const installResourceLeakDetection = (
   options: LeakDetectionOptions = {}
 ): void => {
   registerLeakMatchers()
-  afterEach(async () => {
-    await Effect.runPromise(assertNoOpenResourcesIn(registry, options))
-  })
+  afterEach(() => Effect.runPromise(assertNoOpenResourcesIn(registry, options)))
 }
 
 const defaultFixture = (method: string): HeadlessFixture => {
@@ -1199,13 +1171,11 @@ const makeMockProcessSpawner = (
       const input = processSpawnInputFromCommand(command)
       const fixture = takeProcessFixture(fixtures, input)
       if (fixture === undefined) {
-        return yield* Effect.fail(
-          PlatformError.badArgument({
-            description: `missing MockProcess fixture for ${input.command}`,
-            method: "spawn",
-            module: "MockProcess"
-          })
-        )
+        return yield* PlatformError.badArgument({
+          description: `missing MockProcess fixture for ${input.command}`,
+          method: "spawn",
+          module: "MockProcess"
+        })
       }
       const pid = fixture.pid ?? nextPid++
       const record: MutableMockProcessSpawnRecord = {
@@ -1239,9 +1209,7 @@ const makeMockProcessChild = (
     }).pipe(Effect.andThen(Deferred.succeed(exitState, status)), Effect.asVoid)
 
   if (fixture.exit !== false) {
-    setTimeout(() => {
-      Effect.runFork(finish(processExitStatus(fixture.exit)))
-    }, 0)
+    Effect.runFork(Effect.yieldNow.pipe(Effect.andThen(finish(processExitStatus(fixture.exit)))))
   }
 
   return ChildProcessSpawner.makeHandle({
@@ -1361,17 +1329,20 @@ const cloneProcessCalls = (
 const processExitStatus = (
   exit: MockProcessFixture["exit"] | undefined,
   fallbackSignal?: string
-): ProcessExitStatus =>
-  exit instanceof ProcessExitStatus
-    ? exit
-    : new ProcessExitStatus({
-        code: exit === false || exit === undefined ? 0 : exit.code,
-        ...(fallbackSignal === undefined
-          ? exit !== false && exit !== undefined && exit.signal !== undefined
-            ? { signal: exit.signal }
-            : {}
-          : { signal: fallbackSignal })
-      })
+): ProcessExitStatus => {
+  if (Schema.is(ProcessExitStatus)(exit)) {
+    return exit
+  }
+  const fixture = exit as { readonly code: number; readonly signal?: string } | false | undefined
+  return new ProcessExitStatus({
+    code: fixture === false || fixture === undefined ? 0 : fixture.code,
+    ...(fallbackSignal === undefined
+      ? fixture !== false && fixture !== undefined && fixture.signal !== undefined
+        ? { signal: fixture.signal }
+        : {}
+      : { signal: fallbackSignal })
+  })
+}
 
 const streamBytes = (chunks: readonly Uint8Array[]): Stream.Stream<Uint8Array> =>
   Stream.fromIterable(chunks).pipe(Stream.map(copyBytes))
@@ -1419,49 +1390,53 @@ const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRec
   }
 
   if (fixture.exit !== false) {
-    setTimeout(() => {
-      finish(ptyExitStatus(fixture.exit))
-    }, 0)
+    Effect.runFork(
+      Effect.yieldNow.pipe(Effect.andThen(Effect.sync(() => finish(ptyExitStatus(fixture.exit)))))
+    )
   }
 
   return Object.freeze({
     pid: record.pid === undefined ? Option.none() : Option.some(record.pid),
     output: readableBytes(fixture.output ?? []),
     exited,
-    write: async (chunk: Uint8Array) => {
+    write: (chunk: Uint8Array): Promise<void> => {
       if (!running) {
-        throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+        return Promise.reject(
+          mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+        )
       }
-
-      await yieldMockHostTurn()
-      record.writes.push(copyBytes(chunk))
+      return yieldMockHostTurn().then(() => {
+        record.writes.push(copyBytes(chunk))
+      })
     },
-    resize: async (size: PtyResizeInput) => {
+    resize: (size: PtyResizeInput): Promise<void> => {
       if (!running) {
-        throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+        return Promise.reject(
+          mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+        )
       }
-
-      await yieldMockHostTurn()
-      record.resizes.push({ rows: size.rows, cols: size.cols })
+      return yieldMockHostTurn().then(() => {
+        record.resizes.push({ rows: size.rows, cols: size.cols })
+      })
     },
     isRunning: () => running,
-    terminateTree: async () => {
-      await yieldMockHostTurn()
-      record.terminateTreeCalls += 1
-      record.killedWith = "SIGTERM"
-      finish(ptyExitStatus(undefined, "SIGTERM"))
-    },
-    forceKillTree: async () => {
-      await yieldMockHostTurn()
-      record.forceKillTreeCalls += 1
-      record.killedWith = "SIGKILL"
-      finish(ptyExitStatus(undefined, "SIGKILL"))
-    },
-    kill: async (signal?: PtySignalInput) => {
-      await yieldMockHostTurn()
-      record.killedWith = signal
-      finish(ptyExitStatus(undefined, signalNameForMock(signal)))
-    }
+    terminateTree: (): Promise<void> =>
+      yieldMockHostTurn().then(() => {
+        record.terminateTreeCalls += 1
+        record.killedWith = "SIGTERM"
+        finish(ptyExitStatus(undefined, "SIGTERM"))
+      }),
+    forceKillTree: (): Promise<void> =>
+      yieldMockHostTurn().then(() => {
+        record.forceKillTreeCalls += 1
+        record.killedWith = "SIGKILL"
+        finish(ptyExitStatus(undefined, "SIGKILL"))
+      }),
+    kill: (signal?: PtySignalInput): Promise<void> =>
+      yieldMockHostTurn().then(() => {
+        record.killedWith = signal
+        finish(ptyExitStatus(undefined, signalNameForMock(signal)))
+      })
   })
 }
 
@@ -1497,17 +1472,20 @@ const clonePtyCalls = (calls: readonly MutableMockPtyOpenRecord[]): readonly Moc
 const ptyExitStatus = (
   exit: MockPtyFixture["exit"] | undefined,
   fallbackSignal?: string
-): PtyExitStatus =>
-  exit instanceof PtyExitStatus
-    ? exit
-    : new PtyExitStatus({
-        code: exit === false || exit === undefined ? 0 : exit.code,
-        ...(fallbackSignal === undefined
-          ? exit !== false && exit !== undefined && exit.signal !== undefined
-            ? { signal: exit.signal }
-            : {}
-          : { signal: fallbackSignal })
-      })
+): PtyExitStatus => {
+  if (Schema.is(PtyExitStatus)(exit)) {
+    return exit
+  }
+  const fixture = exit as { readonly code: number; readonly signal?: string } | false | undefined
+  return new PtyExitStatus({
+    code: fixture === false || fixture === undefined ? 0 : fixture.code,
+    ...(fallbackSignal === undefined
+      ? fixture !== false && fixture !== undefined && fixture.signal !== undefined
+        ? { signal: fixture.signal }
+        : {}
+      : { signal: fallbackSignal })
+  })
+}
 
 const readableBytes = (chunks: readonly Uint8Array[]): ReadableStream<Uint8Array> =>
   new ReadableStream<Uint8Array>({
@@ -1597,7 +1575,7 @@ const posixJoin = (...parts: readonly string[]): string => {
 }
 
 interface MemoryFilesystemRuntime {
-  readonly fileSystem: Layer.Layer<FileSystem.FileSystem>
+  readonly fileSystem: FileSystem.FileSystem
   readonly options: FilesystemOptions
 }
 
@@ -1628,7 +1606,7 @@ const makeMemoryFilesystemRuntime = (
     })
   }
 
-  const fileSystem = FileSystem.layerNoop({
+  const fileSystem = FileSystem.makeNoop({
     readFile: (path) =>
       Effect.try({
         try: () => {
@@ -2028,7 +2006,7 @@ const memoryFile = (path: string, writeAllBytes: (bytes: Uint8Array) => void): F
 
 const memoryStats = (node: MemoryNode): FileSystem.File.Info => ({
   type: node.kind === "file" ? "File" : node.kind === "directory" ? "Directory" : "SymbolicLink",
-  mtime: Option.some(new Date(node.modifiedAtMs)),
+  mtime: Option.some(DateTime.toDateUtc(DateTime.makeUnsafe(node.modifiedAtMs))),
   atime: Option.none(),
   birthtime: Option.none(),
   dev: 1,
@@ -2268,14 +2246,8 @@ const unsupportedSafeStorage = (operation: string): HostProtocolUnsupportedError
     recoverable: hostProtocolErrorRecoverableDefault("Unsupported")
   })
 
-const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot => {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "entries" in value &&
-    Array.isArray(value.entries)
-  )
-}
+const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot =>
+  typeof value === "object" && value !== null && "entries" in value && Array.isArray(value.entries)
 
 // oxlint-disable-next-line import/no-cycle -- package barrel intentionally includes the native harness.
 export * from "./native.js"
