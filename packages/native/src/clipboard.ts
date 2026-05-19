@@ -27,15 +27,6 @@ import { isSupportedImageHeader } from "./contracts/image.js"
 
 export type ClipboardError = HostProtocolError
 
-const ClipboardUnsupportedReason = "host-adapter-unimplemented"
-const ClipboardUnsupportedSupport = NativeSurface.support.unsupported(ClipboardUnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: ClipboardUnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: ClipboardUnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: ClipboardUnsupportedReason }
-  ]
-})
-
 export const ClipboardReadText = clipboardRpc(
   "readText",
   Schema.Void,
@@ -349,7 +340,6 @@ function clipboardRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: method === "isSupported" || method.startsWith("read") ? "query" : "mutation",
-    support:
-      method === "isSupported" ? NativeSurface.support.supported : ClipboardUnsupportedSupport
+    support: NativeSurface.support.supported
   })
 }

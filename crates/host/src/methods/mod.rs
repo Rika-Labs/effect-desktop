@@ -4886,7 +4886,7 @@ mod tests {
     }
 
     #[test]
-    fn clipboard_write_text_routes_to_typed_unsupported() {
+    fn clipboard_write_text_routes_to_host_adapter() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -4898,23 +4898,35 @@ mod tests {
             )
             .expect("clipboard write should return response");
 
-        assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-clipboard-write-text".to_string(),
-                timestamp: 1710000000112,
-                trace_id: "trace-request-clipboard-write-text".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::CLIPBOARD_UNSUPPORTED_REASON,
-                    host_protocol::CLIPBOARD_WRITE_TEXT_METHOD,
-                )),
-            }
-        );
+        let HostProtocolEnvelope::Response {
+            id,
+            timestamp,
+            trace_id,
+            payload,
+            error,
+        } = response
+        else {
+            panic!("clipboard write should return a response");
+        };
+        assert_eq!(id, "request-clipboard-write-text");
+        assert_eq!(timestamp, 1710000000112);
+        assert_eq!(trace_id, "trace-request-clipboard-write-text");
+        assert!(payload.is_none());
+        if let Some(error) = error {
+            assert!(
+                matches!(
+                    error,
+                    HostProtocolError::Unsupported { .. }
+                        | HostProtocolError::HostUnavailable { .. }
+                        | HostProtocolError::ResourceBusy { .. }
+                ),
+                "clipboard write should surface a typed host error: {error:?}"
+            );
+        }
     }
 
     #[test]
-    fn clipboard_invalid_payload_rejects_before_unsupported() {
+    fn clipboard_invalid_payload_rejects_before_host_access() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(

@@ -4597,7 +4597,7 @@ fn handle_native_window_close_requested(
     #[cfg(test)]
     {
         registry.native_window_close_requested(native_window_id);
-        return WindowLifecycleEvent::CloseRequested;
+        WindowLifecycleEvent::CloseRequested
     }
 
     #[cfg(not(test))]
