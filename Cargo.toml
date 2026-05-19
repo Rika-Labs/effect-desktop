@@ -27,7 +27,7 @@ version = "0.6.4"
 [workspace.dependencies.objc2-app-kit]
 version = "0.3.2"
 default-features = false
-features = ["NSDocumentController"]
+features = ["libc", "NSDocumentController", "NSRunningApplication", "NSWorkspace"]
 
 [workspace.dependencies.objc2-foundation]
 version = "0.3.2"

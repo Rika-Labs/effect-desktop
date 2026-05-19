@@ -1531,13 +1531,13 @@
       "method": "snapshot",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
+        "status": "partial",
+        "reason": "macos-frontmost-application-only",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
+            "status": "partial",
+            "reason": "macos-frontmost-application-only"
           },
           {
             "platform": "windows",
@@ -4410,7 +4410,7 @@
     "routed": 207,
     "missing": 24,
     "supported": 113,
-    "partial": 30,
-    "unsupported": 88
+    "partial": 31,
+    "unsupported": 87
   }
 }

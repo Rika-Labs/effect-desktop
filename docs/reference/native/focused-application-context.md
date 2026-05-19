@@ -33,15 +33,16 @@ The snapshot is metadata only:
 
 ## Support
 
-The current Rust host adapter is intentionally fail-closed while OS focused-surface adapters are not implemented.
+The Rust host adapter now implements `snapshot` on macOS through `NSWorkspace.frontmostApplication`.
+That path reports focused application metadata only; focused window/display metadata, watch lifecycle, and host-originated focus events remain unsupported.
 
-| Platform | Status        | Reason                       |
-| -------- | ------------- | ---------------------------- |
-| macOS    | `unsupported` | `host-adapter-unimplemented` |
-| Windows  | `unsupported` | `host-adapter-unimplemented` |
-| Linux    | `unsupported` | `host-adapter-unimplemented` |
+| Method         | macOS                                          | Windows       | Linux         |
+| -------------- | ---------------------------------------------- | ------------- | ------------- |
+| `snapshot`     | `partial` (`macos-frontmost-application-only`) | `unsupported` | `unsupported` |
+| `watch`        | `unsupported`                                  | `unsupported` | `unsupported` |
+| `stopWatching` | `unsupported`                                  | `unsupported` | `unsupported` |
 
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
+`isSupported` still returns `{ supported: false, reason: "host-adapter-unimplemented" }` until the host provides snapshot, watch lifecycle, and event delivery for the surface. Unsupported host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
 
 ## Testing
 

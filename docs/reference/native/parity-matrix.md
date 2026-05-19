@@ -94,7 +94,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `ExtensionPackage`          | `remove`                    | `supported`   | `ExtensionPackage.remove`                 | `routed`    |
 | `ExtensionPackage`          | `update`                    | `supported`   | `ExtensionPackage.update`                 | `routed`    |
 | `FocusedApplicationContext` | `isSupported`               | `supported`   | `FocusedApplicationContext.isSupported`   | `routed`    |
-| `FocusedApplicationContext` | `snapshot`                  | `unsupported` | `FocusedApplicationContext.snapshot`      | `routed`    |
+| `FocusedApplicationContext` | `snapshot`                  | `partial`     | `FocusedApplicationContext.snapshot`      | `routed`    |
 | `FocusedApplicationContext` | `stopWatching`              | `unsupported` | `FocusedApplicationContext.stopWatching`  | `routed`    |
 | `FocusedApplicationContext` | `watch`                     | `unsupported` | `FocusedApplicationContext.watch`         | `routed`    |
 | `GlobalShortcut`            | `isRegistered`              | `supported`   | `GlobalShortcut.isRegistered`             | `routed`    |

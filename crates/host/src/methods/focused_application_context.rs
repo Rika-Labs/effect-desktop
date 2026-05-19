@@ -2,11 +2,13 @@
 
 use host_protocol::{
     FocusedApplicationContextActorPayload, FocusedApplicationContextSnapshotPayload,
-    FocusedApplicationContextStopWatchingPayload, FocusedApplicationContextSupportedPayload,
-    FocusedApplicationContextWatchPayload, HostProtocolError,
+    FocusedApplicationContextSnapshotResultPayload, FocusedApplicationContextStopWatchingPayload,
+    FocusedApplicationContextSupportedPayload, FocusedApplicationContextWatchPayload,
+    FocusedApplicationMetadataPayload, HostProtocolError,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) fn snapshot(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     let input = decode_payload::<FocusedApplicationContextSnapshotPayload>(
@@ -21,9 +23,10 @@ pub(crate) fn snapshot(payload: Option<Value>) -> Result<Option<Value>, HostProt
         input.trace_id(),
         host_protocol::FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD,
     )?;
-    Err(unsupported(
+    encode_payload(
+        focused_application_snapshot(host_protocol::FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD)?,
         host_protocol::FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD,
-    ))
+    )
 }
 
 pub(crate) fn watch(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -184,6 +187,166 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
     )
 }
 
+fn focused_application_snapshot(
+    operation: &'static str,
+) -> Result<FocusedApplicationContextSnapshotResultPayload, HostProtocolError> {
+    if let Some(application) = test_focused_application() {
+        return Ok(snapshot_payload(application, observed_at_ms(operation)?));
+    }
+
+    #[cfg(all(target_os = "macos", not(test)))]
+    {
+        macos_focused_application::snapshot(operation)
+    }
+
+    #[cfg(not(all(target_os = "macos", not(test))))]
+    {
+        Err(unsupported(operation))
+    }
+}
+
+fn snapshot_payload(
+    application: HostFocusedApplication,
+    observed_at: u64,
+) -> FocusedApplicationContextSnapshotResultPayload {
+    FocusedApplicationContextSnapshotResultPayload::new(application.into_payload(), observed_at)
+}
+
+fn observed_at_ms(operation: &'static str) -> Result<u64, HostProtocolError> {
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| HostProtocolError::internal(error.to_string(), operation))?;
+    u64::try_from(duration.as_millis()).map_err(|_| {
+        HostProtocolError::internal(
+            "focused application observation timestamp overflowed u64",
+            operation,
+        )
+    })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct HostFocusedApplication {
+    application_id: String,
+    name: Option<String>,
+    bundle_id: Option<String>,
+    executable_path: Option<String>,
+    process_id: Option<u64>,
+}
+
+impl HostFocusedApplication {
+    fn new(application_id: impl Into<String>) -> Self {
+        Self {
+            application_id: application_id.into(),
+            name: None,
+            bundle_id: None,
+            executable_path: None,
+            process_id: None,
+        }
+    }
+
+    fn into_payload(self) -> FocusedApplicationMetadataPayload {
+        let mut payload = FocusedApplicationMetadataPayload::new(self.application_id);
+        if let Some(name) = self.name {
+            payload = payload.with_name(name);
+        }
+        if let Some(bundle_id) = self.bundle_id {
+            payload = payload.with_bundle_id(bundle_id);
+        }
+        if let Some(executable_path) = self.executable_path {
+            payload = payload.with_executable_path(executable_path);
+        }
+        if let Some(process_id) = self.process_id {
+            payload = payload.with_process_id(process_id);
+        }
+        payload
+    }
+}
+
+#[cfg(not(test))]
+fn test_focused_application() -> Option<HostFocusedApplication> {
+    None
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_FOCUSED_APPLICATION: std::cell::RefCell<Option<HostFocusedApplication>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn test_focused_application() -> Option<HostFocusedApplication> {
+    TEST_FOCUSED_APPLICATION.with(|state| state.borrow().clone())
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+fn bridge_safe_non_empty(value: String) -> Option<String> {
+    if value.is_empty() || value.contains('\0') {
+        return None;
+    }
+    Some(value)
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+fn printable_non_empty(value: String) -> Option<String> {
+    if value.is_empty() || value.contains(char::is_control) {
+        return None;
+    }
+    Some(value)
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+mod macos_focused_application {
+    use super::{
+        bridge_safe_non_empty, observed_at_ms, printable_non_empty, snapshot_payload,
+        HostFocusedApplication, HostProtocolError,
+    };
+    use objc2_app_kit::NSWorkspace;
+
+    pub(super) fn snapshot(
+        operation: &'static str,
+    ) -> Result<host_protocol::FocusedApplicationContextSnapshotResultPayload, HostProtocolError>
+    {
+        let Some(application) = NSWorkspace::sharedWorkspace().frontmostApplication() else {
+            return Err(HostProtocolError::internal(
+                "macOS did not report a frontmost application",
+                operation,
+            ));
+        };
+
+        let name = application
+            .localizedName()
+            .map(|name| name.to_string())
+            .and_then(printable_non_empty);
+        let bundle_id = application
+            .bundleIdentifier()
+            .map(|bundle_id| bundle_id.to_string())
+            .and_then(bridge_safe_non_empty);
+        let executable_path = application
+            .executableURL()
+            .and_then(|url| url.path())
+            .map(|path| path.to_string())
+            .and_then(printable_non_empty);
+        let process_id = u64::try_from(application.processIdentifier()).ok();
+
+        let application_id = bundle_id
+            .clone()
+            .or_else(|| process_id.map(|pid| format!("pid:{pid}")))
+            .or_else(|| name.clone())
+            .unwrap_or_else(|| "frontmost-application".to_string());
+
+        let mut host_application = HostFocusedApplication::new(application_id);
+        host_application.name = name;
+        host_application.bundle_id = bundle_id;
+        host_application.executable_path = executable_path;
+        host_application.process_id = process_id;
+
+        Ok(snapshot_payload(
+            host_application,
+            observed_at_ms(operation)?,
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,6 +364,39 @@ mod tests {
         let error = snapshot(Some(valid_snapshot())).expect_err("host adapter is not implemented");
 
         assert!(matches!(error, HostProtocolError::Unsupported { .. }));
+    }
+
+    #[test]
+    fn snapshot_encodes_focused_application_metadata() {
+        TEST_FOCUSED_APPLICATION.with(|state| {
+            let mut application = HostFocusedApplication::new("com.example.App");
+            application.name = Some("Example App".to_string());
+            application.bundle_id = Some("com.example.App".to_string());
+            application.executable_path =
+                Some("/Applications/Example.app/Contents/MacOS/App".to_string());
+            application.process_id = Some(42);
+            *state.borrow_mut() = Some(application);
+        });
+
+        let payload = snapshot(Some(valid_snapshot()))
+            .expect("focused application snapshot should encode")
+            .expect("snapshot returns payload");
+
+        TEST_FOCUSED_APPLICATION.with(|state| {
+            *state.borrow_mut() = None;
+        });
+
+        assert_eq!(
+            payload["application"],
+            json!({
+                "applicationId": "com.example.App",
+                "name": "Example App",
+                "bundleId": "com.example.App",
+                "executablePath": "/Applications/Example.app/Contents/MacOS/App",
+                "processId": 42
+            })
+        );
+        assert!(payload["observedAt"].as_u64().is_some());
     }
 
     #[test]

@@ -4937,6 +4937,26 @@ impl FocusedApplicationMetadataPayload {
             process_id: None,
         }
     }
+
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    pub fn with_bundle_id(mut self, bundle_id: impl Into<String>) -> Self {
+        self.bundle_id = Some(bundle_id.into());
+        self
+    }
+
+    pub fn with_executable_path(mut self, executable_path: impl Into<String>) -> Self {
+        self.executable_path = Some(executable_path.into());
+        self
+    }
+
+    pub fn with_process_id(mut self, process_id: u64) -> Self {
+        self.process_id = Some(process_id);
+        self
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

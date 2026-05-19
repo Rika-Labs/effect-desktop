@@ -8,6 +8,7 @@ import {
   makeHostProtocolInternalError,
   type HostProtocolError,
   type RpcCapabilityMetadata,
+  type RpcSupportMetadata,
   RpcGroup
 } from "@effect-desktop/bridge"
 import {
@@ -54,6 +55,7 @@ export * from "./contracts/focused-application-context.js"
 
 const Surface = "FocusedApplicationContext"
 const UnsupportedReason = "host-adapter-unimplemented"
+const MacOsSnapshotReason = "macos-frontmost-application-only"
 const FocusedApplicationContextEventMethod = "FocusedApplicationContext.Event"
 const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
   platforms: [
@@ -62,6 +64,13 @@ const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, 
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
 })
+const SnapshotSupport = NativeSurface.support.partial(MacOsSnapshotReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: MacOsSnapshotReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+}) satisfies RpcSupportMetadata
 
 export type FocusedApplicationContextError = HostProtocolError
 
@@ -69,7 +78,8 @@ export const FocusedApplicationContextSnapshot = focusedApplicationContextRpc(
   "snapshot",
   FocusedApplicationContextSnapshotInput,
   FocusedApplicationContextSnapshotResult,
-  P.nativeInvoke({ primitive: Surface, methods: ["snapshot"] })
+  P.nativeInvoke({ primitive: Surface, methods: ["snapshot"] }),
+  SnapshotSupport
 )
 export const FocusedApplicationContextWatch = focusedApplicationContextRpc(
   "watch",
@@ -516,13 +526,19 @@ function focusedApplicationContextRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, cap: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  cap: RpcCapabilityMetadata,
+  support: RpcSupportMetadata = UnsupportedSupport
+) {
   return NativeSurface.rpc(Surface, method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(cap),
     endpoint: method === "snapshot" ? "query" : "mutation",
-    support: UnsupportedSupport
+    support
   })
 }
 
