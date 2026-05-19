@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@effect/platform-browser": "4.0.0-beta.60",
-    "@effect/sql-sqlite-wasm": "4.0.0-beta.66",
+    "@effect/sql-sqlite-wasm": "4.0.0-beta.68",
     "@effect/wa-sqlite": "^0.1.2",
     "effect": "4.0.0-beta.60"
   },
