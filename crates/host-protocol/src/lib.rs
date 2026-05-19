@@ -342,6 +342,11 @@ pub const SESSION_PROFILE_DESTROY_METHOD: &str = "SessionProfile.destroy";
 pub const SESSION_PROFILE_LIST_METHOD: &str = "SessionProfile.list";
 pub const SESSION_PROFILE_IS_SUPPORTED_METHOD: &str = "SessionProfile.isSupported";
 pub const SESSION_PROFILE_EVENT: &str = "SessionProfile.Event";
+pub const COOKIE_STORE_GET_METHOD: &str = "CookieStore.get";
+pub const COOKIE_STORE_SET_METHOD: &str = "CookieStore.set";
+pub const COOKIE_STORE_REMOVE_METHOD: &str = "CookieStore.remove";
+pub const COOKIE_STORE_IS_SUPPORTED_METHOD: &str = "CookieStore.isSupported";
+pub const COOKIE_STORE_EVENT: &str = "CookieStore.Event";
 pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
@@ -9667,6 +9672,157 @@ impl SessionProfileSupportedPayload {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum CookieStoreSameSitePayload {
+    Lax,
+    Strict,
+    None,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreCookiePayload {
+    name: String,
+    value: String,
+    domain: String,
+    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    secure: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    http_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    same_site: Option<CookieStoreSameSitePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<f64>,
+}
+
+impl CookieStoreCookiePayload {
+    pub fn new(
+        name: impl Into<String>,
+        value: impl Into<String>,
+        domain: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+            domain: domain.into(),
+            path: path.into(),
+            secure: None,
+            http_only: None,
+            same_site: None,
+            expires_at: None,
+        }
+    }
+
+    pub fn with_secure(mut self, secure: bool) -> Self {
+        self.secure = Some(secure);
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreGetPayload {
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl CookieStoreGetPayload {
+    pub fn new(profile: SessionProfileResourcePayload, url: impl Into<String>) -> Self {
+        Self {
+            profile,
+            url: url.into(),
+            name: None,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreSetPayload {
+    profile: SessionProfileResourcePayload,
+    url: String,
+    cookie: CookieStoreCookiePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl CookieStoreSetPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        cookie: CookieStoreCookiePayload,
+    ) -> Self {
+        Self {
+            profile,
+            url: url.into(),
+            cookie,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreRemovePayload {
+    profile: SessionProfileResourcePayload,
+    url: String,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl CookieStoreRemovePayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Self {
+        Self {
+            profile,
+            url: url.into(),
+            name: name.into(),
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreGetResultPayload {
+    cookies: Vec<CookieStoreCookiePayload>,
+}
+
+impl CookieStoreGetResultPayload {
+    pub fn new(cookies: Vec<CookieStoreCookiePayload>) -> Self {
+        Self { cookies }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl CookieStoreSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceIndexEventPayload {
     r#type: String,
@@ -12101,7 +12257,9 @@ mod tests {
         AutostartEventPayload, AutostartEventPhasePayload, AutostartMechanismPayload,
         AutostartStatusPayload, CanonicalPathPayload, ClipboardCapabilityPayload,
         ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
-        ClipboardSupportedPayload, ClipboardTextPayload, CrashReporterBreadcrumbPayload,
+        ClipboardSupportedPayload, ClipboardTextPayload, CookieStoreCookiePayload,
+        CookieStoreGetPayload, CookieStoreGetResultPayload, CookieStoreRemovePayload,
+        CookieStoreSetPayload, CookieStoreSupportedPayload, CrashReporterBreadcrumbPayload,
         CrashReporterFlushPayload, CrashReporterGetReportsPayload, CrashReporterReportPayload,
         CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
         DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
@@ -15193,6 +15351,57 @@ mod tests {
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-session-profile-routing-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn cookie_store_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let cookie =
+            CookieStoreCookiePayload::new("token", "secret", "example.test", "/").with_secure(true);
+        assert_eq!(
+            serde_json::to_string(&cookie).expect("cookie should encode"),
+            r#"{"name":"token","value":"secret","domain":"example.test","path":"/","secure":true}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&CookieStoreGetPayload::new(
+                profile.clone(),
+                "https://example.test/account"
+            ))
+            .expect("get payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreSetPayload::new(
+                profile.clone(),
+                "https://example.test/account",
+                cookie.clone()
+            ))
+            .expect("set payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","cookie":{"name":"token","value":"secret","domain":"example.test","path":"/","secure":true}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreRemovePayload::new(
+                profile,
+                "https://example.test/account",
+                "token"
+            ))
+            .expect("remove payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","name":"token"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreGetResultPayload::new(vec![cookie]))
+                .expect("get result should encode"),
+            r#"{"cookies":[{"name":"token","value":"secret","domain":"example.test","path":"/","secure":true}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreSupportedPayload::unsupported(
+                "host-cookie-store-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-cookie-store-unavailable"}"#
         );
     }
 

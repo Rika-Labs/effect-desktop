@@ -114,10 +114,11 @@ cookies, local storage, IndexedDB, and history cannot be cleared by profile,
 session, or data type because the current host WebView attachment has no
 partitioned browser data store contract.
 
-Cookies are not exposed as a native Effect Desktop service today. The installed
-WebView provider has low-level cookie read, write, and delete primitives, but
-Effect Desktop has no host protocol, permission gate, profile/session target, or
-cookie-change event stream for them yet.
+`CookieStore` now exposes typed cookie read, write, remove, and event contracts
+scoped to `SessionProfileHandle`, but the host adapter is still validation-first
+unsupported until WebView creation binds profile handles to Wry contexts. The
+installed WebView provider has low-level cookie primitives, but Effect Desktop
+does not route them to partitioned browser state yet.
 
 ## Import
 

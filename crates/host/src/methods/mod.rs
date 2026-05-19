@@ -5,6 +5,7 @@ mod association;
 mod attachment_intake;
 mod autostart;
 mod clipboard;
+mod cookie_store;
 mod crash_reporter;
 mod diagnostics_bundle;
 mod dialog;
@@ -1241,6 +1242,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::SESSION_PROFILE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(session_profile::is_supported),
+    ),
+    route(
+        host_protocol::COOKIE_STORE_GET_METHOD,
+        HostMethodDispatcher::Payload(cookie_store::get),
+    ),
+    route(
+        host_protocol::COOKIE_STORE_SET_METHOD,
+        HostMethodDispatcher::Payload(cookie_store::set),
+    ),
+    route(
+        host_protocol::COOKIE_STORE_REMOVE_METHOD,
+        HostMethodDispatcher::Payload(cookie_store::remove),
+    ),
+    route(
+        host_protocol::COOKIE_STORE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(cookie_store::is_supported),
     ),
 ];
 

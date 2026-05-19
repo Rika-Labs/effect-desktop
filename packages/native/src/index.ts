@@ -239,6 +239,29 @@ export {
   type ContextMenuServiceApi
 } from "./context-menu.js"
 export {
+  CookieStore,
+  CookieStoreClient,
+  CookieStoreHandlersLive,
+  CookieStoreLive,
+  CookieStoreMethodNames,
+  CookieStoreRpcEvents,
+  CookieStoreRpcs,
+  CookieStoreSurface,
+  makeCookieStoreBridgeClientLayer,
+  makeCookieStoreClientLayer,
+  makeCookieStoreMemoryClient,
+  makeCookieStoreServiceLayer,
+  makeCookieStoreUnsupportedClient,
+  makeHostCookieStoreRpcRuntime,
+  type CookieStoreClientApi,
+  type CookieStoreError,
+  type CookieStoreMemoryClientOptions,
+  type CookieStoreRpc,
+  type CookieStoreRpcHandlers,
+  type CookieStoreServiceApi,
+  type CookieStoreServiceOptions
+} from "./cookie-store.js"
+export {
   CrashReporter,
   CrashReporterClient,
   CrashReporterHandlersLive,

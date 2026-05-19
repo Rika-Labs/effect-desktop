@@ -12,6 +12,7 @@ import { AutostartSurface } from "./autostart.js"
 import { AttachmentIntakeSurface } from "./attachment-intake.js"
 import { ClipboardSurface } from "./clipboard.js"
 import { ContextMenuSurface } from "./context-menu.js"
+import { CookieStoreSurface } from "./cookie-store.js"
 import { CrashReporterSurface } from "./crash-reporter.js"
 import { DiagnosticsBundleSurface } from "./diagnostics-bundle.js"
 import { DistributionParitySurface } from "./distribution-parity.js"
@@ -60,6 +61,7 @@ const BuiltInSurfaces = Object.freeze([
   AttachmentIntakeSurface,
   ClipboardSurface,
   ContextMenuSurface,
+  CookieStoreSurface,
   CrashReporterSurface,
   DiagnosticsBundleSurface,
   DistributionParitySurface,
@@ -114,6 +116,7 @@ const Autostart = AutostartSurface.selection
 const AttachmentIntake = AttachmentIntakeSurface.selection
 const Clipboard = ClipboardSurface.selection
 const ContextMenu = ContextMenuSurface.selection
+const CookieStore = CookieStoreSurface.selection
 const CrashReporter = CrashReporterSurface.selection
 const DiagnosticsBundle = DiagnosticsBundleSurface.selection
 const DistributionParity = DistributionParitySurface.selection
@@ -168,6 +171,7 @@ export const Permissions = Object.freeze({
   attachmentIntake: AttachmentIntakeSurface.permissions,
   clipboard: ClipboardSurface.permissions,
   contextMenu: ContextMenuSurface.permissions,
+  cookieStore: CookieStoreSurface.permissions,
   crashReporter: CrashReporterSurface.permissions,
   diagnosticsBundle: DiagnosticsBundleSurface.permissions,
   distributionParity: DistributionParitySurface.permissions,
@@ -217,6 +221,7 @@ export const Native = Object.freeze({
   AttachmentIntake,
   Clipboard,
   ContextMenu,
+  CookieStore,
   CrashReporter,
   DiagnosticsBundle,
   DistributionParity,

@@ -284,6 +284,31 @@
       "signature": "const CONTEXT_MENU_SHOW_METHOD: \"ContextMenu.show\""
     },
     {
+      "name": "COOKIE_STORE_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const COOKIE_STORE_EVENT_METHOD: \"CookieStore.Event\""
+    },
+    {
+      "name": "COOKIE_STORE_GET_METHOD",
+      "kind": "value",
+      "signature": "const COOKIE_STORE_GET_METHOD: \"CookieStore.get\""
+    },
+    {
+      "name": "COOKIE_STORE_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const COOKIE_STORE_IS_SUPPORTED_METHOD: \"CookieStore.isSupported\""
+    },
+    {
+      "name": "COOKIE_STORE_REMOVE_METHOD",
+      "kind": "value",
+      "signature": "const COOKIE_STORE_REMOVE_METHOD: \"CookieStore.remove\""
+    },
+    {
+      "name": "COOKIE_STORE_SET_METHOD",
+      "kind": "value",
+      "signature": "const COOKIE_STORE_SET_METHOD: \"CookieStore.set\""
+    },
+    {
       "name": "decodeHostProtocolEnvelope",
       "kind": "value",
       "signature": "const decodeHostProtocolEnvelope: (input: unknown) => HostProtocolEnvelope"

@@ -466,6 +466,100 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "CookieStore.get",
+      "surface": "CookieStore",
+      "method": "get",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-cookie-store-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-cookie-store-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-cookie-store-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-cookie-store-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "CookieStore.isSupported",
+      "surface": "CookieStore",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "CookieStore.remove",
+      "surface": "CookieStore",
+      "method": "remove",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-cookie-store-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-cookie-store-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-cookie-store-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-cookie-store-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "CookieStore.set",
+      "surface": "CookieStore",
+      "method": "set",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-cookie-store-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-cookie-store-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-cookie-store-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-cookie-store-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "CrashReporter.flush",
       "surface": "CrashReporter",
       "method": "flush",
@@ -4667,11 +4761,11 @@
     }
   ],
   "summary": {
-    "total": 259,
-    "routed": 259,
+    "total": 263,
+    "routed": 263,
     "missing": 0,
-    "supported": 141,
+    "supported": 142,
     "partial": 70,
-    "unsupported": 48
+    "unsupported": 51
   }
 }
