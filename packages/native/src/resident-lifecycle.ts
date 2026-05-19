@@ -48,13 +48,7 @@ const Surface = "ResidentLifecycle"
 const UnsupportedReason = "host-adapter-unimplemented"
 const EventMethod = "ResidentLifecycle.Event"
 const ResourceId = makeResourceId("resident-lifecycle-policy")
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
+const ResidentLifecycleSupport = NativeSurface.support.supported
 
 export type ResidentLifecycleError = HostProtocolError
 
@@ -75,7 +69,7 @@ export const ResidentLifecycleGetState = NativeSurface.rpc(Surface, "getState", 
   success: ResidentLifecycleState,
   authority: NativeSurface.authority.none,
   endpoint: "query",
-  support: UnsupportedSupport
+  support: ResidentLifecycleSupport
 })
 export const ResidentLifecycleIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   payload: Schema.Void,
@@ -443,7 +437,7 @@ function residentLifecycleRpc<
     success,
     authority: NativeSurface.authority.custom(cap),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: ResidentLifecycleSupport
   })
 }
 

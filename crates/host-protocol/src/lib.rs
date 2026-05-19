@@ -6361,6 +6361,22 @@ impl ResidentLifecyclePolicyPayload {
             launch_at_login,
         }
     }
+
+    pub fn process(&self) -> &ResidentLifecycleProcessPolicy {
+        &self.process
+    }
+
+    pub fn windows(&self) -> &ResidentLifecycleWindowPolicy {
+        &self.windows
+    }
+
+    pub fn background(&self) -> &ResidentLifecycleBackgroundAvailability {
+        &self.background
+    }
+
+    pub fn launch_at_login(&self) -> Option<bool> {
+        self.launch_at_login
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -6384,6 +6400,10 @@ impl ResidentLifecycleEnablePayload {
 
     pub fn owner_scope(&self) -> Option<&str> {
         self.owner_scope.as_deref()
+    }
+
+    pub fn policy(&self) -> &ResidentLifecyclePolicyPayload {
+        &self.policy
     }
 
     pub fn trace_id(&self) -> Option<&str> {
@@ -6417,11 +6437,22 @@ pub struct ResidentLifecycleStatePayload {
 }
 
 impl ResidentLifecycleStatePayload {
+    pub fn enabled(policy: ResidentLifecyclePolicyPayload) -> Self {
+        Self {
+            enabled: true,
+            policy: Some(policy),
+        }
+    }
+
     pub fn disabled() -> Self {
         Self {
             enabled: false,
             policy: None,
         }
+    }
+
+    pub fn policy(&self) -> Option<&ResidentLifecyclePolicyPayload> {
+        self.policy.as_ref()
     }
 }
 
@@ -6434,6 +6465,13 @@ pub struct ResidentLifecycleSupportedPayload {
 }
 
 impl ResidentLifecycleSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -11677,9 +11715,9 @@ mod tests {
         EXTENSION_CONFIG_UNSUPPORTED_REASON, EXTENSION_PACKAGE_UNSUPPORTED_REASON,
         HOST_PROTOCOL_ERROR_SPECS, JOB_UNSUPPORTED_REASON, LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON,
         NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON, NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
-        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
-        TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
-        TRAY_UNSUPPORTED_REASON, UPDATER_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
+        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
+        TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON, TRAY_UNSUPPORTED_REASON,
+        UPDATER_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -13553,8 +13591,7 @@ mod tests {
             ResidentLifecycleStatePayload::disabled(),
             "trace-disable",
         );
-        let supported =
-            ResidentLifecycleSupportedPayload::unsupported(RESIDENT_LIFECYCLE_UNSUPPORTED_REASON);
+        let supported = ResidentLifecycleSupportedPayload::supported();
 
         assert_eq!(
             serde_json::to_string(&enable).expect("resident enable should encode"),
@@ -13570,7 +13607,7 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("resident support should encode"),
-            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+            r#"{"supported":true}"#
         );
     }
 

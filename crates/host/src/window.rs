@@ -2,6 +2,8 @@
 // Host method boundaries return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
+#[cfg(not(test))]
+use crate::methods::resident_lifecycle::{self, ResidentWindowCloseAction};
 use crate::{macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{
@@ -1948,6 +1950,21 @@ impl WindowRegistry {
         }
         if let Some(focused_window_id) = self.select_fallback_focus() {
             self.emit_focused_window_event(&focused_window_id);
+        }
+    }
+
+    #[cfg_attr(test, allow(dead_code))]
+    fn native_window_close_requested_to_background(&mut self, native_window_id: WindowId) {
+        let Some(window_id) = self.window_id_by_native_id.get(&native_window_id).cloned() else {
+            return;
+        };
+        if let Err(error) = self.hide(&window_id) {
+            warn!(
+                event = "host.window.background_hide_failed",
+                error = ?error,
+                window_id,
+                "failed to hide window for resident lifecycle close request"
+            );
         }
     }
 
@@ -4194,8 +4211,27 @@ fn handle_native_window_close_requested(
     registry: &mut WindowRegistry,
     native_window_id: WindowId,
 ) -> WindowLifecycleEvent {
-    registry.native_window_close_requested(native_window_id);
-    WindowLifecycleEvent::CloseRequested
+    #[cfg(test)]
+    {
+        registry.native_window_close_requested(native_window_id);
+        return WindowLifecycleEvent::CloseRequested;
+    }
+
+    #[cfg(not(test))]
+    match resident_lifecycle::window_close_action() {
+        ResidentWindowCloseAction::DestroyAndExit => {
+            registry.native_window_close_requested(native_window_id);
+            WindowLifecycleEvent::CloseRequested
+        }
+        ResidentWindowCloseAction::DestroyAndKeepRunning => {
+            registry.native_window_close_requested(native_window_id);
+            WindowLifecycleEvent::Other
+        }
+        ResidentWindowCloseAction::HideAndKeepRunning => {
+            registry.native_window_close_requested_to_background(native_window_id);
+            WindowLifecycleEvent::Other
+        }
+    }
 }
 
 fn is_screen_displays_changed_event(event: &Event<'_, HostEvent>) -> bool {

@@ -151,9 +151,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `RecentDocuments`           | `add`                       | `partial`     | `RecentDocuments.add`                     | `routed`    |
 | `RecentDocuments`           | `clear`                     | `partial`     | `RecentDocuments.clear`                   | `routed`    |
 | `RecentDocuments`           | `list`                      | `partial`     | `RecentDocuments.list`                    | `routed`    |
-| `ResidentLifecycle`         | `disable`                   | `unsupported` | `ResidentLifecycle.disable`               | `routed`    |
-| `ResidentLifecycle`         | `enable`                    | `unsupported` | `ResidentLifecycle.enable`                | `routed`    |
-| `ResidentLifecycle`         | `getState`                  | `unsupported` | `ResidentLifecycle.getState`              | `routed`    |
+| `ResidentLifecycle`         | `disable`                   | `supported`   | `ResidentLifecycle.disable`               | `routed`    |
+| `ResidentLifecycle`         | `enable`                    | `supported`   | `ResidentLifecycle.enable`                | `routed`    |
+| `ResidentLifecycle`         | `getState`                  | `supported`   | `ResidentLifecycle.getState`              | `routed`    |
 | `ResidentLifecycle`         | `isSupported`               | `supported`   | `ResidentLifecycle.isSupported`           | `routed`    |
 | `SafeStorage`               | `delete`                    | `unsupported` | `SafeStorage.delete`                      | `routed`    |
 | `SafeStorage`               | `get`                       | `unsupported` | `SafeStorage.get`                         | `routed`    |

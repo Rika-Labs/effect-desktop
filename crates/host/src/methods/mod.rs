@@ -27,7 +27,7 @@ mod power_monitor;
 pub(crate) mod protocol;
 mod realtime_media_session;
 mod recent_documents;
-mod resident_lifecycle;
+pub(crate) mod resident_lifecycle;
 mod safe_storage;
 mod scoped_access_grant;
 mod screen;
@@ -829,11 +829,11 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::RESIDENT_LIFECYCLE_ENABLE_METHOD,
-        HostMethodDispatcher::Payload(resident_lifecycle::enable),
+        HostMethodDispatcher::EventfulPayload(resident_lifecycle::enable),
     ),
     route(
         host_protocol::RESIDENT_LIFECYCLE_DISABLE_METHOD,
-        HostMethodDispatcher::Payload(resident_lifecycle::disable),
+        HostMethodDispatcher::EventfulPayload(resident_lifecycle::disable),
     ),
     route(
         host_protocol::RESIDENT_LIFECYCLE_GET_STATE_METHOD,
@@ -1951,7 +1951,7 @@ fn local_tool_runtime_payload_id(payload: Option<&serde_json::Value>) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use super::HostMethodRouter;
+    use super::{resident_lifecycle, HostMethodRouter};
     use crate::window::{TrayCreateRequest, WindowCreateRequest, WindowMethodHandler};
     use host_protocol::{
         ClipboardSupportedPayload, HostProtocolEnvelope, HostProtocolError, WindowBoundsPayload,
@@ -2366,7 +2366,10 @@ mod tests {
 
     #[test]
     fn resident_lifecycle_dispatches_through_router() {
-        let supported = test_router()
+        let _guard = resident_lifecycle::state_test_guard();
+        resident_lifecycle::reset_state_for_test();
+        let router = test_router();
+        let supported = router
             .dispatch_at(
                 request(
                     "request-resident-supported",
@@ -2382,8 +2385,7 @@ mod tests {
                 timestamp: 1710000000110,
                 trace_id: "trace-request-resident-supported".to_string(),
                 payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::RESIDENT_LIFECYCLE_UNSUPPORTED_REASON
+                    "supported": true
                 })),
                 error: None,
             }
@@ -2398,7 +2400,7 @@ mod tests {
                         "process": "keep-running",
                         "windows": "close-to-background",
                         "background": "tray",
-                        "launchAtLogin": true
+                        "launchAtLogin": false
                     },
                     "traceId": "trace-1"
                 })),
@@ -2420,25 +2422,29 @@ mod tests {
                 Some(payload) => request_with_payload(id, method, payload),
                 None => request(id, method),
             };
-            let response = test_router()
+            let response = router
                 .dispatch_at(request, 1710000000111)
                 .expect("resident lifecycle request should return response");
 
-            let HostProtocolEnvelope::Response { error, .. } = response else {
-                panic!("resident lifecycle request should return response");
-            };
             assert!(matches!(
-                error,
-                Some(HostProtocolError::Unsupported {
-                    platform: Some(_),
+                response,
+                HostProtocolEnvelope::Response {
+                    error: None,
+                    payload: Some(_),
                     ..
-                })
+                } | HostProtocolEnvelope::Response {
+                    error: None,
+                    payload: None,
+                    ..
+                }
             ));
         }
     }
 
     #[test]
     fn resident_lifecycle_rejects_malformed_before_unsupported() {
+        let _guard = resident_lifecycle::state_test_guard();
+        resident_lifecycle::reset_state_for_test();
         let response = test_router()
             .dispatch_at(
                 request_with_payload(

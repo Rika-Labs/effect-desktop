@@ -14,13 +14,15 @@ The public service is Layer-first and test-substitutable. It validates Schema co
 
 ## Platform Support
 
-| Platform | Status        | Reason                       |
-| -------- | ------------- | ---------------------------- |
-| macOS    | `unsupported` | `host-adapter-unimplemented` |
-| Windows  | `unsupported` | `host-adapter-unimplemented` |
-| Linux    | `unsupported` | `host-adapter-unimplemented` |
+| Platform | Status      | Reason |
+| -------- | ----------- | ------ |
+| macOS    | `supported` |        |
+| Windows  | `supported` |        |
+| Linux    | `supported` |        |
 
-Unsupported native methods return typed `Unsupported` failures. They do not silently no-op. Real OS resident behavior is not implemented yet.
+The host owns a process-local resident policy state. When enabled with `process: "keep-running"`, native close requests no longer exit the host process. When enabled with `windows: "close-to-background"`, native close requests hide the window instead of destroying it.
+
+`launchAtLogin` is policy data only here; persistent login-item registration belongs to `Autostart`.
 
 ## Diagnostics
 
