@@ -93,7 +93,7 @@ test("makeUnaryDesktopTransportFromBridgeClientExchange adapts unary bridge exch
     expect(requests[0]?.traceId).toBeString()
   })
 
-  return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(TransportLayer)))
+  return Effect.runPromise(Effect.provide(Effect.scoped(program), TransportLayer))
 })
 
 test("makeUnaryDesktopTransportFromBridgeClientExchange uses the Effect Clock by default", () =>
