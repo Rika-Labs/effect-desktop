@@ -12,21 +12,21 @@ Host-backed system notifications with typed permission, support, click, and acti
 
 ## Platform Status
 
-| Platform | Status | Notes |
-| --- | --- | --- |
-| Linux | Supported when a notification server is reachable | Uses the desktop notification portal over D-Bus. `isSupported` probes the notification server; `show`, `close`, permission status, click events, and action events are wired through the Rust host. |
-| macOS | Unsupported | Returns `Unsupported` with reason `host-notification-unavailable`. |
-| Windows | Unsupported | Returns `Unsupported` with reason `host-notification-unavailable`. |
+| Platform | Status                                            | Notes                                                                                                                                                                                               |
+| -------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux    | Supported when a notification server is reachable | Uses the desktop notification portal over D-Bus. `isSupported` probes the notification server; `show`, `close`, permission status, click events, and action events are wired through the Rust host. |
+| macOS    | Unsupported                                       | Returns `Unsupported` with reason `host-notification-unavailable`.                                                                                                                                  |
+| Windows  | Unsupported                                       | Returns `Unsupported` with reason `host-notification-unavailable`.                                                                                                                                  |
 
 ## Methods
 
-| Method | Payload | Success |
-| --- | --- | --- |
-| `show` | `{ title, body, actions?, ownerWindow? }` | `NotificationHandle` |
-| `close` | `{ notification }` | `void` |
-| `isSupported` | `void` | `{ supported, reason? }` |
-| `requestPermission` | `void` | `{ state }` |
-| `getPermissionStatus` | `void` | `{ state }` |
+| Method                | Payload                                   | Success                  |
+| --------------------- | ----------------------------------------- | ------------------------ |
+| `show`                | `{ title, body, actions?, ownerWindow? }` | `NotificationHandle`     |
+| `close`               | `{ notification }`                        | `void`                   |
+| `isSupported`         | `void`                                    | `{ supported, reason? }` |
+| `requestPermission`   | `void`                                    | `{ state }`              |
+| `getPermissionStatus` | `void`                                    | `{ state }`              |
 
 `title`, `body`, action ids, and action labels must be printable non-empty strings. Malformed input is rejected before native transport.
 
@@ -34,9 +34,9 @@ On Linux, `requestPermission` and `getPermissionStatus` do not show an OS prompt
 
 ## Events
 
-| Event | Payload |
-| --- | --- |
-| `Notification.Click` | `{ notification, ownerWindowId? }` |
+| Event                 | Payload                                      |
+| --------------------- | -------------------------------------------- |
+| `Notification.Click`  | `{ notification, ownerWindowId? }`           |
 | `Notification.Action` | `{ notification, actionId, ownerWindowId? }` |
 
 ## Lifecycle

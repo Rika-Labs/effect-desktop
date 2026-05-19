@@ -101,8 +101,7 @@ export const makeUnaryDesktopTransportFromBridgeClientExchange = (
     const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
     const clock = yield* Clock.Clock
     const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
-    const nextTraceId =
-      options.nextTraceId ?? (() => `trace-bridge-${++bridgeClientTraceSeq}`)
+    const nextTraceId = options.nextTraceId ?? (() => `trace-bridge-${++bridgeClientTraceSeq}`)
     const normalizeRequest = options.normalizeRequest ?? ((request) => request)
 
     return Object.freeze({

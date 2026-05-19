@@ -113,12 +113,12 @@
           "unnecessaryFailYieldableError": "error",
           "unnecessaryPipe": "error",
           "unnecessaryPipeChain": "error",
-          "unsafeEffectTypeAssertion": "error",
+          "unsafeEffectTypeAssertion": "error"
         },
         "ignoreEffectSuggestionsInTscExitCode": false,
         "ignoreEffectWarningsInTscExitCode": false,
-        "ignoreEffectErrorsInTscExitCode": false,
-      },
-    ],
-  },
+        "ignoreEffectErrorsInTscExitCode": false
+      }
+    ]
+  }
 }

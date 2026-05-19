@@ -1306,10 +1306,7 @@ export const hostProtocolErrorFromRpcClientError = (
     return undefined
   }
   const reason = error.reason
-  if (
-    !Schema.is(RpcClientError.RpcClientDefect)(reason) ||
-    !isHostProtocolError(reason.cause)
-  ) {
+  if (!Schema.is(RpcClientError.RpcClientDefect)(reason) || !isHostProtocolError(reason.cause)) {
     return undefined
   }
   return decodeUnknownHostProtocolError(reason.cause, StrictParseOptions)

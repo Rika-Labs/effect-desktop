@@ -218,7 +218,9 @@ test("RpcServer stream handlers emit host stream envelopes through desktop proto
             sent.push(envelope)
           }).pipe(
             Effect.flatMap(() =>
-              envelope.kind === "response" ? Deferred.succeed(responseObserved, undefined) : Effect.void
+              envelope.kind === "response"
+                ? Deferred.succeed(responseObserved, undefined)
+                : Effect.void
             )
           ),
         run: (onEnvelope): Effect.Effect<never> => runQueuedTransport(queue, onEnvelope)

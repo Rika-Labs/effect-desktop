@@ -64,7 +64,7 @@ Two subtleties:
   with `Cause.isFailReason` instead.
 - A `Schema.TaggedError` instance is yieldable on its own. Use
   `return yield* new TaggedError()` instead of `yield* Effect.fail(new
-  TaggedError())`; the linter has both `missingReturnYieldStar` and
+TaggedError())`; the linter has both `missingReturnYieldStar` and
   `unnecessaryFailYieldableError` rules for that pattern.
 
 ## Architecture-debt sweep
@@ -98,12 +98,12 @@ The biggest gates that still need substantive (not mechanical) work:
   `Schema.TaggedStruct("PermissionDenied", { ... })` makes the tag
   optional in the constructor, which simplifies callers but requires
   audit of every `new RpcPermissionDeniedError({ _tag: "PermissionDenied",
-  ... })` to drop the redundant tag argument.
+... })` to drop the redundant tag argument.
 - **`fs`/`path` Node imports in `index.test.ts`.** The Effect-first
   replacement is `FileSystem` and `Path` from `effect/platform`, provided
   as Layers at the test entry point. Test reads a fixture directory and
   multiple JSON files; the refactor needs a layered `Effect.runPromise(
-  program.pipe(Effect.provide(FileSystem.layer)))` style.
+program.pipe(Effect.provide(FileSystem.layer)))` style.
 
 These are all individually tractable but each has downstream ripples; they
 belong in their own focused commits rather than batched into the

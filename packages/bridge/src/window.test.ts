@@ -149,7 +149,9 @@ test("host window client requests Window.destroy", () =>
         nextTraceId: () => "trace-window-destroy"
       })
 
-      yield* client.destroy("window-1").pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+      yield* client
+        .destroy("window-1")
+        .pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
 
       expect(requests).toEqual([
         {
@@ -411,12 +413,18 @@ test("host window client requests mutable chrome commands", () =>
         [WINDOW_SET_TITLE_METHOD, { windowId: "window-1", title: "Renamed" }],
         [WINDOW_SET_RESIZABLE_METHOD, { windowId: "window-1", resizable: false }],
         [WINDOW_SET_DECORATIONS_METHOD, { windowId: "window-1", decorations: true }],
-        [WINDOW_SET_TRAFFIC_LIGHTS_METHOD, { windowId: "window-1", trafficLights: { x: 12, y: 13 } }],
+        [
+          WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+          { windowId: "window-1", trafficLights: { x: 12, y: 13 } }
+        ],
         [WINDOW_SET_VIBRANCY_METHOD, { windowId: "window-1", material: "windowBackground" }],
         [WINDOW_CLEAR_VIBRANCY_METHOD, { windowId: "window-1" }],
         [WINDOW_SET_SHADOW_METHOD, { windowId: "window-1", hasShadow: false }],
         [WINDOW_SET_TITLE_BAR_STYLE_METHOD, { windowId: "window-1", titleBarStyle: "hiddenInset" }],
-        [WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD, { windowId: "window-1", titleBarTransparent: true }],
+        [
+          WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+          { windowId: "window-1", titleBarTransparent: true }
+        ],
         [WINDOW_SET_TRANSPARENT_METHOD, { windowId: "window-1", transparent: true }]
       ])
     })
@@ -572,9 +580,8 @@ test("host window client rejects empty destroy window ids before crossing the ho
       const requests: HostProtocolRequestEnvelope[] = []
       const client = makeHostWindowClient(windowExchange(requests))
 
-      yield* expectEffectFailure(
-        client.destroy(""),
-        (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
+      yield* expectEffectFailure(client.destroy(""), (error) =>
+        Schema.is(HostProtocolInvalidArgumentError)(error)
       )
       expect(requests).toEqual([])
     })
@@ -586,17 +593,14 @@ test("host window client rejects empty lifecycle window ids before crossing the 
       const requests: HostProtocolRequestEnvelope[] = []
       const client = makeHostWindowClient(windowExchange(requests))
 
-      yield* expectEffectFailure(
-        client.show(""),
-        (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
+      yield* expectEffectFailure(client.show(""), (error) =>
+        Schema.is(HostProtocolInvalidArgumentError)(error)
       )
-      yield* expectEffectFailure(
-        client.hide(""),
-        (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
+      yield* expectEffectFailure(client.hide(""), (error) =>
+        Schema.is(HostProtocolInvalidArgumentError)(error)
       )
-      yield* expectEffectFailure(
-        client.focus(""),
-        (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
+      yield* expectEffectFailure(client.focus(""), (error) =>
+        Schema.is(HostProtocolInvalidArgumentError)(error)
       )
       expect(requests).toEqual([])
     })
@@ -622,9 +626,8 @@ test("host window client rejects invalid attention payloads before crossing the 
       const requests: HostProtocolRequestEnvelope[] = []
       const client = makeHostWindowClient(windowExchange(requests))
 
-      yield* expectEffectFailure(
-        client.setProgress("window-1", { progress: 101 }),
-        (error) => Schema.is(HostProtocolInvalidArgumentError)(error)
+      yield* expectEffectFailure(client.setProgress("window-1", { progress: 101 }), (error) =>
+        Schema.is(HostProtocolInvalidArgumentError)(error)
       )
       yield* expectEffectFailure(
         client.requestAttention(
@@ -651,17 +654,15 @@ test("host window client propagates destroy response errors", () =>
 
 test("host window client rejects malformed create output", () =>
   Effect.runPromise(
-    expectEffectFailure(
-      makeHostWindowClient(malformedCreateExchange()).create(),
-      (error) => Schema.is(HostProtocolInvalidOutputError)(error)
+    expectEffectFailure(makeHostWindowClient(malformedCreateExchange()).create(), (error) =>
+      Schema.is(HostProtocolInvalidOutputError)(error)
     )
   ))
 
 test("host window client rejects empty create response window ids", () =>
   Effect.runPromise(
-    expectEffectFailure(
-      makeHostWindowClient(emptyWindowIdExchange()).create(),
-      (error) => Schema.is(HostProtocolInvalidOutputError)(error)
+    expectEffectFailure(makeHostWindowClient(emptyWindowIdExchange()).create(), (error) =>
+      Schema.is(HostProtocolInvalidOutputError)(error)
     )
   ))
 

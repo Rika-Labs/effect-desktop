@@ -389,11 +389,15 @@ test("Client allows zero-argument calls for void-input methods", () =>
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
       const VoidRpcs = makeVoidRpcs("ProjectRpcs.VoidInput")
-      const client = Client({ project: VoidRpcs }, responseExchange(requests, { id: "project-1" }), {
-        nextRequestId: () => "request-void-input",
-        nextTraceId: () => "trace-void-input",
-        now: () => 42
-      })
+      const client = Client(
+        { project: VoidRpcs },
+        responseExchange(requests, { id: "project-1" }),
+        {
+          nextRequestId: () => "request-void-input",
+          nextTraceId: () => "trace-void-input",
+          now: () => 42
+        }
+      )
 
       const output = yield* client.project.open()
 
@@ -988,10 +992,7 @@ const expectFailureField = (
   }
 }
 
-class WaitForTimeout extends Schema.TaggedErrorClass<WaitForTimeout>()(
-  "WaitForTimeout",
-  {}
-) {}
+class WaitForTimeout extends Schema.TaggedErrorClass<WaitForTimeout>()("WaitForTimeout", {}) {}
 
 const waitFor = (predicate: () => boolean): Effect.Effect<void, WaitForTimeout, never> =>
   Effect.suspend(() => (predicate() ? Effect.void : new WaitForTimeout().asEffect())).pipe(
