@@ -2149,8 +2149,7 @@ mod tests {
                 timestamp: 1710000000107,
                 trace_id: "trace-request-activation-registry-supported".to_string(),
                 payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::ACTIVATION_REGISTRY_UNSUPPORTED_REASON
+                    "supported": true
                 })),
                 error: None,
             }
@@ -2159,44 +2158,85 @@ mod tests {
 
     #[test]
     fn activation_registry_methods_dispatch_through_router() {
-        let cases = [
-            (
-                "request-activation-registry-register",
-                host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
-                Some(serde_json::json!({
-                    "surfaceId": "palette",
-                    "source": "global-shortcut",
-                    "commandId": "activation.open",
-                    "actor": { "kind": "workspace", "id": "workspace-1" },
-                    "traceId": "trace-1"
+        let surface_id = "palette-router";
+        let register = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-activation-registry-register",
+                    host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
+                    serde_json::json!({
+                        "surfaceId": surface_id,
+                        "source": "global-shortcut",
+                        "commandId": "activation.open",
+                        "actor": { "kind": "workspace", "id": "workspace-1" },
+                        "ownerScope": "workspace:workspace-1",
+                        "traceId": "trace-1"
+                    }),
+                ),
+                1710000000108,
+            )
+            .expect("activation registry register request should return response");
+
+        assert_eq!(
+            register,
+            HostProtocolEnvelope::Response {
+                id: "request-activation-registry-register".to_string(),
+                timestamp: 1710000000108,
+                trace_id: "trace-request-activation-registry-register".to_string(),
+                payload: Some(serde_json::json!({
+                    "kind": "activation-surface",
+                    "id": surface_id,
+                    "generation": 0,
+                    "ownerScope": "workspace:workspace-1",
+                    "state": "registered"
                 })),
-            ),
-            (
-                "request-activation-registry-unregister",
-                host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD,
-                Some(serde_json::json!({ "surfaceId": "palette" })),
-            ),
-            (
-                "request-activation-registry-list",
-                host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD,
-                None,
-            ),
-        ];
+                error: None,
+            }
+        );
 
-        for (id, method, payload) in cases {
-            let request = match payload {
-                Some(payload) => request_with_payload(id, method, payload),
-                None => request(id, method),
-            };
-            let response = test_router()
-                .dispatch_at(request, 1710000000108)
-                .expect("activation registry request should return response");
+        let list = test_router()
+            .dispatch_at(
+                request(
+                    "request-activation-registry-list",
+                    host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD,
+                ),
+                1710000000109,
+            )
+            .expect("activation registry list request should return response");
 
-            let HostProtocolEnvelope::Response { error, .. } = response else {
-                panic!("activation registry request should return response");
-            };
-            assert!(matches!(error, Some(HostProtocolError::Unsupported { .. })));
-        }
+        let HostProtocolEnvelope::Response { payload, error, .. } = list else {
+            panic!("activation registry list request should return response");
+        };
+        assert!(error.is_none());
+        let surfaces = payload
+            .and_then(|payload| payload.get("surfaces").cloned())
+            .and_then(|surfaces| surfaces.as_array().cloned())
+            .expect("activation registry list should include surfaces");
+        assert!(surfaces
+            .iter()
+            .any(|surface| surface.get("surfaceId") == Some(&serde_json::json!(surface_id))));
+
+        let unregister = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-activation-registry-unregister",
+                    host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD,
+                    serde_json::json!({ "surfaceId": surface_id }),
+                ),
+                1710000000110,
+            )
+            .expect("activation registry unregister request should return response");
+
+        assert_eq!(
+            unregister,
+            HostProtocolEnvelope::Response {
+                id: "request-activation-registry-unregister".to_string(),
+                timestamp: 1710000000110,
+                trace_id: "trace-request-activation-registry-unregister".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
     }
 
     #[test]

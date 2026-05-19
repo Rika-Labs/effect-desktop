@@ -1,11 +1,19 @@
 #![allow(clippy::result_large_err)]
 
 use host_protocol::{
-    ActivationRegistryActorPayload, ActivationRegistrySupportedPayload,
+    ActivationRegistryActorPayload, ActivationRegistryResourcePayload,
+    ActivationRegistrySupportedPayload, ActivationRegistrySurfaceListPayload,
     ActivationRegistrySurfacePayload, ActivationRegistrySurfaceRequestPayload, HostProtocolError,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
+use std::{
+    collections::BTreeMap,
+    sync::{LazyLock, Mutex},
+};
+
+static ACTIVATION_SURFACES: LazyLock<Mutex<BTreeMap<String, ActivationRegistrySurfacePayload>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
 pub(crate) fn register_surface(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     let input = decode_payload::<ActivationRegistrySurfacePayload>(
@@ -16,9 +24,27 @@ pub(crate) fn register_surface(payload: Option<Value>) -> Result<Option<Value>, 
         &input,
         host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
     )?;
-    Err(unsupported(
+
+    let surface_id = input.surface_id().to_string();
+    let owner_scope = input
+        .owner_scope()
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("activation-surface:{surface_id}"));
+    let mut surfaces =
+        activation_surfaces(host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD)?;
+    if surfaces.contains_key(&surface_id) {
+        return Err(HostProtocolError::invalid_argument(
+            "surfaceId",
+            "surface is already registered",
+            host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
+        ));
+    }
+    surfaces.insert(surface_id.clone(), input);
+
+    encode_payload(
+        ActivationRegistryResourcePayload::new(surface_id, 0, owner_scope),
         host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
-    ))
+    )
 }
 
 pub(crate) fn unregister_surface(
@@ -38,22 +64,29 @@ pub(crate) fn unregister_surface(
         input.trace_id(),
         host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD,
     )?;
-    Err(unsupported(
-        host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD,
-    ))
+    let mut surfaces =
+        activation_surfaces(host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD)?;
+    if surfaces.remove(input.surface_id()).is_none() {
+        return Err(HostProtocolError::not_found(
+            format!("ActivationSurface:{}", input.surface_id()),
+            host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD,
+        ));
+    }
+
+    Ok(None)
 }
 
 pub(crate) fn list_surfaces() -> Result<Option<Value>, HostProtocolError> {
-    Err(unsupported(
+    let surfaces = activation_surfaces(host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD)?;
+    encode_payload(
+        ActivationRegistrySurfaceListPayload::new(surfaces.values().cloned().collect()),
         host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD,
-    ))
+    )
 }
 
 pub(crate) fn is_supported() -> Result<Option<Value>, HostProtocolError> {
     encode_payload(
-        ActivationRegistrySupportedPayload::unsupported(
-            host_protocol::ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
-        ),
+        ActivationRegistrySupportedPayload::supported(),
         host_protocol::ACTIVATION_REGISTRY_IS_SUPPORTED_METHOD,
     )
 }
@@ -148,9 +181,13 @@ fn validate_printable_non_empty(
     Ok(())
 }
 
-fn unsupported(operation: &'static str) -> HostProtocolError {
-    HostProtocolError::unsupported(
-        host_protocol::ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
-        operation,
-    )
+fn activation_surfaces(
+    operation: &'static str,
+) -> Result<
+    std::sync::MutexGuard<'static, BTreeMap<String, ActivationRegistrySurfacePayload>>,
+    HostProtocolError,
+> {
+    ACTIVATION_SURFACES.lock().map_err(|_| {
+        HostProtocolError::internal("activation registry surface table is poisoned", operation)
+    })
 }

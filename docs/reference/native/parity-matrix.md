@@ -19,9 +19,9 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | Surface                     | Method                      | Support       | Host method                               | Host router |
 | --------------------------- | --------------------------- | ------------- | ----------------------------------------- | ----------- |
 | `ActivationRegistry`        | `isSupported`               | `supported`   | `ActivationRegistry.isSupported`          | `routed`    |
-| `ActivationRegistry`        | `listSurfaces`              | `unsupported` | `ActivationRegistry.listSurfaces`         | `routed`    |
-| `ActivationRegistry`        | `registerSurface`           | `unsupported` | `ActivationRegistry.registerSurface`      | `routed`    |
-| `ActivationRegistry`        | `unregisterSurface`         | `unsupported` | `ActivationRegistry.unregisterSurface`    | `routed`    |
+| `ActivationRegistry`        | `listSurfaces`              | `supported`   | `ActivationRegistry.listSurfaces`         | `routed`    |
+| `ActivationRegistry`        | `registerSurface`           | `supported`   | `ActivationRegistry.registerSurface`      | `routed`    |
+| `ActivationRegistry`        | `unregisterSurface`         | `supported`   | `ActivationRegistry.unregisterSurface`    | `routed`    |
 | `App`                       | `focus`                     | `unsupported` | `App.focus`                               | `routed`    |
 | `App`                       | `quit`                      | `unsupported` | `App.quit`                                | `routed`    |
 | `App`                       | `requestSingleInstanceLock` | `unsupported` | `App.requestSingleInstanceLock`           | `routed`    |

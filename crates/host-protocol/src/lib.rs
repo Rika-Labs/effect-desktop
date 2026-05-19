@@ -6005,6 +6005,26 @@ impl ActivationRegistryResourcePayload {
             state: "registered".to_string(),
         }
     }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn owner_scope(&self) -> &str {
+        &self.owner_scope
+    }
+
+    pub fn state(&self) -> &str {
+        &self.state
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -6017,6 +6037,14 @@ impl ActivationRegistrySurfaceListPayload {
     pub fn empty() -> Self {
         Self { surfaces: vec![] }
     }
+
+    pub fn new(surfaces: Vec<ActivationRegistrySurfacePayload>) -> Self {
+        Self { surfaces }
+    }
+
+    pub fn surfaces(&self) -> &[ActivationRegistrySurfacePayload] {
+        &self.surfaces
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -6028,11 +6056,26 @@ pub struct ActivationRegistrySupportedPayload {
 }
 
 impl ActivationRegistrySupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
             reason: Some(reason.into()),
         }
+    }
+
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
     }
 }
 
@@ -11439,15 +11482,14 @@ mod tests {
         WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
         WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
-        WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
-        CLIPBOARD_UNSUPPORTED_REASON, CRASH_REPORTER_UNSUPPORTED_REASON,
-        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
-        DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, DISPLAY_CAPTURE_UNSUPPORTED_REASON,
-        DISTRIBUTION_PARITY_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
-        EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
-        EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, JOB_UNSUPPORTED_REASON,
-        LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON,
-        NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
+        WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
+        CRASH_REPORTER_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS,
+        DEFAULT_RECONNECT_WINDOW_MS, DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON,
+        DISPLAY_CAPTURE_UNSUPPORTED_REASON, DISTRIBUTION_PARITY_UNSUPPORTED_REASON,
+        EGRESS_POLICY_UNSUPPORTED_REASON, EXECUTION_SANDBOX_UNSUPPORTED_REASON,
+        EXTENSION_CONFIG_UNSUPPORTED_REASON, EXTENSION_PACKAGE_UNSUPPORTED_REASON,
+        HOST_PROTOCOL_ERROR_SPECS, JOB_UNSUPPORTED_REASON, LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON,
+        NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON, NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
         TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
         TRAY_UNSUPPORTED_REASON, UPDATER_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
@@ -13185,8 +13227,7 @@ mod tests {
             actor,
             permission_context,
         );
-        let supported =
-            ActivationRegistrySupportedPayload::unsupported(ACTIVATION_REGISTRY_UNSUPPORTED_REASON);
+        let supported = ActivationRegistrySupportedPayload::supported();
 
         assert_eq!(surface.surface_id(), "palette");
         assert_eq!(surface.command_id(), "activation.open");
@@ -13200,7 +13241,7 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("activation support should encode"),
-            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+            r#"{"supported":true}"#
         );
     }
 

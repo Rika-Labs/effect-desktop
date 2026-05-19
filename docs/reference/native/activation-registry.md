@@ -9,19 +9,26 @@ The public service is Layer-first and test-substitutable. It validates Schema co
 - `ActivationRegistry.registerSurface(request)` returns a `ResourceHandle<"activation-surface", "registered">`.
 - `ActivationRegistry.unregisterSurface(request)` unregisters the surface and disposes the resource.
 - `ActivationRegistry.routeActivation(request)` invokes the registered command through `CommandRegistry`.
-- `ActivationRegistry.listSurfaces()` returns the local registered surface table.
+- `ActivationRegistry.listSurfaces()` returns the host registered surface table.
 - `ActivationRegistry.events()` streams activation lifecycle events.
 - `ActivationRegistry.isSupported()` reports platform support.
 
 ## Platform Support
 
-| Platform | Status | Reason |
-|---|---|---|
-| macOS | `unsupported` | `host-adapter-unimplemented` |
-| Windows | `unsupported` | `host-adapter-unimplemented` |
-| Linux | `unsupported` | `host-adapter-unimplemented` |
+| Platform | Status      | Reason                           |
+| -------- | ----------- | -------------------------------- |
+| macOS    | `supported` | Host surface table is available. |
+| Windows  | `supported` | Host surface table is available. |
+| Linux    | `supported` | Host surface table is available. |
 
-Unsupported native methods return typed `Unsupported` failures. They do not silently no-op.
+The Rust host adapter validates and stores activation surface registrations,
+returns generation-stamped activation surface handles, lists registered
+surfaces, and removes registered surfaces on unregister. Source-specific native
+activation producers, such as global shortcuts, tray items, protocol links,
+file-open events, and notification actions, remain owned by their respective
+surfaces. Public `routeActivation` still routes through the Layer-first
+`ActivationRegistry` service and `CommandRegistry`, preserving source, payload,
+actor, trace id, and permission context.
 
 ## Diagnostics
 
