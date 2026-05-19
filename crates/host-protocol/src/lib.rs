@@ -347,6 +347,11 @@ pub const COOKIE_STORE_SET_METHOD: &str = "CookieStore.set";
 pub const COOKIE_STORE_REMOVE_METHOD: &str = "CookieStore.remove";
 pub const COOKIE_STORE_IS_SUPPORTED_METHOD: &str = "CookieStore.isSupported";
 pub const COOKIE_STORE_EVENT: &str = "CookieStore.Event";
+pub const BROWSING_DATA_CLEAR_METHOD: &str = "BrowsingData.clear";
+pub const BROWSING_DATA_ESTIMATE_METHOD: &str = "BrowsingData.estimate";
+pub const BROWSING_DATA_LIST_TYPES_METHOD: &str = "BrowsingData.listTypes";
+pub const BROWSING_DATA_IS_SUPPORTED_METHOD: &str = "BrowsingData.isSupported";
+pub const BROWSING_DATA_EVENT: &str = "BrowsingData.Event";
 pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
@@ -9823,6 +9828,138 @@ impl CookieStoreSupportedPayload {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum BrowsingDataTypePayload {
+    Cache,
+    Cookies,
+    LocalStorage,
+    IndexedDb,
+    History,
+    ServiceWorkers,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataClearPayload {
+    profile: SessionProfileResourcePayload,
+    types: Vec<BrowsingDataTypePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl BrowsingDataClearPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        types: Vec<BrowsingDataTypePayload>,
+    ) -> Self {
+        Self {
+            profile,
+            types,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataEstimatePayload {
+    profile: SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    types: Option<Vec<BrowsingDataTypePayload>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl BrowsingDataEstimatePayload {
+    pub fn new(profile: SessionProfileResourcePayload) -> Self {
+        Self {
+            profile,
+            types: None,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataTypeEstimatePayload {
+    r#type: BrowsingDataTypePayload,
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bytes: Option<u64>,
+}
+
+impl BrowsingDataTypeEstimatePayload {
+    pub fn new(r#type: BrowsingDataTypePayload, supported: bool, bytes: Option<u64>) -> Self {
+        Self {
+            r#type,
+            supported,
+            bytes,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataClearResultPayload {
+    cleared: Vec<BrowsingDataTypePayload>,
+    unsupported: Vec<BrowsingDataTypePayload>,
+}
+
+impl BrowsingDataClearResultPayload {
+    pub fn new(
+        cleared: Vec<BrowsingDataTypePayload>,
+        unsupported: Vec<BrowsingDataTypePayload>,
+    ) -> Self {
+        Self {
+            cleared,
+            unsupported,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataEstimateResultPayload {
+    estimates: Vec<BrowsingDataTypeEstimatePayload>,
+}
+
+impl BrowsingDataEstimateResultPayload {
+    pub fn new(estimates: Vec<BrowsingDataTypeEstimatePayload>) -> Self {
+        Self { estimates }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataListTypesPayload {
+    types: Vec<BrowsingDataTypePayload>,
+}
+
+impl BrowsingDataListTypesPayload {
+    pub fn new(types: Vec<BrowsingDataTypePayload>) -> Self {
+        Self { types }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl BrowsingDataSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceIndexEventPayload {
     r#type: String,
@@ -12255,13 +12392,16 @@ mod tests {
         AssociationFileAssociationsPayload, AssociationFileAssociationsResultPayload,
         AssociationProtocolPayload, AssociationProtocolStatusPayload, AutostartEnablePayload,
         AutostartEventPayload, AutostartEventPhasePayload, AutostartMechanismPayload,
-        AutostartStatusPayload, CanonicalPathPayload, ClipboardCapabilityPayload,
-        ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
-        ClipboardSupportedPayload, ClipboardTextPayload, CookieStoreCookiePayload,
-        CookieStoreGetPayload, CookieStoreGetResultPayload, CookieStoreRemovePayload,
-        CookieStoreSetPayload, CookieStoreSupportedPayload, CrashReporterBreadcrumbPayload,
-        CrashReporterFlushPayload, CrashReporterGetReportsPayload, CrashReporterReportPayload,
-        CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
+        AutostartStatusPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
+        BrowsingDataEstimatePayload, BrowsingDataEstimateResultPayload,
+        BrowsingDataListTypesPayload, BrowsingDataSupportedPayload,
+        BrowsingDataTypeEstimatePayload, BrowsingDataTypePayload, CanonicalPathPayload,
+        ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
+        ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
+        CookieStoreCookiePayload, CookieStoreGetPayload, CookieStoreGetResultPayload,
+        CookieStoreRemovePayload, CookieStoreSetPayload, CookieStoreSupportedPayload,
+        CrashReporterBreadcrumbPayload, CrashReporterFlushPayload, CrashReporterGetReportsPayload,
+        CrashReporterReportPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
         DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
         DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
         DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
@@ -15402,6 +15542,67 @@ mod tests {
             ))
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-cookie-store-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn browsing_data_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataClearPayload::new(
+                profile.clone(),
+                vec![
+                    BrowsingDataTypePayload::Cache,
+                    BrowsingDataTypePayload::Cookies,
+                    BrowsingDataTypePayload::LocalStorage
+                ]
+            ))
+            .expect("clear payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"types":["cache","cookies","localStorage"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataEstimatePayload::new(profile))
+                .expect("estimate payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataClearResultPayload::new(
+                vec![BrowsingDataTypePayload::Cache],
+                vec![BrowsingDataTypePayload::ServiceWorkers]
+            ))
+            .expect("clear result should encode"),
+            r#"{"cleared":["cache"],"unsupported":["serviceWorkers"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataEstimateResultPayload::new(vec![
+                BrowsingDataTypeEstimatePayload::new(
+                    BrowsingDataTypePayload::IndexedDb,
+                    true,
+                    Some(1024)
+                )
+            ]))
+            .expect("estimate result should encode"),
+            r#"{"estimates":[{"type":"indexedDb","supported":true,"bytes":1024}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataListTypesPayload::new(vec![
+                BrowsingDataTypePayload::Cache,
+                BrowsingDataTypePayload::Cookies,
+                BrowsingDataTypePayload::LocalStorage,
+                BrowsingDataTypePayload::IndexedDb,
+                BrowsingDataTypePayload::History,
+                BrowsingDataTypePayload::ServiceWorkers
+            ]))
+            .expect("list types payload should encode"),
+            r#"{"types":["cache","cookies","localStorage","indexedDb","history","serviceWorkers"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataSupportedPayload::unsupported(
+                "host-browsing-data-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-browsing-data-unavailable"}"#
         );
     }
 

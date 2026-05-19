@@ -204,6 +204,29 @@ export {
   type NativeParityMatrixSummaryType
 } from "./parity-matrix.js"
 export {
+  BrowsingData,
+  BrowsingDataClient,
+  BrowsingDataHandlersLive,
+  BrowsingDataLive,
+  BrowsingDataMethodNames,
+  BrowsingDataRpcEvents,
+  BrowsingDataRpcs,
+  BrowsingDataSurface,
+  makeBrowsingDataBridgeClientLayer,
+  makeBrowsingDataClientLayer,
+  makeBrowsingDataMemoryClient,
+  makeBrowsingDataServiceLayer,
+  makeBrowsingDataUnsupportedClient,
+  makeHostBrowsingDataRpcRuntime,
+  type BrowsingDataClientApi,
+  type BrowsingDataError,
+  type BrowsingDataMemoryClientOptions,
+  type BrowsingDataRpc,
+  type BrowsingDataRpcHandlers,
+  type BrowsingDataServiceApi,
+  type BrowsingDataServiceOptions
+} from "./browsing-data.js"
+export {
   Clipboard,
   ClipboardClient,
   ClipboardHandlersLive,

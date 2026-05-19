@@ -4,6 +4,7 @@ mod app_metadata;
 mod association;
 mod attachment_intake;
 mod autostart;
+mod browsing_data;
 mod clipboard;
 mod cookie_store;
 mod crash_reporter;
@@ -1258,6 +1259,22 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::COOKIE_STORE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(cookie_store::is_supported),
+    ),
+    route(
+        host_protocol::BROWSING_DATA_CLEAR_METHOD,
+        HostMethodDispatcher::Payload(browsing_data::clear),
+    ),
+    route(
+        host_protocol::BROWSING_DATA_ESTIMATE_METHOD,
+        HostMethodDispatcher::Payload(browsing_data::estimate),
+    ),
+    route(
+        host_protocol::BROWSING_DATA_LIST_TYPES_METHOD,
+        HostMethodDispatcher::Payload(browsing_data::list_types),
+    ),
+    route(
+        host_protocol::BROWSING_DATA_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(browsing_data::is_supported),
     ),
 ];
 

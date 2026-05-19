@@ -302,6 +302,100 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "BrowsingData.clear",
+      "surface": "BrowsingData",
+      "method": "clear",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-browsing-data-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-browsing-data-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-browsing-data-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-browsing-data-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "BrowsingData.estimate",
+      "surface": "BrowsingData",
+      "method": "estimate",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-browsing-data-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-browsing-data-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-browsing-data-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-browsing-data-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "BrowsingData.isSupported",
+      "surface": "BrowsingData",
+      "method": "isSupported",
+      "capability": "none",
+      "support": {
+        "status": "supported"
+      },
+      "hostStatus": "routed"
+    },
+    {
+      "tag": "BrowsingData.listTypes",
+      "surface": "BrowsingData",
+      "method": "listTypes",
+      "capability": "native",
+      "support": {
+        "status": "unsupported",
+        "reason": "host-browsing-data-unavailable",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "unsupported",
+            "reason": "host-browsing-data-unavailable"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "host-browsing-data-unavailable"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "host-browsing-data-unavailable"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Clipboard.clear",
       "surface": "Clipboard",
       "method": "clear",
@@ -4761,11 +4855,11 @@
     }
   ],
   "summary": {
-    "total": 263,
-    "routed": 263,
+    "total": 267,
+    "routed": 267,
     "missing": 0,
-    "supported": 142,
+    "supported": 143,
     "partial": 70,
-    "unsupported": 51
+    "unsupported": 54
   }
 }

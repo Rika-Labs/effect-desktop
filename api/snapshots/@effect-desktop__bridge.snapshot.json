@@ -259,6 +259,31 @@
       "signature": "export type BridgeSuccessSchema = BridgeContractCodec | BridgeStreamSchema"
     },
     {
+      "name": "BROWSING_DATA_CLEAR_METHOD",
+      "kind": "value",
+      "signature": "const BROWSING_DATA_CLEAR_METHOD: \"BrowsingData.clear\""
+    },
+    {
+      "name": "BROWSING_DATA_ESTIMATE_METHOD",
+      "kind": "value",
+      "signature": "const BROWSING_DATA_ESTIMATE_METHOD: \"BrowsingData.estimate\""
+    },
+    {
+      "name": "BROWSING_DATA_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const BROWSING_DATA_EVENT_METHOD: \"BrowsingData.Event\""
+    },
+    {
+      "name": "BROWSING_DATA_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const BROWSING_DATA_IS_SUPPORTED_METHOD: \"BrowsingData.isSupported\""
+    },
+    {
+      "name": "BROWSING_DATA_LIST_TYPES_METHOD",
+      "kind": "value",
+      "signature": "const BROWSING_DATA_LIST_TYPES_METHOD: \"BrowsingData.listTypes\""
+    },
+    {
       "name": "Client",
       "kind": "value",
       "signature": "const Client: <Contracts extends Readonly<Record<string, BridgeContract>>>(contracts: Contracts, exchange: BridgeClientExchange, options?: BridgeClientOptions) => BridgeClient<Contracts>"

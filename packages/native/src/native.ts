@@ -9,6 +9,7 @@ import { AppMetadataSurface } from "./app-metadata.js"
 import { AppSurface } from "./app.js"
 import { AssociationSurface } from "./association.js"
 import { AutostartSurface } from "./autostart.js"
+import { BrowsingDataSurface } from "./browsing-data.js"
 import { AttachmentIntakeSurface } from "./attachment-intake.js"
 import { ClipboardSurface } from "./clipboard.js"
 import { ContextMenuSurface } from "./context-menu.js"
@@ -58,6 +59,7 @@ const BuiltInSurfaces = Object.freeze([
   AppSurface,
   AssociationSurface,
   AutostartSurface,
+  BrowsingDataSurface,
   AttachmentIntakeSurface,
   ClipboardSurface,
   ContextMenuSurface,
@@ -113,6 +115,7 @@ const AppMetadata = AppMetadataSurface.selection
 const Association = AssociationSurface.selection
 const ActivationRegistry = ActivationRegistrySurface.selection
 const Autostart = AutostartSurface.selection
+const BrowsingData = BrowsingDataSurface.selection
 const AttachmentIntake = AttachmentIntakeSurface.selection
 const Clipboard = ClipboardSurface.selection
 const ContextMenu = ContextMenuSurface.selection
@@ -168,6 +171,7 @@ export const Permissions = Object.freeze({
   app: AppSurface.permissions,
   association: AssociationSurface.permissions,
   autostart: AutostartSurface.permissions,
+  browsingData: BrowsingDataSurface.permissions,
   attachmentIntake: AttachmentIntakeSurface.permissions,
   clipboard: ClipboardSurface.permissions,
   contextMenu: ContextMenuSurface.permissions,
@@ -218,6 +222,7 @@ export const Native = Object.freeze({
   App,
   Association,
   Autostart,
+  BrowsingData,
   AttachmentIntake,
   Clipboard,
   ContextMenu,
