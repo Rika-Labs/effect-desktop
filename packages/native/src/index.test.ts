@@ -9338,7 +9338,13 @@ test("Window.events registers host-originated opened events in ResourceRegistry"
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const window = yield* Window
-      const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
+      const event = yield* window.events().pipe(
+        Stream.filter(
+          (event) => event.type === "window-registry-event" && event.phase === "opened"
+        ),
+        Stream.take(1),
+        Stream.runHead
+      )
       const snapshot = yield* registry.list()
       return { event, snapshot }
     }).pipe(
