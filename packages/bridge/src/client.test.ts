@@ -990,12 +990,14 @@ const expectFailureField = (
   }
 }
 
-const waitFor = (predicate: () => boolean): Effect.Effect<void, Error, never> =>
-  Effect.suspend(() =>
-    predicate() ? Effect.void : Effect.fail(new Error("condition not met"))
-  ).pipe(
-    Effect.retry(Schedule.spaced("1 millis").pipe(Schedule.both(Schedule.recurs(100)))),
-    Effect.mapError(() => new Error("timed out waiting for condition"))
+class WaitForTimeout extends Schema.TaggedErrorClass<WaitForTimeout>()(
+  "WaitForTimeout",
+  {}
+) {}
+
+const waitFor = (predicate: () => boolean): Effect.Effect<void, WaitForTimeout, never> =>
+  Effect.suspend(() => (predicate() ? Effect.void : new WaitForTimeout().asEffect())).pipe(
+    Effect.retry(Schedule.spaced("1 millis").pipe(Schedule.both(Schedule.recurs(100))))
   )
 
 const fixedClock = (timestamp: number): Clock.Clock => ({
