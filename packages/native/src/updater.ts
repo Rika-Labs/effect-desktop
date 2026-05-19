@@ -28,6 +28,7 @@ export type UpdaterError = HostProtocolError
 
 const UnsupportedReason = "host-adapter-unimplemented"
 const CheckPartialSupportReason = "signed-manifest-check-only"
+const DownloadPartialSupportReason = "signed-manifest-file-artifact-only"
 const StatusPartialSupportReason = "signed-manifest-status-only"
 
 const UpdaterSupport = NativeSurface.support.unsupported(UnsupportedReason, {
@@ -54,6 +55,14 @@ const UpdaterStatusSupport = NativeSurface.support.partial(StatusPartialSupportR
   ]
 })
 
+const UpdaterDownloadSupport = NativeSurface.support.partial(DownloadPartialSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: DownloadPartialSupportReason },
+    { platform: "windows", status: "partial", reason: DownloadPartialSupportReason },
+    { platform: "linux", status: "partial", reason: DownloadPartialSupportReason }
+  ]
+})
+
 export type UpdaterCheckOptions = Schema.Schema.Type<typeof UpdaterCheckInput>
 
 export type UpdaterDownloadOptions = Schema.Schema.Type<typeof UpdaterDownloadInput>
@@ -71,7 +80,8 @@ export const UpdaterDownload = updaterRpc(
   "download",
   UpdaterDownloadInput,
   UpdaterStatusResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["download"] })
+  P.nativeInvoke({ primitive: "Updater", methods: ["download"] }),
+  UpdaterDownloadSupport
 )
 export const UpdaterInstall = updaterRpc(
   "install",

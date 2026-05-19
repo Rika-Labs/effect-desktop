@@ -21,6 +21,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
       const dockProgress = yield* capabilities.support("Dock.setProgress")
       const updaterCheck = yield* capabilities.support("Updater.check")
+      const updaterDownload = yield* capabilities.support("Updater.download")
       const updaterInstall = yield* capabilities.support("Updater.install")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
@@ -44,6 +45,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
         safeStorageSet,
         safeStorageIsAvailable,
         updaterCheck,
+        updaterDownload,
         updaterInstall,
         crashReporterStart,
         powerMonitorIsSupported,
@@ -126,6 +128,15 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       { platform: "macos", status: "partial", reason: "signed-manifest-check-only" },
       { platform: "windows", status: "partial", reason: "signed-manifest-check-only" },
       { platform: "linux", status: "partial", reason: "signed-manifest-check-only" }
+    ]
+  })
+  expect(result.updaterDownload).toEqual({
+    status: "partial",
+    reason: "signed-manifest-file-artifact-only",
+    platforms: [
+      { platform: "macos", status: "partial", reason: "signed-manifest-file-artifact-only" },
+      { platform: "windows", status: "partial", reason: "signed-manifest-file-artifact-only" },
+      { platform: "linux", status: "partial", reason: "signed-manifest-file-artifact-only" }
     ]
   })
   expect(result.updaterInstall).toEqual({
