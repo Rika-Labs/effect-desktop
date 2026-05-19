@@ -12,7 +12,7 @@ import {
   makeHostProtocolHostUnavailableError
 } from "@effect-desktop/bridge"
 import { ResourceRegistry, makeResourceId, makeResourceRegistry } from "@effect-desktop/core"
-import { Effect, Exit, Fiber, Layer, Stream } from "effect"
+import { Effect, Exit, Fiber, Layer, ManagedRuntime, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import {
@@ -38,6 +38,17 @@ import {
 import { makeScreenBridgeClientLayer } from "./screen.js"
 import { makeWindowBridgeClientLayer } from "./window.js"
 
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit
+  })
+
 test("WindowPersistence saves and restores stale display state onto the current primary display", () => {
   const calls: WindowPersistenceCalls = { setBounds: [], fullscreen: [] }
   let displays = [primaryDisplay(), secondaryDisplay()]
@@ -45,71 +56,70 @@ test("WindowPersistence saves and restores stale display state onto the current 
   let hostFullscreen = false
 
   return Effect.runPromise(
-    Effect.gen(function* () {
-      const service = yield* WindowPersistence
+    runScoped(
+      Effect.gen(function* () {
+        const service = yield* WindowPersistence
 
-      yield* service.save(windowHandle, { zoom: 1.25, scrollPositions: { feed: 42 } })
-      bounds = new WindowBounds({ x: 20, y: 20, width: 300, height: 300 })
-      displays = [primaryDisplay()]
-      hostFullscreen = true
-      const restored = yield* service.restore(windowHandle)
+        yield* service.save(windowHandle, { zoom: 1.25, scrollPositions: { feed: 42 } })
+        bounds = new WindowBounds({ x: 20, y: 20, width: 300, height: 300 })
+        displays = [primaryDisplay()]
+        hostFullscreen = true
+        const restored = yield* service.restore(windowHandle)
 
-      expect(restored).toBeInstanceOf(WindowPersistenceRestoreResult)
-      expect(restored).toMatchObject({
-        restored: true,
-        state: {
-          x: 0,
-          y: 0,
-          width: 800,
-          height: 600,
-          displayId: "primary",
-          isFullScreen: false,
-          zoom: 1.25,
-          scrollPositions: { feed: 42 }
-        }
-      })
-      expect(calls.setBounds).toEqual([new WindowBounds({ x: 0, y: 0, width: 800, height: 600 })])
-      expect(calls.fullscreen).toEqual([false])
-
-      void bounds
-    }).pipe(
-      Effect.provide(
-        fixtureLayer({
-          calls,
-          windowClient: () => ({
-            getBounds: () => Effect.succeed(bounds),
-            getState: () =>
-              Effect.succeed(
-                new WindowState({
-                  minimized: false,
-                  maximized: false,
-                  fullscreen: hostFullscreen,
-                  simpleFullscreen: false
-                })
-              ),
-            setBounds: (_window, next) =>
-              Effect.sync(() => {
-                calls.setBounds.push(next)
-                bounds = new WindowBounds(next)
-                return bounds
-              }),
-            setFullscreen: (_window, fullscreen) =>
-              Effect.sync(() => {
-                calls.fullscreen.push(fullscreen)
-                hostFullscreen = fullscreen
-                return new WindowState({
-                  minimized: false,
-                  maximized: false,
-                  fullscreen,
-                  simpleFullscreen: false
-                })
-              })
-          }),
-          screenClient: () => ({
-            getDisplays: () => Effect.succeed(new ScreenDisplaysResult({ displays }))
-          })
+        expect(restored).toBeInstanceOf(WindowPersistenceRestoreResult)
+        expect(restored).toMatchObject({
+          restored: true,
+          state: {
+            x: 0,
+            y: 0,
+            width: 800,
+            height: 600,
+            displayId: "primary",
+            isFullScreen: false,
+            zoom: 1.25,
+            scrollPositions: { feed: 42 }
+          }
         })
-      )
+        expect(calls.setBounds).toEqual([new WindowBounds({ x: 0, y: 0, width: 800, height: 600 })])
+        expect(calls.fullscreen).toEqual([false])
+
+        void bounds
+      }),
+      fixtureLayer({
+        calls,
+        windowClient: () => ({
+          getBounds: () => Effect.succeed(bounds),
+          getState: () =>
+            Effect.succeed(
+              new WindowState({
+                minimized: false,
+                maximized: false,
+                fullscreen: hostFullscreen,
+                simpleFullscreen: false
+              })
+            ),
+          setBounds: (_window, next) =>
+            Effect.sync(() => {
+              calls.setBounds.push(next)
+              bounds = new WindowBounds(next)
+              return bounds
+            }),
+          setFullscreen: (_window, fullscreen) =>
+            Effect.sync(() => {
+              calls.fullscreen.push(fullscreen)
+              hostFullscreen = fullscreen
+              return new WindowState({
+                minimized: false,
+                maximized: false,
+                fullscreen,
+                simpleFullscreen: false
+              })
+            })
+        }),
+        screenClient: () => ({
+          getDisplays: () => Effect.succeed(new ScreenDisplaysResult({ displays }))
+        })
+      })
     )
   )
 })
@@ -118,19 +128,22 @@ test("WindowPersistence save uses the renderer bridge path for window and screen
   const requests: HostProtocolRequestEnvelope[] = []
 
   return Effect.runPromise(
-    Effect.gen(function* () {
-      const service = yield* WindowPersistence
+    runScoped(
+      Effect.gen(function* () {
+        const service = yield* WindowPersistence
 
-      yield* service.save(windowHandle, { zoom: 1.5 })
+        yield* service.save(windowHandle, { zoom: 1.5 })
 
-      expect(requests.map((request) => request.method)).toEqual([
-        WINDOW_GET_BOUNDS_METHOD,
-        WINDOW_GET_STATE_METHOD,
-        "Screen.getDisplays"
-      ])
-      expect(requests[0]?.payload).toMatchObject({ window: windowHandle })
-      expect(requests[1]?.payload).toMatchObject({ window: windowHandle })
-    }).pipe(Effect.provide(bridgeFixtureLayer({ requests })))
+        expect(requests.map((request) => request.method)).toEqual([
+          WINDOW_GET_BOUNDS_METHOD,
+          WINDOW_GET_STATE_METHOD,
+          "Screen.getDisplays"
+        ])
+        expect(requests[0]?.payload).toMatchObject({ window: windowHandle })
+        expect(requests[1]?.payload).toMatchObject({ window: windowHandle })
+      }),
+      bridgeFixtureLayer({ requests })
+    )
   )
 })
 
@@ -138,13 +151,16 @@ test("WindowPersistence rejects malformed save options before bridge transport",
   const requests: HostProtocolRequestEnvelope[] = []
 
   return Effect.runPromise(
-    Effect.gen(function* () {
-      const service = yield* WindowPersistence
-      const exit = yield* Effect.exit(service.save(windowHandle, { zoom: Number.NaN }))
+    runScoped(
+      Effect.gen(function* () {
+        const service = yield* WindowPersistence
+        const exit = yield* Effect.exit(service.save(windowHandle, { zoom: Number.NaN }))
 
-      expectWindowPersistenceFailure(exit, "invalid-input", "WindowPersistence.save")
-      expect(requests).toEqual([])
-    }).pipe(Effect.provide(bridgeFixtureLayer({ requests })))
+        expectWindowPersistenceFailure(exit, "invalid-input", "WindowPersistence.save")
+        expect(requests).toEqual([])
+      }),
+      bridgeFixtureLayer({ requests })
+    )
   )
 })
 
@@ -152,24 +168,27 @@ test("WindowPersistence restore uses the renderer bridge path for display and wi
   const requests: HostProtocolRequestEnvelope[] = []
 
   return Effect.runPromise(
-    Effect.gen(function* () {
-      const service = yield* WindowPersistence
+    runScoped(
+      Effect.gen(function* () {
+        const service = yield* WindowPersistence
 
-      yield* service.save(windowHandle)
-      requests.length = 0
-      const restored = yield* service.restore(windowHandle)
+        yield* service.save(windowHandle)
+        requests.length = 0
+        const restored = yield* service.restore(windowHandle)
 
-      expect(restored.restored).toBe(true)
-      expect(requests.map((request) => request.method)).toEqual([
-        "Screen.getDisplays",
-        WINDOW_GET_STATE_METHOD,
-        WINDOW_SET_BOUNDS_METHOD
-      ])
-      expect(requests[2]?.payload).toMatchObject({
-        window: windowHandle,
-        bounds: { x: 100, y: 120, width: 800, height: 600 }
-      })
-    }).pipe(Effect.provide(bridgeFixtureLayer({ requests })))
+        expect(restored.restored).toBe(true)
+        expect(requests.map((request) => request.method)).toEqual([
+          "Screen.getDisplays",
+          WINDOW_GET_STATE_METHOD,
+          WINDOW_SET_BOUNDS_METHOD
+        ])
+        expect(requests[2]?.payload).toMatchObject({
+          window: windowHandle,
+          bounds: { x: 100, y: 120, width: 800, height: 600 }
+        })
+      }),
+      bridgeFixtureLayer({ requests })
+    )
   )
 })
 
@@ -179,16 +198,20 @@ test("WindowPersistence clear and events validate window access through the brid
 
   return Effect.runPromise(
     Effect.gen(function* () {
-      yield* Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        yield* service.clear(windowHandle)
-      }).pipe(Effect.provide(bridgeFixtureLayer({ requests: clearRequests })))
+      yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          yield* service.clear(windowHandle)
+        }),
+        bridgeFixtureLayer({ requests: clearRequests })
+      )
 
-      const eventsDenied = yield* Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        return yield* service.events(windowHandle).pipe(Stream.runDrain, Effect.flip)
-      }).pipe(
-        Effect.provide(bridgeFixtureLayer({ requests: eventsRequests, denyWindowLookup: true }))
+      const eventsDenied = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          return yield* service.events(windowHandle).pipe(Stream.runDrain, Effect.flip)
+        }),
+        bridgeFixtureLayer({ requests: eventsRequests, denyWindowLookup: true })
       )
 
       expect(clearRequests.map((request) => request.method)).toEqual([WINDOW_GET_BY_ID_METHOD])
@@ -205,22 +228,25 @@ test("WindowPersistence emits persisted and cleared events from the shared state
   const calls: WindowPersistenceCalls = { setBounds: [], fullscreen: [] }
 
   return Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        const fiber = yield* Effect.forkScoped(
-          service.events(windowHandle).pipe(Stream.take(2), Stream.runCollect)
-        )
+    runScoped(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          const fiber = yield* Effect.forkScoped(
+            service.events(windowHandle).pipe(Stream.take(2), Stream.runCollect)
+          )
 
-        yield* Effect.yieldNow
-        yield* service.save(windowHandle)
-        yield* service.clear(windowHandle)
-        const events = Array.from(yield* Fiber.join(fiber))
+          yield* Effect.yieldNow
+          yield* service.save(windowHandle)
+          yield* service.clear(windowHandle)
+          const events = Array.from(yield* Fiber.join(fiber))
 
-        expect(events.map((event) => event.kind)).toEqual(["persisted", "cleared"])
-        expect(events.map((event) => event.windowId)).toEqual(["main", "main"])
-      })
-    ).pipe(Effect.provide(fixtureLayer({ calls })))
+          expect(events.map((event) => event.kind)).toEqual(["persisted", "cleared"])
+          expect(events.map((event) => event.windowId)).toEqual(["main", "main"])
+        })
+      ),
+      fixtureLayer({ calls })
+    )
   )
 })
 
@@ -240,27 +266,25 @@ test("WindowPersistence validates window access before clear and events", () => 
 
   return Effect.runPromise(
     Effect.gen(function* () {
-      const clearDenied = yield* Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        return yield* service.clear(windowHandle).pipe(Effect.flip)
-      }).pipe(
-        Effect.provide(
-          fixtureLayer({
-            calls,
-            windowClient: () => ({ getById: deniedGetById })
-          })
-        )
+      const clearDenied = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          return yield* service.clear(windowHandle).pipe(Effect.flip)
+        }),
+        fixtureLayer({
+          calls,
+          windowClient: () => ({ getById: deniedGetById })
+        })
       )
-      const eventsDenied = yield* Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        return yield* service.events(windowHandle).pipe(Stream.runDrain, Effect.flip)
-      }).pipe(
-        Effect.provide(
-          fixtureLayer({
-            calls,
-            windowClient: () => ({ getById: deniedGetById })
-          })
-        )
+      const eventsDenied = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          return yield* service.events(windowHandle).pipe(Stream.runDrain, Effect.flip)
+        }),
+        fixtureLayer({
+          calls,
+          windowClient: () => ({ getById: deniedGetById })
+        })
       )
 
       expect(clearDenied).toMatchObject({ reason: "denied", operation: "WindowPersistence.clear" })
@@ -280,17 +304,20 @@ test("WindowPersistence serializes saves for different windows in one store", ()
   }
 
   return Effect.runPromise(
-    Effect.gen(function* () {
-      const service = yield* WindowPersistence
-      yield* Effect.all([service.save(windowHandle), service.save(paletteHandle)], {
-        concurrency: "unbounded"
-      })
-      const main = yield* service.restore(windowHandle)
-      const palette = yield* service.restore(paletteHandle)
+    runScoped(
+      Effect.gen(function* () {
+        const service = yield* WindowPersistence
+        yield* Effect.all([service.save(windowHandle), service.save(paletteHandle)], {
+          concurrency: "unbounded"
+        })
+        const main = yield* service.restore(windowHandle)
+        const palette = yield* service.restore(paletteHandle)
 
-      expect(main.restored).toBe(true)
-      expect(palette.restored).toBe(true)
-    }).pipe(Effect.provide(fixtureLayer({ calls })))
+        expect(main.restored).toBe(true)
+        expect(palette.restored).toBe(true)
+      }),
+      fixtureLayer({ calls })
+    )
   )
 })
 
@@ -299,64 +326,61 @@ test("WindowPersistence maps host permission denial, unsupported, and host failu
 
   return Effect.runPromise(
     Effect.gen(function* () {
-      const denied = yield* Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        return yield* service.save(windowHandle).pipe(Effect.flip)
-      }).pipe(
-        Effect.provide(
-          fixtureLayer({
-            calls,
-            windowClient: () => ({
-              getBounds: () =>
-                Effect.fail(
-                  new HostProtocolPermissionDeniedError({
-                    tag: "PermissionDenied",
-                    capability: "native.invoke",
-                    resource: "Window.getBounds",
-                    message: "denied",
-                    operation: "Window.getBounds",
-                    recoverable: false
-                  })
-                )
-            })
+      const denied = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          return yield* service.save(windowHandle).pipe(Effect.flip)
+        }),
+        fixtureLayer({
+          calls,
+          windowClient: () => ({
+            getBounds: () =>
+              Effect.fail(
+                new HostProtocolPermissionDeniedError({
+                  tag: "PermissionDenied",
+                  capability: "native.invoke",
+                  resource: "Window.getBounds",
+                  message: "denied",
+                  operation: "Window.getBounds",
+                  recoverable: false
+                })
+              )
           })
-        )
+        })
       )
-      const unsupported = yield* Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        return yield* service.save(windowHandle).pipe(Effect.flip)
-      }).pipe(
-        Effect.provide(
-          fixtureLayer({
-            calls,
-            screenClient: () => ({
-              getDisplays: () =>
-                Effect.fail(
-                  new HostProtocolUnsupportedError({
-                    tag: "Unsupported",
-                    reason: "screen unavailable",
-                    message: "unsupported",
-                    operation: "Screen.getDisplays",
-                    recoverable: false
-                  })
-                )
-            })
+      const unsupported = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          return yield* service.save(windowHandle).pipe(Effect.flip)
+        }),
+        fixtureLayer({
+          calls,
+          screenClient: () => ({
+            getDisplays: () =>
+              Effect.fail(
+                new HostProtocolUnsupportedError({
+                  tag: "Unsupported",
+                  reason: "screen unavailable",
+                  message: "unsupported",
+                  operation: "Screen.getDisplays",
+                  recoverable: false
+                })
+              )
           })
-        )
+        })
       )
-      const hostFailed = yield* Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        yield* service.save(windowHandle)
-        return yield* service.restore(windowHandle).pipe(Effect.flip)
-      }).pipe(
-        Effect.provide(
-          fixtureLayer({
-            calls,
-            windowClient: () => ({
-              setBounds: () => Effect.fail(makeHostProtocolHostUnavailableError("Window.setBounds"))
-            })
+      const hostFailed = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          yield* service.save(windowHandle)
+          return yield* service.restore(windowHandle).pipe(Effect.flip)
+        }),
+        fixtureLayer({
+          calls,
+          windowClient: () => ({
+            setBounds: () => Effect.fail(makeHostProtocolHostUnavailableError("Window.setBounds"))
           })
-        )
+        })
       )
 
       expect(denied).toMatchObject({ reason: "denied", operation: "WindowPersistence.save" })
@@ -377,31 +401,30 @@ test("WindowPersistence maps invalid screen display payloads to invalid-output",
 
   return Effect.runPromise(
     Effect.gen(function* () {
-      const invalidOutput = yield* Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        return yield* service.save(windowHandle).pipe(Effect.flip)
-      }).pipe(
-        Effect.provide(
-          fixtureLayer({
-            calls,
-            screenClient: () => ({
-              getDisplays: () =>
-                Effect.succeed(
-                  new ScreenDisplaysResult({
-                    displays: [
-                      new ScreenDisplay({
-                        id: "invalid",
-                        bounds: new ScreenBounds({ x: 0, y: 0, width: 1024, height: 768 }),
-                        workArea: new ScreenBounds({ x: 0, y: 0, width: 0, height: 768 }),
-                        scaleFactor: 1,
-                        primary: true
-                      })
-                    ]
-                  })
-                )
-            })
+      const invalidOutput = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          return yield* service.save(windowHandle).pipe(Effect.flip)
+        }),
+        fixtureLayer({
+          calls,
+          screenClient: () => ({
+            getDisplays: () =>
+              Effect.succeed(
+                new ScreenDisplaysResult({
+                  displays: [
+                    new ScreenDisplay({
+                      id: "invalid",
+                      bounds: new ScreenBounds({ x: 0, y: 0, width: 1024, height: 768 }),
+                      workArea: new ScreenBounds({ x: 0, y: 0, width: 0, height: 768 }),
+                      scaleFactor: 1,
+                      primary: true
+                    })
+                  ]
+                })
+              )
           })
-        )
+        })
       )
 
       expect(invalidOutput).toMatchObject({
@@ -417,10 +440,13 @@ test("WindowPersistence rejects invalid save options before host work", () => {
 
   return Effect.runPromise(
     Effect.gen(function* () {
-      const exit = yield* Effect.gen(function* () {
-        const service = yield* WindowPersistence
-        return yield* Effect.exit(service.save(windowHandle, { zoom: Number.NaN }))
-      }).pipe(Effect.provide(fixtureLayer({ calls })))
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* WindowPersistence
+          return yield* Effect.exit(service.save(windowHandle, { zoom: Number.NaN }))
+        }),
+        fixtureLayer({ calls })
+      )
 
       expectWindowPersistenceFailure(exit, "invalid-input", "WindowPersistence.save")
       expect(calls.setBounds).toEqual([])
