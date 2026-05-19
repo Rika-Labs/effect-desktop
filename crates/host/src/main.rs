@@ -27,6 +27,7 @@ const WINDOW_SMOKE_TEST_ARG: &str = "--window-smoke-test";
 const RESIDENT_LIFECYCLE_SMOKE_TEST_ARG: &str = "--resident-lifecycle-smoke-test";
 const SYSTEM_APPEARANCE_SMOKE_TEST_ARG: &str = "--system-appearance-smoke-test";
 const APP_QUIT_SMOKE_TEST_ARG: &str = "--app-quit-smoke-test";
+const APP_FOCUS_SMOKE_TEST_ARG: &str = "--app-focus-smoke-test";
 const WINDOW_SMOKE_TEST_ENV: &str = "EFFECT_DESKTOP_WINDOW_SMOKE_TEST";
 const STARTUP_WINDOWS_ENV: &str = "EFFECT_DESKTOP_STARTUP_WINDOWS";
 const WINDOW_SMOKE_TEST_STARTUP_WINDOWS: &str =
@@ -178,6 +179,7 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
             RESIDENT_LIFECYCLE_SMOKE_TEST_ARG => run_mode = RunMode::ResidentLifecycleSmokeTest,
             SYSTEM_APPEARANCE_SMOKE_TEST_ARG => run_mode = RunMode::SystemAppearanceSmokeTest,
             APP_QUIT_SMOKE_TEST_ARG => run_mode = RunMode::AppQuitSmokeTest,
+            APP_FOCUS_SMOKE_TEST_ARG => run_mode = RunMode::AppFocusSmokeTest,
             unknown => bail!("unknown host argument: {unknown}"),
         }
     }
@@ -189,10 +191,10 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
 mod tests {
     use super::{
         packaged_runtime_config_for_exe, parse_run_mode, resolve_source_runtime_cwd_from_anchors,
-        runtime_config, startup_event, APP_QUIT_SMOKE_TEST_ARG, HOST_PROTOCOL_STDIO_ARG,
-        HOST_STARTED_EVENT, RESIDENT_LIFECYCLE_SMOKE_TEST_ARG, SOURCE_RUNTIME_ENTRY,
-        STARTUP_WINDOWS_ENV, SYSTEM_APPEARANCE_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ARG,
-        WINDOW_SMOKE_TEST_ENV,
+        runtime_config, startup_event, APP_FOCUS_SMOKE_TEST_ARG, APP_QUIT_SMOKE_TEST_ARG,
+        HOST_PROTOCOL_STDIO_ARG, HOST_STARTED_EVENT, RESIDENT_LIFECYCLE_SMOKE_TEST_ARG,
+        SOURCE_RUNTIME_ENTRY, STARTUP_WINDOWS_ENV, SYSTEM_APPEARANCE_SMOKE_TEST_ARG,
+        WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
     };
     use crate::window::RunMode;
     use std::path::PathBuf;
@@ -262,6 +264,15 @@ mod tests {
             parse_run_mode(["host".to_string(), APP_QUIT_SMOKE_TEST_ARG.to_string()])
                 .expect("run mode should parse"),
             RunMode::AppQuitSmokeTest
+        );
+    }
+
+    #[test]
+    fn app_focus_smoke_test_arg_selects_app_focus_smoke_mode() {
+        assert_eq!(
+            parse_run_mode(["host".to_string(), APP_FOCUS_SMOKE_TEST_ARG.to_string()])
+                .expect("run mode should parse"),
+            RunMode::AppFocusSmokeTest
         );
     }
 
@@ -338,6 +349,24 @@ mod tests {
             config_debug.contains(STARTUP_WINDOWS_ENV)
                 && config_debug.contains("Effect Desktop Smoke Test"),
             "app quit smoke runtime config should declare startup windows: {config_debug}"
+        );
+    }
+
+    #[test]
+    fn app_focus_smoke_mode_marks_runtime_environment() {
+        let config_debug = format!(
+            "{:?}",
+            runtime_config(RunMode::AppFocusSmokeTest).expect("runtime config should resolve")
+        );
+
+        assert!(
+            config_debug.contains(WINDOW_SMOKE_TEST_ENV) && config_debug.contains("\"1\""),
+            "app focus smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
+        );
+        assert!(
+            config_debug.contains(STARTUP_WINDOWS_ENV)
+                && config_debug.contains("Effect Desktop Smoke Test"),
+            "app focus smoke runtime config should declare startup windows: {config_debug}"
         );
     }
 

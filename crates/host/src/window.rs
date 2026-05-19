@@ -54,6 +54,7 @@ pub(crate) enum RunMode {
     ResidentLifecycleSmokeTest,
     SystemAppearanceSmokeTest,
     AppQuitSmokeTest,
+    AppFocusSmokeTest,
 }
 
 impl RunMode {
@@ -63,6 +64,7 @@ impl RunMode {
             RunMode::WindowSmokeTest
                 | RunMode::ResidentLifecycleSmokeTest
                 | RunMode::AppQuitSmokeTest
+                | RunMode::AppFocusSmokeTest
         )
     }
 }
@@ -3117,6 +3119,9 @@ impl WindowRegistry {
                     Ok(created) if matches!(mode, RunMode::AppQuitSmokeTest) => {
                         self.run_app_quit_smoke(created.window_id())
                     }
+                    Ok(created) if matches!(mode, RunMode::AppFocusSmokeTest) => {
+                        self.run_app_focus_smoke(created.window_id())
+                    }
                     _ => lifecycle_for_create_result(
                         &result.clone().map(WindowCommandResponse::Created),
                     ),
@@ -3618,6 +3623,27 @@ impl WindowRegistry {
             "app quit smoke verified"
         );
         WindowLifecycleEvent::AppQuitRequested(0)
+    }
+
+    fn run_app_focus_smoke(&mut self, window_id: &str) -> WindowLifecycleEvent {
+        match self.focus(window_id) {
+            Ok(()) => {
+                info!(
+                    event = "host.app_lifecycle.focus_smoke_verified",
+                    window_id, "app focus smoke verified"
+                );
+                WindowLifecycleEvent::SmokeExitRequested
+            }
+            Err(error) => {
+                warn!(
+                    event = "host.app_lifecycle.focus_smoke_failed",
+                    window_id,
+                    error = ?error,
+                    "app focus smoke could not focus the created window"
+                );
+                WindowLifecycleEvent::WindowCreateFailed
+            }
+        }
     }
 }
 
