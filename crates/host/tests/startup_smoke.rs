@@ -74,3 +74,36 @@ fn host_binary_emits_startup_event_and_exits_zero() {
         "window opened before runtime ready\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 }
+
+#[test]
+fn host_binary_verifies_resident_lifecycle_close_to_background() {
+    let output = Command::new(env!("CARGO_BIN_EXE_host"))
+        .arg("--resident-lifecycle-smoke-test")
+        .output()
+        .expect("host binary should execute resident lifecycle smoke");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let process_output = format!("{stdout}{stderr}");
+
+    assert!(
+        output.status.success(),
+        "host exited with status {:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        output.status.code()
+    );
+    assert!(
+        process_output.contains("event=\"host.resident_lifecycle.smoke_verified\""),
+        "process output did not contain resident lifecycle smoke event\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("retained=true"),
+        "process output did not prove the window was retained\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("visible=false"),
+        "process output did not prove the window was hidden\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        process_output.contains("source=\"window-smoke-test\""),
+        "process output did not contain smoke exit source\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}

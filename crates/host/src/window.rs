@@ -2,7 +2,6 @@
 // Host method boundaries return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
-#[cfg(not(test))]
 use crate::methods::resident_lifecycle::{self, ResidentWindowCloseAction};
 use crate::{macos, webview, windows};
 use anyhow::Result;
@@ -52,6 +51,16 @@ pub(crate) enum RunMode {
     Interactive,
     HostProtocolStdio,
     WindowSmokeTest,
+    ResidentLifecycleSmokeTest,
+}
+
+impl RunMode {
+    pub(crate) fn is_smoke_test(self) -> bool {
+        matches!(
+            self,
+            RunMode::WindowSmokeTest | RunMode::ResidentLifecycleSmokeTest
+        )
+    }
 }
 
 #[derive(Clone)]
@@ -1873,7 +1882,7 @@ impl WindowRegistry {
             title = request.title(),
             width = request.width(),
             height = request.height(),
-            smoke = matches!(mode, RunMode::WindowSmokeTest),
+            smoke = mode.is_smoke_test(),
             "host window opened"
         );
 
@@ -3096,18 +3105,23 @@ impl WindowRegistry {
                 WindowLifecycleEvent::AppQuitRequested(exit_code)
             }
             WindowCommand::Create { request, reply } => {
-                let result = self
-                    .create(target, request, mode)
-                    .map(WindowCommandResponse::Created);
-                let lifecycle = lifecycle_for_create_result(&result);
+                let result = self.create(target, request, mode);
+                let lifecycle = match &result {
+                    Ok(created) if matches!(mode, RunMode::ResidentLifecycleSmokeTest) => {
+                        self.run_resident_lifecycle_smoke(created.window_id())
+                    }
+                    _ => lifecycle_for_create_result(
+                        &result.clone().map(WindowCommandResponse::Created),
+                    ),
+                };
+                let result = result.map(WindowCommandResponse::Created);
                 send_window_command_reply(reply, result);
                 lifecycle
             }
             WindowCommand::Destroy { window_id, reply } => {
                 let result = self.destroy(&window_id);
-                let exit_after_destroy = result.is_ok()
-                    && matches!(mode, RunMode::WindowSmokeTest)
-                    && self.windows.is_empty();
+                let exit_after_destroy =
+                    result.is_ok() && mode.is_smoke_test() && self.windows.is_empty();
                 send_window_command_reply(reply, result.map(|()| WindowCommandResponse::Destroyed));
 
                 if exit_after_destroy {
@@ -3533,6 +3547,50 @@ impl WindowRegistry {
                 WindowLifecycleEvent::Other
             }
         }
+    }
+
+    fn run_resident_lifecycle_smoke(&mut self, window_id: &str) -> WindowLifecycleEvent {
+        let Some(resources) = self.windows.get(window_id) else {
+            warn!(
+                event = "host.resident_lifecycle.smoke_failed",
+                window_id,
+                reason = "missing-window",
+                "resident lifecycle smoke could not find created window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        };
+        let native_window_id = resources._window.id();
+
+        let lifecycle_event = handle_native_window_close_requested(self, native_window_id);
+        let Some(resources) = self.windows.get(window_id) else {
+            warn!(
+                event = "host.resident_lifecycle.smoke_failed",
+                window_id,
+                reason = "window-destroyed",
+                "resident lifecycle smoke close request destroyed the window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        };
+        let visible = resources._window.is_visible();
+        if !matches!(lifecycle_event, WindowLifecycleEvent::Other) || visible {
+            warn!(
+                event = "host.resident_lifecycle.smoke_failed",
+                window_id,
+                visible,
+                lifecycle = ?lifecycle_event,
+                "resident lifecycle smoke close request did not hide and retain the window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        }
+
+        info!(
+            event = "host.resident_lifecycle.smoke_verified",
+            window_id,
+            visible,
+            retained = true,
+            "resident lifecycle close-to-background smoke verified"
+        );
+        WindowLifecycleEvent::SmokeExitRequested
     }
 }
 
@@ -4601,6 +4659,9 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
     let command_source = window_methods.clone();
     let mut registry = WindowRegistry::new();
     let smoke_deadline = smoke_deadline_for_mode(mode, Instant::now());
+    if matches!(mode, RunMode::ResidentLifecycleSmokeTest) {
+        enable_resident_lifecycle_smoke_policy().map_err(|error| anyhow::anyhow!("{error:?}"))?;
+    }
 
     event_loop.run(move |event, target, control_flow| {
         let lifecycle_event = match event {
@@ -4654,13 +4715,6 @@ fn handle_native_window_close_requested(
     registry: &mut WindowRegistry,
     native_window_id: WindowId,
 ) -> WindowLifecycleEvent {
-    #[cfg(test)]
-    {
-        registry.native_window_close_requested(native_window_id);
-        WindowLifecycleEvent::CloseRequested
-    }
-
-    #[cfg(not(test))]
     match resident_lifecycle::window_close_action() {
         ResidentWindowCloseAction::DestroyAndExit => {
             registry.native_window_close_requested(native_window_id);
@@ -4675,6 +4729,22 @@ fn handle_native_window_close_requested(
             WindowLifecycleEvent::Other
         }
     }
+}
+
+fn enable_resident_lifecycle_smoke_policy() -> std::result::Result<(), HostProtocolError> {
+    resident_lifecycle::enable(
+        Some(serde_json::json!({
+            "policy": {
+                "process": "keep-running",
+                "windows": "close-to-background",
+                "background": "tray",
+                "launchAtLogin": false
+            },
+            "traceId": "resident-lifecycle-smoke"
+        })),
+        None,
+    )
+    .map(|_| ())
 }
 
 fn is_screen_displays_changed_event(event: &Event<'_, HostEvent>) -> bool {
@@ -4745,7 +4815,7 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
 }
 
 fn smoke_deadline_for_mode(mode: RunMode, now: Instant) -> Option<Instant> {
-    if matches!(mode, RunMode::WindowSmokeTest) {
+    if mode.is_smoke_test() {
         Some(now + WINDOW_SMOKE_TEST_TIMEOUT)
     } else {
         None
@@ -4758,7 +4828,7 @@ fn lifecycle_event_with_smoke_timeout(
     deadline: Option<Instant>,
     now: Instant,
 ) -> WindowLifecycleEvent {
-    if !matches!(event, WindowLifecycleEvent::Other) || !matches!(mode, RunMode::WindowSmokeTest) {
+    if !matches!(event, WindowLifecycleEvent::Other) || !mode.is_smoke_test() {
         return event;
     }
 
@@ -4805,8 +4875,8 @@ mod tests {
         control_flow_for_window_state, emit_window_registry_event,
         handle_native_window_close_requested, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
-        lifecycle_for_create_result, rounded_i32, rounded_u32, screen_bounds_payload,
-        smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
+        lifecycle_for_create_result, resident_lifecycle, rounded_i32, rounded_u32,
+        screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
         validate_positive_finite, PhysicalScreenArea, RunMode, WindowCommand,
         WindowCommandResponse, WindowCreateRequest, WindowId, WindowLifecycleEvent,
         WindowMethodPort, WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
@@ -5208,6 +5278,8 @@ mod tests {
         let _guard = WINDOW_EVENT_TEST_LOCK
             .lock()
             .expect("window event test lock should not be poisoned");
+        let _resident_guard = resident_lifecycle::state_test_guard();
+        resident_lifecycle::reset_state_for_test();
         let (receiver, _event_sender_guard) = install_test_window_event_sender();
         // SAFETY: The dummy id stays inside registry bookkeeping and is never passed to Tao.
         let native_window_id = unsafe { WindowId::dummy() };
@@ -5265,6 +5337,7 @@ mod tests {
             ControlFlow::Exit
         );
         assert_eq!(lifecycle_event, WindowLifecycleEvent::CloseRequested);
+        resident_lifecycle::reset_state_for_test();
     }
 
     #[test]
