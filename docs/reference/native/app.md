@@ -42,8 +42,10 @@ lifecycle controls.
 The current TypeScript event streams are `onSecondInstance`, `onOpenFile`,
 `onOpenUrl`, and `onBeforeQuit`. `onSecondInstance` events carry `argv`, `cwd`,
 `activationReason`, and `traceId`; `activationReason` is `"launch"`,
-`"open-file"`, `"open-url"`, or `"unknown"`. Native event delivery is currently
-unsupported until the second-instance handoff adapter exists.
+`"open-file"`, `"open-url"`, or `"unknown"`. `onBeforeQuit` is emitted by the
+Rust host before the current `App.quit` path exits the event loop and before a
+native close request exits the app. Native `onSecondInstance`, `onOpenFile`, and
+`onOpenUrl` delivery remains unsupported until their source adapters exist.
 
 `onOpenUrl` requires a syntactically valid URL with no ASCII control characters
 and rejects dangerous schemes before application code receives the event:
@@ -58,7 +60,8 @@ the event.
 
 `AppError` is the host protocol error union. Unsupported App methods decode
 through Rust `App.*` routes and fail closed as typed `Unsupported`.
-Subscriptions still do not have native lifecycle event sources.
+`onBeforeQuit` has a host event source for app-exit paths; the other App
+subscriptions still do not have native lifecycle event sources.
 
 ## Notes
 

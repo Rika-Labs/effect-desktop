@@ -6,14 +6,14 @@ use crate::methods::resident_lifecycle::{self, ResidentWindowCloseAction};
 use crate::{macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{
-    DockProgressState, DockSetProgressPayload, HostProtocolEnvelope, HostProtocolError,
-    ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
-    ScreenDisplaysResultPayload, ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload,
-    TrayActivatedEventPayload, TrayResourcePayload, WindowAttentionType, WindowBoundsPayload,
-    WindowCreatePayload, WindowCreateResponse, WindowListResponse, WindowLookupResponse,
-    WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
-    WindowRegistryEventPhase, WindowSetProgressPayload, WindowStateEventPayload,
-    WindowStatePayload, WindowTrafficLights,
+    AppBeforeQuitEventPayload, DockProgressState, DockSetProgressPayload, HostProtocolEnvelope,
+    HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
+    ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
+    ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
+    WindowAttentionType, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
+    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
+    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
+    WindowStateEventPayload, WindowStatePayload, WindowTrafficLights,
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -4433,6 +4433,41 @@ fn emit_window_state_event(
         .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
 }
 
+fn warn_if_before_quit_event_failed(source: &'static str) {
+    if let Err(error) = emit_app_before_quit_event(source) {
+        warn!(
+            event = "host.app.before_quit_event_failed",
+            error = ?error,
+            source,
+            "failed to emit app before-quit event"
+        );
+    }
+}
+
+fn emit_app_before_quit_event(source: &'static str) -> std::result::Result<(), HostProtocolError> {
+    let Some(sender) = window_event_sender()? else {
+        return Ok(());
+    };
+    let trace_id = format!("app-before-quit-{source}-{}", Uuid::now_v7());
+    let payload = serde_json::to_value(AppBeforeQuitEventPayload::new(trace_id.clone())).map_err(
+        |error| {
+            HostProtocolError::invalid_output(
+                host_protocol::APP_BEFORE_QUIT_EVENT,
+                error.to_string(),
+            )
+        },
+    )?;
+    sender
+        .send(HostProtocolEnvelope::Event {
+            method: host_protocol::APP_BEFORE_QUIT_EVENT.to_string(),
+            timestamp: timestamp_millis(),
+            trace_id,
+            window_id: None,
+            payload: Some(payload),
+        })
+        .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::APP_BEFORE_QUIT_EVENT))
+}
+
 fn timestamp_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -4940,6 +4975,7 @@ fn is_screen_displays_changed_window_event(event: &WindowEvent<'_>) -> bool {
 fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow {
     match event {
         WindowLifecycleEvent::CloseRequested => {
+            warn_if_before_quit_event_failed("close-requested");
             info!(
                 event = WINDOW_EXIT_REQUESTED_EVENT,
                 source = "close-requested",
@@ -4948,6 +4984,7 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
             ControlFlow::Exit
         }
         WindowLifecycleEvent::AppQuitRequested(0) => {
+            warn_if_before_quit_event_failed("app-quit");
             info!(
                 event = WINDOW_EXIT_REQUESTED_EVENT,
                 source = "app-quit",
@@ -4957,6 +4994,7 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
             ControlFlow::Exit
         }
         WindowLifecycleEvent::AppQuitRequested(exit_code) => {
+            warn_if_before_quit_event_failed("app-quit");
             info!(
                 event = WINDOW_EXIT_REQUESTED_EVENT,
                 source = "app-quit",
@@ -5110,6 +5148,71 @@ mod tests {
             control_flow_for_lifecycle_event(WindowLifecycleEvent::AppQuitRequested(7)),
             ControlFlow::ExitWithCode(7)
         );
+    }
+
+    #[test]
+    fn app_quit_requested_emits_before_quit_event() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (receiver, _event_sender_guard) = install_test_window_event_sender();
+
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::AppQuitRequested(0)),
+            ControlFlow::Exit
+        );
+
+        let event = receiver
+            .recv()
+            .expect("before quit receiver should receive event");
+
+        let HostProtocolEnvelope::Event {
+            method,
+            window_id,
+            trace_id,
+            payload,
+            ..
+        } = event
+        else {
+            panic!("before quit event should be host event envelope");
+        };
+        assert_eq!(method, host_protocol::APP_BEFORE_QUIT_EVENT);
+        assert_eq!(window_id, None);
+        assert!(trace_id.starts_with("app-before-quit-app-quit-"));
+        assert_eq!(
+            payload.and_then(|value| {
+                value
+                    .get("traceId")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+            }),
+            Some(trace_id)
+        );
+    }
+
+    #[test]
+    fn close_requested_emits_before_quit_event() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (receiver, _event_sender_guard) = install_test_window_event_sender();
+
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::CloseRequested),
+            ControlFlow::Exit
+        );
+
+        let event = receiver
+            .recv()
+            .expect("before quit receiver should receive event");
+        let HostProtocolEnvelope::Event {
+            method, trace_id, ..
+        } = event
+        else {
+            panic!("before quit event should be host event envelope");
+        };
+        assert_eq!(method, host_protocol::APP_BEFORE_QUIT_EVENT);
+        assert!(trace_id.starts_with("app-before-quit-close-requested-"));
     }
 
     #[test]
