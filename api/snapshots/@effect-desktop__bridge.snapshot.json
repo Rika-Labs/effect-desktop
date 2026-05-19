@@ -1331,7 +1331,7 @@
     {
       "name": "validateOptionalHostProtocolNonEmptyString",
       "kind": "value",
-      "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never>"
+      "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<Option.Option<string>, HostProtocolInvalidArgumentError, never>"
     },
     {
       "name": "WEB_REQUEST_EVENT_METHOD",

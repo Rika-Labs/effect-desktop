@@ -51,6 +51,9 @@
     "@effect/wa-sqlite": "^0.1.2",
     "effect": "4.0.0-beta.60"
   },
+  "devDependencies": {
+    "@effect/platform-bun": "4.0.0-beta.60"
+  },
   "optionalDependencies": {
     "@effect/sql-pglite": "4.0.0-beta.60",
     "@electric-sql/pglite": "^0.4.4"
