@@ -54,39 +54,38 @@ const commandCapability: NormalizedCapability = {
 const actor = new PermissionActor({ kind: "window", id: "window-1" })
 const context = new PermissionContext({ actor, traceId: "trace-1" })
 
-test("CommandRegistry registers, invokes with validated input, checks permission, and audits", async () => {
-  const rows: AuditEvent[] = []
-  const { registry, permissions } = await makeTestRegistry(rows)
-  await Effect.runPromise(permissions.declare(commandCapability, { source: "test" }))
-  const calls: OpenInput[] = []
+test("CommandRegistry registers, invokes with validated input, checks permission, and audits", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const { registry, permissions } = yield* makeTestRegistry(rows)
+      yield* permissions.declare(commandCapability, { source: "test" })
+      const calls: OpenInput[] = []
 
-  const handle = await Effect.runPromise(
-    registry.registerGroup(
-      registration("openProject", (input) =>
-        Effect.sync(() => {
-          calls.push(input)
-          return new OpenOutput({ opened: true })
-        })
+      const handle = yield* registry.registerGroup(
+        registration("openProject", (input) =>
+          Effect.sync(() => {
+            calls.push(input)
+            return new OpenOutput({ opened: true })
+          })
+        )
       )
-    )
-  )
-  const output = await Effect.runPromise(
-    registry.invoke("openProject", { path: "/tmp/project" }, context)
-  )
-  const snapshots = await Effect.runPromise(registry.list())
+      const output = yield* registry.invoke("openProject", { path: "/tmp/project" }, context)
+      const snapshots = yield* registry.list()
 
-  expect(handle.kind).toBe("command-group")
-  expect(output).toEqual(new OpenOutput({ opened: true }))
-  expect(calls).toEqual([new OpenInput({ path: "/tmp/project" })])
-  expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
-  expect(snapshots[0]?.invocationCount).toBe(1)
-  expect(snapshots[0]?.lastInvocation?.outcome).toBe("success")
-  expect(snapshots[0]?.lastInvocation?.traceId).toBe("trace-1")
-  expect(snapshots[0]?.lastError).toBeUndefined()
-  expect(rows.map((row) => row.kind)).toContain("permission-granted")
-  expect(rows.map((row) => row.kind)).toContain("command-invoked")
-  expect(auditTraceIds(rows, "command-invoked")).toEqual(["trace-1"])
-})
+      expect(handle.kind).toBe("command-group")
+      expect(output).toEqual(new OpenOutput({ opened: true }))
+      expect(calls).toEqual([new OpenInput({ path: "/tmp/project" })])
+      expect(snapshots.map((snapshot) => snapshot.id)).toEqual(["openProject"])
+      expect(snapshots[0]?.invocationCount).toBe(1)
+      expect(snapshots[0]?.lastInvocation?.outcome).toBe("success")
+      expect(snapshots[0]?.lastInvocation?.traceId).toBe("trace-1")
+      expect(snapshots[0]?.lastError).toBeUndefined()
+      expect(rows.map((row) => row.kind)).toContain("permission-granted")
+      expect(rows.map((row) => row.kind)).toContain("command-invoked")
+      expect(auditTraceIds(rows, "command-invoked")).toEqual(["trace-1"])
+    })
+  ))
 
 test("CommandRegistry exposes invocation events and failure state for devtools", async () => {
   const { registry, permissions } = await makeTestRegistry()
@@ -625,21 +624,24 @@ const registration = (
   }
 }
 
-const makeTestRegistry = async (
+const makeTestRegistry = (
   rows: AuditEvent[] = []
-): Promise<{
+): Effect.Effect<{
   readonly registry: CommandRegistryApi
   readonly permissions: PermissionRegistryApi
   readonly resources: ResourceRegistryApi
-}> => {
-  const audit = memoryAudit(rows)
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const permissions = await Effect.runPromise(
-    makePermissionRegistry({ audit, traceId: () => "trace-1", nextToken: () => "grant-1" })
-  )
-  const registry = await Effect.runPromise(makeCommandRegistry(resources, permissions, { audit }))
-  return { registry, permissions, resources }
-}
+}> =>
+  Effect.gen(function* () {
+    const audit = memoryAudit(rows)
+    const resources = yield* makeResourceRegistry()
+    const permissions = yield* makePermissionRegistry({
+      audit,
+      traceId: () => "trace-1",
+      nextToken: () => "grant-1"
+    })
+    const registry = yield* makeCommandRegistry(resources, permissions, { audit })
+    return { registry, permissions, resources }
+  })
 
 const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>

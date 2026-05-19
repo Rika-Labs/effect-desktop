@@ -192,500 +192,532 @@ test("PermissionRegistry does not let weaker secret audit policy cover stronger 
     })
   ))
 
-test("PermissionRegistry does not let narrower network policy cover ask-unknown requests", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
-  )
+test("PermissionRegistry does not let narrower network policy cover ask-unknown requests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1"
+      })
 
-  await Effect.runPromise(
-    registry.declare(networkConnect(["api.example.com"], false), { source: "manifest" })
-  )
-  const denied = await Effect.runPromiseExit(
-    registry.check(networkConnect(["api.example.com"], true), context("window-main"))
-  )
-  const granted = await Effect.runPromise(
-    registry.check(networkConnect(["api.example.com"], false), context("window-main"))
-  )
+      yield* registry.declare(networkConnect(["api.example.com"], false), { source: "manifest" })
+      const denied = yield* Effect.exit(
+        registry.check(networkConnect(["api.example.com"], true), context("window-main"))
+      )
+      const granted = yield* registry.check(
+        networkConnect(["api.example.com"], false),
+        context("window-main")
+      )
 
-  expectDenied(denied, (error) => {
-    expect(error.reason).toBe("default-deny")
-  })
-  expect(granted.token).toBe("grant-1")
-})
-
-test("PermissionRegistry scopes process spawn grants by cwd and environment policy", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ traceId: () => "trace-1", nextToken: () => "grant-1" })
-  )
-
-  await Effect.runPromise(
-    registry.declare(processSpawn(["node"], ["/workspace/app"], "none"), { source: "manifest" })
-  )
-  const granted = await Effect.runPromise(
-    registry.check(processSpawn(["node"], ["/workspace/app/tasks"], "none"), context("window-main"))
-  )
-  const wrongCwd = await Effect.runPromiseExit(
-    registry.check(processSpawn(["node"], ["/tmp/app"], "none"), context("window-main"))
-  )
-  const wrongEnvironment = await Effect.runPromiseExit(
-    registry.check(processSpawn(["node"], ["/workspace/app"], "allowlist"), context("window-main"))
-  )
-
-  expect(granted.token).toBe("grant-1")
-  expectDenied(wrongCwd, (error) => {
-    expect(error.reason).toBe("default-deny")
-  })
-  expectDenied(wrongEnvironment, (error) => {
-    expect(error.reason).toBe("default-deny")
-  })
-})
-
-test("PermissionRegistry exposes decision history and live decision events for devtools", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ traceId: () => "trace-devtools", nextToken: () => "grant-1" })
-  )
-  const observed = Effect.runFork(
-    registry.observeDecisions().pipe(Stream.take(2), Stream.runCollect)
-  )
-
-  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
-  await Effect.runPromise(
-    registry.check(filesystemWrite(["/tmp/app/config.json"]), context("window-main"))
-  )
-  await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/blocked/config.json"]), context("window-main"))
-  )
-
-  const history = await Effect.runPromise(registry.listDecisions())
-  const events = Array.from(await Effect.runPromise(Fiber.join(observed)))
-
-  expect(history.map((decision) => decision.outcome)).toEqual(["granted", "denied"])
-  expect(events.map((decision) => decision.traceId)).toEqual(["trace-devtools", "trace-devtools"])
-  expect(events[1]?.reason).toBe("default-deny")
-})
-
-test("PermissionRegistry explicit deny overrides a matching allow", async () => {
-  const registry = await Effect.runPromise(makePermissionRegistry())
-
-  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
-  await Effect.runPromise(
-    registry.declare(filesystemWrite(["/tmp/app/blocked"]), {
-      effect: "deny",
-      source: "policy"
+      expectDenied(denied, (error) => {
+        expect(error.reason).toBe("default-deny")
+      })
+      expect(granted.token).toBe("grant-1")
     })
-  )
-  const exit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app/blocked/secret.json"]), context("window-main"))
-  )
+  ))
 
-  expectDenied(exit, (error) => {
-    expect(error.reason).toBe("explicit-deny")
-  })
-})
+test("PermissionRegistry scopes process spawn grants by cwd and environment policy", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1"
+      })
 
-test("PermissionRegistry revoked rules deny even when an allow also matches", async () => {
-  const registry = await Effect.runPromise(makePermissionRegistry())
+      yield* registry.declare(processSpawn(["node"], ["/workspace/app"], "none"), {
+        source: "manifest"
+      })
+      const granted = yield* registry.check(
+        processSpawn(["node"], ["/workspace/app/tasks"], "none"),
+        context("window-main")
+      )
+      const wrongCwd = yield* Effect.exit(
+        registry.check(processSpawn(["node"], ["/tmp/app"], "none"), context("window-main"))
+      )
+      const wrongEnvironment = yield* Effect.exit(
+        registry.check(
+          processSpawn(["node"], ["/workspace/app"], "allowlist"),
+          context("window-main")
+        )
+      )
 
-  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
-  await Effect.runPromise(
-    registry.declare(filesystemWrite(["/tmp/app"]), {
-      effect: "revoked",
-      source: "revocation"
+      expect(granted.token).toBe("grant-1")
+      expectDenied(wrongCwd, (error) => {
+        expect(error.reason).toBe("default-deny")
+      })
+      expectDenied(wrongEnvironment, (error) => {
+        expect(error.reason).toBe("default-deny")
+      })
     })
-  )
-  await Effect.runPromise(
-    registry.declare(filesystemWrite(["/tmp/app"]), { source: "later-manifest" })
-  )
-  const exit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app/config.json"]), context("window-main"))
-  )
+  ))
 
-  expectDenied(exit, (error) => {
-    expect(error.reason).toBe("revoked")
-  })
-})
+test("PermissionRegistry exposes decision history and live decision events for devtools", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        traceId: () => "trace-devtools",
+        nextToken: () => "grant-1"
+      })
+      const observed = yield* registry
+        .observeDecisions()
+        .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
 
-test("PermissionRegistry query returns global and actor-scoped declarations", async () => {
-  const registry = await Effect.runPromise(makePermissionRegistry())
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
+      yield* registry.check(filesystemWrite(["/tmp/app/config.json"]), context("window-main"))
+      yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/blocked/config.json"]), context("window-main"))
+      )
 
-  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "global" }))
-  await Effect.runPromise(
-    registry.declare(networkConnect(["api.example.com"]), {
-      actor: actor("window-main"),
-      source: "window"
+      const history = yield* registry.listDecisions()
+      const events = Array.from(yield* Fiber.join(observed))
+
+      expect(history.map((decision) => decision.outcome)).toEqual(["granted", "denied"])
+      expect(events.map((decision) => decision.traceId)).toEqual([
+        "trace-devtools",
+        "trace-devtools"
+      ])
+      expect(events[1]?.reason).toBe("default-deny")
     })
-  )
-  await Effect.runPromise(
-    registry.declare(networkConnect(["other.example.com"]), {
-      actor: actor("other-window"),
-      source: "other"
+  ))
+
+test("PermissionRegistry explicit deny overrides a matching allow", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry()
+
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
+      yield* registry.declare(filesystemWrite(["/tmp/app/blocked"]), {
+        effect: "deny",
+        source: "policy"
+      })
+      const exit = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/app/blocked/secret.json"]), context("window-main"))
+      )
+
+      expectDenied(exit, (error) => {
+        expect(error.reason).toBe("explicit-deny")
+      })
     })
-  )
+  ))
 
-  const filesystemRules = await Effect.runPromise(
-    registry.query("filesystem.write", actor("window-main"))
-  )
-  const networkRules = await Effect.runPromise(
-    registry.query("network.connect", actor("window-main"))
-  )
+test("PermissionRegistry revoked rules deny even when an allow also matches", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry()
 
-  expect(filesystemRules.map((rule) => rule.source)).toEqual(["global"])
-  expect(networkRules.map((rule) => rule.source)).toEqual(["window"])
-})
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), {
+        effect: "revoked",
+        source: "revocation"
+      })
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "later-manifest" })
+      const exit = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/app/config.json"]), context("window-main"))
+      )
 
-test("PermissionRegistry validates inputs before audit side effects", async () => {
-  const rows: unknown[] = []
-  const registry = await Effect.runPromise(makePermissionRegistry({ audit: memoryAudit(rows) }))
-  const invalidContext = { actor: { kind: "window", id: "" } }
-  const exit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app"]), invalidContext)
-  )
+      expectDenied(exit, (error) => {
+        expect(error.reason).toBe("revoked")
+      })
+    })
+  ))
 
-  expectInvalid(exit)
-  expect(rows).toEqual([])
-})
+test("PermissionRegistry query returns global and actor-scoped declarations", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry()
 
-test("PermissionRegistry rejects control bytes in caller-supplied trace ids", async () => {
-  const rows: unknown[] = []
-  const registry = await Effect.runPromise(makePermissionRegistry({ audit: memoryAudit(rows) }))
-  for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
-    const traceId = `trace${String.fromCharCode(codePoint)}forged`
-    const checkExit = await Effect.runPromiseExit(
-      registry.check(filesystemWrite(["/tmp/app"]), {
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "global" })
+      yield* registry.declare(networkConnect(["api.example.com"]), {
         actor: actor("window-main"),
-        traceId
+        source: "window"
       })
-    )
-    const grantExit = await Effect.runPromiseExit(
-      registry.grant(filesystemWrite(["/tmp/app"]), {
-        actor: actor("window-main"),
-        traceId
+      yield* registry.declare(networkConnect(["other.example.com"]), {
+        actor: actor("other-window"),
+        source: "other"
       })
-    )
-    expectInvalid(checkExit)
-    expectInvalid(grantExit)
-  }
-  const delTrace = `trace${String.fromCharCode(127)}forged`
-  expectInvalid(
-    await Effect.runPromiseExit(
-      registry.check(filesystemWrite(["/tmp/app"]), {
-        actor: actor("window-main"),
-        traceId: delTrace
+
+      const filesystemRules = yield* registry.query("filesystem.write", actor("window-main"))
+      const networkRules = yield* registry.query("network.connect", actor("window-main"))
+
+      expect(filesystemRules.map((rule) => rule.source)).toEqual(["global"])
+      expect(networkRules.map((rule) => rule.source)).toEqual(["window"])
+    })
+  ))
+
+test("PermissionRegistry validates inputs before audit side effects", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: unknown[] = []
+      const registry = yield* makePermissionRegistry({ audit: memoryAudit(rows) })
+      const invalidContext = { actor: { kind: "window", id: "" } }
+      const exit = yield* Effect.exit(registry.check(filesystemWrite(["/tmp/app"]), invalidContext))
+
+      expectInvalid(exit)
+      expect(rows).toEqual([])
+    })
+  ))
+
+test("PermissionRegistry rejects control bytes in caller-supplied trace ids", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: unknown[] = []
+      const registry = yield* makePermissionRegistry({ audit: memoryAudit(rows) })
+      for (let codePoint = 0; codePoint <= 31; codePoint += 1) {
+        const traceId = `trace${String.fromCharCode(codePoint)}forged`
+        const checkExit = yield* Effect.exit(
+          registry.check(filesystemWrite(["/tmp/app"]), {
+            actor: actor("window-main"),
+            traceId
+          })
+        )
+        const grantExit = yield* Effect.exit(
+          registry.grant(filesystemWrite(["/tmp/app"]), {
+            actor: actor("window-main"),
+            traceId
+          })
+        )
+        expectInvalid(checkExit)
+        expectInvalid(grantExit)
+      }
+      const delTrace = `trace${String.fromCharCode(127)}forged`
+      expectInvalid(
+        yield* Effect.exit(
+          registry.check(filesystemWrite(["/tmp/app"]), {
+            actor: actor("window-main"),
+            traceId: delTrace
+          })
+        )
+      )
+      expect(rows).toEqual([])
+    })
+  ))
+
+test("PermissionRegistry rejects control bytes returned by the trace id callback", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        traceId: () => `gen${String.fromCharCode(10)}forged`
       })
-    )
-  )
-  expect(rows).toEqual([])
-})
+      const checkExit = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+      )
+      const grantExit = yield* Effect.exit(
+        registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+      )
 
-test("PermissionRegistry rejects control bytes returned by the trace id callback", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ traceId: () => `gen${String.fromCharCode(10)}forged` })
-  )
-  const checkExit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
-  )
-  const grantExit = await Effect.runPromiseExit(
-    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
-  )
-
-  expectInvalid(checkExit)
-  expectInvalid(grantExit)
-})
-
-test("PermissionRegistry rejects empty trace IDs returned by the traceId callback", async () => {
-  const rows: unknown[] = []
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({
-      audit: memoryAudit(rows),
-      traceId: () => "",
-      nextToken: () => "grant-1"
+      expectInvalid(checkExit)
+      expectInvalid(grantExit)
     })
-  )
-  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
+  ))
 
-  const exit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
-  )
-  expectInvalid(exit)
-  expect(rows).toEqual([])
-  expect(await Effect.runPromise(registry.listDecisions())).toEqual([])
-})
-
-test("PermissionRegistry rejects control bytes in actor ids, resources, and sources", async () => {
-  const registry = await Effect.runPromise(makePermissionRegistry())
-
-  const declareExit = await Effect.runPromiseExit(
-    registry.declare(filesystemWrite(["/tmp/app"]), {
-      source: `declaration${String.fromCharCode(10)}forged`
-    })
-  )
-  expectInvalid(declareExit)
-
-  const actorExit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app"]), {
-      actor: { kind: "window", id: `app${String.fromCharCode(10)}forged` }
-    })
-  )
-  expectInvalid(actorExit)
-
-  const resourceExit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app"]), {
-      actor: actor("window-main"),
-      resource: `resource${String.fromCharCode(10)}forged`
-    })
-  )
-  expectInvalid(resourceExit)
-
-  const grantSourceExit = await Effect.runPromiseExit(
-    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), {
-      source: `grant${String.fromCharCode(10)}forged`
-    })
-  )
-  expectInvalid(grantSourceExit)
-})
-
-test("PermissionRegistry rejects empty token returned by the nextToken callback during check and grant", async () => {
-  const auditRows: unknown[] = []
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({
-      nextToken: () => "",
-      traceId: () => "trace-1",
-      audit: memoryAudit(auditRows)
-    })
-  )
-  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
-
-  const checkExit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
-  )
-  const grantExit = await Effect.runPromiseExit(
-    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
-  )
-
-  expectInvalid(checkExit)
-  expectInvalid(grantExit)
-  expect(auditRows).toEqual([])
-  expect(await Effect.runPromise(registry.listDecisions())).toEqual([])
-})
-
-test("PermissionRegistry rejects invalid clock timestamps before grant state changes", async () => {
-  for (const now of invalidTimestamps) {
-    let currentTime = now
-    const grantRows: unknown[] = []
-    const grantRegistry = await Effect.runPromise(
-      makePermissionRegistry({
-        audit: memoryAudit(grantRows),
-        now: () => currentTime,
-        nextToken: () => "grant-1",
-        traceId: () => "trace-1"
+test("PermissionRegistry rejects empty trace IDs returned by the traceId callback", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: unknown[] = []
+      const registry = yield* makePermissionRegistry({
+        audit: memoryAudit(rows),
+        traceId: () => "",
+        nextToken: () => "grant-1"
       })
-    )
-    const grantExit = await Effect.runPromiseExit(
-      grantRegistry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
-    )
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
 
-    expectInvalid(grantExit)
-    expect(grantRows).toEqual([])
-    currentTime = 1_000
-    expectFailure(
-      await Effect.runPromiseExit(grantRegistry.inspect("grant-1")),
-      PermissionGrantNotFoundError
-    )
+      const exit = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+      )
+      expectInvalid(exit)
+      expect(rows).toEqual([])
+      expect(yield* registry.listDecisions()).toEqual([])
+    })
+  ))
 
-    const checkRows: AuditEvent[] = []
-    const checkRegistry = await Effect.runPromise(
-      makePermissionRegistry({
-        audit: memoryAudit(checkRows),
-        now: () => now,
-        nextToken: () => "grant-1",
-        traceId: () => "trace-1"
+test("PermissionRegistry rejects control bytes in actor ids, resources, and sources", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry()
+
+      const declareExit = yield* Effect.exit(
+        registry.declare(filesystemWrite(["/tmp/app"]), {
+          source: `declaration${String.fromCharCode(10)}forged`
+        })
+      )
+      expectInvalid(declareExit)
+
+      const actorExit = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/app"]), {
+          actor: { kind: "window", id: `app${String.fromCharCode(10)}forged` }
+        })
+      )
+      expectInvalid(actorExit)
+
+      const resourceExit = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/app"]), {
+          actor: actor("window-main"),
+          resource: `resource${String.fromCharCode(10)}forged`
+        })
+      )
+      expectInvalid(resourceExit)
+
+      const grantSourceExit = yield* Effect.exit(
+        registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), {
+          source: `grant${String.fromCharCode(10)}forged`
+        })
+      )
+      expectInvalid(grantSourceExit)
+    })
+  ))
+
+test("PermissionRegistry rejects empty token returned by the nextToken callback during check and grant", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const auditRows: unknown[] = []
+      const registry = yield* makePermissionRegistry({
+        nextToken: () => "",
+        traceId: () => "trace-1",
+        audit: memoryAudit(auditRows)
       })
-    )
-    await Effect.runPromise(
-      checkRegistry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
-    )
-    const checkExit = await Effect.runPromiseExit(
-      checkRegistry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
-    )
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
 
-    expectInvalid(checkExit)
-    expect(checkRows).toEqual([])
-    expect(await Effect.runPromise(checkRegistry.listDecisions())).toEqual([])
-  }
-})
+      const checkExit = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+      )
+      const grantExit = yield* Effect.exit(
+        registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+      )
 
-test("PermissionRegistry rejects invalid clock timestamps before lifecycle transitions", async () => {
-  for (const now of invalidTimestamps) {
-    for (const operation of ["inspect", "revoke", "use"] as const) {
-      let currentTime = 1_000
-      const rows: AuditEvent[] = []
-      const registry = await Effect.runPromise(
-        makePermissionRegistry({
-          audit: memoryAudit(rows),
+      expectInvalid(checkExit)
+      expectInvalid(grantExit)
+      expect(auditRows).toEqual([])
+      expect(yield* registry.listDecisions()).toEqual([])
+    })
+  ))
+
+test("PermissionRegistry rejects invalid clock timestamps before grant state changes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const now of invalidTimestamps) {
+        let currentTime = now
+        const grantRows: unknown[] = []
+        const grantRegistry = yield* makePermissionRegistry({
+          audit: memoryAudit(grantRows),
           now: () => currentTime,
           nextToken: () => "grant-1",
           traceId: () => "trace-1"
         })
-      )
-      const grant = await Effect.runPromise(
-        registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), { oneTime: true })
-      )
-      currentTime = now
-
-      let effectRuns = 0
-      const exit = await Effect.runPromiseExit(
-        operation === "inspect"
-          ? registry.inspect(grant.token)
-          : operation === "revoke"
-            ? registry.revoke(grant.token)
-            : registry.use(
-                grant,
-                Effect.sync(() => {
-                  effectRuns += 1
-                })
-              )
-      )
-
-      expectInvalid(exit)
-      expect(effectRuns).toBe(0)
-      expect(rows.map((row) => row.kind)).toEqual(["permission-granted"])
-      currentTime = 1_010
-      const snapshot = await Effect.runPromise(registry.inspect(grant.token))
-      expect(snapshot.status).toBe("active")
-    }
-  }
-})
-
-test("PermissionRegistry does not retain a new grant when initial lifecycle audit fails", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({
-      audit: failingAudit(),
-      nextToken: () => "grant-1",
-      now: () => 1_000
-    })
-  )
-
-  const grantExit = await Effect.runPromiseExit(
-    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
-  )
-  const inspectExit = await Effect.runPromiseExit(registry.inspect("grant-1"))
-
-  expectFailure(grantExit, PermissionAuditFailedError)
-  expectFailure(inspectExit, PermissionGrantNotFoundError)
-})
-
-test("PermissionRegistry does not retain a check grant when decision audit fails", async () => {
-  const rows: AuditEvent[] = []
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({
-      audit: failingPermissionDecisionAudit(rows),
-      traceId: () => "trace-1",
-      nextToken: () => "grant-1",
-      now: () => 1_000
-    })
-  )
-  await Effect.runPromise(registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" }))
-
-  const checkExit = await Effect.runPromiseExit(
-    registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
-  )
-  const inspectExit = await Effect.runPromiseExit(registry.inspect("grant-1"))
-
-  expectFailure(checkExit, PermissionAuditFailedError)
-  expectFailure(inspectExit, PermissionGrantNotFoundError)
-  expect(rows.map((row) => row.kind)).toContain("permission-granted")
-  expect(await Effect.runPromise(registry.listDecisions())).toEqual([])
-})
-
-test("PermissionRegistry expires grants as typed revocation values and audits the transition", async () => {
-  const rows: unknown[] = []
-  let currentTime = 1_000
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({
-      audit: memoryAudit(rows),
-      traceId: () => "trace-1",
-      nextToken: () => "grant-1",
-      now: () => currentTime
-    })
-  )
-
-  const grant = await Effect.runPromise(
-    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), {
-      expiresAt: 1_010,
-      source: "approval"
-    })
-  )
-  currentTime = 1_020
-  const exit = await Effect.runPromiseExit(registry.use(grant, Effect.succeed("allowed")))
-  const snapshot = await Effect.runPromise(registry.inspect(grant.token))
-
-  expectRevoked(exit, (error) => {
-    expect(error.reason).toBe("expired")
-    expect(error.token).toBe("grant-1")
-  })
-  expect(snapshot.status).toBe("expired")
-  expect(rows.map((row) => (row as AuditEvent).kind)).toEqual([
-    "permission-granted",
-    "permission-expired"
-  ])
-  expect(JSON.stringify(rows)).not.toContain("grant-1")
-  expect(JSON.stringify(rows)).toContain("<redacted:PermissionGrantToken>")
-})
-
-test("PermissionRegistry consumes one-time grants after the first use", async () => {
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ nextToken: () => "grant-1", now: () => 1_000 })
-  )
-  const grant = await Effect.runPromise(
-    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), { oneTime: true })
-  )
-
-  const first = await Effect.runPromise(registry.use(grant, Effect.succeed("allowed")))
-  const second = await Effect.runPromiseExit(registry.use(grant, Effect.succeed("denied")))
-  const snapshot = await Effect.runPromise(registry.inspect(grant.token))
-
-  expect(first).toBe("allowed")
-  expect(snapshot.status).toBe("consumed")
-  expectRevoked(second, (error) => {
-    expect(error.reason).toBe("consumed")
-  })
-})
-
-test("PermissionRegistry revokes in-flight grant users through the lifecycle bus", async () => {
-  let currentTime = 1_000
-  const registry = await Effect.runPromise(
-    makePermissionRegistry({ nextToken: () => "grant-1", now: () => currentTime })
-  )
-  const grant = await Effect.runPromise(
-    registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
-  )
-  const started = await Effect.runPromise(Deferred.make<void>())
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const fiber = yield* registry
-        .use(
-          grant,
-          Effect.gen(function* () {
-            yield* Deferred.succeed(started, undefined)
-            yield* Effect.sleep("1 minute")
-          })
+        const grantExit = yield* Effect.exit(
+          grantRegistry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
         )
-        .pipe(Effect.forkChild({ startImmediately: true }))
-      yield* Deferred.await(started)
-      currentTime = 1_250
-      yield* registry.revoke(grant.token)
-      return yield* Fiber.await(fiber)
-    })
-  )
 
-  expect(Exit.isSuccess(exit)).toBe(true)
-  if (Exit.isSuccess(exit)) {
-    expectRevoked(exit.value, (error) => {
-      expect(error.reason).toBe("revoked")
-      expect(error.revokedAt).toBe(1_250)
+        expectInvalid(grantExit)
+        expect(grantRows).toEqual([])
+        currentTime = 1_000
+        expectFailure(
+          yield* Effect.exit(grantRegistry.inspect("grant-1")),
+          PermissionGrantNotFoundError
+        )
+
+        const checkRows: AuditEvent[] = []
+        const checkRegistry = yield* makePermissionRegistry({
+          audit: memoryAudit(checkRows),
+          now: () => now,
+          nextToken: () => "grant-1",
+          traceId: () => "trace-1"
+        })
+        yield* checkRegistry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
+        const checkExit = yield* Effect.exit(
+          checkRegistry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+        )
+
+        expectInvalid(checkExit)
+        expect(checkRows).toEqual([])
+        expect(yield* checkRegistry.listDecisions()).toEqual([])
+      }
     })
-  }
-})
+  ))
+
+test("PermissionRegistry rejects invalid clock timestamps before lifecycle transitions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const now of invalidTimestamps) {
+        for (const operation of ["inspect", "revoke", "use"] as const) {
+          let currentTime = 1_000
+          const rows: AuditEvent[] = []
+          const registry = yield* makePermissionRegistry({
+            audit: memoryAudit(rows),
+            now: () => currentTime,
+            nextToken: () => "grant-1",
+            traceId: () => "trace-1"
+          })
+          const grant = yield* registry.grant(
+            filesystemWrite(["/tmp/app"]),
+            context("window-main"),
+            {
+              oneTime: true
+            }
+          )
+          currentTime = now
+
+          let effectRuns = 0
+          const exit = yield* Effect.exit(
+            operation === "inspect"
+              ? registry.inspect(grant.token)
+              : operation === "revoke"
+                ? registry.revoke(grant.token)
+                : registry.use(
+                    grant,
+                    Effect.sync(() => {
+                      effectRuns += 1
+                    })
+                  )
+          )
+
+          expectInvalid(exit)
+          expect(effectRuns).toBe(0)
+          expect(rows.map((row) => row.kind)).toEqual(["permission-granted"])
+          currentTime = 1_010
+          const snapshot = yield* registry.inspect(grant.token)
+          expect(snapshot.status).toBe("active")
+        }
+      }
+    })
+  ))
+
+test("PermissionRegistry does not retain a new grant when initial lifecycle audit fails", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        audit: failingAudit(),
+        nextToken: () => "grant-1",
+        now: () => 1_000
+      })
+
+      const grantExit = yield* Effect.exit(
+        registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+      )
+      const inspectExit = yield* Effect.exit(registry.inspect("grant-1"))
+
+      expectFailure(grantExit, PermissionAuditFailedError)
+      expectFailure(inspectExit, PermissionGrantNotFoundError)
+    })
+  ))
+
+test("PermissionRegistry does not retain a check grant when decision audit fails", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const registry = yield* makePermissionRegistry({
+        audit: failingPermissionDecisionAudit(rows),
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1",
+        now: () => 1_000
+      })
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
+
+      const checkExit = yield* Effect.exit(
+        registry.check(filesystemWrite(["/tmp/app"]), context("window-main"))
+      )
+      const inspectExit = yield* Effect.exit(registry.inspect("grant-1"))
+
+      expectFailure(checkExit, PermissionAuditFailedError)
+      expectFailure(inspectExit, PermissionGrantNotFoundError)
+      expect(rows.map((row) => row.kind)).toContain("permission-granted")
+      expect(yield* registry.listDecisions()).toEqual([])
+    })
+  ))
+
+test("PermissionRegistry expires grants as typed revocation values and audits the transition", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: unknown[] = []
+      let currentTime = 1_000
+      const registry = yield* makePermissionRegistry({
+        audit: memoryAudit(rows),
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1",
+        now: () => currentTime
+      })
+
+      const grant = yield* registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), {
+        expiresAt: 1_010,
+        source: "approval"
+      })
+      currentTime = 1_020
+      const exit = yield* Effect.exit(registry.use(grant, Effect.succeed("allowed")))
+      const snapshot = yield* registry.inspect(grant.token)
+
+      expectRevoked(exit, (error) => {
+        expect(error.reason).toBe("expired")
+        expect(error.token).toBe("grant-1")
+      })
+      expect(snapshot.status).toBe("expired")
+      expect(rows.map((row) => (row as AuditEvent).kind)).toEqual([
+        "permission-granted",
+        "permission-expired"
+      ])
+      expect(JSON.stringify(rows)).not.toContain("grant-1")
+      expect(JSON.stringify(rows)).toContain("<redacted:PermissionGrantToken>")
+    })
+  ))
+
+test("PermissionRegistry consumes one-time grants after the first use", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        nextToken: () => "grant-1",
+        now: () => 1_000
+      })
+      const grant = yield* registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"), {
+        oneTime: true
+      })
+
+      const first = yield* registry.use(grant, Effect.succeed("allowed"))
+      const second = yield* Effect.exit(registry.use(grant, Effect.succeed("denied")))
+      const snapshot = yield* registry.inspect(grant.token)
+
+      expect(first).toBe("allowed")
+      expect(snapshot.status).toBe("consumed")
+      expectRevoked(second, (error) => {
+        expect(error.reason).toBe("consumed")
+      })
+    })
+  ))
+
+test("PermissionRegistry revokes in-flight grant users through the lifecycle bus", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      let currentTime = 1_000
+      const registry = yield* makePermissionRegistry({
+        nextToken: () => "grant-1",
+        now: () => currentTime
+      })
+      const grant = yield* registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+      const started = yield* Deferred.make<void>()
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const fiber = yield* registry
+            .use(
+              grant,
+              Effect.gen(function* () {
+                yield* Deferred.succeed(started, undefined)
+                yield* Effect.sleep("1 minute")
+              })
+            )
+            .pipe(Effect.forkChild({ startImmediately: true }))
+          yield* Deferred.await(started)
+          currentTime = 1_250
+          yield* registry.revoke(grant.token)
+          return yield* Fiber.await(fiber)
+        })
+      )
+
+      expect(Exit.isSuccess(exit)).toBe(true)
+      if (Exit.isSuccess(exit)) {
+        expectRevoked(exit.value, (error) => {
+          expect(error.reason).toBe("revoked")
+          expect(error.revokedAt).toBe(1_250)
+        })
+      }
+    })
+  ))
 
 const actor = (id: string): PermissionActor => new PermissionActor({ kind: "window", id })
 

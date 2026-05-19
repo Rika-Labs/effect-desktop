@@ -98,7 +98,6 @@ import {
   Exit,
   Fiber,
   Layer,
-  ManagedRuntime,
   Option,
   Queue,
   Schema,
@@ -500,55 +499,40 @@ const runScopedPromiseExit = <A, E>(
   effect: Effect.Effect<A, E, Scope.Scope>
 ): Promise<Exit.Exit<A, E>> => Effect.runPromiseExit(Effect.scoped(effect))
 
-const runScoped = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  layer: Layer.Layer<R, never, never>
-): Effect.Effect<A, E, never> =>
-  Effect.gen(function* () {
-    const runtime = ManagedRuntime.make(layer)
-    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
-    yield* Effect.promise(() => runtime.dispose())
-    return yield* exit
-  })
-
 const snapshotSurfaceRegistrations = (
   serverLayer: ReadonlyArray<AnyDesktopRpcRegistration>
-): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>> => Effect.succeed(serverLayer)
+): Promise<ReadonlyArray<AnyDesktopRpcRegistration>> => Promise.resolve(serverLayer)
 
-test("native package root keeps contracts and implementation helpers behind subpaths", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const native = yield* Effect.promise(() => import("@effect-desktop/native"))
+test("native package root keeps contracts and implementation helpers behind subpaths", async () => {
+  const native = await import("@effect-desktop/native")
 
-      expect(native.Window).toBeFunction()
-      expect(native.WindowLive).toBeDefined()
-      expect(native.ClipboardSurface).toBeDefined()
-      expect(native.DialogSurface).toBeDefined()
-      expect(native.Native.all).toBeDefined()
-      expect(native.Native.Permissions.clipboard.readText).toBeDefined()
-      expect(Array.isArray(native.Native.available(native.Native.Clipboard))).toBe(true)
-      expect(Array.isArray(Desktop.native(native.Native.all))).toBe(true)
-      expect("readText" in native.Native.Clipboard).toBe(false)
-      expect("Permissions" in native.Native).toBe(true)
-      expect(native.NativeCapabilities).toBeFunction()
-      expect(native.NativeCapabilitiesLive).toBeDefined()
-      expect(native.UnsupportedCapability).toBeFunction()
-      expect(NativeCapabilities).toBeFunction()
-      expect(NativeCapabilitiesLive).toBeDefined()
-      expect(UnsupportedCapability).toBeFunction()
-      expect("WindowCreateInput" in native).toBe(false)
-      expect("ClipboardText" in native).toBe(false)
-      expect("DialogOpenResult" in native).toBe(false)
-      expect("AppEventRouter" in native).toBe(false)
-      expect("AppHttpServer" in native).toBe(false)
-      expect("UpdateWorkflow" in native).toBe(false)
-      expect("makeUnsupportedWindowClient" in native).toBe(false)
-      expect("makeUnsupportedClipboardClient" in native).toBe(false)
-      expect("makeClipboardBridgeClientLayer" in native).toBe(false)
-      expect("makeHostClipboardRpcRuntime" in native).toBe(false)
-
-    })
-  ))
+  expect(native.Window).toBeFunction()
+  expect(native.WindowLive).toBeDefined()
+  expect(native.ClipboardSurface).toBeDefined()
+  expect(native.DialogSurface).toBeDefined()
+  expect(native.Native.all).toBeDefined()
+  expect(native.Native.Permissions.clipboard.readText).toBeDefined()
+  expect(Array.isArray(native.Native.available(native.Native.Clipboard))).toBe(true)
+  expect(Array.isArray(Desktop.native(native.Native.all))).toBe(true)
+  expect("readText" in native.Native.Clipboard).toBe(false)
+  expect("Permissions" in native.Native).toBe(true)
+  expect(native.NativeCapabilities).toBeFunction()
+  expect(native.NativeCapabilitiesLive).toBeDefined()
+  expect(native.UnsupportedCapability).toBeFunction()
+  expect(NativeCapabilities).toBeFunction()
+  expect(NativeCapabilitiesLive).toBeDefined()
+  expect(UnsupportedCapability).toBeFunction()
+  expect("WindowCreateInput" in native).toBe(false)
+  expect("ClipboardText" in native).toBe(false)
+  expect("DialogOpenResult" in native).toBe(false)
+  expect("AppEventRouter" in native).toBe(false)
+  expect("AppHttpServer" in native).toBe(false)
+  expect("UpdateWorkflow" in native).toBe(false)
+  expect("makeUnsupportedWindowClient" in native).toBe(false)
+  expect("makeUnsupportedClipboardClient" in native).toBe(false)
+  expect("makeClipboardBridgeClientLayer" in native).toBe(false)
+  expect("makeHostClipboardRpcRuntime" in native).toBe(false)
+})
 
 test("native services expose canonical static layers", () => {
   expect(AppLive).toBe(App.layer)
@@ -658,17 +642,13 @@ test("native availability selection does not grant authority", () => {
   expect(declared.size).toBe(0)
 })
 
-test("native contracts subpath exposes schema-coded payload contracts", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const contracts = yield* Effect.promise(() => import("@effect-desktop/native/contracts"))
+test("native contracts subpath exposes schema-coded payload contracts", async () => {
+  const contracts = await import("@effect-desktop/native/contracts")
 
-      expect(contracts.WindowCreateInput).toBeFunction()
-      expect(contracts.ClipboardText).toBeFunction()
-      expect(contracts.DialogOpenResult).toBeFunction()
-
-    })
-  ))
+  expect(contracts.WindowCreateInput).toBeFunction()
+  expect(contracts.ClipboardText).toBeFunction()
+  expect(contracts.DialogOpenResult).toBeFunction()
+})
 
 test("Desktop.native registers selected native surfaces into app manifests", () => {
   const app = Desktop.make({
@@ -699,56 +679,48 @@ test("Desktop.native availability does not require matching permissions during g
     })
   ))
 
-test("Desktop.native rejects duplicate native surfaces as typed config errors", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const exit = yield* Effect.exit(
-        Desktop.runtimeGraph({
-          id: "native-duplicate",
-          windows: Desktop.window("main", { title: "Native Duplicate" }),
-          native: Desktop.native(Native.available(Native.Clipboard), Native.available(Native.Clipboard))
-        })
-      )
-
-      expect(Exit.isFailure(exit)).toBe(true)
-      if (Exit.isFailure(exit)) {
-        const failure = exit.cause.reasons.find(Cause.isFailReason)
-        expect(failure?.error).toBeInstanceOf(DesktopSpineConfigError)
-        expect(failure?.error).toMatchObject({
-          _tag: "DesktopConfigError",
-          reason: "invalid-config",
-          contract: "Clipboard"
-        })
-      }
-
+test("Desktop.native rejects duplicate native surfaces as typed config errors", async () => {
+  const exit = await Effect.runPromiseExit(
+    Desktop.runtimeGraph({
+      id: "native-duplicate",
+      windows: Desktop.window("main", { title: "Native Duplicate" }),
+      native: Desktop.native(Native.available(Native.Clipboard), Native.available(Native.Clipboard))
     })
-  ))
+  )
 
-test("Desktop.native rejects duplicate RPC methods across native and app RPC layers", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const exit = yield* Effect.exit(
-        Desktop.runtimeGraph({
-          id: "native-rpc-duplicate",
-          windows: Desktop.window("main", { title: "Native RPC Duplicate" }),
-          native: Native.available(Native.Clipboard),
-          rpcs: ClipboardSurface.serverLayer
-        })
-      )
-
-      expect(Exit.isFailure(exit)).toBe(true)
-      if (Exit.isFailure(exit)) {
-        const failure = exit.cause.reasons.find(Cause.isFailReason)
-        expect(failure?.error).toBeInstanceOf(DesktopSpineConfigError)
-        expect(failure?.error).toMatchObject({
-          _tag: "DesktopConfigError",
-          reason: "duplicate-rpc",
-          method: "Clipboard.readText"
-        })
-      }
-
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(DesktopSpineConfigError)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "invalid-config",
+      contract: "Clipboard"
     })
-  ))
+  }
+})
+
+test("Desktop.native rejects duplicate RPC methods across native and app RPC layers", async () => {
+  const exit = await Effect.runPromiseExit(
+    Desktop.runtimeGraph({
+      id: "native-rpc-duplicate",
+      windows: Desktop.window("main", { title: "Native RPC Duplicate" }),
+      native: Native.available(Native.Clipboard),
+      rpcs: ClipboardSurface.serverLayer
+    })
+  )
+
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    const failure = exit.cause.reasons.find(Cause.isFailReason)
+    expect(failure?.error).toBeInstanceOf(DesktopSpineConfigError)
+    expect(failure?.error).toMatchObject({
+      _tag: "DesktopConfigError",
+      reason: "duplicate-rpc",
+      method: "Clipboard.readText"
+    })
+  }
+})
 
 test("Native.all registers every built-in native surface", () => {
   const app = Desktop.make({
@@ -766,22 +738,18 @@ test("Native.all registers every built-in native surface", () => {
   expect(tags).toContain("Window.create")
 })
 
-test("native package exports reject implementation-only subpaths", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const appHttpServerSpecifier = "@effect-desktop/native/" + "app-http-server"
-      const updaterWorkflowSpecifier = "@effect-desktop/native/" + "updater-workflow"
+test("native package exports reject implementation-only subpaths", async () => {
+  const appHttpServerSpecifier = "@effect-desktop/native/" + "app-http-server"
+  const updaterWorkflowSpecifier = "@effect-desktop/native/" + "updater-workflow"
 
-      yield* expectImportRejected(appHttpServerSpecifier)
-      yield* expectImportRejected(updaterWorkflowSpecifier)
-
-    })
-  ))
+  await expectImportRejected(appHttpServerSpecifier)
+  await expectImportRejected(updaterWorkflowSpecifier)
+})
 
 const expectImportRejected = async (specifier: string): Promise<void> => {
   let rejected = false
   try {
-    yield* Effect.promise(() => import(specifier))
+    await import(specifier)
   } catch {
     rejected = true
   }
@@ -1019,11 +987,10 @@ const expectedCrashReporterMethods: Array<(typeof CrashReporterMethodNames)[numb
   "getReports"
 ]
 
-const makeCrashReporterPermissions = (effect: "allow" | "deny" = "allow") =>
-  Effect.gen(function* () {
-  const permissions = yield* (makePermissionRegistry())
+const makeCrashReporterPermissions = async (effect: "allow" | "deny" = "allow") => {
+  const permissions = await Effect.runPromise(makePermissionRegistry())
   for (const method of expectedCrashReporterMethods) {
-    yield* (
+    await Effect.runPromise(
       permissions.declare(P.nativeInvoke({ primitive: "CrashReporter", methods: [method] }), {
         effect,
         source: "test"
@@ -1189,88 +1156,74 @@ test("AppRpcs declares the Phase 7 App method and event surface", () => {
   ])
 })
 
-test("App service delegates through a substitutable AppClient port", () =>
-  Effect.runPromise(
+test("App service delegates through a substitutable AppClient port", async () => {
+  const calls: string[] = []
+  const result = await runScopedPromise(
     Effect.gen(function* () {
-      const calls: string[] = []
-      const result = yield* Effect.scoped(
-        runScoped(
-          Effect.gen(function* () {
-            const app = yield* App
-            yield* app.focus()
-            yield* app.activate()
-            yield* app.quit()
-            yield* app.exit({ exitCode: 7 })
-            yield* app.restart({ args: ["--restarted"] })
-            yield* app.relaunch({ args: ["--relaunched"] })
-            yield* app.releaseSingleInstanceLock()
-            const protocolEvents = yield* app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect)
+      const app = yield* App
+      yield* app.focus()
+      yield* app.activate()
+      yield* app.quit()
+      yield* app.exit({ exitCode: 7 })
+      yield* app.restart({ args: ["--restarted"] })
+      yield* app.relaunch({ args: ["--relaunched"] })
+      yield* app.releaseSingleInstanceLock()
+      const protocolEvents = yield* app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect)
 
-            return { protocolEvents }
-          }),
-          makeAppServiceLayer(appClient(calls))
-        )
-      )
+      return { protocolEvents }
+    }).pipe(Effect.provide(makeAppServiceLayer(appClient(calls))))
+  )
 
-      expect(Array.from(result.protocolEvents)).toEqual([
-        new AppOpenUrlEvent({ url: "effect-desktop://open" })
-      ])
-      expect(calls).toEqual([
-        "focus",
-        "activate",
-        "quit:-1",
-        "exit:7",
-        "restart:--restarted",
-        "relaunch:--relaunched",
-        "releaseSingleInstanceLock"
-      ])
+  expect(Array.from(result.protocolEvents)).toEqual([
+    new AppOpenUrlEvent({ url: "effect-desktop://open" })
+  ])
+  expect(calls).toEqual([
+    "focus",
+    "activate",
+    "quit:-1",
+    "exit:7",
+    "restart:--restarted",
+    "relaunch:--relaunched",
+    "releaseSingleInstanceLock"
+  ])
+})
 
-    })
-  ))
+test("App bridge client sends typed host envelopes and decodes event streams", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = appExchange(requests, (request) => ({
+    kind: "success",
+    payload: request.method === "App.requestSingleInstanceLock" ? { acquired: true } : undefined
+  }))
 
-test("App bridge client sends typed host envelopes and decodes event streams", () =>
-  Effect.runPromise(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
-      const requests: HostProtocolRequestEnvelope[] = []
-      const exchange = appExchange(requests, (request) => ({
-        kind: "success",
-        payload: request.method === "App.requestSingleInstanceLock" ? { acquired: true } : undefined
-      }))
+      const app = yield* App
+      yield* app.quit({ exitCode: 0 })
+      yield* app.exit({ exitCode: 7 })
+      yield* app.restart({ args: ["--restarted"] })
+      yield* app.relaunch({ args: ["--relaunched"] })
+      yield* app.focus()
+      yield* app.activate()
+      yield* app.requestSingleInstanceLock()
+      yield* app.releaseSingleInstanceLock()
+      const openFiles = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
 
-      const result = yield* Effect.scoped(
-        runScoped(
-          Effect.gen(function* () {
-            const app = yield* App
-            yield* app.quit({ exitCode: 0 })
-            yield* app.exit({ exitCode: 7 })
-            yield* app.restart({ args: ["--restarted"] })
-            yield* app.relaunch({ args: ["--relaunched"] })
-            yield* app.focus()
-            yield* app.activate()
-            yield* app.requestSingleInstanceLock()
-            yield* app.releaseSingleInstanceLock()
-            const openFiles = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
+      return { openFiles }
+    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+  )
 
-            return { openFiles }
-          }),
-          Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
-        )
-      )
-
-      expect(Array.from(result.openFiles)).toEqual([new AppOpenFileEvent({ path: "/tmp/README.md" })])
-      expect(requests.map((request) => [request.method, request.payload])).toEqual([
-        ["App.quit", { exitCode: 0 }],
-        ["App.exit", { exitCode: 7 }],
-        ["App.restart", { args: ["--restarted"] }],
-        ["App.relaunch", { args: ["--relaunched"] }],
-        ["App.focus", null],
-        ["App.activate", null],
-        ["App.requestSingleInstanceLock", null],
-        ["App.releaseSingleInstanceLock", null]
-      ])
-
-    })
-  ))
+  expect(Array.from(result.openFiles)).toEqual([new AppOpenFileEvent({ path: "/tmp/README.md" })])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["App.quit", { exitCode: 0 }],
+    ["App.exit", { exitCode: 7 }],
+    ["App.restart", { args: ["--restarted"] }],
+    ["App.relaunch", { args: ["--relaunched"] }],
+    ["App.focus", null],
+    ["App.activate", null],
+    ["App.requestSingleInstanceLock", null],
+    ["App.releaseSingleInstanceLock", null]
+  ])
+})
 
 test("native host RPC runtime gates single-instance release before handlers run", () =>
   Effect.runPromise(
@@ -1294,8 +1247,8 @@ test("native host RPC runtime gates single-instance release before handlers run"
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const denied = yield* runScoped(
-        runtime.dispatch(
+      const denied = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "app-release-single-instance-denied",
@@ -1303,9 +1256,8 @@ test("native host RPC runtime gates single-instance release before handlers run"
             timestamp: 1710000000000,
             traceId: "trace-app-release-single-instance-denied"
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
       expect(denied.kind).toBe("failure")
       if (denied.kind === "failure") {
         expect(hasErrorTag(denied.error, "PermissionDenied")).toBe(true)
@@ -1317,8 +1269,8 @@ test("native host RPC runtime gates single-instance release before handlers run"
         source: "app-single-instance-test",
         effect: "allow"
       })
-      const allowed = yield* runScoped(
-        runtime.dispatch(
+      const allowed = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "app-release-single-instance-allowed",
@@ -1326,9 +1278,8 @@ test("native host RPC runtime gates single-instance release before handlers run"
             timestamp: 1710000000001,
             traceId: "trace-app-release-single-instance-allowed"
           })
-        ),
-        Layer.succeed(PermissionRegistry)(permissions)
-      )
+        )
+        .pipe(Effect.provide(Layer.succeed(PermissionRegistry)(permissions)))
 
       expect(allowed.kind).toBe("success")
       expect(calls).toEqual(["releaseSingleInstanceLock"])
@@ -1355,20 +1306,14 @@ test("App single-instance service propagates unsupported platform and host failu
           Effect.fail(makeHostProtocolHostUnavailableError("App.releaseSingleInstanceLock"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const app = yield* App
-          return yield* Effect.exit(app.requestSingleInstanceLock())
-        }),
-        makeAppServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const app = yield* App
-          return yield* Effect.exit(app.releaseSingleInstanceLock())
-        }),
-        makeAppServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const app = yield* App
+        return yield* Effect.exit(app.requestSingleInstanceLock())
+      }).pipe(Effect.provide(makeAppServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const app = yield* App
+        return yield* Effect.exit(app.releaseSingleInstanceLock())
+      }).pipe(Effect.provide(makeAppServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -1398,12 +1343,9 @@ test("App bridge client decodes event streams without host requests", () =>
             : Stream.empty
       }
 
-      const app = yield* runScoped(
-        Effect.gen(function* () {
-          return yield* App
-        }),
-        Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
-      )
+      const app = yield* Effect.gen(function* () {
+        return yield* App
+      }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
 
       const eventResult = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
 
@@ -1457,61 +1399,49 @@ test("App bridge client rejects lifecycle events with excess fields as InvalidOu
               : Stream.empty
         }
 
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const app = yield* App
-            if (method === "App.onOpenFile") {
-              return yield* Effect.exit(app.onOpenFile().pipe(Stream.take(1), Stream.runCollect))
-            }
-            if (method === "App.onOpenUrl") {
-              return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
-            }
-            if (method === "App.onBeforeQuit") {
-              return yield* Effect.exit(app.onBeforeQuit().pipe(Stream.take(1), Stream.runCollect))
-            }
-            return yield* Effect.exit(
-              app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect)
-            )
-          }),
-          Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
-        )
+        const exit = yield* Effect.gen(function* () {
+          const app = yield* App
+          if (method === "App.onOpenFile") {
+            return yield* Effect.exit(app.onOpenFile().pipe(Stream.take(1), Stream.runCollect))
+          }
+          if (method === "App.onOpenUrl") {
+            return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
+          }
+          if (method === "App.onBeforeQuit") {
+            return yield* Effect.exit(app.onBeforeQuit().pipe(Stream.take(1), Stream.runCollect))
+          }
+          return yield* Effect.exit(app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect))
+        }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
       }
     })
   ))
 
-test("App bridge client rejects event envelopes for the wrong method", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const exchange: BridgeClientExchange = {
-        request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
-        subscribe: () =>
-          Stream.make(
-            new HostProtocolEventEnvelope({
-              kind: "event",
-              timestamp: 1710000000401,
-              traceId: "event-trace",
-              method: "App.onOpenUrl",
-              payload: { path: "/tmp/README.md" }
-            })
-          )
-      }
-
-      const exit = yield* Effect.exit(
-        runScoped(
-          Effect.gen(function* () {
-            const app = yield* App
-            return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
-          }),
-          Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
-        )
+test("App bridge client rejects event envelopes for the wrong method", async () => {
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.succeed({ kind: "success" as const, payload: undefined }),
+    subscribe: () =>
+      Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          timestamp: 1710000000401,
+          traceId: "event-trace",
+          method: "App.onOpenUrl",
+          payload: { path: "/tmp/README.md" }
+        })
       )
+  }
 
-      expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const app = yield* App
+      return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
+  )
 
-    })
-  ))
+  expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+})
 
 test("App bridge client decodes second-instance activation reasons", () =>
   Effect.runPromise(
@@ -1537,13 +1467,10 @@ test("App bridge client decodes second-instance activation reasons", () =>
             : Stream.empty
       }
 
-      const events = yield* runScoped(
-        Effect.gen(function* () {
-          const app = yield* App
-          return yield* app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect)
-        }),
-        Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
-      )
+      const events = yield* Effect.gen(function* () {
+        const app = yield* App
+        return yield* app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect)
+      }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
 
       expect(Array.from(events)).toEqual([
         new AppSecondInstanceEvent({
@@ -1566,18 +1493,19 @@ test("App single-instance lock rejects invalid primary pid results", () =>
 
       for (const payload of cases) {
         const requests: HostProtocolRequestEnvelope[] = []
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const client = yield* App
-            return yield* Effect.exit(client.requestSingleInstanceLock())
-          }),
-          Layer.provide(
-            AppLive,
-            makeAppBridgeClientLayer(
-              appExchange(requests, (request) =>
-                request.method === "App.requestSingleInstanceLock"
-                  ? { kind: "success", payload }
-                  : { kind: "success", payload: undefined }
+        const exit = yield* Effect.gen(function* () {
+          const client = yield* App
+          return yield* Effect.exit(client.requestSingleInstanceLock())
+        }).pipe(
+          Effect.provide(
+            Layer.provide(
+              AppLive,
+              makeAppBridgeClientLayer(
+                appExchange(requests, (request) =>
+                  request.method === "App.requestSingleInstanceLock"
+                    ? { kind: "success", payload }
+                    : { kind: "success", payload: undefined }
+                )
               )
             )
           )
@@ -1647,48 +1575,51 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
             : Stream.empty
       }
 
-      const openUrlExit = yield* runScoped(
-        Effect.gen(function* () {
-          const app = yield* App
-          return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
-        }),
-        Layer.provide(
-          AppLive,
-          makeAppBridgeClientLayer(invalidUrlExchange, {
-            nextRequestId: nextId(["unused"]),
-            nextTraceId: nextId(["unused"]),
-            now: nextNumber([1710000000000])
-          })
+      const openUrlExit = yield* Effect.gen(function* () {
+        const app = yield* App
+        return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AppLive,
+            makeAppBridgeClientLayer(invalidUrlExchange, {
+              nextRequestId: nextId(["unused"]),
+              nextTraceId: nextId(["unused"]),
+              now: nextNumber([1710000000000])
+            })
+          )
         )
       )
 
-      const secondInstanceExit = yield* runScoped(
-        Effect.gen(function* () {
-          const app = yield* App
-          return yield* Effect.exit(app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect))
-        }),
-        Layer.provide(
-          AppLive,
-          makeAppBridgeClientLayer(invalidSecondInstanceExchange, {
-            nextRequestId: nextId(["unused"]),
-            nextTraceId: nextId(["unused"]),
-            now: nextNumber([1710000000000])
-          })
+      const secondInstanceExit = yield* Effect.gen(function* () {
+        const app = yield* App
+        return yield* Effect.exit(app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AppLive,
+            makeAppBridgeClientLayer(invalidSecondInstanceExchange, {
+              nextRequestId: nextId(["unused"]),
+              nextTraceId: nextId(["unused"]),
+              now: nextNumber([1710000000000])
+            })
+          )
         )
       )
 
-      const beforeQuitExit = yield* runScoped(
-        Effect.gen(function* () {
-          const app = yield* App
-          return yield* Effect.exit(app.onBeforeQuit().pipe(Stream.take(1), Stream.runCollect))
-        }),
-        Layer.provide(
-          AppLive,
-          makeAppBridgeClientLayer(invalidBeforeQuitExchange, {
-            nextRequestId: nextId(["unused"]),
-            nextTraceId: nextId(["unused"]),
-            now: nextNumber([1710000000000])
-          })
+      const beforeQuitExit = yield* Effect.gen(function* () {
+        const app = yield* App
+        return yield* Effect.exit(app.onBeforeQuit().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AppLive,
+            makeAppBridgeClientLayer(invalidBeforeQuitExchange, {
+              nextRequestId: nextId(["unused"]),
+              nextTraceId: nextId(["unused"]),
+              now: nextNumber([1710000000000])
+            })
+          )
         )
       )
 
@@ -1725,18 +1656,19 @@ test("App bridge client accepts safe absolute onOpenFile paths", () =>
               : Stream.empty
         }
 
-        const result = yield* runScoped(
-          Effect.gen(function* () {
-            const app = yield* App
-            return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
-          }),
-          Layer.provide(
-            AppLive,
-            makeAppBridgeClientLayer(exchange, {
-              nextRequestId: nextId(["unused"]),
-              nextTraceId: nextId(["unused"]),
-              now: nextNumber([1710000000000])
-            })
+        const result = yield* Effect.gen(function* () {
+          const app = yield* App
+          return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
+        }).pipe(
+          Effect.provide(
+            Layer.provide(
+              AppLive,
+              makeAppBridgeClientLayer(exchange, {
+                nextRequestId: nextId(["unused"]),
+                nextTraceId: nextId(["unused"]),
+                now: nextNumber([1710000000000])
+              })
+            )
           )
         )
 
@@ -1778,18 +1710,19 @@ test("App bridge client rejects unsafe onOpenFile paths as InvalidOutput", () =>
               : Stream.empty
         }
 
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const app = yield* App
-            return yield* Effect.exit(app.onOpenFile().pipe(Stream.take(1), Stream.runCollect))
-          }),
-          Layer.provide(
-            AppLive,
-            makeAppBridgeClientLayer(exchange, {
-              nextRequestId: nextId(["unused"]),
-              nextTraceId: nextId(["unused"]),
-              now: nextNumber([1710000000000])
-            })
+        const exit = yield* Effect.gen(function* () {
+          const app = yield* App
+          return yield* Effect.exit(app.onOpenFile().pipe(Stream.take(1), Stream.runCollect))
+        }).pipe(
+          Effect.provide(
+            Layer.provide(
+              AppLive,
+              makeAppBridgeClientLayer(exchange, {
+                nextRequestId: nextId(["unused"]),
+                nextTraceId: nextId(["unused"]),
+                now: nextNumber([1710000000000])
+              })
+            )
           )
         )
 
@@ -1828,78 +1761,69 @@ test("App bridge client rejects dangerous onOpenUrl schemes as InvalidOutput", (
               : Stream.empty
         }
 
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const app = yield* App
-            return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
-          }),
-          Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
-        )
+        const exit = yield* Effect.gen(function* () {
+          const app = yield* App
+          return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
+        }).pipe(Effect.provide(Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))))
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
       }
     })
   ))
 
-test("App bridge client rejects empty or NUL-bearing lifecycle args as InvalidArgument", () =>
-  Effect.runPromise(
+test("App bridge client rejects empty or NUL-bearing lifecycle args as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
     Effect.gen(function* () {
-      const requests: HostProtocolRequestEnvelope[] = []
-      const client = yield* (
-        runScoped(
-          Effect.gen(function* () {
-            return yield* App
-          }),
-          Layer.provide(
-            AppLive,
-            makeAppBridgeClientLayer(
-              appExchange(requests, () => ({ kind: "success", payload: undefined }))
-            )
+      return yield* App
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(
+            appExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
       )
+    )
+  )
 
-      const exits = yield* Effect.all([
-        Effect.exit(client.restart({ args: [""] })),
-        Effect.exit(client.restart({ args: ["--flag", "value\u0000broken"] })),
-        Effect.exit(client.relaunch({ args: [""] })),
-        Effect.exit(client.relaunch({ args: ["--flag", "value\u0000broken"] }))
-      ], { concurrency: "unbounded" })
+  const exits = await Promise.all([
+    Effect.runPromiseExit(client.restart({ args: [""] })),
+    Effect.runPromiseExit(client.restart({ args: ["--flag", "value\u0000broken"] })),
+    Effect.runPromiseExit(client.relaunch({ args: [""] })),
+    Effect.runPromiseExit(client.relaunch({ args: ["--flag", "value\u0000broken"] }))
+  ])
 
-      for (const exit of exits) {
-        expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
-      }
-      expect(requests).toEqual([])
+  for (const exit of exits) {
+    expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+  }
+  expect(requests).toEqual([])
+})
 
-    })
-  ))
-
-test("App bridge client rejects non-portable quit exit codes as InvalidArgument", () =>
-  Effect.runPromise(
+test("App bridge client rejects non-portable quit exit codes as InvalidArgument", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const client = await Effect.runPromise(
     Effect.gen(function* () {
-      const requests: HostProtocolRequestEnvelope[] = []
-      const client = yield* (
-        runScoped(
-          Effect.gen(function* () {
-            return yield* App
-          }),
-          Layer.provide(
-            AppLive,
-            makeAppBridgeClientLayer(
-              appExchange(requests, () => ({ kind: "success", payload: undefined }))
-            )
+      return yield* App
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          AppLive,
+          makeAppBridgeClientLayer(
+            appExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
       )
+    )
+  )
 
-      const exit256 = yield* Effect.exit(client.quit({ exitCode: 256 }))
-      const aliasExit256 = yield* Effect.exit(client.exit({ exitCode: 256 }))
-      expectExitFailure(exit256, (error) => hasErrorTag(error, "InvalidArgument"))
-      expectExitFailure(aliasExit256, (error) => hasErrorTag(error, "InvalidArgument"))
-      expect(requests).toEqual([])
-
-    })
-  ))
+  const exit256 = await Effect.runPromiseExit(client.quit({ exitCode: 256 }))
+  const aliasExit256 = await Effect.runPromiseExit(client.exit({ exitCode: 256 }))
+  expectExitFailure(exit256, (error) => hasErrorTag(error, "InvalidArgument"))
+  expectExitFailure(aliasExit256, (error) => hasErrorTag(error, "InvalidArgument"))
+  expect(requests).toEqual([])
+})
 
 test("AppMetadataRpcs declares the Phase 8 AppMetadata method and event surface", () => {
   expect([...AppMetadataMethodNames]).toEqual(expectedAppMetadataMethods)
@@ -1912,147 +1836,136 @@ test("AppMetadataRpcs declares the Phase 8 AppMetadata method and event surface"
   expect(Object.keys(AppMetadataRpcEvents)).toEqual(["Event"])
 })
 
-test("AppMetadata service delegates through a substitutable AppMetadataClient port", () =>
-  Effect.runPromise(
+test("AppMetadata service delegates through a substitutable AppMetadataClient port", async () => {
+  const calls: string[] = []
+  const result = await runScopedPromise(
     Effect.gen(function* () {
-      const calls: string[] = []
-      const result = yield* Effect.scoped(
-        runScoped(
-          Effect.gen(function* () {
-            const metadata = yield* AppMetadata
-            const info = yield* metadata.getInfo()
-            const paths = yield* metadata.getPaths()
-            const launchContext = yield* metadata.getLaunchContext()
-            const events = yield* metadata.events().pipe(Stream.take(1), Stream.runCollect)
+      const metadata = yield* AppMetadata
+      const info = yield* metadata.getInfo()
+      const paths = yield* metadata.getPaths()
+      const launchContext = yield* metadata.getLaunchContext()
+      const events = yield* metadata.events().pipe(Stream.take(1), Stream.runCollect)
 
-            return { events, info, launchContext, paths }
-          }),
-          makeAppMetadataServiceLayer(appMetadataClient(calls))
-        )
-      )
+      return { events, info, launchContext, paths }
+    }).pipe(Effect.provide(makeAppMetadataServiceLayer(appMetadataClient(calls))))
+  )
 
-      expect(result.info).toEqual(appMetadataInfo)
-      expect(result.paths).toEqual(appMetadataPaths)
-      expect(result.launchContext).toEqual(appMetadataLaunchContext)
-      expect(Array.from(result.events)).toEqual([
-        new AppMetadataEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
-      ])
-      expect(calls).toEqual(["getInfo", "getPaths", "getLaunchContext", "events"])
+  expect(result.info).toEqual(appMetadataInfo)
+  expect(result.paths).toEqual(appMetadataPaths)
+  expect(result.launchContext).toEqual(appMetadataLaunchContext)
+  expect(Array.from(result.events)).toEqual([
+    new AppMetadataEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
+  ])
+  expect(calls).toEqual(["getInfo", "getPaths", "getLaunchContext", "events"])
+})
 
-    })
-  ))
+test("AppMetadata bridge client sends typed host envelopes and decodes events and results", async () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange = appMetadataExchange(requests, (request) => {
+    if (request.method === "AppMetadata.getInfo") {
+      return {
+        kind: "success",
+        payload: {
+          id: "dev.effect-desktop.test",
+          name: "Effect Desktop Test",
+          version: "0.0.0"
+        }
+      }
+    }
+    if (request.method === "AppMetadata.getPaths") {
+      return {
+        kind: "success",
+        payload: {
+          executable: { path: "/Applications/Test.app/Contents/MacOS/test" },
+          resources: { path: "/Applications/Test.app/Contents/Resources" },
+          cwd: { path: "/repo" }
+        }
+      }
+    }
+    if (request.method === "AppMetadata.getLaunchContext") {
+      return {
+        kind: "success",
+        payload: {
+          argv: ["test", "--safe-mode"],
+          cwd: { path: "/repo" },
+          reason: "launch",
+          environment: { variableNames: ["PATH", "HOME"] }
+        }
+      }
+    }
+    return { kind: "success", payload: undefined }
+  })
 
-test("AppMetadata bridge client sends typed host envelopes and decodes events and results", () =>
-  Effect.runPromise(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
-      const requests: HostProtocolRequestEnvelope[] = []
-      const exchange = appMetadataExchange(requests, (request) => {
-        if (request.method === "AppMetadata.getInfo") {
-          return {
-            kind: "success",
-            payload: {
-              id: "dev.effect-desktop.test",
-              name: "Effect Desktop Test",
-              version: "0.0.0"
-            }
-          }
-        }
-        if (request.method === "AppMetadata.getPaths") {
-          return {
-            kind: "success",
-            payload: {
-              executable: { path: "/Applications/Test.app/Contents/MacOS/test" },
-              resources: { path: "/Applications/Test.app/Contents/Resources" },
-              cwd: { path: "/repo" }
-            }
-          }
-        }
-        if (request.method === "AppMetadata.getLaunchContext") {
-          return {
-            kind: "success",
-            payload: {
-              argv: ["test", "--safe-mode"],
-              cwd: { path: "/repo" },
-              reason: "launch",
-              environment: { variableNames: ["PATH", "HOME"] }
-            }
-          }
-        }
-        return { kind: "success", payload: undefined }
-      })
+      const metadata = yield* AppMetadata
+      const info = yield* metadata.getInfo()
+      const paths = yield* metadata.getPaths()
+      const launchContext = yield* metadata.getLaunchContext()
+      const events = yield* metadata.events().pipe(Stream.take(1), Stream.runCollect)
 
-      const result = yield* Effect.scoped(
-        runScoped(
-          Effect.gen(function* () {
-            const metadata = yield* AppMetadata
-            const info = yield* metadata.getInfo()
-            const paths = yield* metadata.getPaths()
-            const launchContext = yield* metadata.getLaunchContext()
-            const events = yield* metadata.events().pipe(Stream.take(1), Stream.runCollect)
+      return { events, info, launchContext, paths }
+    }).pipe(
+      Effect.provide(Layer.provide(AppMetadataLive, makeAppMetadataBridgeClientLayer(exchange)))
+    )
+  )
 
-            return { events, info, launchContext, paths }
-          }),
-          Layer.provide(AppMetadataLive, makeAppMetadataBridgeClientLayer(exchange))
-        )
-      )
-
-      expect(result.info).toEqual(appMetadataInfo)
-      expect(result.paths).toEqual(appMetadataPaths)
-      expect(result.launchContext).toEqual(appMetadataLaunchContext)
-      expect(Array.from(result.events)).toEqual([
-        new AppMetadataEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
-      ])
-      expect(requests.map((request) => [request.method, request.payload])).toEqual([
-        ["AppMetadata.getInfo", null],
-        ["AppMetadata.getPaths", null],
-        ["AppMetadata.getLaunchContext", null]
-      ])
-
-    })
-  ))
+  expect(result.info).toEqual(appMetadataInfo)
+  expect(result.paths).toEqual(appMetadataPaths)
+  expect(result.launchContext).toEqual(appMetadataLaunchContext)
+  expect(Array.from(result.events)).toEqual([
+    new AppMetadataEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
+  ])
+  expect(requests.map((request) => [request.method, request.payload])).toEqual([
+    ["AppMetadata.getInfo", null],
+    ["AppMetadata.getPaths", null],
+    ["AppMetadata.getLaunchContext", null]
+  ])
+})
 
 test("AppMetadata bridge client rejects malformed host output as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const metadata = yield* AppMetadata
-          const infoExit = yield* Effect.exit(metadata.getInfo())
-          const pathsExit = yield* Effect.exit(metadata.getPaths())
-          const launchContextExit = yield* Effect.exit(metadata.getLaunchContext())
-          return { infoExit, launchContextExit, pathsExit }
-        }),
-        Layer.provide(
-          AppMetadataLive,
-          makeAppMetadataBridgeClientLayer(
-            appMetadataExchange(requests, (request) => {
-              if (request.method === "AppMetadata.getInfo") {
-                return {
-                  kind: "success",
-                  payload: { id: "", name: "Effect Desktop Test", version: "not-semver" }
+      const result = yield* Effect.gen(function* () {
+        const metadata = yield* AppMetadata
+        const infoExit = yield* Effect.exit(metadata.getInfo())
+        const pathsExit = yield* Effect.exit(metadata.getPaths())
+        const launchContextExit = yield* Effect.exit(metadata.getLaunchContext())
+        return { infoExit, launchContextExit, pathsExit }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AppMetadataLive,
+            makeAppMetadataBridgeClientLayer(
+              appMetadataExchange(requests, (request) => {
+                if (request.method === "AppMetadata.getInfo") {
+                  return {
+                    kind: "success",
+                    payload: { id: "", name: "Effect Desktop Test", version: "not-semver" }
+                  }
                 }
-              }
-              if (request.method === "AppMetadata.getPaths") {
+                if (request.method === "AppMetadata.getPaths") {
+                  return {
+                    kind: "success",
+                    payload: {
+                      executable: { path: "relative" },
+                      resources: { path: "/resources" },
+                      cwd: { path: "/repo" }
+                    }
+                  }
+                }
                 return {
                   kind: "success",
                   payload: {
-                    executable: { path: "relative" },
-                    resources: { path: "/resources" },
-                    cwd: { path: "/repo" }
+                    argv: ["test", "bad\u0000arg"],
+                    cwd: { path: "/repo" },
+                    reason: "scheduled",
+                    environment: { variableNames: ["PATH"] }
                   }
                 }
-              }
-              return {
-                kind: "success",
-                payload: {
-                  argv: ["test", "bad\u0000arg"],
-                  cwd: { path: "/repo" },
-                  reason: "scheduled",
-                  environment: { variableNames: ["PATH"] }
-                }
-              }
-            })
+              })
+            )
           )
         )
       )
@@ -2085,8 +1998,8 @@ test("native host RPC runtime denies protected AppMetadata calls before handlers
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "app-metadata-denied",
@@ -2094,9 +2007,8 @@ test("native host RPC runtime denies protected AppMetadata calls before handlers
             timestamp: 1710000000000,
             traceId: "trace-app-metadata-denied"
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -2128,8 +2040,8 @@ test("native host RPC runtime allows declared AppMetadata permissions", () =>
         effect: "allow"
       })
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "app-metadata-allowed",
@@ -2137,9 +2049,8 @@ test("native host RPC runtime allows declared AppMetadata permissions", () =>
             timestamp: 1710000000000,
             traceId: "trace-app-metadata-allowed"
           })
-        ),
-        Layer.succeed(PermissionRegistry)(permissions)
-      )
+        )
+        .pipe(Effect.provide(Layer.succeed(PermissionRegistry)(permissions)))
 
       expect(response.kind).toBe("success")
       if (response.kind === "success") {
@@ -2172,20 +2083,14 @@ test("AppMetadata service propagates unsupported platform and host failure", () 
         getInfo: () => Effect.fail(makeHostProtocolHostUnavailableError("AppMetadata.getInfo"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const metadata = yield* AppMetadata
-          return yield* Effect.exit(metadata.getInfo())
-        }),
-        makeAppMetadataServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const metadata = yield* AppMetadata
-          return yield* Effect.exit(metadata.getInfo())
-        }),
-        makeAppMetadataServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const metadata = yield* AppMetadata
+        return yield* Effect.exit(metadata.getInfo())
+      }).pipe(Effect.provide(makeAppMetadataServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const metadata = yield* AppMetadata
+        return yield* Effect.exit(metadata.getInfo())
+      }).pipe(Effect.provide(makeAppMetadataServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -2207,63 +2112,58 @@ test("WebView service delegates through a substitutable WebViewClient port", () 
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          const created = yield* webview.create(windowHandle)
-          yield* webview.loadRoute(created, "/settings")
-          yield* webview.loadUrl(created, "https://example.com")
-          yield* webview.reload(created)
-          yield* webview.stop(created)
-          yield* webview.goBack(created)
-          yield* webview.goForward(created)
-          const navigationState = yield* webview.getNavigationState(created)
-          const screenshot = yield* webview.captureScreenshot(created)
-          const pdf = yield* webview.printToPdf(created)
-          const findResult = yield* webview.findInPage(created, "needle")
-          yield* webview.print(created)
-          yield* webview.setZoom(created, 1.25)
-          yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
-          yield* webview.setAudioMuted(created, true)
-          yield* webview.respondToPermission(created, "permission-1", "deny")
-          const frames = yield* webview.listFrames(created)
-          yield* webview.postToFrame(created, webviewFrameHandle, '{"kind":"ping"}')
-          yield* webview.openDevTools(created)
-          yield* webview.closeDevTools(created)
-          yield* webview.attachDebugger(created)
-          yield* webview.setNavigationPolicy(created, {
-            allowedOrigins: ["app://localhost"],
-            onDisallowed: "block"
-          })
-          const linuxAutofill = yield* webview.capability("autofill", { platform: "linux" })
-          const blocked = yield* webview
-            .onNavigationBlocked()
-            .pipe(Stream.take(1), Stream.runCollect)
-          const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
-          const runtimeEvents = yield* webview
-            .onRuntimeEvent(created)
-            .pipe(Stream.take(1), Stream.runCollect)
-          const frameEvents = yield* webview
-            .onFrameEvent(created)
-            .pipe(Stream.take(1), Stream.runCollect)
-          yield* webview.destroy(created)
+      const result = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        const created = yield* webview.create(windowHandle)
+        yield* webview.loadRoute(created, "/settings")
+        yield* webview.loadUrl(created, "https://example.com")
+        yield* webview.reload(created)
+        yield* webview.stop(created)
+        yield* webview.goBack(created)
+        yield* webview.goForward(created)
+        const navigationState = yield* webview.getNavigationState(created)
+        const screenshot = yield* webview.captureScreenshot(created)
+        const pdf = yield* webview.printToPdf(created)
+        const findResult = yield* webview.findInPage(created, "needle")
+        yield* webview.print(created)
+        yield* webview.setZoom(created, 1.25)
+        yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
+        yield* webview.setAudioMuted(created, true)
+        yield* webview.respondToPermission(created, "permission-1", "deny")
+        const frames = yield* webview.listFrames(created)
+        yield* webview.postToFrame(created, webviewFrameHandle, '{"kind":"ping"}')
+        yield* webview.openDevTools(created)
+        yield* webview.closeDevTools(created)
+        yield* webview.attachDebugger(created)
+        yield* webview.setNavigationPolicy(created, {
+          allowedOrigins: ["app://localhost"],
+          onDisallowed: "block"
+        })
+        const linuxAutofill = yield* webview.capability("autofill", { platform: "linux" })
+        const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+        const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
+        const runtimeEvents = yield* webview
+          .onRuntimeEvent(created)
+          .pipe(Stream.take(1), Stream.runCollect)
+        const frameEvents = yield* webview
+          .onFrameEvent(created)
+          .pipe(Stream.take(1), Stream.runCollect)
+        yield* webview.destroy(created)
 
-          return {
-            apiCalls,
-            blocked,
-            created,
-            frameEvents,
-            frames,
-            findResult,
-            linuxAutofill,
-            navigationState,
-            pdf,
-            runtimeEvents,
-            screenshot
-          }
-        }),
-        makeWebViewServiceLayer(webViewClient(calls))
-      )
+        return {
+          apiCalls,
+          blocked,
+          created,
+          frameEvents,
+          frames,
+          findResult,
+          linuxAutofill,
+          navigationState,
+          pdf,
+          runtimeEvents,
+          screenshot
+        }
+      }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
 
       expect(result.created).toMatchObject(webviewHandle)
       expect(result.navigationState).toEqual({
@@ -2356,20 +2256,14 @@ test("WebView service propagates unsupported platform and host failure", () =>
         create: () => Effect.fail(makeHostProtocolHostUnavailableError("WebView.create"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.create(windowHandle))
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.create(windowHandle))
-        }),
-        makeWebViewServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.create(windowHandle))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.create(windowHandle))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -2380,18 +2274,15 @@ test("WebView document controls propagate success, unsupported, and host failure
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const success = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          yield* webview.print(webviewHandle)
-          yield* webview.setZoom(webviewHandle, 1.25)
-          const pdf = yield* webview.printToPdf(webviewHandle)
-          const findResult = yield* webview.findInPage(webviewHandle, "needle")
-          yield* webview.setUserAgent(webviewHandle, "EffectDesktopTest/1.0")
-          return { findResult, pdf }
-        }),
-        makeWebViewServiceLayer(webViewClient(calls))
-      )
+      const success = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        yield* webview.print(webviewHandle)
+        yield* webview.setZoom(webviewHandle, 1.25)
+        const pdf = yield* webview.printToPdf(webviewHandle)
+        const findResult = yield* webview.findInPage(webviewHandle, "needle")
+        yield* webview.setUserAgent(webviewHandle, "EffectDesktopTest/1.0")
+        return { findResult, pdf }
+      }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
 
       expect(success.pdf.bytes).toEqual(new Uint8Array([0x25, 0x50, 0x44, 0x46]))
       expect(success.findResult).toEqual(
@@ -2421,20 +2312,14 @@ test("WebView document controls propagate success, unsupported, and host failure
         print: () => Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_PRINT_METHOD))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.printToPdf(webviewHandle))
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.print(webviewHandle))
-        }),
-        makeWebViewServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.printToPdf(webviewHandle))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.print(webviewHandle))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -2445,15 +2330,12 @@ test("WebView devtools and debugger controls propagate success, unsupported, and
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const successResult = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          yield* webview.openDevTools(webviewHandle)
-          yield* webview.closeDevTools(webviewHandle)
-          yield* webview.attachDebugger(webviewHandle)
-        }),
-        makeWebViewServiceLayer(webViewClient(calls))
-      )
+      const successResult = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        yield* webview.openDevTools(webviewHandle)
+        yield* webview.closeDevTools(webviewHandle)
+        yield* webview.attachDebugger(webviewHandle)
+      }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
       expect(successResult).toBeUndefined()
       expect(calls).toEqual(["openDevTools", "closeDevTools", "attachDebugger"])
 
@@ -2482,27 +2364,18 @@ test("WebView devtools and debugger controls propagate success, unsupported, and
           Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_CLOSE_DEVTOOLS_METHOD))
       }
 
-      const devtoolsExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.openDevTools(webviewHandle))
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const debuggerExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.attachDebugger(webviewHandle))
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.closeDevTools(webviewHandle))
-        }),
-        makeWebViewServiceLayer(hostFailureClient)
-      )
+      const devtoolsExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.openDevTools(webviewHandle))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+      const debuggerExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.attachDebugger(webviewHandle))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.closeDevTools(webviewHandle))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
 
       expectExitFailure(devtoolsExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(debuggerExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -2514,14 +2387,11 @@ test("WebView runtime controls propagate success, unsupported, and host failures
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const successResult = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          yield* webview.setAudioMuted(webviewHandle, true)
-          yield* webview.respondToPermission(webviewHandle, "permission-1", "deny")
-        }),
-        makeWebViewServiceLayer(webViewClient(calls))
-      )
+      const successResult = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        yield* webview.setAudioMuted(webviewHandle, true)
+        yield* webview.respondToPermission(webviewHandle, "permission-1", "deny")
+      }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
       expect(successResult).toBeUndefined()
       expect(calls).toEqual(["setAudioMuted:true", "respondToPermission:permission-1:deny"])
 
@@ -2550,29 +2420,20 @@ test("WebView runtime controls propagate success, unsupported, and host failures
           Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_SET_AUDIO_MUTED_METHOD))
       }
 
-      const audioExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.setAudioMuted(webviewHandle, true))
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const permissionExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(
-            webview.respondToPermission(webviewHandle, "permission-1", "deny")
-          )
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.setAudioMuted(webviewHandle, true))
-        }),
-        makeWebViewServiceLayer(hostFailureClient)
-      )
+      const audioExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.setAudioMuted(webviewHandle, true))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+      const permissionExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(
+          webview.respondToPermission(webviewHandle, "permission-1", "deny")
+        )
+      }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.setAudioMuted(webviewHandle, true))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
 
       expectExitFailure(audioExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(permissionExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -2584,18 +2445,15 @@ test("WebView frame routing propagates success, unsupported, and host failures",
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const success = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          const frames = yield* webview.listFrames(webviewHandle)
-          yield* webview.postToFrame(webviewHandle, webviewFrameHandle, '{"kind":"ping"}')
-          const events = yield* webview
-            .onFrameEvent(webviewHandle)
-            .pipe(Stream.take(1), Stream.runCollect)
-          return { events, frames }
-        }),
-        makeWebViewServiceLayer(webViewClient(calls))
-      )
+      const success = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        const frames = yield* webview.listFrames(webviewHandle)
+        yield* webview.postToFrame(webviewHandle, webviewFrameHandle, '{"kind":"ping"}')
+        const events = yield* webview
+          .onFrameEvent(webviewHandle)
+          .pipe(Stream.take(1), Stream.runCollect)
+        return { events, frames }
+      }).pipe(Effect.provide(makeWebViewServiceLayer(webViewClient(calls))))
 
       expect(success.frames).toEqual(new WebViewFrameList({ webview: webviewHandle, frames: [] }))
       expect(Array.from(success.events)).toEqual([
@@ -2625,22 +2483,16 @@ test("WebView frame routing propagates success, unsupported, and host failures",
           Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_POST_TO_FRAME_METHOD))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.listFrames(webviewHandle))
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(
-            webview.postToFrame(webviewHandle, webviewFrameHandle, '{"kind":"ping"}')
-          )
-        }),
-        makeWebViewServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(webview.listFrames(webviewHandle))
+      }).pipe(Effect.provide(makeWebViewServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* Effect.exit(
+          webview.postToFrame(webviewHandle, webviewFrameHandle, '{"kind":"ping"}')
+        )
+      }).pipe(Effect.provide(makeWebViewServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -2782,64 +2634,57 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
                         : undefined
       }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          const created = yield* webview.create(windowHandle, {
-            url: "app://localhost/settings",
-            originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" },
-            isolation: { exposedApis: [{ name: "desktop", methods: ["ping"] }] }
-          })
-          yield* webview.loadRoute(created, "/settings")
-          yield* webview.stop(created)
-          const navigationState = yield* webview.getNavigationState(created)
-          yield* webview.setNavigationPolicy(created, {
-            allowedOrigins: ["app://localhost", "https://example.com"],
-            onDisallowed: "openExternal"
-          })
-          const screenshot = yield* webview.captureScreenshot(created)
-          yield* webview.print(created)
-          const pdf = yield* webview.printToPdf(created)
-          const findResult = yield* webview.findInPage(created, "needle")
-          yield* webview.setZoom(created, 1.25)
-          yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
-          yield* webview.setAudioMuted(created, true)
-          yield* webview.respondToPermission(created, "permission-1", "deny")
-          const frames = yield* webview.listFrames(created)
-          yield* webview.postToFrame(created, webviewFrameHandle, '{"kind":"ping"}')
-          yield* webview.openDevTools(created)
-          yield* webview.closeDevTools(created)
-          yield* webview.attachDebugger(created)
-          const canOpenDevtools = yield* webview.capability("devtools open", {
-            platform: "windows"
-          })
-          const blocked = yield* webview
-            .onNavigationBlocked()
-            .pipe(Stream.take(1), Stream.runCollect)
-          const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
-          const runtimeEvents = yield* webview
-            .onRuntimeEvent(created)
-            .pipe(Stream.take(1), Stream.runCollect)
-          const frameEvents = yield* webview
-            .onFrameEvent(created)
-            .pipe(Stream.take(1), Stream.runCollect)
+      const result = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        const created = yield* webview.create(windowHandle, {
+          url: "app://localhost/settings",
+          originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" },
+          isolation: { exposedApis: [{ name: "desktop", methods: ["ping"] }] }
+        })
+        yield* webview.loadRoute(created, "/settings")
+        yield* webview.stop(created)
+        const navigationState = yield* webview.getNavigationState(created)
+        yield* webview.setNavigationPolicy(created, {
+          allowedOrigins: ["app://localhost", "https://example.com"],
+          onDisallowed: "openExternal"
+        })
+        const screenshot = yield* webview.captureScreenshot(created)
+        yield* webview.print(created)
+        const pdf = yield* webview.printToPdf(created)
+        const findResult = yield* webview.findInPage(created, "needle")
+        yield* webview.setZoom(created, 1.25)
+        yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
+        yield* webview.setAudioMuted(created, true)
+        yield* webview.respondToPermission(created, "permission-1", "deny")
+        const frames = yield* webview.listFrames(created)
+        yield* webview.postToFrame(created, webviewFrameHandle, '{"kind":"ping"}')
+        yield* webview.openDevTools(created)
+        yield* webview.closeDevTools(created)
+        yield* webview.attachDebugger(created)
+        const canOpenDevtools = yield* webview.capability("devtools open", { platform: "windows" })
+        const blocked = yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+        const apiCalls = yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
+        const runtimeEvents = yield* webview
+          .onRuntimeEvent(created)
+          .pipe(Stream.take(1), Stream.runCollect)
+        const frameEvents = yield* webview
+          .onFrameEvent(created)
+          .pipe(Stream.take(1), Stream.runCollect)
 
-          return {
-            apiCalls,
-            blocked,
-            canOpenDevtools,
-            created,
-            frameEvents,
-            frames,
-            findResult,
-            navigationState,
-            pdf,
-            runtimeEvents,
-            screenshot
-          }
-        }),
-        Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))
-      )
+        return {
+          apiCalls,
+          blocked,
+          canOpenDevtools,
+          created,
+          frameEvents,
+          frames,
+          findResult,
+          navigationState,
+          pdf,
+          runtimeEvents,
+          screenshot
+        }
+      }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
 
       expect(result.created).toMatchObject(webviewHandle)
       expect(result.navigationState).toEqual({
@@ -2940,24 +2785,25 @@ test("WebView captureScreenshot rejects empty byte payloads", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* WebView
-          const created = yield* client.create(windowHandle)
-          return yield* Effect.exit(client.captureScreenshot(created))
-        }),
-        Layer.provide(
-          WebViewLive,
-          makeWebViewBridgeClientLayer(
-            webViewExchange(requests, (request) => ({
-              kind: "success",
-              payload:
-                request.method === "WebView.create"
-                  ? webviewHandle
-                  : request.method === "WebView.captureScreenshot"
-                    ? { mime: "image/png", bytes: new Uint8Array() }
-                    : undefined
-            }))
+      const exit = yield* Effect.gen(function* () {
+        const client = yield* WebView
+        const created = yield* client.create(windowHandle)
+        return yield* Effect.exit(client.captureScreenshot(created))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            WebViewLive,
+            makeWebViewBridgeClientLayer(
+              webViewExchange(requests, (request) => ({
+                kind: "success",
+                payload:
+                  request.method === "WebView.create"
+                    ? webviewHandle
+                    : request.method === "WebView.captureScreenshot"
+                      ? { mime: "image/png", bytes: new Uint8Array() }
+                      : undefined
+              }))
+            )
           )
         )
       )
@@ -2981,24 +2827,25 @@ test("WebView getNavigationState rejects malformed host output", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* WebView
-          const created = yield* client.create(windowHandle)
-          return yield* Effect.exit(client.getNavigationState(created))
-        }),
-        Layer.provide(
-          WebViewLive,
-          makeWebViewBridgeClientLayer(
-            webViewExchange(requests, (request) => ({
-              kind: "success",
-              payload:
-                request.method === "WebView.create"
-                  ? webviewHandle
-                  : request.method === "WebView.getNavigationState"
-                    ? { canGoBack: true, loading: false }
-                    : undefined
-            }))
+      const exit = yield* Effect.gen(function* () {
+        const client = yield* WebView
+        const created = yield* client.create(windowHandle)
+        return yield* Effect.exit(client.getNavigationState(created))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            WebViewLive,
+            makeWebViewBridgeClientLayer(
+              webViewExchange(requests, (request) => ({
+                kind: "success",
+                payload:
+                  request.method === "WebView.create"
+                    ? webviewHandle
+                    : request.method === "WebView.getNavigationState"
+                      ? { canGoBack: true, loading: false }
+                      : undefined
+              }))
+            )
           )
         )
       )
@@ -3043,19 +2890,20 @@ test("WebView bridge client rejects control-byte navigation-blocked reasons", as
           )
         : Stream.empty
   }
-  const exit = yield* Effect.exit(Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const webview = yield* WebView
-        yield* webview.create(windowHandle)
-        return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
-      }),
-      Layer.provide(
-        WebViewLive,
-        makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+  const exit = await runScopedPromiseExit(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.create(windowHandle)
+      return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+        )
       )
     )
-  ))
+  )
 
   expect(Exit.isFailure(exit)).toBe(true)
 })
@@ -3085,16 +2933,17 @@ test("WebView bridge client rejects invalid navigation-blocked event URLs", asyn
           )
         : Stream.empty
   }
-  const exit = yield* Effect.exit(
-    runScoped(
-      Effect.gen(function* () {
-        const webview = yield* WebView
-        yield* webview.create(windowHandle)
-        return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
-      }),
-      Layer.provide(
-        WebViewLive,
-        makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.create(windowHandle)
+      return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+        )
       )
     )
   )
@@ -3128,16 +2977,17 @@ test("WebView bridge client rejects undeclared API-call event names", async () =
           )
         : Stream.empty
   }
-  const exit = yield* Effect.exit(
-    runScoped(
-      Effect.gen(function* () {
-        const webview = yield* WebView
-        yield* webview.create(windowHandle)
-        return yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
-      }),
-      Layer.provide(
-        WebViewLive,
-        makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.create(windowHandle)
+      return yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          WebViewLive,
+          makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+        )
       )
     )
   )
@@ -3173,16 +3023,15 @@ test("WebView bridge client rejects control-byte runtime event paths", () =>
             : Stream.empty
       }
 
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* webview
-            .onRuntimeEvent()
-            .pipe(Stream.take(1), Stream.runCollect, Effect.exit)
-        }),
-        Layer.provide(
-          WebViewLive,
-          makeWebViewBridgeClientLayer(unsafeExchange, { nextTraceId: () => "trace" })
+      const exit = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* webview.onRuntimeEvent().pipe(Stream.take(1), Stream.runCollect, Effect.exit)
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            WebViewLive,
+            makeWebViewBridgeClientLayer(unsafeExchange, { nextTraceId: () => "trace" })
+          )
         )
       )
 
@@ -3196,44 +3045,41 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
     kind: "success",
     payload: webviewHandle
   }))
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* WebView
-      }),
-      Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))
-    )
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* WebView
+    }).pipe(Effect.provide(Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))))
   )
 
-  const javascriptCreateExit = yield* Effect.exit(
+  const javascriptCreateExit = await Effect.runPromiseExit(
     client.create(windowHandle, {
       url: "javascript:alert(1)",
       originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
     })
   )
-  const fileUrlExit = yield* Effect.exit(
+  const fileUrlExit = await Effect.runPromiseExit(
     client.loadUrl(webviewHandle, "file:///etc/passwd")
   )
-  const traversalExit = yield* Effect.exit(client.loadRoute(webviewHandle, "../secret"))
-  const emptyOriginExit = yield* Effect.exit(
+  const traversalExit = await Effect.runPromiseExit(client.loadRoute(webviewHandle, "../secret"))
+  const emptyOriginExit = await Effect.runPromiseExit(
     client.create(windowHandle, {
       url: "app://localhost/",
       originPolicy: { allowedOrigins: [""], onDisallowed: "block" }
     })
   )
-  const javascriptOriginExit = yield* Effect.exit(
+  const javascriptOriginExit = await Effect.runPromiseExit(
     client.create(windowHandle, {
       url: "app://localhost/",
       originPolicy: { allowedOrigins: ["javascript:"], onDisallowed: "block" }
     })
   )
-  const policyExit = yield* Effect.exit(
+  const policyExit = await Effect.runPromiseExit(
     client.setNavigationPolicy(webviewHandle, {
       allowedOrigins: ["file://"],
       onDisallowed: "block"
     })
   )
-  const isolationExit = yield* Effect.exit(
+  const isolationExit = await Effect.runPromiseExit(
     client.create(windowHandle, {
       url: "app://localhost/",
       originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" },
@@ -3267,19 +3113,20 @@ test("WebView bridge client rejects malformed screenshot output bytes as Invalid
         : { kind: "success", payload: undefined }
     )
 
-    const exit = yield* Effect.exit(
-      runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* webview.captureScreenshot(webviewHandle)
-        }),
-        Layer.provide(
-          WebViewLive,
-          makeWebViewBridgeClientLayer(exchange, {
-            nextRequestId: nextId(["capture-screenshot-request"]),
-            nextTraceId: nextId(["capture-screenshot-trace"]),
-            now: nextNumber([1710000000000])
-          })
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const webview = yield* WebView
+        return yield* webview.captureScreenshot(webviewHandle)
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            WebViewLive,
+            makeWebViewBridgeClientLayer(exchange, {
+              nextRequestId: nextId(["capture-screenshot-request"]),
+              nextTraceId: nextId(["capture-screenshot-trace"]),
+              now: nextNumber([1710000000000])
+            })
+          )
         )
       )
     )
@@ -3298,30 +3145,31 @@ test("WebView capability matrix reports spec-partial features as unsupported", (
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return {
-            linuxPrint: yield* webview.capability("print", { platform: "linux" }),
-            linuxPopupBlocking: yield* webview.capability("popup blocking", { platform: "linux" }),
-            linuxGetUserMedia: yield* webview.capability("getUserMedia", { platform: "linux" }),
-            linuxServiceWorkers: yield* webview.capability("service workers in app:", {
-              platform: "linux"
-            }),
-            macosServiceWorkers: yield* webview.capability("service workers in app:", {
-              platform: "macos"
-            }),
-            windowsPrint: yield* webview.capability("print", { platform: "windows" }),
-            linuxPdf: yield* webview.capability("PDF embedded viewer", { platform: "linux" })
-          }
-        }),
-        makeWebViewServiceLayer({
-          ...webViewClient(calls),
-          capability: (input) =>
-            Effect.succeed({
-              supported: webViewCapability(input.name, input.platform, input.mode)
-            })
-        })
+      const result = yield* Effect.gen(function* () {
+        const webview = yield* WebView
+        return {
+          linuxPrint: yield* webview.capability("print", { platform: "linux" }),
+          linuxPopupBlocking: yield* webview.capability("popup blocking", { platform: "linux" }),
+          linuxGetUserMedia: yield* webview.capability("getUserMedia", { platform: "linux" }),
+          linuxServiceWorkers: yield* webview.capability("service workers in app:", {
+            platform: "linux"
+          }),
+          macosServiceWorkers: yield* webview.capability("service workers in app:", {
+            platform: "macos"
+          }),
+          windowsPrint: yield* webview.capability("print", { platform: "windows" }),
+          linuxPdf: yield* webview.capability("PDF embedded viewer", { platform: "linux" })
+        }
+      }).pipe(
+        Effect.provide(
+          makeWebViewServiceLayer({
+            ...webViewClient(calls),
+            capability: (input) =>
+              Effect.succeed({
+                supported: webViewCapability(input.name, input.platform, input.mode)
+              })
+          })
+        )
       )
 
       expect(result.linuxPrint).toBe(true)
@@ -3343,25 +3191,22 @@ test("MenuRpcs declares the Phase 7 Menu method and event surface", () => {
 test("Menu service delegates through a substitutable MenuClient port", async () => {
   const calls: string[] = []
   const commandCalls: unknown[] = []
-  const commandLayer = yield* makeCommandBindingLayer(commandCalls)
-  const result = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const menu = yield* Menu
-        yield* menu.setApplicationMenu(applicationMenuTemplate)
-        yield* menu.setWindowMenu(windowHandle, menuTemplate)
-        yield* menu.bindCommand("file.open", "app.file.open")
-        const linuxAppMenu = yield* menu.capability("application menu", { platform: "linux" })
-        const activated = yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
-        yield* menu.clear({ window: windowHandle })
-        yield* menu.clear()
+  const commandLayer = await makeCommandBindingLayer(commandCalls)
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.setApplicationMenu(applicationMenuTemplate)
+      yield* menu.setWindowMenu(windowHandle, menuTemplate)
+      yield* menu.bindCommand("file.open", "app.file.open")
+      const linuxAppMenu = yield* menu.capability("application menu", { platform: "linux" })
+      const activated = yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+      yield* menu.clear({ window: windowHandle })
+      yield* menu.clear()
 
-        return { activated, linuxAppMenu }
-      }),
-      Layer.mergeAll(makeMenuServiceLayer(menuClient(calls)), commandLayer)
-    )
+      return { activated, linuxAppMenu }
+    }).pipe(Effect.provide(Layer.mergeAll(makeMenuServiceLayer(menuClient(calls)), commandLayer)))
   )
-  yield* (Effect.sleep("10 millis"))
+  await Effect.runPromise(Effect.sleep("10 millis"))
 
   expect(result.linuxAppMenu).toBe(false)
   expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
@@ -3384,19 +3229,16 @@ test("Menu service delegates through a substitutable MenuClient port", async () 
 test("Menu bindCommand does not duplicate listeners for identical bindings", async () => {
   const calls: string[] = []
   const commandCalls: unknown[] = []
-  const commandLayer = yield* makeCommandBindingLayer(commandCalls)
-  const result = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const menu = yield* Menu
-        const first = yield* menu.bindCommand("file.open", "app.file.open")
-        const second = yield* menu.bindCommand("file.open", "app.file.open")
-        return { first, second }
-      }),
-      Layer.mergeAll(makeMenuServiceLayer(menuClient(calls)), commandLayer)
-    )
+  const commandLayer = await makeCommandBindingLayer(commandCalls)
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      const first = yield* menu.bindCommand("file.open", "app.file.open")
+      const second = yield* menu.bindCommand("file.open", "app.file.open")
+      return { first, second }
+    }).pipe(Effect.provide(Layer.mergeAll(makeMenuServiceLayer(menuClient(calls)), commandLayer)))
   )
-  yield* (Effect.sleep("10 millis"))
+  await Effect.runPromise(Effect.sleep("10 millis"))
 
   expect(result.second).toEqual({
     kind: result.first.kind,
@@ -3412,13 +3254,13 @@ test("Menu bindCommand does not duplicate listeners for identical bindings", asy
 test("Menu bindCommand closes the command listener with its resource scope", async () => {
   const calls: string[] = []
   const commandCalls: unknown[] = []
-  const activated = yield* (Queue.unbounded<MenuActivatedEvent>())
-  const invoked = yield* (Deferred.make<void>())
-  const resources = yield* (makeResourceRegistry())
-  const permissions = yield* (makePermissionRegistry())
-  const commands = yield* (makeCommandRegistry(resources, permissions))
-  yield* (permissions.declare(menuCommandCapability, { source: "test" }))
-  yield* (
+  const activated = await Effect.runPromise(Queue.unbounded<MenuActivatedEvent>())
+  const invoked = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+  await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
+  await Effect.runPromise(
     registerTestCommand(commands, {
       id: "app.file.open",
       payload: Schema.Struct({
@@ -3434,24 +3276,25 @@ test("Menu bindCommand closes the command listener with its resource scope", asy
     })
   )
 
-  yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const menu = yield* Menu
-        return yield* menu.bindCommand("file.open", "app.file.open")
-      }),
-      Layer.mergeAll(
-        makeMenuServiceLayer({
-          ...menuClient(calls),
-          onActivated: () => Stream.fromQueue(activated)
-        }),
-        Layer.succeed(ResourceRegistry)(resources),
-        Layer.succeed(CommandRegistry)(commands)
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      return yield* menu.bindCommand("file.open", "app.file.open")
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeMenuServiceLayer({
+            ...menuClient(calls),
+            onActivated: () => Stream.fromQueue(activated)
+          }),
+          Layer.succeed(ResourceRegistry)(resources),
+          Layer.succeed(CommandRegistry)(commands)
+        )
       )
     )
   )
 
-  yield* (
+  await Effect.runPromise(
     Queue.offer(
       activated,
       new MenuActivatedEvent({
@@ -3461,9 +3304,9 @@ test("Menu bindCommand closes the command listener with its resource scope", asy
       })
     )
   )
-  yield* (Deferred.await(invoked))
-  yield* (resources.closeScope("app"))
-  yield* (
+  await Effect.runPromise(Deferred.await(invoked))
+  await Effect.runPromise(resources.closeScope("app"))
+  await Effect.runPromise(
     Effect.gen(function* () {
       yield* Queue.offer(
         activated,
@@ -3512,18 +3355,19 @@ test("Menu bindCommand keeps listening after a command invocation failure", () =
           })
       })
 
-      yield* runScoped(
-        Effect.gen(function* () {
-          const menu = yield* Menu
-          return yield* menu.bindCommand("file.open", "app.file.open")
-        }),
-        Layer.mergeAll(
-          makeMenuServiceLayer({
-            ...menuClient(calls),
-            onActivated: () => Stream.fromQueue(activated)
-          }),
-          Layer.succeed(ResourceRegistry)(resources),
-          Layer.succeed(CommandRegistry)(commands)
+      yield* Effect.gen(function* () {
+        const menu = yield* Menu
+        return yield* menu.bindCommand("file.open", "app.file.open")
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            makeMenuServiceLayer({
+              ...menuClient(calls),
+              onActivated: () => Stream.fromQueue(activated)
+            }),
+            Layer.succeed(ResourceRegistry)(resources),
+            Layer.succeed(CommandRegistry)(commands)
+          )
         )
       )
 
@@ -3547,21 +3391,22 @@ test("Menu bindCommand keeps listening after a command invocation failure", () =
 test("Menu bridge client validates templates, sends host envelopes, and decodes activation events", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = menuExchange(requests, () => ({ kind: "success", payload: undefined }))
-  const commandLayer = yield* makeCommandBindingLayer()
+  const commandLayer = await makeCommandBindingLayer()
 
-  const result = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const menu = yield* Menu
-        yield* menu.setApplicationMenu(applicationMenuTemplate)
-        yield* menu.setWindowMenu(windowHandle, menuTemplate)
-        yield* menu.bindCommand("file.open", "app.file.open")
-        const activated = yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
-        yield* menu.clear({ window: windowHandle })
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      yield* menu.setApplicationMenu(applicationMenuTemplate)
+      yield* menu.setWindowMenu(windowHandle, menuTemplate)
+      yield* menu.bindCommand("file.open", "app.file.open")
+      const activated = yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+      yield* menu.clear({ window: windowHandle })
 
-        return { activated }
-      }),
-      Layer.mergeAll(Layer.provide(MenuLive, makeMenuBridgeClientLayer(exchange)), commandLayer)
+      return { activated }
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(Layer.provide(MenuLive, makeMenuBridgeClientLayer(exchange)), commandLayer)
+      )
     )
   )
 
@@ -3615,24 +3460,25 @@ test("Menu bridge client rejects empty activation event identifiers as InvalidOu
             )
           : Stream.empty
     }
-    const commandLayer = yield* makeCommandBindingLayer()
+    const commandLayer = await makeCommandBindingLayer()
 
-    const exit = yield* (
-      runScoped(
-        Effect.gen(function* () {
-          const menu = yield* Menu
-          return yield* Effect.exit(menu.onActivated().pipe(Stream.take(1), Stream.runCollect))
-        }),
-        Layer.mergeAll(
-          Layer.provide(
-            MenuLive,
-            makeMenuBridgeClientLayer(exchange, {
-              nextRequestId: nextId(["unused"]),
-              nextTraceId: nextId(["unused"]),
-              now: nextNumber([1710000000000])
-            })
-          ),
-          commandLayer
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const menu = yield* Menu
+        return yield* Effect.exit(menu.onActivated().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.provide(
+              MenuLive,
+              makeMenuBridgeClientLayer(exchange, {
+                nextRequestId: nextId(["unused"]),
+                nextTraceId: nextId(["unused"]),
+                now: nextNumber([1710000000000])
+              })
+            ),
+            commandLayer
+          )
         )
       )
     )
@@ -3657,24 +3503,25 @@ test("Menu bridge client decodes activation events with no windowId field", asyn
           )
         : Stream.empty
   }
-  const commandLayer = yield* makeCommandBindingLayer()
+  const commandLayer = await makeCommandBindingLayer()
 
-  const events = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const menu = yield* Menu
-        return yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
-      }),
-      Layer.mergeAll(
-        Layer.provide(
-          MenuLive,
-          makeMenuBridgeClientLayer(exchange, {
-            nextRequestId: nextId(["unused"]),
-            nextTraceId: nextId(["unused"]),
-            now: nextNumber([1710000000000])
-          })
-        ),
-        commandLayer
+  const events = await Effect.runPromise(
+    Effect.gen(function* () {
+      const menu = yield* Menu
+      return yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.provide(
+            MenuLive,
+            makeMenuBridgeClientLayer(exchange, {
+              nextRequestId: nextId(["unused"]),
+              nextTraceId: nextId(["unused"]),
+              now: nextNumber([1710000000000])
+            })
+          ),
+          commandLayer
+        )
       )
     )
   )
@@ -3686,21 +3533,22 @@ test("Menu bridge client decodes activation events with no windowId field", asyn
 
 test("Menu bridge client returns invalid templates as typed Effect failures", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Menu
-      }),
-      Layer.provide(
-        MenuLive,
-        makeMenuBridgeClientLayer(
-          menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Menu
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MenuLive,
+          makeMenuBridgeClientLayer(
+            menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const exit = yield* Effect.exit(
+  const exit = await Effect.runPromiseExit(
     client.setApplicationMenu({
       // @ts-expect-error intentionally malformed template item omits label.
       items: [{ type: "item", id: "file.open", commandId: "app.file.open" }]
@@ -3712,13 +3560,13 @@ test("Menu bridge client returns invalid templates as typed Effect failures", as
 })
 
 test("ContextMenu identifier schemas reject control bytes in bind input and activation events", async () => {
-  const bindExit = yield* Effect.exit(
+  const bindExit = await Effect.runPromiseExit(
     Schema.decodeUnknownEffect(ContextMenuBindCommandInput)({
       itemId: "open\u0000x",
       commandId: "cmd\u0000x"
     })
   )
-  const eventExit = yield* Effect.exit(
+  const eventExit = await Effect.runPromiseExit(
     Schema.decodeUnknownEffect(ContextMenuActivatedEvent)({
       itemId: "open\u0000x",
       commandId: "cmd\u0000x",
@@ -3763,18 +3611,18 @@ test("Menu and ContextMenu schemas reject newline-bearing labels and ids", async
   ]
 
   for (const { label, value } of cases) {
-    const exit = yield* Effect.exit(Schema.decodeUnknownEffect(MenuTemplate)(value))
+    const exit = await Effect.runPromiseExit(Schema.decodeUnknownEffect(MenuTemplate)(value))
     expect(Exit.isFailure(exit)).toBe(true)
     expect(label).toBeDefined()
   }
 
-  const bindExit = yield* Effect.exit(
+  const bindExit = await Effect.runPromiseExit(
     Schema.decodeUnknownEffect(ContextMenuBindCommandInput)({
       itemId: "open\n",
       commandId: "cmd"
     })
   )
-  const eventExit = yield* Effect.exit(
+  const eventExit = await Effect.runPromiseExit(
     Schema.decodeUnknownEffect(ContextMenuActivatedEvent)({
       itemId: "open",
       commandId: "cmd\n",
@@ -3787,21 +3635,22 @@ test("Menu and ContextMenu schemas reject newline-bearing labels and ids", async
 
 test("Menu bridge client rejects NUL-bearing accelerators before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Menu
-      }),
-      Layer.provide(
-        MenuLive,
-        makeMenuBridgeClientLayer(
-          menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Menu
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MenuLive,
+          makeMenuBridgeClientLayer(
+            menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const applicationExit = yield* Effect.exit(
+  const applicationExit = await Effect.runPromiseExit(
     client.setApplicationMenu({
       items: [
         {
@@ -3821,7 +3670,7 @@ test("Menu bridge client rejects NUL-bearing accelerators before transport", asy
       ]
     })
   )
-  const windowExit = yield* Effect.exit(
+  const windowExit = await Effect.runPromiseExit(
     client.setWindowMenu(windowHandle, {
       items: [
         {
@@ -3842,21 +3691,22 @@ test("Menu bridge client rejects NUL-bearing accelerators before transport", asy
 
 test("Menu bridge client rejects application menu root items before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Menu
-      }),
-      Layer.provide(
-        MenuLive,
-        makeMenuBridgeClientLayer(
-          menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Menu
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          MenuLive,
+          makeMenuBridgeClientLayer(
+            menuExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const exit = yield* Effect.exit(
+  const exit = await Effect.runPromiseExit(
     client.setApplicationMenu({
       items: [{ type: "item", id: "file.open", label: "Open", commandId: "app.file.open" }]
     })
@@ -3875,26 +3725,27 @@ test("ContextMenuRpcs declares the Phase 8 ContextMenu method and event surface"
 test("ContextMenu service delegates through a substitutable ContextMenuClient port", async () => {
   const calls: string[] = []
   const commandCalls: unknown[] = []
-  const commandLayer = yield* makeCommandBindingLayer(commandCalls)
-  const result = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const contextMenu = yield* ContextMenu
-        yield* contextMenu.buildFromTemplate({ template: menuTemplate })
-        yield* contextMenu.show({
-          window: windowHandle,
-          template: menuTemplate,
-          position: { x: 12.5, y: 34.25 }
-        })
-        yield* contextMenu.bindCommand("file.open", "app.file.open")
-        const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+  const commandLayer = await makeCommandBindingLayer(commandCalls)
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const contextMenu = yield* ContextMenu
+      yield* contextMenu.buildFromTemplate({ template: menuTemplate })
+      yield* contextMenu.show({
+        window: windowHandle,
+        template: menuTemplate,
+        position: { x: 12.5, y: 34.25 }
+      })
+      yield* contextMenu.bindCommand("file.open", "app.file.open")
+      const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
 
-        return { activated }
-      }),
-      Layer.mergeAll(makeContextMenuServiceLayer(contextMenuClient(calls)), commandLayer)
+      return { activated }
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(makeContextMenuServiceLayer(contextMenuClient(calls)), commandLayer)
+      )
     )
   )
-  yield* (Effect.sleep("10 millis"))
+  await Effect.runPromise(Effect.sleep("10 millis"))
 
   expect(commandCalls).toEqual([{ itemId: "file.open", windowId: "window-1" }])
   expect(Array.from(result.activated)).toEqual([
@@ -3914,19 +3765,20 @@ test("ContextMenu service delegates through a substitutable ContextMenuClient po
 test("ContextMenu bindCommand does not duplicate listeners for identical bindings", async () => {
   const calls: string[] = []
   const commandCalls: unknown[] = []
-  const commandLayer = yield* makeCommandBindingLayer(commandCalls)
-  const result = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const contextMenu = yield* ContextMenu
-        const first = yield* contextMenu.bindCommand("file.open", "app.file.open")
-        const second = yield* contextMenu.bindCommand("file.open", "app.file.open")
-        return { first, second }
-      }),
-      Layer.mergeAll(makeContextMenuServiceLayer(contextMenuClient(calls)), commandLayer)
+  const commandLayer = await makeCommandBindingLayer(commandCalls)
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const contextMenu = yield* ContextMenu
+      const first = yield* contextMenu.bindCommand("file.open", "app.file.open")
+      const second = yield* contextMenu.bindCommand("file.open", "app.file.open")
+      return { first, second }
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(makeContextMenuServiceLayer(contextMenuClient(calls)), commandLayer)
+      )
     )
   )
-  yield* (Effect.sleep("10 millis"))
+  await Effect.runPromise(Effect.sleep("10 millis"))
 
   expect(result.second).toEqual({
     kind: result.first.kind,
@@ -3942,13 +3794,13 @@ test("ContextMenu bindCommand does not duplicate listeners for identical binding
 test("ContextMenu bindCommand closes the command listener with its resource scope", async () => {
   const calls: string[] = []
   const commandCalls: unknown[] = []
-  const activated = yield* (Queue.unbounded<ContextMenuActivatedEvent>())
-  const invoked = yield* (Deferred.make<void>())
-  const resources = yield* (makeResourceRegistry())
-  const permissions = yield* (makePermissionRegistry())
-  const commands = yield* (makeCommandRegistry(resources, permissions))
-  yield* (permissions.declare(menuCommandCapability, { source: "test" }))
-  yield* (
+  const activated = await Effect.runPromise(Queue.unbounded<ContextMenuActivatedEvent>())
+  const invoked = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+  await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
+  await Effect.runPromise(
     registerTestCommand(commands, {
       id: "app.file.open",
       payload: Schema.Struct({
@@ -3964,24 +3816,25 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
     })
   )
 
-  yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const contextMenu = yield* ContextMenu
-        return yield* contextMenu.bindCommand("file.open", "app.file.open")
-      }),
-      Layer.mergeAll(
-        makeContextMenuServiceLayer({
-          ...contextMenuClient(calls),
-          onActivated: () => Stream.fromQueue(activated)
-        }),
-        Layer.succeed(ResourceRegistry)(resources),
-        Layer.succeed(CommandRegistry)(commands)
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const contextMenu = yield* ContextMenu
+      return yield* contextMenu.bindCommand("file.open", "app.file.open")
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeContextMenuServiceLayer({
+            ...contextMenuClient(calls),
+            onActivated: () => Stream.fromQueue(activated)
+          }),
+          Layer.succeed(ResourceRegistry)(resources),
+          Layer.succeed(CommandRegistry)(commands)
+        )
       )
     )
   )
 
-  yield* (
+  await Effect.runPromise(
     Queue.offer(
       activated,
       new ContextMenuActivatedEvent({
@@ -3991,9 +3844,9 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
       })
     )
   )
-  yield* (Deferred.await(invoked))
-  yield* (resources.closeScope("app"))
-  yield* (
+  await Effect.runPromise(Deferred.await(invoked))
+  await Effect.runPromise(resources.closeScope("app"))
+  await Effect.runPromise(
     Effect.gen(function* () {
       yield* Queue.offer(
         activated,
@@ -4014,25 +3867,26 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
 test("ContextMenu bridge client validates window menu inputs and decodes activation events", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = contextMenuExchange(requests, () => ({ kind: "success", payload: undefined }))
-  const commandLayer = yield* makeCommandBindingLayer()
+  const commandLayer = await makeCommandBindingLayer()
 
-  const result = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const contextMenu = yield* ContextMenu
-        yield* contextMenu.show({
-          window: windowHandle,
-          template: menuTemplate,
-          position: { x: 12.5, y: 34.25 }
-        })
-        yield* contextMenu.bindCommand("file.open", "app.file.open")
-        const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const contextMenu = yield* ContextMenu
+      yield* contextMenu.show({
+        window: windowHandle,
+        template: menuTemplate,
+        position: { x: 12.5, y: 34.25 }
+      })
+      yield* contextMenu.bindCommand("file.open", "app.file.open")
+      const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
 
-        return { activated }
-      }),
-      Layer.mergeAll(
-        Layer.provide(ContextMenuLive, makeContextMenuBridgeClientLayer(exchange)),
-        commandLayer
+      return { activated }
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.provide(ContextMenuLive, makeContextMenuBridgeClientLayer(exchange)),
+          commandLayer
+        )
       )
     )
   )
@@ -4067,26 +3921,27 @@ test("ContextMenu bridge client rejects invalid popup positions before transport
   for (const { position } of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
     const exchange = contextMenuExchange(requests, () => ({ kind: "success", payload: undefined }))
-    const commandLayer = yield* makeCommandBindingLayer()
+    const commandLayer = await makeCommandBindingLayer()
 
-    const exit = yield* (
-      runScoped(
-        Effect.gen(function* () {
-          const contextMenu = yield* ContextMenu
-          return yield* Effect.exit(
-            contextMenu.show({ window: windowHandle, template: menuTemplate, position })
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const contextMenu = yield* ContextMenu
+        return yield* Effect.exit(
+          contextMenu.show({ window: windowHandle, template: menuTemplate, position })
+        )
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.provide(
+              ContextMenuLive,
+              makeContextMenuBridgeClientLayer(exchange, {
+                nextRequestId: nextId(["unused"]),
+                nextTraceId: nextId(["unused"]),
+                now: nextNumber([1710000000000])
+              })
+            ),
+            commandLayer
           )
-        }),
-        Layer.mergeAll(
-          Layer.provide(
-            ContextMenuLive,
-            makeContextMenuBridgeClientLayer(exchange, {
-              nextRequestId: nextId(["unused"]),
-              nextTraceId: nextId(["unused"]),
-              now: nextNumber([1710000000000])
-            })
-          ),
-          commandLayer
         )
       )
     )
@@ -4121,26 +3976,25 @@ test("ContextMenu bridge client rejects empty activation event identifiers as In
             )
           : Stream.empty
     }
-    const commandLayer = yield* makeCommandBindingLayer()
+    const commandLayer = await makeCommandBindingLayer()
 
-    const exit = yield* (
-      runScoped(
-        Effect.gen(function* () {
-          const contextMenu = yield* ContextMenu
-          return yield* Effect.exit(
-            contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const contextMenu = yield* ContextMenu
+        return yield* Effect.exit(contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.provide(
+              ContextMenuLive,
+              makeContextMenuBridgeClientLayer(exchange, {
+                nextRequestId: nextId(["unused"]),
+                nextTraceId: nextId(["unused"]),
+                now: nextNumber([1710000000000])
+              })
+            ),
+            commandLayer
           )
-        }),
-        Layer.mergeAll(
-          Layer.provide(
-            ContextMenuLive,
-            makeContextMenuBridgeClientLayer(exchange, {
-              nextRequestId: nextId(["unused"]),
-              nextTraceId: nextId(["unused"]),
-              now: nextNumber([1710000000000])
-            })
-          ),
-          commandLayer
         )
       )
     )
@@ -4159,26 +4013,23 @@ test("Tray service delegates through a substitutable TrayClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const tray = yield* Tray
-          const created = yield* tray.create({
-            icon: "solid:#3366ccff",
-            tooltip: "Effect Desktop",
-            title: "ED",
-            menu: menuTemplate
-          })
-          yield* tray.setIcon(created, "solid:#22aa66ff")
-          yield* tray.setTooltip(created, "Running")
-          yield* tray.setTitle(created, "OK")
-          yield* tray.setMenu(created, menuTemplate)
-          const activated = yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
-          yield* tray.destroy(created)
+      const result = yield* Effect.gen(function* () {
+        const tray = yield* Tray
+        const created = yield* tray.create({
+          icon: "solid:#3366ccff",
+          tooltip: "Effect Desktop",
+          title: "ED",
+          menu: menuTemplate
+        })
+        yield* tray.setIcon(created, "solid:#22aa66ff")
+        yield* tray.setTooltip(created, "Running")
+        yield* tray.setTitle(created, "OK")
+        yield* tray.setMenu(created, menuTemplate)
+        const activated = yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
+        yield* tray.destroy(created)
 
-          return { activated, created }
-        }),
-        makeTrayServiceLayer(trayClient(calls))
-      )
+        return { activated, created }
+      }).pipe(Effect.provide(makeTrayServiceLayer(trayClient(calls))))
 
       expect(result.created).toEqual(trayHandle)
       expect(Array.from(result.activated)).toEqual([
@@ -4204,26 +4055,23 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
         payload: request.method === "Tray.create" ? trayHandle : undefined
       }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const tray = yield* Tray
-          const created = yield* tray.create({
-            icon: "solid:#3366ccff",
-            tooltip: "Effect Desktop",
-            title: "ED",
-            menu: menuTemplate
-          })
-          yield* tray.setIcon(created, "solid:#22aa66ff")
-          yield* tray.setTooltip(created, "Running")
-          yield* tray.setTitle(created, "OK")
-          yield* tray.setMenu(created, menuTemplate)
-          const activated = yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
-          yield* tray.destroy(created)
+      const result = yield* Effect.gen(function* () {
+        const tray = yield* Tray
+        const created = yield* tray.create({
+          icon: "solid:#3366ccff",
+          tooltip: "Effect Desktop",
+          title: "ED",
+          menu: menuTemplate
+        })
+        yield* tray.setIcon(created, "solid:#22aa66ff")
+        yield* tray.setTooltip(created, "Running")
+        yield* tray.setTitle(created, "OK")
+        yield* tray.setMenu(created, menuTemplate)
+        const activated = yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
+        yield* tray.destroy(created)
 
-          return { activated, created }
-        }),
-        Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))
-      )
+        return { activated, created }
+      }).pipe(Effect.provide(Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))))
 
       expect(result.created).toMatchObject(trayHandle)
       expect(Array.from(result.activated)).toEqual([
@@ -4271,13 +4119,10 @@ test("Tray bridge client rejects empty activation event identifiers as InvalidOu
               : Stream.empty
         }
 
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const tray = yield* Tray
-            return yield* Effect.exit(tray.onActivated().pipe(Stream.take(1), Stream.runCollect))
-          }),
-          Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))
-        )
+        const exit = yield* Effect.gen(function* () {
+          const tray = yield* Tray
+          return yield* Effect.exit(tray.onActivated().pipe(Stream.take(1), Stream.runCollect))
+        }).pipe(Effect.provide(Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))))
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
       }
@@ -4303,13 +4148,10 @@ test("Tray bridge client decodes activation events with no ownerWindowId field",
             : Stream.empty
       }
 
-      const events = yield* runScoped(
-        Effect.gen(function* () {
-          const tray = yield* Tray
-          return yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
-        }),
-        Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))
-      )
+      const events = yield* Effect.gen(function* () {
+        const tray = yield* Tray
+        return yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
+      }).pipe(Effect.provide(Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))))
 
       expect(Array.from(events)).toEqual([new TrayActivatedEvent({ tray: trayHandle })])
     })
@@ -4317,25 +4159,26 @@ test("Tray bridge client decodes activation events with no ownerWindowId field",
 
 test("Tray bridge client rejects invalid icon and tooltip metadata before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Tray
-      }),
-      Layer.provide(
-        TrayLive,
-        makeTrayBridgeClientLayer(
-          trayExchange(requests, () => ({ kind: "success", payload: trayHandle }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Tray
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          TrayLive,
+          makeTrayBridgeClientLayer(
+            trayExchange(requests, () => ({ kind: "success", payload: trayHandle }))
+          )
         )
       )
     )
   )
 
-  const emptyIconExit = yield* Effect.exit(client.create({ icon: "" }))
-  const fileIconExit = yield* Effect.exit(client.setIcon(trayHandle, "file:///etc/passwd"))
-  const emptyTooltipExit = yield* Effect.exit(client.setTooltip(trayHandle, ""))
-  const emptyTitleExit = yield* Effect.exit(client.setTitle(trayHandle, ""))
-  const nulTooltipExit = yield* Effect.exit(
+  const emptyIconExit = await Effect.runPromiseExit(client.create({ icon: "" }))
+  const fileIconExit = await Effect.runPromiseExit(client.setIcon(trayHandle, "file:///etc/passwd"))
+  const emptyTooltipExit = await Effect.runPromiseExit(client.setTooltip(trayHandle, ""))
+  const emptyTitleExit = await Effect.runPromiseExit(client.setTitle(trayHandle, ""))
+  const nulTooltipExit = await Effect.runPromiseExit(
     client.create({ icon: "solid:#3366ccff", tooltip: "tip\u0000text" })
   )
 
@@ -4349,22 +4192,23 @@ test("Tray bridge client rejects invalid icon and tooltip metadata before transp
 
 test("Tray bridge client rejects stale destroy handles before host transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Tray
-      }),
-      Layer.provide(
-        TrayLive,
-        makeTrayBridgeClientLayer(
-          trayExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Tray
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          TrayLive,
+          makeTrayBridgeClientLayer(
+            trayExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
   // @ts-expect-error intentionally stale handle state exercises runtime decoding.
-  const exit = yield* Effect.exit(client.destroy({ ...trayHandle, state: "closed" }))
+  const exit = await Effect.runPromiseExit(client.destroy({ ...trayHandle, state: "closed" }))
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
@@ -4391,8 +4235,8 @@ test("native host RPC runtime denies protected Tray calls before handlers run", 
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "tray-denied",
@@ -4401,12 +4245,15 @@ test("native host RPC runtime denies protected Tray calls before handlers run", 
             timestamp: 1710000000000,
             traceId: "trace-tray-denied"
           })
-        ),
-        Layer.mergeAll(
-          Layer.effect(PermissionRegistry, makePermissionRegistry()),
-          Layer.effect(ResourceRegistry, makeResourceRegistry())
         )
-      )
+        .pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.effect(PermissionRegistry, makePermissionRegistry()),
+              Layer.effect(ResourceRegistry, makeResourceRegistry())
+            )
+          )
+        )
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -4418,20 +4265,17 @@ test("native host RPC runtime denies protected Tray calls before handlers run", 
 
 test("Tray service cleans up scoped resources through ResourceRegistry", async () => {
   const calls: string[] = []
-  const resources = yield* (makeResourceRegistry())
+  const resources = await Effect.runPromise(makeResourceRegistry())
 
-  yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const tray = yield* Tray
-        const created = yield* tray.create({ icon: "solid:#3366ccff" })
-        yield* resources.closeScope(created.ownerScope)
-      }),
-      makeTrayServiceLayer(trayClient(calls), { resources })
-    )
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const tray = yield* Tray
+      const created = yield* tray.create({ icon: "solid:#3366ccff" })
+      yield* resources.closeScope(created.ownerScope)
+    }).pipe(Effect.provide(makeTrayServiceLayer(trayClient(calls), { resources })))
   )
 
-  const snapshot = yield* (resources.list())
+  const snapshot = await Effect.runPromise(resources.list())
   expect(snapshot.entries).toHaveLength(0)
   expect(calls).toContain("destroy:tray-1")
 })
@@ -4456,20 +4300,14 @@ test("Tray service propagates unsupported platform and host failure", () =>
         create: () => Effect.fail(makeHostProtocolHostUnavailableError("Tray.create"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const tray = yield* Tray
-          return yield* Effect.exit(tray.create({ icon: "solid:#3366ccff" }))
-        }),
-        makeTrayServiceLayer(failClient, { resources })
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const tray = yield* Tray
-          return yield* Effect.exit(tray.create({ icon: "solid:#3366ccff" }))
-        }),
-        makeTrayServiceLayer(hostFailureClient, { resources })
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const tray = yield* Tray
+        return yield* Effect.exit(tray.create({ icon: "solid:#3366ccff" }))
+      }).pipe(Effect.provide(makeTrayServiceLayer(failClient, { resources })))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const tray = yield* Tray
+        return yield* Effect.exit(tray.create({ icon: "solid:#3366ccff" }))
+      }).pipe(Effect.provide(makeTrayServiceLayer(hostFailureClient, { resources })))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -4494,23 +4332,20 @@ test("Dialog service delegates through a substitutable DialogClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const dialog = yield* Dialog
-          const files = yield* dialog.openFile({
-            title: "Open",
-            filters: [{ name: "Text", extensions: ["txt"] }],
-            multiple: true
-          })
-          const directories = yield* dialog.openDirectory({ title: "Directory" })
-          const savePath = yield* dialog.saveFile({ defaultPath: "/tmp/report.txt" })
-          yield* dialog.message({ level: "info", message: "Done" })
-          const confirmed = yield* dialog.confirm({ message: "Continue?" })
+      const result = yield* Effect.gen(function* () {
+        const dialog = yield* Dialog
+        const files = yield* dialog.openFile({
+          title: "Open",
+          filters: [{ name: "Text", extensions: ["txt"] }],
+          multiple: true
+        })
+        const directories = yield* dialog.openDirectory({ title: "Directory" })
+        const savePath = yield* dialog.saveFile({ defaultPath: "/tmp/report.txt" })
+        yield* dialog.message({ level: "info", message: "Done" })
+        const confirmed = yield* dialog.confirm({ message: "Continue?" })
 
-          return { confirmed, directories, files, savePath }
-        }),
-        makeDialogServiceLayer(dialogClient(calls))
-      )
+        return { confirmed, directories, files, savePath }
+      }).pipe(Effect.provide(makeDialogServiceLayer(dialogClient(calls))))
 
       expect(result.files).toEqual(["/canonical/file-a.txt", "/canonical/file-b.txt"])
       expect(result.directories).toEqual(["/canonical/project"])
@@ -4544,21 +4379,18 @@ test("Dialog bridge client sends typed host envelopes and decodes outputs", () =
                   : undefined
       }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const dialog = yield* Dialog
-          const files = yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
-          const directories = yield* dialog.openDirectory()
-          const savePath = yield* dialog.saveFile({
-            filters: [{ name: "Markdown", extensions: ["md"] }]
-          })
-          yield* dialog.message({ level: "warning", message: "Check input", detail: "details" })
-          const confirmed = yield* dialog.confirm({ message: "Proceed?", confirmLabel: "Yes" })
+      const result = yield* Effect.gen(function* () {
+        const dialog = yield* Dialog
+        const files = yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
+        const directories = yield* dialog.openDirectory()
+        const savePath = yield* dialog.saveFile({
+          filters: [{ name: "Markdown", extensions: ["md"] }]
+        })
+        yield* dialog.message({ level: "warning", message: "Check input", detail: "details" })
+        const confirmed = yield* dialog.confirm({ message: "Proceed?", confirmLabel: "Yes" })
 
-          return { confirmed, directories, files, savePath }
-        }),
-        Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))
-      )
+        return { confirmed, directories, files, savePath }
+      }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
 
       expect(result.files).toEqual(["/canonical/file.txt"])
       expect(result.directories).toEqual(["/canonical/project"])
@@ -4580,13 +4412,10 @@ test("Dialog bridge client represents save cancellation as data", () =>
       const requests: HostProtocolRequestEnvelope[] = []
       const exchange = dialogExchange(requests, () => ({ kind: "success", payload: {} }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const dialog = yield* Dialog
-          return yield* dialog.saveFile({ defaultPath: "/tmp/cancel.txt" })
-        }),
-        Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))
-      )
+      const result = yield* Effect.gen(function* () {
+        const dialog = yield* Dialog
+        return yield* dialog.saveFile({ defaultPath: "/tmp/cancel.txt" })
+      }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
 
       expect(result).toBeUndefined()
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
@@ -4602,14 +4431,11 @@ test("Dialog bridge client preserves host failure errors", async () => {
     error: makeHostProtocolHostUnavailableError("Dialog.openFile")
   }))
 
-  const exit = yield* Effect.exit(
-    runScoped(
-      Effect.gen(function* () {
-        const dialog = yield* Dialog
-        return yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
-      }),
-      Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))
-    )
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const dialog = yield* Dialog
+      return yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
+    }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
   )
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -4618,22 +4444,23 @@ test("Dialog bridge client preserves host failure errors", async () => {
 
 test("Dialog bridge client returns invalid input as typed Effect failures", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Dialog
-      }),
-      Layer.provide(
-        DialogLive,
-        makeDialogBridgeClientLayer(
-          dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
   // @ts-expect-error intentionally malformed dialog level exercises runtime decoding.
-  const exit = yield* Effect.exit(client.message({ level: "fatal", message: "bad" }))
+  const exit = await Effect.runPromiseExit(client.message({ level: "fatal", message: "bad" }))
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   expect(requests).toEqual([])
@@ -4659,8 +4486,8 @@ test("native host RPC runtime denies protected Dialog calls before handlers run"
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "dialog-denied",
@@ -4669,9 +4496,8 @@ test("native host RPC runtime denies protected Dialog calls before handlers run"
             timestamp: 1710000000000,
             traceId: "trace-dialog-denied"
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -4691,21 +4517,18 @@ test("Clipboard service delegates through a substitutable ClipboardClient port",
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const clipboard = yield* Clipboard
-          yield* clipboard.writeText("hello")
-          const text = yield* clipboard.readText()
-          yield* clipboard.writeHtml("<p>hello</p>")
-          const html = yield* clipboard.readHtml()
-          yield* clipboard.writeImage({ mime: "image/png", bytes: pngBytes })
-          const image = yield* clipboard.readImage()
-          yield* clipboard.clear()
+      const result = yield* Effect.gen(function* () {
+        const clipboard = yield* Clipboard
+        yield* clipboard.writeText("hello")
+        const text = yield* clipboard.readText()
+        yield* clipboard.writeHtml("<p>hello</p>")
+        const html = yield* clipboard.readHtml()
+        yield* clipboard.writeImage({ mime: "image/png", bytes: pngBytes })
+        const image = yield* clipboard.readImage()
+        yield* clipboard.clear()
 
-          return { html, image, text }
-        }),
-        makeClipboardServiceLayer(clipboardClient(calls))
-      )
+        return { html, image, text }
+      }).pipe(Effect.provide(makeClipboardServiceLayer(clipboardClient(calls))))
 
       expect(result.text).toBe("hello")
       expect(result.html).toBe("<p>hello</p>")
@@ -4738,20 +4561,19 @@ test("Clipboard bridge client sends typed host envelopes and decodes outputs", (
                 : undefined
       }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const clipboard = yield* Clipboard
-          yield* clipboard.writeText("to host")
-          const text = yield* clipboard.readText()
-          yield* clipboard.writeHtml("<strong>to host</strong>")
-          const html = yield* clipboard.readHtml()
-          yield* clipboard.writeImage({ mime: "image/jpeg", bytes: jpegBytes })
-          const image = yield* clipboard.readImage()
-          yield* clipboard.clear()
+      const result = yield* Effect.gen(function* () {
+        const clipboard = yield* Clipboard
+        yield* clipboard.writeText("to host")
+        const text = yield* clipboard.readText()
+        yield* clipboard.writeHtml("<strong>to host</strong>")
+        const html = yield* clipboard.readHtml()
+        yield* clipboard.writeImage({ mime: "image/jpeg", bytes: jpegBytes })
+        const image = yield* clipboard.readImage()
+        yield* clipboard.clear()
 
-          return { html, image, text }
-        }),
-        Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(exchange))
+        return { html, image, text }
+      }).pipe(
+        Effect.provide(Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(exchange)))
       )
 
       expect(result.text).toBe("from host")
@@ -4773,16 +4595,17 @@ test("Clipboard bridge client preserves unsupported support reasons from host", 
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* ClipboardClient
-          return yield* client.isSupported("selection")
-        }),
-        makeClipboardBridgeClientLayer(
-          clipboardExchange(requests, () => ({
-            kind: "success",
-            payload: { supported: false, reason: "host-adapter-unimplemented" }
-          }))
+      const result = yield* Effect.gen(function* () {
+        const client = yield* ClipboardClient
+        return yield* client.isSupported("selection")
+      }).pipe(
+        Effect.provide(
+          makeClipboardBridgeClientLayer(
+            clipboardExchange(requests, () => ({
+              kind: "success",
+              payload: { supported: false, reason: "host-adapter-unimplemented" }
+            }))
+          )
         )
       )
 
@@ -4800,21 +4623,22 @@ test("Clipboard bridge client preserves unsupported support reasons from host", 
 
 test("Clipboard bridge client rejects mismatched image mime before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Clipboard
-      }),
-      Layer.provide(
-        ClipboardLive,
-        makeClipboardBridgeClientLayer(
-          clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Clipboard
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ClipboardLive,
+          makeClipboardBridgeClientLayer(
+            clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const exit = yield* Effect.exit(
+  const exit = await Effect.runPromiseExit(
     client.writeImage({ mime: "image/png", bytes: jpegBytes })
   )
 
@@ -4832,18 +4656,19 @@ test("Clipboard bridge client rejects malformed image headers from host as Inval
 
       for (const payload of invalidOutputs) {
         const requests: HostProtocolRequestEnvelope[] = []
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const clipboard = yield* Clipboard
-            return yield* Effect.exit(clipboard.readImage())
-          }),
-          Layer.provide(
-            ClipboardLive,
-            makeClipboardBridgeClientLayer(
-              clipboardExchange(requests, (request) => ({
-                kind: "success",
-                payload: request.method === "Clipboard.readImage" ? payload : undefined
-              }))
+        const exit = yield* Effect.gen(function* () {
+          const clipboard = yield* Clipboard
+          return yield* Effect.exit(clipboard.readImage())
+        }).pipe(
+          Effect.provide(
+            Layer.provide(
+              ClipboardLive,
+              makeClipboardBridgeClientLayer(
+                clipboardExchange(requests, (request) => ({
+                  kind: "success",
+                  payload: request.method === "Clipboard.readImage" ? payload : undefined
+                }))
+              )
             )
           )
         )
@@ -4858,30 +4683,32 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const clipboard = yield* Clipboard
-          return yield* Effect.exit(clipboard.writeText("hello\u0000world"))
-        }),
-        Layer.provide(
-          ClipboardLive,
-          makeClipboardBridgeClientLayer(
-            clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
+      const exit = yield* Effect.gen(function* () {
+        const clipboard = yield* Clipboard
+        return yield* Effect.exit(clipboard.writeText("hello\u0000world"))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            ClipboardLive,
+            makeClipboardBridgeClientLayer(
+              clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
       expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
       expect(requests).toEqual([])
 
-      yield* runScoped(
-        Effect.gen(function* () {
-          const clipboard = yield* Clipboard
-          yield* clipboard.writeText("valid text")
-        }),
-        Layer.provide(
-          ClipboardLive,
-          makeClipboardBridgeClientLayer(
-            clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
+      yield* Effect.gen(function* () {
+        const clipboard = yield* Clipboard
+        yield* clipboard.writeText("valid text")
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            ClipboardLive,
+            makeClipboardBridgeClientLayer(
+              clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
@@ -4893,18 +4720,20 @@ test("Clipboard bridge client runs generated methods inside the layer scope", ()
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const text = yield* runScoped(
-        Effect.gen(function* () {
-          const clipboard = yield* Clipboard
-          return yield* clipboard.readText()
-        }),
-        Layer.provide(
-          ClipboardLive,
-          makeClipboardBridgeClientLayer(
-            clipboardExchange(requests, (request) => ({
-              kind: "success",
-              payload: request.method === "Clipboard.readText" ? { text: "after scope" } : undefined
-            }))
+      const text = yield* Effect.gen(function* () {
+        const clipboard = yield* Clipboard
+        return yield* clipboard.readText()
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            ClipboardLive,
+            makeClipboardBridgeClientLayer(
+              clipboardExchange(requests, (request) => ({
+                kind: "success",
+                payload:
+                  request.method === "Clipboard.readText" ? { text: "after scope" } : undefined
+              }))
+            )
           )
         )
       )
@@ -4941,30 +4770,27 @@ test("native host RPC runtime denies protected Clipboard calls before handlers r
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const responses = yield* runScoped(
-        Effect.all([
-          runtime.dispatch(
-            new HostProtocolRequestEnvelope({
-              kind: "request",
-              id: "clipboard-read-denied",
-              method: "Clipboard.readText",
-              timestamp: 1710000000000,
-              traceId: "trace-clipboard-read-denied"
-            })
-          ),
-          runtime.dispatch(
-            new HostProtocolRequestEnvelope({
-              kind: "request",
-              id: "clipboard-write-denied",
-              method: "Clipboard.writeText",
-              payload: { text: "secret" },
-              timestamp: 1710000000001,
-              traceId: "trace-clipboard-write-denied"
-            })
-          )
-        ]),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+      const responses = yield* Effect.all([
+        runtime.dispatch(
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "clipboard-read-denied",
+            method: "Clipboard.readText",
+            timestamp: 1710000000000,
+            traceId: "trace-clipboard-read-denied"
+          })
+        ),
+        runtime.dispatch(
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "clipboard-write-denied",
+            method: "Clipboard.writeText",
+            payload: { text: "secret" },
+            timestamp: 1710000000001,
+            traceId: "trace-clipboard-write-denied"
+          })
+        )
+      ]).pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       for (const response of responses) {
         expect(response.kind).toBe("failure")
@@ -4986,26 +4812,23 @@ test("Notification service delegates through a substitutable NotificationClient 
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const notification = yield* Notification
-          const supported = yield* notification.isSupported()
-          const permission = yield* notification.getPermissionStatus()
-          const requested = yield* notification.requestPermission()
-          const shown = yield* notification.show({
-            title: "Build finished",
-            body: "Open results",
-            actions: [{ id: "open", label: "Open" }],
-            ownerWindow: windowHandle
-          })
-          const clicks = yield* notification.onClick().pipe(Stream.take(1), Stream.runCollect)
-          const actions = yield* notification.onAction().pipe(Stream.take(1), Stream.runCollect)
-          yield* notification.close(shown)
+      const result = yield* Effect.gen(function* () {
+        const notification = yield* Notification
+        const supported = yield* notification.isSupported()
+        const permission = yield* notification.getPermissionStatus()
+        const requested = yield* notification.requestPermission()
+        const shown = yield* notification.show({
+          title: "Build finished",
+          body: "Open results",
+          actions: [{ id: "open", label: "Open" }],
+          ownerWindow: windowHandle
+        })
+        const clicks = yield* notification.onClick().pipe(Stream.take(1), Stream.runCollect)
+        const actions = yield* notification.onAction().pipe(Stream.take(1), Stream.runCollect)
+        yield* notification.close(shown)
 
-          return { actions, clicks, permission, requested, shown, supported }
-        }),
-        makeNotificationServiceLayer(notificationClient(calls))
-      )
+        return { actions, clicks, permission, requested, shown, supported }
+      }).pipe(Effect.provide(makeNotificationServiceLayer(notificationClient(calls))))
 
       expect(result.supported).toBe(true)
       expect(result.permission).toBe("default")
@@ -5049,24 +4872,23 @@ test("Notification bridge client sends typed host envelopes and decodes events",
                   : undefined
       }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const notification = yield* Notification
-          const supported = yield* notification.isSupported()
-          const status = yield* notification.getPermissionStatus()
-          const requested = yield* notification.requestPermission()
-          const shown = yield* notification.show({
-            title: "Build finished",
-            body: "Open results",
-            actions: [{ id: "open", label: "Open" }],
-            ownerWindow: windowHandle
-          })
-          const action = yield* notification.onAction().pipe(Stream.take(1), Stream.runCollect)
-          yield* notification.close(shown)
+      const result = yield* Effect.gen(function* () {
+        const notification = yield* Notification
+        const supported = yield* notification.isSupported()
+        const status = yield* notification.getPermissionStatus()
+        const requested = yield* notification.requestPermission()
+        const shown = yield* notification.show({
+          title: "Build finished",
+          body: "Open results",
+          actions: [{ id: "open", label: "Open" }],
+          ownerWindow: windowHandle
+        })
+        const action = yield* notification.onAction().pipe(Stream.take(1), Stream.runCollect)
+        yield* notification.close(shown)
 
-          return { action, requested, shown, status, supported }
-        }),
-        Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange))
+        return { action, requested, shown, status, supported }
+      }).pipe(
+        Effect.provide(Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange)))
       )
 
       expect(result.supported).toBe(true)
@@ -5110,22 +4932,23 @@ test("Notification bridge client returns invalid input as typed Effect failures"
 
   for (const { label, input } of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
-    const client = yield* (
-      runScoped(
-        Effect.gen(function* () {
-          return yield* Notification
-        }),
-        Layer.provide(
-          NotificationLive,
-          makeNotificationBridgeClientLayer(
-            notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* Notification
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            NotificationLive,
+            makeNotificationBridgeClientLayer(
+              notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
     )
 
     // @ts-expect-error intentionally malformed notification text exercises runtime decoding.
-    const exit = yield* Effect.exit(client.show(input))
+    const exit = await Effect.runPromiseExit(client.show(input))
 
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
     expect(label).toBeDefined()
@@ -5146,21 +4969,22 @@ test("Notification bridge client rejects invalid action ids and labels before tr
 
   for (const { label, action } of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
-    const client = yield* (
-      runScoped(
-        Effect.gen(function* () {
-          return yield* Notification
-        }),
-        Layer.provide(
-          NotificationLive,
-          makeNotificationBridgeClientLayer(
-            notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* Notification
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            NotificationLive,
+            makeNotificationBridgeClientLayer(
+              notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
     )
 
-    const exit = yield* Effect.exit(
+    const exit = await Effect.runPromiseExit(
       client.show({ title: "Heads up", body: "Click", actions: [action] })
     )
 
@@ -5199,14 +5023,13 @@ test("Notification action stream rejects malformed actionId payloads as InvalidO
               : Stream.empty
         }
 
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const notification = yield* Notification
-            return yield* Effect.exit(
-              notification.onAction().pipe(Stream.take(1), Stream.runCollect)
-            )
-          }),
-          Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange))
+        const exit = yield* Effect.gen(function* () {
+          const notification = yield* Notification
+          return yield* Effect.exit(notification.onAction().pipe(Stream.take(1), Stream.runCollect))
+        }).pipe(
+          Effect.provide(
+            Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange))
+          )
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -5237,8 +5060,8 @@ test("native host RPC runtime denies protected Notification calls before handler
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "notification-denied",
@@ -5247,9 +5070,8 @@ test("native host RPC runtime denies protected Notification calls before handler
             timestamp: 1710000000000,
             traceId: "trace-notification-denied"
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -5261,20 +5083,17 @@ test("native host RPC runtime denies protected Notification calls before handler
 
 test("Notification service cleans up scoped resources through ResourceRegistry", async () => {
   const calls: string[] = []
-  const resources = yield* (makeResourceRegistry())
+  const resources = await Effect.runPromise(makeResourceRegistry())
 
-  yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const notification = yield* Notification
-        const shown = yield* notification.show({ title: "Build finished", body: "Open results" })
-        yield* resources.closeScope(shown.ownerScope)
-      }),
-      makeNotificationServiceLayer(notificationClient(calls), { resources })
-    )
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const notification = yield* Notification
+      const shown = yield* notification.show({ title: "Build finished", body: "Open results" })
+      yield* resources.closeScope(shown.ownerScope)
+    }).pipe(Effect.provide(makeNotificationServiceLayer(notificationClient(calls), { resources })))
   )
 
-  const snapshot = yield* (resources.list())
+  const snapshot = await Effect.runPromise(resources.list())
   expect(snapshot.entries).toHaveLength(0)
   expect(calls).toContain("close:notification-1")
 })
@@ -5299,24 +5118,18 @@ test("Notification service propagates unsupported platform and host failure", ()
         show: () => Effect.fail(makeHostProtocolHostUnavailableError("Notification.show"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const notification = yield* Notification
-          return yield* Effect.exit(
-            notification.show({ title: "Build finished", body: "Open results" })
-          )
-        }),
-        makeNotificationServiceLayer(unsupportedClient, { resources })
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const notification = yield* Notification
-          return yield* Effect.exit(
-            notification.show({ title: "Build finished", body: "Open results" })
-          )
-        }),
-        makeNotificationServiceLayer(hostFailureClient, { resources })
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const notification = yield* Notification
+        return yield* Effect.exit(
+          notification.show({ title: "Build finished", body: "Open results" })
+        )
+      }).pipe(Effect.provide(makeNotificationServiceLayer(unsupportedClient, { resources })))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const notification = yield* Notification
+        return yield* Effect.exit(
+          notification.show({ title: "Build finished", body: "Open results" })
+        )
+      }).pipe(Effect.provide(makeNotificationServiceLayer(hostFailureClient, { resources })))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -5340,20 +5153,17 @@ test("Path service delegates through a substitutable PathClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const path = yield* Path
-          return {
-            appData: yield* path.appData(),
-            cache: yield* path.cache(),
-            logs: yield* path.logs(),
-            temp: yield* path.temp(),
-            home: yield* path.home(),
-            downloads: yield* path.downloads()
-          }
-        }),
-        makePathServiceLayer(pathClient(calls))
-      )
+      const result = yield* Effect.gen(function* () {
+        const path = yield* Path
+        return {
+          appData: yield* path.appData(),
+          cache: yield* path.cache(),
+          logs: yield* path.logs(),
+          temp: yield* path.temp(),
+          home: yield* path.home(),
+          downloads: yield* path.downloads()
+        }
+      }).pipe(Effect.provide(makePathServiceLayer(pathClient(calls))))
 
       expect(result).toEqual({
         appData: "/tmp/effect-desktop/app-data",
@@ -5376,20 +5186,17 @@ test("Path bridge client sends typed host envelopes and decodes canonical paths"
         payload: { path: `/host/${request.method.replace("Path.", "")}` }
       }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const path = yield* Path
-          return {
-            appData: yield* path.appData(),
-            cache: yield* path.cache(),
-            logs: yield* path.logs(),
-            temp: yield* path.temp(),
-            home: yield* path.home(),
-            downloads: yield* path.downloads()
-          }
-        }),
-        Layer.provide(PathLive, makePathBridgeClientLayer(exchange))
-      )
+      const result = yield* Effect.gen(function* () {
+        const path = yield* Path
+        return {
+          appData: yield* path.appData(),
+          cache: yield* path.cache(),
+          logs: yield* path.logs(),
+          temp: yield* path.temp(),
+          home: yield* path.home(),
+          downloads: yield* path.downloads()
+        }
+      }).pipe(Effect.provide(Layer.provide(PathLive, makePathBridgeClientLayer(exchange))))
 
       expect(result).toEqual({
         appData: "/host/appData",
@@ -5430,8 +5237,8 @@ test("native host RPC runtime denies protected Path calls before handlers run", 
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "path-denied",
@@ -5439,9 +5246,8 @@ test("native host RPC runtime denies protected Path calls before handlers run", 
             timestamp: 1710000000000,
             traceId: "trace-path-denied"
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -5470,20 +5276,14 @@ test("Path service propagates unsupported platform and host failure", () =>
         home: () => Effect.fail(makeHostProtocolHostUnavailableError("Path.home"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const path = yield* Path
-          return yield* Effect.exit(path.home())
-        }),
-        makePathServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const path = yield* Path
-          return yield* Effect.exit(path.home())
-        }),
-        makePathServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const path = yield* Path
+        return yield* Effect.exit(path.home())
+      }).pipe(Effect.provide(makePathServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const path = yield* Path
+        return yield* Effect.exit(path.home())
+      }).pipe(Effect.provide(makePathServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -5513,18 +5313,19 @@ test("Path bridge client rejects NUL-bearing host output as InvalidOutput", () =
           payload: { path: `/tmp/a${NUL}b` }
         }))
 
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const path = yield* Path
-            return yield* Effect.exit(path[name]())
-          }),
-          Layer.provide(
-            PathLive,
-            makePathBridgeClientLayer(exchange, {
-              nextRequestId: nextId([`${name}-request`]),
-              nextTraceId: nextId([`${name}-trace`]),
-              now: nextNumber([1710000000000])
-            })
+        const exit = yield* Effect.gen(function* () {
+          const path = yield* Path
+          return yield* Effect.exit(path[name]())
+        }).pipe(
+          Effect.provide(
+            Layer.provide(
+              PathLive,
+              makePathBridgeClientLayer(exchange, {
+                nextRequestId: nextId([`${name}-request`]),
+                nextTraceId: nextId([`${name}-trace`]),
+                now: nextNumber([1710000000000])
+              })
+            )
           )
         )
 
@@ -5544,15 +5345,16 @@ test("Path bridge client rejects NUL-bearing host output as InvalidOutput", () =
 test("Path bridge client rejects relative canonical paths from host as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const path = yield* Path
-          return yield* Effect.exit(path.home())
-        }),
-        Layer.provide(
-          PathLive,
-          makePathBridgeClientLayer(
-            pathExchange([], () => ({ kind: "success", payload: { path: "relative/path" } }))
+      const exit = yield* Effect.gen(function* () {
+        const path = yield* Path
+        return yield* Effect.exit(path.home())
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            PathLive,
+            makePathBridgeClientLayer(
+              pathExchange([], () => ({ kind: "success", payload: { path: "relative/path" } }))
+            )
           )
         )
       )
@@ -5576,16 +5378,13 @@ test("Protocol service delegates through a substitutable ProtocolClient port", (
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      yield* runScoped(
-        Effect.gen(function* () {
-          const protocol = yield* Protocol
-          yield* protocol.registerAppProtocol({ scheme: "myapp" })
-          yield* protocol.serveAsset({ scheme: "assets", root: "/app/assets" })
-          yield* protocol.serveRoute({ scheme: "myapp", route: "/settings" })
-          yield* protocol.deny({ scheme: "assets", path: "/private" })
-        }),
-        makeProtocolServiceLayer(protocolClient(calls))
-      )
+      yield* Effect.gen(function* () {
+        const protocol = yield* Protocol
+        yield* protocol.registerAppProtocol({ scheme: "myapp" })
+        yield* protocol.serveAsset({ scheme: "assets", root: "/app/assets" })
+        yield* protocol.serveRoute({ scheme: "myapp", route: "/settings" })
+        yield* protocol.deny({ scheme: "assets", path: "/private" })
+      }).pipe(Effect.provide(makeProtocolServiceLayer(protocolClient(calls))))
 
       expect(calls).toEqual([
         "registerAppProtocol:myapp",
@@ -5600,52 +5399,49 @@ test("Protocol bridge client validates custom schemes and path boundaries", () =
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* Protocol
-          yield* client.registerAppProtocol({ scheme: "myapp" })
-          yield* client.serveAsset({ scheme: "assets", root: "/app/assets" })
-          yield* client.serveRoute({ scheme: "myapp", route: "/settings" })
-          yield* client.deny({ scheme: "assets", path: "/private" })
-          const reservedSchemeExit = yield* Effect.exit(
-            client.registerAppProtocol({ scheme: "app" })
-          )
-          const dangerousSchemeExit = yield* Effect.exit(
-            client.registerAppProtocol({ scheme: "vbscript" })
-          )
-          const uppercaseSchemeExit = yield* Effect.exit(
-            client.registerAppProtocol({ scheme: "MyApp" })
-          )
-          const traversalExit = yield* Effect.exit(
-            client.serveRoute({ scheme: "myapp", route: "/../secret" })
-          )
-          const encodedTraversalExit = yield* Effect.exit(
-            client.serveRoute({ scheme: "myapp", route: "/%2e%2e/secret" })
-          )
-          const encodedBackslashTraversalExit = yield* Effect.exit(
-            client.serveRoute({ scheme: "myapp", route: "/%5c..%5csecret" })
-          )
-          const broadRootExit = yield* Effect.exit(
-            client.serveAsset({ scheme: "assets", root: "/" })
-          )
-          const relativeDenyExit = yield* Effect.exit(
-            client.deny({ scheme: "assets", path: "private" })
-          )
-          return {
-            broadRootExit,
-            dangerousSchemeExit,
-            encodedBackslashTraversalExit,
-            encodedTraversalExit,
-            relativeDenyExit,
-            reservedSchemeExit,
-            traversalExit,
-            uppercaseSchemeExit
-          }
-        }),
-        Layer.provide(
-          ProtocolLive,
-          makeProtocolBridgeClientLayer(
-            protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
+      const result = yield* Effect.gen(function* () {
+        const client = yield* Protocol
+        yield* client.registerAppProtocol({ scheme: "myapp" })
+        yield* client.serveAsset({ scheme: "assets", root: "/app/assets" })
+        yield* client.serveRoute({ scheme: "myapp", route: "/settings" })
+        yield* client.deny({ scheme: "assets", path: "/private" })
+        const reservedSchemeExit = yield* Effect.exit(client.registerAppProtocol({ scheme: "app" }))
+        const dangerousSchemeExit = yield* Effect.exit(
+          client.registerAppProtocol({ scheme: "vbscript" })
+        )
+        const uppercaseSchemeExit = yield* Effect.exit(
+          client.registerAppProtocol({ scheme: "MyApp" })
+        )
+        const traversalExit = yield* Effect.exit(
+          client.serveRoute({ scheme: "myapp", route: "/../secret" })
+        )
+        const encodedTraversalExit = yield* Effect.exit(
+          client.serveRoute({ scheme: "myapp", route: "/%2e%2e/secret" })
+        )
+        const encodedBackslashTraversalExit = yield* Effect.exit(
+          client.serveRoute({ scheme: "myapp", route: "/%5c..%5csecret" })
+        )
+        const broadRootExit = yield* Effect.exit(client.serveAsset({ scheme: "assets", root: "/" }))
+        const relativeDenyExit = yield* Effect.exit(
+          client.deny({ scheme: "assets", path: "private" })
+        )
+        return {
+          broadRootExit,
+          dangerousSchemeExit,
+          encodedBackslashTraversalExit,
+          encodedTraversalExit,
+          relativeDenyExit,
+          reservedSchemeExit,
+          traversalExit,
+          uppercaseSchemeExit
+        }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            ProtocolLive,
+            makeProtocolBridgeClientLayer(
+              protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
@@ -5677,24 +5473,25 @@ test("Protocol bridge client validates custom schemes and path boundaries", () =
 
 test("Protocol bridge client rejects control characters in paths as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Protocol
-      }),
-      Layer.provide(
-        ProtocolLive,
-        makeProtocolBridgeClientLayer(
-          protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Protocol
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ProtocolLive,
+          makeProtocolBridgeClientLayer(
+            protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const newlineExit = yield* Effect.exit(
+  const newlineExit = await Effect.runPromiseExit(
     client.serveRoute({ scheme: "myapp", route: "/settings\nadmin" })
   )
-  const denyExit = yield* Effect.exit(
+  const denyExit = await Effect.runPromiseExit(
     client.deny({ scheme: "assets", path: "/private\ntoken" })
   )
 
@@ -5720,8 +5517,8 @@ test("native host RPC runtime denies protected Protocol calls before handlers ru
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "protocol-denied",
@@ -5730,9 +5527,8 @@ test("native host RPC runtime denies protected Protocol calls before handlers ru
             traceId: "trace-protocol-denied",
             payload: { scheme: "myapp" }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -5762,20 +5558,14 @@ test("Protocol service propagates unsupported platform and host failure", () =>
           Effect.fail(makeHostProtocolHostUnavailableError("Protocol.registerAppProtocol"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const protocol = yield* Protocol
-          return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
-        }),
-        makeProtocolServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const protocol = yield* Protocol
-          return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
-        }),
-        makeProtocolServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const protocol = yield* Protocol
+        return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
+      }).pipe(Effect.provide(makeProtocolServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const protocol = yield* Protocol
+        return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
+      }).pipe(Effect.provide(makeProtocolServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -5795,19 +5585,16 @@ test("AssociationRpcs declares the Phase 8 Association method and event surface"
 
 test("Association service delegates through a substitutable AssociationClient port", async () => {
   const calls: string[] = []
-  const result = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const association = yield* Association
-        const protocolStatus = yield* association.isDefaultProtocolClient({ scheme: "example" })
-        yield* association.setDefaultProtocolClient({ scheme: "example" })
-        const fileAssociations = yield* association.getFileAssociations({ extensions: [".txt"] })
-        const events = yield* association.events().pipe(Stream.take(1), Stream.runCollect)
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const association = yield* Association
+      const protocolStatus = yield* association.isDefaultProtocolClient({ scheme: "example" })
+      yield* association.setDefaultProtocolClient({ scheme: "example" })
+      const fileAssociations = yield* association.getFileAssociations({ extensions: [".txt"] })
+      const events = yield* association.events().pipe(Stream.take(1), Stream.runCollect)
 
-        return { events, fileAssociations, protocolStatus }
-      }),
-      makeAssociationServiceLayer(associationClient(calls))
-    )
+      return { events, fileAssociations, protocolStatus }
+    }).pipe(Effect.provide(makeAssociationServiceLayer(associationClient(calls))))
   )
 
   expect(result.protocolStatus).toEqual(
@@ -5844,17 +5631,16 @@ test("Association bridge client sends typed host envelopes and decodes events an
     return { kind: "success", payload: undefined }
   })
 
-  const result = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const association = yield* Association
-        const protocolStatus = yield* association.isDefaultProtocolClient({ scheme: "example" })
-        yield* association.setDefaultProtocolClient({ scheme: "example" })
-        const fileAssociations = yield* association.getFileAssociations({ extensions: [".txt"] })
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const association = yield* Association
+      const protocolStatus = yield* association.isDefaultProtocolClient({ scheme: "example" })
+      yield* association.setDefaultProtocolClient({ scheme: "example" })
+      const fileAssociations = yield* association.getFileAssociations({ extensions: [".txt"] })
 
-        return { fileAssociations, protocolStatus }
-      }),
-      Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange))
+      return { fileAssociations, protocolStatus }
+    }).pipe(
+      Effect.provide(Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange)))
     )
   )
 
@@ -5894,13 +5680,12 @@ test("Association bridge client subscribes to native association events", async 
       )
     }
   }
-  const events = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const association = yield* Association
-        return yield* association.events().pipe(Stream.take(1), Stream.runCollect)
-      }),
-      Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange))
+  const events = await runScopedPromise(
+    Effect.gen(function* () {
+      const association = yield* Association
+      return yield* association.events().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(
+      Effect.provide(Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange)))
     )
   )
 
@@ -5913,14 +5698,15 @@ test("Association bridge client rejects invalid schemes and file extensions befo
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const client = yield* runScoped(
-        Effect.gen(function* () {
-          return yield* Association
-        }),
-        Layer.provide(
-          AssociationLive,
-          makeAssociationBridgeClientLayer(
-            associationExchange(requests, () => ({ kind: "success", payload: undefined }))
+      const client = yield* Effect.gen(function* () {
+        return yield* Association
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AssociationLive,
+            makeAssociationBridgeClientLayer(
+              associationExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
@@ -5960,8 +5746,8 @@ test("native host RPC runtime denies protected Association calls before handlers
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "association-denied",
@@ -5970,9 +5756,8 @@ test("native host RPC runtime denies protected Association calls before handlers
             traceId: "trace-association-denied",
             payload: { scheme: "example" }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -6002,20 +5787,14 @@ test("Association service propagates unsupported platform and host failure", () 
           Effect.fail(makeHostProtocolHostUnavailableError("Association.isDefaultProtocolClient"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const association = yield* Association
-          return yield* Effect.exit(association.isDefaultProtocolClient({ scheme: "example" }))
-        }),
-        makeAssociationServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const association = yield* Association
-          return yield* Effect.exit(association.isDefaultProtocolClient({ scheme: "example" }))
-        }),
-        makeAssociationServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const association = yield* Association
+        return yield* Effect.exit(association.isDefaultProtocolClient({ scheme: "example" }))
+      }).pipe(Effect.provide(makeAssociationServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const association = yield* Association
+        return yield* Effect.exit(association.isDefaultProtocolClient({ scheme: "example" }))
+      }).pipe(Effect.provide(makeAssociationServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -6035,19 +5814,16 @@ test("AutostartRpcs declares the Phase 8 Autostart method and event surface", ()
 
 test("Autostart service delegates through a substitutable AutostartClient port", async () => {
   const calls: string[] = []
-  const result = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const autostart = yield* Autostart
-        const initial = yield* autostart.isEnabled()
-        const enabled = yield* autostart.enable({ args: ["--hidden"] })
-        const disabled = yield* autostart.disable()
-        const events = yield* autostart.events().pipe(Stream.take(1), Stream.runCollect)
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const autostart = yield* Autostart
+      const initial = yield* autostart.isEnabled()
+      const enabled = yield* autostart.enable({ args: ["--hidden"] })
+      const disabled = yield* autostart.disable()
+      const events = yield* autostart.events().pipe(Stream.take(1), Stream.runCollect)
 
-        return { disabled, enabled, events, initial }
-      }),
-      makeAutostartServiceLayer(autostartClient(calls))
-    )
+      return { disabled, enabled, events, initial }
+    }).pipe(Effect.provide(makeAutostartServiceLayer(autostartClient(calls))))
   )
 
   expect(result.initial).toEqual(
@@ -6075,18 +5851,15 @@ test("Autostart bridge client sends typed host envelopes and decodes events and 
         : { enabled: true, mechanism: "linux-xdg-autostart" }
   }))
 
-  const result = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const autostart = yield* Autostart
-        const initial = yield* autostart.isEnabled()
-        const enabled = yield* autostart.enable({ args: ["--hidden"] })
-        const disabled = yield* autostart.disable()
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const autostart = yield* Autostart
+      const initial = yield* autostart.isEnabled()
+      const enabled = yield* autostart.enable({ args: ["--hidden"] })
+      const disabled = yield* autostart.disable()
 
-        return { disabled, enabled, initial }
-      }),
-      Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))
-    )
+      return { disabled, enabled, initial }
+    }).pipe(Effect.provide(Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))))
   )
 
   expect(result.initial.enabled).toBe(false)
@@ -6123,14 +5896,11 @@ test("Autostart bridge client subscribes to native autostart events", async () =
       )
     }
   }
-  const events = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const autostart = yield* Autostart
-        return yield* autostart.events().pipe(Stream.take(1), Stream.runCollect)
-      }),
-      Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))
-    )
+  const events = await runScopedPromise(
+    Effect.gen(function* () {
+      const autostart = yield* Autostart
+      return yield* autostart.events().pipe(Stream.take(1), Stream.runCollect)
+    }).pipe(Effect.provide(Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))))
   )
 
   expect(Array.from(events)).toEqual([
@@ -6144,17 +5914,18 @@ test("Autostart bridge client rejects invalid launch args before transport", () 
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const client = yield* runScoped(
-        Effect.gen(function* () {
-          return yield* Autostart
-        }),
-        Layer.provide(
-          AutostartLive,
-          makeAutostartBridgeClientLayer(
-            autostartExchange(requests, () => ({
-              kind: "success",
-              payload: { enabled: true, mechanism: "linux-xdg-autostart" }
-            }))
+      const client = yield* Effect.gen(function* () {
+        return yield* Autostart
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            AutostartLive,
+            makeAutostartBridgeClientLayer(
+              autostartExchange(requests, () => ({
+                kind: "success",
+                payload: { enabled: true, mechanism: "linux-xdg-autostart" }
+              }))
+            )
           )
         )
       )
@@ -6196,8 +5967,8 @@ test("native host RPC runtime denies protected Autostart calls before handlers r
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "autostart-denied",
@@ -6206,9 +5977,8 @@ test("native host RPC runtime denies protected Autostart calls before handlers r
             traceId: "trace-autostart-denied",
             payload: { args: ["--hidden"] }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -6237,20 +6007,14 @@ test("Autostart service propagates unsupported platform and host failure", () =>
         enable: () => Effect.fail(makeHostProtocolHostUnavailableError("Autostart.enable"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const autostart = yield* Autostart
-          return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
-        }),
-        makeAutostartServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const autostart = yield* Autostart
-          return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
-        }),
-        makeAutostartServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const autostart = yield* Autostart
+        return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
+      }).pipe(Effect.provide(makeAutostartServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const autostart = yield* Autostart
+        return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
+      }).pipe(Effect.provide(makeAutostartServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -6272,19 +6036,16 @@ test("RecentDocumentsRpcs declares the Phase 8 RecentDocuments method and event 
 
 test("RecentDocuments service delegates through a substitutable RecentDocumentsClient port", async () => {
   const calls: string[] = []
-  const result = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const recentDocuments = yield* RecentDocuments
-        yield* recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
-        yield* recentDocuments.clear()
-        const documents = yield* recentDocuments.list()
-        const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      yield* recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+      yield* recentDocuments.clear()
+      const documents = yield* recentDocuments.list()
+      const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
 
-        return { documents, events }
-      }),
-      makeRecentDocumentsServiceLayer(recentDocumentsClient(calls))
-    )
+      return { documents, events }
+    }).pipe(Effect.provide(makeRecentDocumentsServiceLayer(recentDocumentsClient(calls))))
   )
 
   expect(result.documents).toEqual(
@@ -6312,18 +6073,19 @@ test("RecentDocuments bridge client sends typed host envelopes and decodes event
       : { kind: "success", payload: undefined }
   )
 
-  const result = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const recentDocuments = yield* RecentDocuments
-        yield* recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
-        yield* recentDocuments.clear()
-        const documents = yield* recentDocuments.list()
-        const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const recentDocuments = yield* RecentDocuments
+      yield* recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+      yield* recentDocuments.clear()
+      const documents = yield* recentDocuments.list()
+      const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
 
-        return { documents, events }
-      }),
-      Layer.provide(RecentDocumentsLive, makeRecentDocumentsBridgeClientLayer(exchange))
+      return { documents, events }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(RecentDocumentsLive, makeRecentDocumentsBridgeClientLayer(exchange))
+      )
     )
   )
 
@@ -6356,25 +6118,26 @@ test("RecentDocuments bridge client accepts safe absolute document paths", async
 
   for (const path of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
-    const result = yield* Effect.scoped(
-      runScoped(
-        Effect.gen(function* () {
-          const recentDocuments = yield* RecentDocuments
-          yield* recentDocuments.add({ path: { path } })
-          const documents = yield* recentDocuments.list()
-          const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
-          return { documents, events }
-        }),
-        Layer.provide(
-          RecentDocumentsLive,
-          makeRecentDocumentsBridgeClientLayer(
-            recentDocumentsExchange(
-              requests,
-              (request) =>
-                request.method === "RecentDocuments.list"
-                  ? { kind: "success", payload: { documents: [{ path: { path } }] } }
-                  : { kind: "success", payload: undefined },
-              path
+    const result = await runScopedPromise(
+      Effect.gen(function* () {
+        const recentDocuments = yield* RecentDocuments
+        yield* recentDocuments.add({ path: { path } })
+        const documents = yield* recentDocuments.list()
+        const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
+        return { documents, events }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            RecentDocumentsLive,
+            makeRecentDocumentsBridgeClientLayer(
+              recentDocumentsExchange(
+                requests,
+                (request) =>
+                  request.method === "RecentDocuments.list"
+                    ? { kind: "success", payload: { documents: [{ path: { path } }] } }
+                    : { kind: "success", payload: undefined },
+                path
+              )
             )
           )
         )
@@ -6400,14 +6163,15 @@ test("RecentDocuments bridge client rejects invalid paths before transport", () 
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const client = yield* runScoped(
-        Effect.gen(function* () {
-          return yield* RecentDocuments
-        }),
-        Layer.provide(
-          RecentDocumentsLive,
-          makeRecentDocumentsBridgeClientLayer(
-            recentDocumentsExchange(requests, () => ({ kind: "success", payload: undefined }))
+      const client = yield* Effect.gen(function* () {
+        return yield* RecentDocuments
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            RecentDocumentsLive,
+            makeRecentDocumentsBridgeClientLayer(
+              recentDocumentsExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
@@ -6447,26 +6211,26 @@ test("RecentDocuments bridge client rejects unsafe list and event paths as Inval
         "/tmp/bad\u0085path"
       )
 
-      const listExit = yield* runScoped(
-        Effect.gen(function* () {
-          const recentDocuments = yield* RecentDocuments
-          return yield* Effect.exit(recentDocuments.list())
-        }),
-        Layer.provide(
-          RecentDocumentsLive,
-          makeRecentDocumentsBridgeClientLayer(invalidListExchange)
+      const listExit = yield* Effect.gen(function* () {
+        const recentDocuments = yield* RecentDocuments
+        return yield* Effect.exit(recentDocuments.list())
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            RecentDocumentsLive,
+            makeRecentDocumentsBridgeClientLayer(invalidListExchange)
+          )
         )
       )
-      const eventExit = yield* runScoped(
-        Effect.gen(function* () {
-          const recentDocuments = yield* RecentDocuments
-          return yield* Effect.exit(
-            recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
+      const eventExit = yield* Effect.gen(function* () {
+        const recentDocuments = yield* RecentDocuments
+        return yield* Effect.exit(recentDocuments.events().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            RecentDocumentsLive,
+            makeRecentDocumentsBridgeClientLayer(invalidEventExchange)
           )
-        }),
-        Layer.provide(
-          RecentDocumentsLive,
-          makeRecentDocumentsBridgeClientLayer(invalidEventExchange)
         )
       )
 
@@ -6492,8 +6256,8 @@ test("native host RPC runtime denies protected RecentDocuments calls before hand
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "recent-documents-denied",
@@ -6502,9 +6266,8 @@ test("native host RPC runtime denies protected RecentDocuments calls before hand
             traceId: "trace-recent-documents-denied",
             payload: { path: { path: "/tmp/report.txt" } }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -6533,24 +6296,18 @@ test("RecentDocuments service propagates unsupported platform and host failure",
         add: () => Effect.fail(makeHostProtocolHostUnavailableError("RecentDocuments.add"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const recentDocuments = yield* RecentDocuments
-          return yield* Effect.exit(
-            recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
-          )
-        }),
-        makeRecentDocumentsServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const recentDocuments = yield* RecentDocuments
-          return yield* Effect.exit(
-            recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
-          )
-        }),
-        makeRecentDocumentsServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const recentDocuments = yield* RecentDocuments
+        return yield* Effect.exit(
+          recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+        )
+      }).pipe(Effect.provide(makeRecentDocumentsServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const recentDocuments = yield* RecentDocuments
+        return yield* Effect.exit(
+          recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+        )
+      }).pipe(Effect.provide(makeRecentDocumentsServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -6574,31 +6331,28 @@ test("NativeFileSystemRpcs declares the native filesystem method and event surfa
 
 test("NativeFileSystem service delegates through a substitutable NativeFileSystemClient port", async () => {
   const calls: string[] = []
-  const result = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const filesystem = yield* NativeFileSystem
-        const opened = yield* filesystem.open({
-          path: new CanonicalPath({ path: "/tmp/report.txt" }),
-          mode: "read"
-        })
-        const metadata = yield* filesystem.stat({
-          path: new CanonicalPath({ path: "/tmp/report.txt" })
-        })
-        const watch = yield* filesystem.watch({
-          path: new CanonicalPath({ path: "/tmp" }),
-          recursive: true,
-          watchId: "watch-1",
-          ownerScope: "workspace:workspace-1"
-        })
-        const stopped = yield* filesystem.stopWatching({ watchId: "watch-1" })
-        const support = yield* filesystem.isSupported()
-        const events = yield* filesystem.events().pipe(Stream.take(1), Stream.runCollect)
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* NativeFileSystem
+      const opened = yield* filesystem.open({
+        path: new CanonicalPath({ path: "/tmp/report.txt" }),
+        mode: "read"
+      })
+      const metadata = yield* filesystem.stat({
+        path: new CanonicalPath({ path: "/tmp/report.txt" })
+      })
+      const watch = yield* filesystem.watch({
+        path: new CanonicalPath({ path: "/tmp" }),
+        recursive: true,
+        watchId: "watch-1",
+        ownerScope: "workspace:workspace-1"
+      })
+      const stopped = yield* filesystem.stopWatching({ watchId: "watch-1" })
+      const support = yield* filesystem.isSupported()
+      const events = yield* filesystem.events().pipe(Stream.take(1), Stream.runCollect)
 
-        return { events, metadata, opened, stopped, support, watch }
-      }),
-      makeNativeFileSystemServiceLayer(nativeFileSystemClient(calls))
-    )
+      return { events, metadata, opened, stopped, support, watch }
+    }).pipe(Effect.provide(makeNativeFileSystemServiceLayer(nativeFileSystemClient(calls))))
   )
 
   expect(result.opened).toEqual(nativeFileSystemOpenResult("handle-1"))
@@ -6666,29 +6420,30 @@ test("NativeFileSystem bridge client sends typed host envelopes and decodes even
     }
   })
 
-  const result = yield* Effect.scoped(
-    runScoped(
-      Effect.gen(function* () {
-        const filesystem = yield* NativeFileSystem
-        const opened = yield* filesystem.open({
-          path: new CanonicalPath({ path: "/tmp/report.txt" }),
-          mode: "read"
-        })
-        const metadata = yield* filesystem.stat({
-          path: new CanonicalPath({ path: "/tmp/report.txt" })
-        })
-        const watch = yield* filesystem.watch({
-          path: new CanonicalPath({ path: "/tmp" }),
-          recursive: true,
-          watchId: "watch-1"
-        })
-        const stopped = yield* filesystem.stopWatching({ watchId: "watch-1" })
-        const support = yield* filesystem.isSupported()
-        const events = yield* filesystem.events().pipe(Stream.take(1), Stream.runCollect)
+  const result = await runScopedPromise(
+    Effect.gen(function* () {
+      const filesystem = yield* NativeFileSystem
+      const opened = yield* filesystem.open({
+        path: new CanonicalPath({ path: "/tmp/report.txt" }),
+        mode: "read"
+      })
+      const metadata = yield* filesystem.stat({
+        path: new CanonicalPath({ path: "/tmp/report.txt" })
+      })
+      const watch = yield* filesystem.watch({
+        path: new CanonicalPath({ path: "/tmp" }),
+        recursive: true,
+        watchId: "watch-1"
+      })
+      const stopped = yield* filesystem.stopWatching({ watchId: "watch-1" })
+      const support = yield* filesystem.isSupported()
+      const events = yield* filesystem.events().pipe(Stream.take(1), Stream.runCollect)
 
-        return { events, metadata, opened, stopped, support, watch }
-      }),
-      Layer.provide(NativeFileSystemLive, makeNativeFileSystemBridgeClientLayer(exchange))
+      return { events, metadata, opened, stopped, support, watch }
+    }).pipe(
+      Effect.provide(
+        Layer.provide(NativeFileSystemLive, makeNativeFileSystemBridgeClientLayer(exchange))
+      )
     )
   )
 
@@ -6726,14 +6481,15 @@ test("NativeFileSystem bridge client rejects invalid inputs before transport", (
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const client = yield* runScoped(
-        Effect.gen(function* () {
-          return yield* NativeFileSystem
-        }),
-        Layer.provide(
-          NativeFileSystemLive,
-          makeNativeFileSystemBridgeClientLayer(
-            nativeFileSystemExchange(requests, () => ({ kind: "success", payload: undefined }))
+      const client = yield* Effect.gen(function* () {
+        return yield* NativeFileSystem
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            NativeFileSystemLive,
+            makeNativeFileSystemBridgeClientLayer(
+              nativeFileSystemExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
@@ -6782,8 +6538,8 @@ test("native host RPC runtime denies protected NativeFileSystem calls before han
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "native-file-system-denied",
@@ -6792,9 +6548,8 @@ test("native host RPC runtime denies protected NativeFileSystem calls before han
             traceId: "trace-native-file-system-denied",
             payload: { path: { path: "/tmp/report.txt" }, mode: "read" }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -6828,8 +6583,8 @@ test("native host RPC runtime lets permission-free NativeFileSystem support call
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "native-file-system-supported",
@@ -6838,9 +6593,8 @@ test("native host RPC runtime lets permission-free NativeFileSystem support call
             traceId: "trace-native-file-system-supported",
             payload: null
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("success")
       if (response.kind === "success") {
@@ -6871,24 +6625,18 @@ test("NativeFileSystem service propagates unsupported platform and host failure"
         open: () => Effect.fail(makeHostProtocolHostUnavailableError("NativeFileSystem.open"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const filesystem = yield* NativeFileSystem
-          return yield* Effect.exit(
-            filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
-          )
-        }),
-        makeNativeFileSystemServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const filesystem = yield* NativeFileSystem
-          return yield* Effect.exit(
-            filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
-          )
-        }),
-        makeNativeFileSystemServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const filesystem = yield* NativeFileSystem
+        return yield* Effect.exit(
+          filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+        )
+      }).pipe(Effect.provide(makeNativeFileSystemServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const filesystem = yield* NativeFileSystem
+        return yield* Effect.exit(
+          filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
+        )
+      }).pipe(Effect.provide(makeNativeFileSystemServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -6919,18 +6667,15 @@ test("SafeStorage service delegates through a substitutable SafeStorageClient po
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const storage = yield* SafeStorage
-          yield* storage.set("token", makeSafeStorageTestSecret())
-          const secret = yield* storage.get("token")
-          const keys = yield* storage.list()
-          const available = yield* storage.isAvailable()
-          yield* storage.delete("token")
-          return { available, keys, secret }
-        }),
-        makeSafeStorageServiceLayer(safeStorageClient(calls))
-      )
+      const result = yield* Effect.gen(function* () {
+        const storage = yield* SafeStorage
+        yield* storage.set("token", makeSafeStorageTestSecret())
+        const secret = yield* storage.get("token")
+        const keys = yield* storage.list()
+        const available = yield* storage.isAvailable()
+        yield* storage.delete("token")
+        return { available, keys, secret }
+      }).pipe(Effect.provide(makeSafeStorageServiceLayer(safeStorageClient(calls))))
 
       expect(result.available).toBe(true)
       expect(result.keys).toEqual(["token"])
@@ -6955,18 +6700,17 @@ test("SafeStorage bridge client validates keys and redacts decoded values", () =
                 ? { available: true }
                 : undefined
       }))
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const storage = yield* SafeStorage
-          yield* storage.set("token", makeSafeStorageTestSecret())
-          const secret = yield* storage.get("token")
-          const keys = yield* storage.list()
-          const available = yield* storage.isAvailable()
-          yield* storage.delete("token")
-          const emptyKeyExit = yield* Effect.exit(storage.set("", makeSafeStorageTestSecret()))
-          return { available, emptyKeyExit, keys, secret }
-        }),
-        Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange))
+      const result = yield* Effect.gen(function* () {
+        const storage = yield* SafeStorage
+        yield* storage.set("token", makeSafeStorageTestSecret())
+        const secret = yield* storage.get("token")
+        const keys = yield* storage.list()
+        const available = yield* storage.isAvailable()
+        yield* storage.delete("token")
+        const emptyKeyExit = yield* Effect.exit(storage.set("", makeSafeStorageTestSecret()))
+        return { available, emptyKeyExit, keys, secret }
+      }).pipe(
+        Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
       )
 
       expect(JSON.stringify(result.secret)).toBe('"<redacted:SecretBytes>"')
@@ -6998,18 +6742,17 @@ test("SafeStorage bridge client rejects control-byte keys as InvalidArgument", a
   for (const { label, key } of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
     const exchange = safeStorageExchange(requests, () => ({ kind: "success", payload: undefined }))
-    const client = yield* (
-      runScoped(
-        Effect.gen(function* () {
-          return yield* SafeStorage
-        }),
-        Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange))
+    const client = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* SafeStorage
+      }).pipe(
+        Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
       )
     )
 
-    const setExit = yield* Effect.exit(client.set(key, makeSafeStorageTestSecret()))
-    const getExit = yield* Effect.exit(client.get(key))
-    const deleteExit = yield* Effect.exit(client.delete(key))
+    const setExit = await Effect.runPromiseExit(client.set(key, makeSafeStorageTestSecret()))
+    const getExit = await Effect.runPromiseExit(client.get(key))
+    const deleteExit = await Effect.runPromiseExit(client.delete(key))
 
     expect(label).toBeDefined()
     expectExitFailure(setExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -7033,12 +6776,11 @@ test("SafeStorage bridge client rejects invalid keys in list output as InvalidOu
           kind: "success",
           payload: { keys }
         }))
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const storage = yield* SafeStorage
-            return yield* Effect.exit(storage.list())
-          }),
-          Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange))
+        const exit = yield* Effect.gen(function* () {
+          const storage = yield* SafeStorage
+          return yield* Effect.exit(storage.list())
+        }).pipe(
+          Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -7054,12 +6796,11 @@ test("SafeStorage bridge client decodes valid printable keys in list output", ()
         kind: "success",
         payload: { keys: ["token", "session"] }
       }))
-      const keys = yield* runScoped(
-        Effect.gen(function* () {
-          const storage = yield* SafeStorage
-          return yield* storage.list()
-        }),
-        Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange))
+      const keys = yield* Effect.gen(function* () {
+        const storage = yield* SafeStorage
+        return yield* storage.list()
+      }).pipe(
+        Effect.provide(Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange)))
       )
 
       expect(keys).toEqual(["token", "session"])
@@ -7098,8 +6839,8 @@ test("native host RPC runtime denies protected SafeStorage calls before handlers
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "safe-storage-denied",
@@ -7108,9 +6849,8 @@ test("native host RPC runtime denies protected SafeStorage calls before handlers
             traceId: "trace-safe-storage-denied",
             payload: { key: "token", value: SafeStorageTestSecretBase64 }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -7140,20 +6880,14 @@ test("SafeStorage service propagates unsupported platform and host failure witho
         set: () => Effect.fail(makeHostProtocolHostUnavailableError("SafeStorage.set"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const storage = yield* SafeStorage
-          return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
-        }),
-        makeSafeStorageServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const storage = yield* SafeStorage
-          return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
-        }),
-        makeSafeStorageServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const storage = yield* SafeStorage
+        return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
+      }).pipe(Effect.provide(makeSafeStorageServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const storage = yield* SafeStorage
+        return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
+      }).pipe(Effect.provide(makeSafeStorageServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -7165,18 +6899,15 @@ test("SafeStorage service propagates unsupported platform and host failure witho
 test("Linux SafeStorage client reports unimplemented adapter as unavailable with unsupported operations", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const storage = yield* SafeStorage
-          const available = yield* storage.isAvailable()
-          const setExit = yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
-          const getExit = yield* Effect.exit(storage.get("token"))
-          const deleteExit = yield* Effect.exit(storage.delete("token"))
-          const keys = yield* storage.list()
-          return { available, deleteExit, getExit, keys, setExit }
-        }),
-        makeSafeStorageServiceLayer(makeLinuxSafeStorageClient())
-      )
+      const result = yield* Effect.gen(function* () {
+        const storage = yield* SafeStorage
+        const available = yield* storage.isAvailable()
+        const setExit = yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
+        const getExit = yield* Effect.exit(storage.get("token"))
+        const deleteExit = yield* Effect.exit(storage.delete("token"))
+        const keys = yield* storage.list()
+        return { available, deleteExit, getExit, keys, setExit }
+      }).pipe(Effect.provide(makeSafeStorageServiceLayer(makeLinuxSafeStorageClient())))
 
       expect(result.available).toBe(false)
       expect(result.keys).toEqual([])
@@ -7204,18 +6935,15 @@ test("Updater service delegates through a substitutable UpdaterClient port", () 
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const updater = yield* Updater
-          const check = yield* updater.check({ currentVersion: "1.0.0" })
-          const downloaded = yield* updater.download({ version: "1.1.0" })
-          const installed = yield* updater.install({ version: "1.1.0" })
-          const restarted = yield* updater.installAndRestart({ version: "1.1.0" })
-          const status = yield* updater.getStatus()
-          return { check, downloaded, installed, restarted, status }
-        }),
-        makeUpdaterServiceLayer(updaterClient(calls))
-      )
+      const result = yield* Effect.gen(function* () {
+        const updater = yield* Updater
+        const check = yield* updater.check({ currentVersion: "1.0.0" })
+        const downloaded = yield* updater.download({ version: "1.1.0" })
+        const installed = yield* updater.install({ version: "1.1.0" })
+        const restarted = yield* updater.installAndRestart({ version: "1.1.0" })
+        const status = yield* updater.getStatus()
+        return { check, downloaded, installed, restarted, status }
+      }).pipe(Effect.provide(makeUpdaterServiceLayer(updaterClient(calls))))
 
       expect(result.check.available).toBe(true)
       expect(result.check.version).toBe("1.1.0")
@@ -7246,16 +6974,13 @@ test("Updater bridge client sends typed host envelopes and decodes status values
               ? { state: "update-available", version: "1.1.0" }
               : { state: "downloaded", version: "1.1.0", progress: 1 }
       }))
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const updater = yield* Updater
-          const check = yield* updater.check({ currentVersion: "1.0.0" })
-          const downloaded = yield* updater.download({ version: "1.1.0" })
-          const status = yield* updater.getStatus()
-          return { check, downloaded, status }
-        }),
-        Layer.provide(UpdaterLive, makeUpdaterBridgeClientLayer(exchange))
-      )
+      const result = yield* Effect.gen(function* () {
+        const updater = yield* Updater
+        const check = yield* updater.check({ currentVersion: "1.0.0" })
+        const downloaded = yield* updater.download({ version: "1.1.0" })
+        const status = yield* updater.getStatus()
+        return { check, downloaded, status }
+      }).pipe(Effect.provide(Layer.provide(UpdaterLive, makeUpdaterBridgeClientLayer(exchange))))
 
       expect(result.check.available).toBe(true)
       expect(result.check.version).toBe("1.1.0")
@@ -7278,17 +7003,14 @@ test("Updater bridge client sends signed manifest check inputs", () =>
         payload: { available: true, version: "1.1.0", notes: "signed manifest verified" }
       }))
 
-      yield* runScoped(
-        Effect.gen(function* () {
-          const updater = yield* Updater
-          return yield* updater.check({
-            currentVersion: "1.0.0",
-            manifestJson: '{"schemaVersion":1}',
-            trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }]
-          })
-        }),
-        Layer.provide(UpdaterLive, makeUpdaterBridgeClientLayer(exchange))
-      )
+      yield* Effect.gen(function* () {
+        const updater = yield* Updater
+        return yield* updater.check({
+          currentVersion: "1.0.0",
+          manifestJson: '{"schemaVersion":1}',
+          trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }]
+        })
+      }).pipe(Effect.provide(Layer.provide(UpdaterLive, makeUpdaterBridgeClientLayer(exchange))))
 
       expect(requests).toEqual([
         expect.objectContaining({
@@ -7305,27 +7027,28 @@ test("Updater bridge client sends signed manifest check inputs", () =>
 
 test("Updater bridge client rejects incomplete signed manifest check inputs", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Updater
-      }),
-      Layer.provide(
-        UpdaterLive,
-        makeUpdaterBridgeClientLayer(
-          updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const missingAnchorsExit = yield* Effect.exit(
+  const missingAnchorsExit = await Effect.runPromiseExit(
     client.check({ manifestJson: '{"schemaVersion":1}' })
   )
-  const emptyAnchorsExit = yield* Effect.exit(
+  const emptyAnchorsExit = await Effect.runPromiseExit(
     client.check({ manifestJson: '{"schemaVersion":1}', trustAnchors: [] })
   )
-  const missingManifestExit = yield* Effect.exit(
+  const missingManifestExit = await Effect.runPromiseExit(
     client.check({ trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }] })
   )
 
@@ -7339,16 +7062,13 @@ test("Updater service exposes the restart readiness handshake", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const updater = yield* Updater
-          const restartStatus = yield* updater.installAndRestart({ version: "1.1.0" })
-          const events = yield* updater.onPreparingRestart().pipe(Stream.take(1), Stream.runCollect)
-          yield* updater.readyForRestart()
-          return { events, restartStatus }
-        }),
-        makeUpdaterServiceLayer(updaterClient(calls))
-      )
+      const result = yield* Effect.gen(function* () {
+        const updater = yield* Updater
+        const restartStatus = yield* updater.installAndRestart({ version: "1.1.0" })
+        const events = yield* updater.onPreparingRestart().pipe(Stream.take(1), Stream.runCollect)
+        yield* updater.readyForRestart()
+        return { events, restartStatus }
+      }).pipe(Effect.provide(makeUpdaterServiceLayer(updaterClient(calls))))
 
       expect(result.restartStatus.state).toBe("installing")
       expect(Array.from(result.events)).toEqual([
@@ -7365,23 +7085,20 @@ test("CrashReporterRpcs declares the Phase 8 CrashReporter method surface", () =
 })
 
 test("CrashReporter memory client requires start and flushes recorded breadcrumbs", async () => {
-  const client = yield* (makeCrashReporterMemoryClient())
-  const permissions = yield* makeCrashReporterPermissions()
-  const result = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const reporter = yield* CrashReporter
-        const notStartedExit = yield* Effect.exit(
-          reporter.recordBreadcrumb({ category: "user", message: "clicked save" })
-        )
-        yield* reporter.start()
-        yield* reporter.recordBreadcrumb({ category: "user", message: "clicked save" })
-        const flush = yield* reporter.flush()
-        const reports = yield* reporter.getReports()
-        return { flush, notStartedExit, reports }
-      }),
-      makeCrashReporterServiceLayer(client, { permissions })
-    )
+  const client = await Effect.runPromise(makeCrashReporterMemoryClient())
+  const permissions = await makeCrashReporterPermissions()
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const reporter = yield* CrashReporter
+      const notStartedExit = yield* Effect.exit(
+        reporter.recordBreadcrumb({ category: "user", message: "clicked save" })
+      )
+      yield* reporter.start()
+      yield* reporter.recordBreadcrumb({ category: "user", message: "clicked save" })
+      const flush = yield* reporter.flush()
+      const reports = yield* reporter.getReports()
+      return { flush, notStartedExit, reports }
+    }).pipe(Effect.provide(makeCrashReporterServiceLayer(client, { permissions })))
   )
 
   expectExitFailure(result.notStartedExit, (error) => hasErrorTag(error, "InvalidState"))
@@ -7391,13 +7108,13 @@ test("CrashReporter memory client requires start and flushes recorded breadcrumb
 
 test("CrashReporter service denies native invoke before host transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const permissions = yield* makeCrashReporterPermissions("deny")
+  const permissions = await makeCrashReporterPermissions("deny")
   const exchange = crashReporterExchange(requests, () => ({
     kind: "success",
     payload: undefined
   }))
 
-  const exit = yield* (
+  const exit = await Effect.runPromise(
     Effect.gen(function* () {
       const reporter = yield* CrashReporter
       return yield* Effect.exit(reporter.start())
@@ -7468,12 +7185,12 @@ test("CrashReporter rejects control bytes in breadcrumb categories", () =>
   ))
 
 test("CrashReporter rejects cyclic breadcrumb details", async () => {
-  const client = yield* (makeCrashReporterMemoryClient())
-  yield* (client.start())
+  const client = await Effect.runPromise(makeCrashReporterMemoryClient())
+  await Effect.runPromise(client.start())
   const cyclicDetails: { self: unknown } = { self: null }
   cyclicDetails.self = cyclicDetails
 
-  const exit = yield* Effect.exit(
+  const exit = await Effect.runPromiseExit(
     client.recordBreadcrumb({
       category: "system",
       message: "cyclic details",
@@ -7482,13 +7199,13 @@ test("CrashReporter rejects cyclic breadcrumb details", async () => {
   )
 
   expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
-  const flushed = yield* (client.flush())
+  const flushed = await Effect.runPromise(client.flush())
   expect(flushed.flushed).toBe(0)
 })
 
 test("CrashReporter bridge client records breadcrumbs", async () => {
   const timestamp = 1_710_000_555_000
-  const permissions = yield* makeCrashReporterPermissions()
+  const permissions = await makeCrashReporterPermissions()
   const requests: HostProtocolRequestEnvelope[] = []
   const exchange = crashReporterExchange(requests, (request) => ({
     kind: "success",
@@ -7499,7 +7216,7 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
           ? { reports: [] }
           : undefined
   }))
-  const result = yield* (
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const reporter = yield* CrashReporter
       yield* reporter.start()
@@ -7540,7 +7257,7 @@ test("CrashReporter bridge client records breadcrumbs", async () => {
 
 test("CrashReporter bridge client rejects cyclic breadcrumb details before host transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const permissions = yield* makeCrashReporterPermissions()
+  const permissions = await makeCrashReporterPermissions()
   const exchange = crashReporterExchange(requests, (request) => ({
     kind: "success",
     payload: request.method === "CrashReporter.flush" ? { flushed: 0 } : undefined
@@ -7548,7 +7265,7 @@ test("CrashReporter bridge client rejects cyclic breadcrumb details before host 
   const cyclicDetails: { self: unknown } = { self: null }
   cyclicDetails.self = cyclicDetails
 
-  const exit = yield* (
+  const exit = await Effect.runPromise(
     Effect.gen(function* () {
       const reporter = yield* CrashReporter
       yield* reporter.start()
@@ -7576,12 +7293,12 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
 
   for (const flushed of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
-    const permissions = yield* makeCrashReporterPermissions()
+    const permissions = await makeCrashReporterPermissions()
     const exchange = crashReporterExchange(requests, (request) => ({
       kind: "success",
       payload: request.method === "CrashReporter.flush" ? { flushed } : undefined
     }))
-    const exit = yield* (
+    const exit = await Effect.runPromise(
       Effect.gen(function* () {
         const reporter = yield* CrashReporter
         return yield* Effect.exit(reporter.flush())
@@ -7600,7 +7317,7 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
 
 test("CrashReporter bridge client rejects invalid report timestamps as InvalidOutput", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const permissions = yield* makeCrashReporterPermissions()
+  const permissions = await makeCrashReporterPermissions()
   const exchange = crashReporterExchange(requests, (request) => ({
     kind: "success",
     payload:
@@ -7618,7 +7335,7 @@ test("CrashReporter bridge client rejects invalid report timestamps as InvalidOu
           }
         : undefined
   }))
-  const exit = yield* (
+  const exit = await Effect.runPromise(
     Effect.gen(function* () {
       const reporter = yield* CrashReporter
       return yield* Effect.exit(reporter.getReports())
@@ -7642,7 +7359,7 @@ test("CrashReporter bridge client rejects control bytes in report metadata as In
 
   for (const report of cases) {
     const requests: HostProtocolRequestEnvelope[] = []
-    const permissions = yield* makeCrashReporterPermissions()
+    const permissions = await makeCrashReporterPermissions()
     const exchange = crashReporterExchange(requests, (request) => ({
       kind: "success",
       payload:
@@ -7659,7 +7376,7 @@ test("CrashReporter bridge client rejects control bytes in report metadata as In
             }
           : undefined
     }))
-    const exit = yield* (
+    const exit = await Effect.runPromise(
       Effect.gen(function* () {
         const reporter = yield* CrashReporter
         return yield* Effect.exit(reporter.getReports())
@@ -7694,16 +7411,13 @@ test("Shell service delegates through a substitutable ShellClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      yield* runScoped(
-        Effect.gen(function* () {
-          const shell = yield* Shell
-          yield* shell.openExternal("https://example.com/docs")
-          yield* shell.showItemInFolder("/tmp/report.txt")
-          yield* shell.openPath("/tmp/report.txt")
-          yield* shell.trashItem("/tmp/old-report.txt")
-        }),
-        makeShellServiceLayer(shellClient(calls))
-      )
+      yield* Effect.gen(function* () {
+        const shell = yield* Shell
+        yield* shell.openExternal("https://example.com/docs")
+        yield* shell.showItemInFolder("/tmp/report.txt")
+        yield* shell.openPath("/tmp/report.txt")
+        yield* shell.trashItem("/tmp/old-report.txt")
+      }).pipe(Effect.provide(makeShellServiceLayer(shellClient(calls))))
 
       expect(calls).toEqual([
         "openExternal:https://example.com/docs:",
@@ -7733,20 +7447,14 @@ test("Shell service propagates unsupported platform and host failure", () =>
         openExternal: () => Effect.fail(makeHostProtocolHostUnavailableError("Shell.openExternal"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const shell = yield* Shell
-          return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
-        }),
-        makeShellServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const shell = yield* Shell
-          return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
-        }),
-        makeShellServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const shell = yield* Shell
+        return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
+      }).pipe(Effect.provide(makeShellServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const shell = yield* Shell
+        return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
+      }).pipe(Effect.provide(makeShellServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -7757,22 +7465,23 @@ test("Shell bridge client validates schemes and path argv before transport", () 
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* Shell
-          yield* client.openExternal("https://example.com/docs")
-          const fileExit = yield* Effect.exit(client.openExternal("file:///etc/passwd"))
-          const executableExit = yield* Effect.exit(client.openPath("/tmp/install.sh"))
-          const cmdExecutableExit = yield* Effect.exit(client.openPath("C:\\Temp\\install.cmd"))
-          const metacharExit = yield* Effect.exit(client.trashItem("/tmp/a;b.txt"))
-          yield* client.openPath("/tmp/install.sh", { allowExecutable: true })
-          yield* client.openPath("C:\\Temp\\install.cmd", { allowExecutable: true })
-          return { cmdExecutableExit, executableExit, fileExit, metacharExit }
-        }),
-        Layer.provide(
-          ShellLive,
-          makeShellBridgeClientLayer(
-            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+      const result = yield* Effect.gen(function* () {
+        const client = yield* Shell
+        yield* client.openExternal("https://example.com/docs")
+        const fileExit = yield* Effect.exit(client.openExternal("file:///etc/passwd"))
+        const executableExit = yield* Effect.exit(client.openPath("/tmp/install.sh"))
+        const cmdExecutableExit = yield* Effect.exit(client.openPath("C:\\Temp\\install.cmd"))
+        const metacharExit = yield* Effect.exit(client.trashItem("/tmp/a;b.txt"))
+        yield* client.openPath("/tmp/install.sh", { allowExecutable: true })
+        yield* client.openPath("C:\\Temp\\install.cmd", { allowExecutable: true })
+        return { cmdExecutableExit, executableExit, fileExit, metacharExit }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            ShellLive,
+            makeShellBridgeClientLayer(
+              shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
@@ -7793,20 +7502,21 @@ test("Shell bridge client validates external URL schemes", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* Shell
-          const denied = yield* Effect.exit(client.openExternal("myapp://callback"))
-          yield* client.openExternal("myapp://callback", { allowedSchemes: ["MyApp"] })
-          const javascriptDenied = yield* Effect.exit(
-            client.openExternal("javascript:alert(1)", { allowedSchemes: ["javascript"] })
-          )
-          return { denied, javascriptDenied }
-        }),
-        Layer.provide(
-          ShellLive,
-          makeShellBridgeClientLayer(
-            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+      const result = yield* Effect.gen(function* () {
+        const client = yield* Shell
+        const denied = yield* Effect.exit(client.openExternal("myapp://callback"))
+        yield* client.openExternal("myapp://callback", { allowedSchemes: ["MyApp"] })
+        const javascriptDenied = yield* Effect.exit(
+          client.openExternal("javascript:alert(1)", { allowedSchemes: ["javascript"] })
+        )
+        return { denied, javascriptDenied }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            ShellLive,
+            makeShellBridgeClientLayer(
+              shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+            )
           )
         )
       )
@@ -7821,15 +7531,16 @@ test("Shell bridge client validates external URL schemes", () =>
 
 test("Shell bridge client rejects control characters in external URLs before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Shell
-      }),
-      Layer.provide(
-        ShellLive,
-        makeShellBridgeClientLayer(
-          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
@@ -7840,7 +7551,7 @@ test("Shell bridge client rejects control characters in external URLs before tra
     "https://example.com/\r",
     `https://example.com/${String.fromCharCode(0)}`
   ]) {
-    const exit = yield* Effect.exit(client.openExternal(url))
+    const exit = await Effect.runPromiseExit(client.openExternal(url))
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   }
 
@@ -7864,8 +7575,8 @@ test("native host RPC runtime denies protected Shell calls before handlers run",
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "shell-denied",
@@ -7874,9 +7585,8 @@ test("native host RPC runtime denies protected Shell calls before handlers run",
             timestamp: 1710000000000,
             traceId: "trace-shell-denied"
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -7908,7 +7618,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
   })
 
   for (const law of ScreenSurface.contractLaws) {
-    yield* (law.check)
+    await Effect.runPromise(law.check)
   }
 
   expect(ScreenSurface.group).toBe(ScreenRpcs)
@@ -7917,7 +7627,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
   expect(Layer.isLayer(ScreenSurface.testClientLayer)).toBe(true)
   // Identity assertion: inspect the declaration data and confirm (group, handlers)
   // was threaded through unchanged.
-  const screenRegistrations = yield* snapshotSurfaceRegistrations(ScreenSurface.serverLayer)
+  const screenRegistrations = await snapshotSurfaceRegistrations(ScreenSurface.serverLayer)
   expect(screenRegistrations).toHaveLength(1)
   expect(screenRegistrations[0]?.group).toBe(ScreenRpcs)
   expect(Object.is(screenRegistrations[0]?.handlers, ScreenHandlersLive)).toBe(true)
@@ -8127,7 +7837,7 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
 
   for (const { name, surface, group, handlers, tags } of surfaces) {
     for (const law of surface.contractLaws) {
-      yield* (law.check)
+      await Effect.runPromise(law.check)
     }
 
     expect(name).toBe(surface.tag)
@@ -8136,7 +7846,7 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
     // Identity assertion: inspect declaration data and confirm the (group, handlers)
     // pair survived. Catches surface() regressions where the wrong group or handlers
     // reference is captured.
-    const surfaceRegistrations = yield* snapshotSurfaceRegistrations(surface.serverLayer)
+    const surfaceRegistrations = await snapshotSurfaceRegistrations(surface.serverLayer)
     expect(surfaceRegistrations).toHaveLength(1)
     expect(surfaceRegistrations[0]?.group).toBe(group)
     expect(Object.is(surfaceRegistrations[0]?.handlers, handlers)).toBe(true)
@@ -8157,19 +7867,16 @@ test("ClipboardSurface test client layer runs Clipboard RPCs through the generat
         ClipboardSurface.testClientLayer,
         makeClipboardServiceLayer(clipboardClient(calls))
       )
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* ClipboardClient
-          yield* client.writeText("hello")
-          const text = yield* client.readText()
-          yield* client.writeHtml("<p>hello</p>")
-          const html = yield* client.readHtml()
-          yield* client.clear()
-          const supported = yield* client.isSupported("html")
-          return { html, supported, text }
-        }),
-        testLayer
-      )
+      const result = yield* Effect.gen(function* () {
+        const client = yield* ClipboardClient
+        yield* client.writeText("hello")
+        const text = yield* client.readText()
+        yield* client.writeHtml("<p>hello</p>")
+        const html = yield* client.readHtml()
+        yield* client.clear()
+        const supported = yield* client.isSupported("html")
+        return { html, supported, text }
+      }).pipe(Effect.provide(testLayer))
 
       expect(result.text).toEqual(new ClipboardText({ text: "hello" }))
       expect(result.html).toEqual(new ClipboardHtml({ html: "<p>hello</p>" }))
@@ -8193,17 +7900,14 @@ test("DialogSurface test client layer runs Dialog RPCs through the generated ser
         DialogSurface.testClientLayer,
         makeDialogServiceLayer(dialogClient(calls))
       )
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* DialogClient
-          const files = yield* client.openFile({ title: "Open" })
-          const path = yield* client.saveFile({ defaultPath: "/tmp/report.txt" })
-          yield* client.message({ level: "info", message: "Done" })
-          const confirmed = yield* client.confirm({ message: "Continue?" })
-          return { confirmed, files, path }
-        }),
-        testLayer
-      )
+      const result = yield* Effect.gen(function* () {
+        const client = yield* DialogClient
+        const files = yield* client.openFile({ title: "Open" })
+        const path = yield* client.saveFile({ defaultPath: "/tmp/report.txt" })
+        yield* client.message({ level: "info", message: "Done" })
+        const confirmed = yield* client.confirm({ message: "Continue?" })
+        return { confirmed, files, path }
+      }).pipe(Effect.provide(testLayer))
 
       expect(result.files).toEqual(
         new DialogOpenResult({ paths: ["/canonical/file-a.txt", "/canonical/file-b.txt"] })
@@ -8227,18 +7931,15 @@ test("ScreenSurface test client layer runs Screen RPCs through the generated ser
         ScreenSurface.testClientLayer,
         makeScreenServiceLayer(screenClient(calls))
       )
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* ScreenClient
-          return {
-            displays: yield* client.getDisplays(),
-            primary: yield* client.getPrimaryDisplay(),
-            pointer: yield* client.getPointerPoint(),
-            pointerSupported: yield* client.isSupported("getPointerPoint")
-          }
-        }),
-        testLayer
-      )
+      const result = yield* Effect.gen(function* () {
+        const client = yield* ScreenClient
+        return {
+          displays: yield* client.getDisplays(),
+          primary: yield* client.getPrimaryDisplay(),
+          pointer: yield* client.getPointerPoint(),
+          pointerSupported: yield* client.isSupported("getPointerPoint")
+        }
+      }).pipe(Effect.provide(testLayer))
 
       expect(result.displays).toEqual(new ScreenDisplaysResult({ displays: [primaryDisplay] }))
       expect(result.primary).toEqual(primaryDisplay)
@@ -8257,19 +7958,16 @@ test("Screen service delegates through a substitutable ScreenClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const screen = yield* Screen
-          return {
-            displays: yield* screen.getDisplays(),
-            changed: yield* screen.onDisplaysChanged().pipe(Stream.take(1), Stream.runCollect),
-            primary: yield* screen.getPrimaryDisplay(),
-            pointer: yield* screen.getPointerPoint(),
-            pointerSupported: yield* screen.isSupported("getPointerPoint")
-          }
-        }),
-        makeScreenServiceLayer(screenClient(calls))
-      )
+      const result = yield* Effect.gen(function* () {
+        const screen = yield* Screen
+        return {
+          displays: yield* screen.getDisplays(),
+          changed: yield* screen.onDisplaysChanged().pipe(Stream.take(1), Stream.runCollect),
+          primary: yield* screen.getPrimaryDisplay(),
+          pointer: yield* screen.getPointerPoint(),
+          pointerSupported: yield* screen.isSupported("getPointerPoint")
+        }
+      }).pipe(Effect.provide(makeScreenServiceLayer(screenClient(calls))))
 
       expect(result.displays).toEqual([primaryDisplay])
       expect(Array.from(result.changed)).toEqual([
@@ -8307,20 +8005,14 @@ test("Screen service propagates unsupported platform and host failure", () =>
         getDisplays: () => Effect.fail(makeHostProtocolHostUnavailableError("Screen.getDisplays"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const screen = yield* Screen
-          return yield* Effect.exit(screen.getDisplays())
-        }),
-        makeScreenServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const screen = yield* Screen
-          return yield* Effect.exit(screen.getDisplays())
-        }),
-        makeScreenServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const screen = yield* Screen
+        return yield* Effect.exit(screen.getDisplays())
+      }).pipe(Effect.provide(makeScreenServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const screen = yield* Screen
+        return yield* Effect.exit(screen.getDisplays())
+      }).pipe(Effect.provide(makeScreenServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -8343,19 +8035,16 @@ test("Screen bridge client sends typed host envelopes and decodes values", () =>
                 : { x: 12, y: 34 }
       }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const screen = yield* Screen
-          return {
-            displays: yield* screen.getDisplays(),
-            changed: yield* screen.onDisplaysChanged().pipe(Stream.take(1), Stream.runCollect),
-            primary: yield* screen.getPrimaryDisplay(),
-            pointer: yield* screen.getPointerPoint(),
-            pointerSupported: yield* screen.isSupported("getPointerPoint")
-          }
-        }),
-        Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
-      )
+      const result = yield* Effect.gen(function* () {
+        const screen = yield* Screen
+        return {
+          displays: yield* screen.getDisplays(),
+          changed: yield* screen.onDisplaysChanged().pipe(Stream.take(1), Stream.runCollect),
+          primary: yield* screen.getPrimaryDisplay(),
+          pointer: yield* screen.getPointerPoint(),
+          pointerSupported: yield* screen.isSupported("getPointerPoint")
+        }
+      }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
 
       expect(result.displays).toEqual([primaryDisplay])
       expect(Array.from(result.changed)).toEqual([
@@ -8496,8 +8185,8 @@ test("native host RPC runtime lets permission-free Screen support calls pass thr
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "screen-support",
@@ -8506,9 +8195,8 @@ test("native host RPC runtime lets permission-free Screen support calls pass thr
             traceId: "trace-screen-support",
             payload: { method: "getDisplays" }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response).toEqual({ kind: "success", payload: { supported: true } })
       expect(calls).toEqual(["getDisplays"])
@@ -8582,13 +8270,14 @@ test("Screen bridge client validates generated protocol timestamps as typed fail
   }
   void assertScreenBridgeClientOptionsRejectRequestId
   const exchange = screenExchange([], () => ({ kind: "success", payload: { displays: [] } }))
-  const result = yield* Effect.exit(
-    runScoped(
-      Effect.gen(function* () {
-        const screen = yield* Screen
-        return yield* screen.getDisplays()
-      }),
-      Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange, { now: () => Number.NaN }))
+  const result = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* screen.getDisplays()
+    }).pipe(
+      Effect.provide(
+        Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange, { now: () => Number.NaN }))
+      )
     )
   )
 
@@ -8605,14 +8294,11 @@ test("Screen bridge client validates generated protocol timestamps as typed fail
 
 test("Screen bridge client rejects empty display lists as InvalidOutput", async () => {
   const exchange = screenExchange([], () => ({ kind: "success", payload: { displays: [] } }))
-  const result = yield* Effect.exit(
-    runScoped(
-      Effect.gen(function* () {
-        const screen = yield* Screen
-        return yield* screen.getDisplays()
-      }),
-      Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
-    )
+  const result = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* screen.getDisplays()
+    }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
   )
 
   expectExitFailure(result, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -8641,14 +8327,11 @@ test("Screen bridge client rejects invalid primary display topologies as Invalid
     kind: "success",
     payload: request.method === "Screen.getDisplays" ? multiplePrimary : primaryDisplay
   }))
-  const result = yield* Effect.exit(
-    runScoped(
-      Effect.gen(function* () {
-        const screen = yield* Screen
-        return yield* screen.getDisplays()
-      }),
-      Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
-    )
+  const result = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const screen = yield* Screen
+      return yield* screen.getDisplays()
+    }).pipe(Effect.provide(Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))))
   )
 
   expectExitFailure(result, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -8666,23 +8349,18 @@ test("SystemAppearance service maps result wrappers to public values", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const appearance = yield* SystemAppearance
-          return {
-            mode: yield* appearance.getAppearance(),
-            accent: yield* appearance.getAccentColor(),
-            motion: yield* appearance.getReducedMotion(),
-            transparency: yield* appearance.getReducedTransparency(),
-            changed: yield* appearance
-              .onAppearanceChanged()
-              .pipe(Stream.take(1), Stream.runCollect),
-            accentSupported: yield* appearance.isSupported("getAccentColor"),
-            changeSupported: yield* appearance.isSupported("onAppearanceChanged")
-          }
-        }),
-        makeSystemAppearanceServiceLayer(systemAppearanceClient(calls))
-      )
+      const result = yield* Effect.gen(function* () {
+        const appearance = yield* SystemAppearance
+        return {
+          mode: yield* appearance.getAppearance(),
+          accent: yield* appearance.getAccentColor(),
+          motion: yield* appearance.getReducedMotion(),
+          transparency: yield* appearance.getReducedTransparency(),
+          changed: yield* appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect),
+          accentSupported: yield* appearance.isSupported("getAccentColor"),
+          changeSupported: yield* appearance.isSupported("onAppearanceChanged")
+        }
+      }).pipe(Effect.provide(makeSystemAppearanceServiceLayer(systemAppearanceClient(calls))))
 
       expect(result.mode).toBe("dark")
       expect(result.accent).toEqual(accentColor)
@@ -8725,21 +8403,20 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
                 : { enabled: request.method === "SystemAppearance.getReducedMotion" }
       }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const appearance = yield* SystemAppearance
-          return {
-            mode: yield* appearance.getAppearance(),
-            accent: yield* appearance.getAccentColor(),
-            motion: yield* appearance.getReducedMotion(),
-            transparency: yield* appearance.getReducedTransparency(),
-            changed: yield* appearance
-              .onAppearanceChanged()
-              .pipe(Stream.take(1), Stream.runCollect),
-            accentSupported: yield* appearance.isSupported("getAccentColor")
-          }
-        }),
-        Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+      const result = yield* Effect.gen(function* () {
+        const appearance = yield* SystemAppearance
+        return {
+          mode: yield* appearance.getAppearance(),
+          accent: yield* appearance.getAccentColor(),
+          motion: yield* appearance.getReducedMotion(),
+          transparency: yield* appearance.getReducedTransparency(),
+          changed: yield* appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect),
+          accentSupported: yield* appearance.isSupported("getAccentColor")
+        }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+        )
       )
 
       expect(result.mode).toBe("dark")
@@ -8791,16 +8468,17 @@ test("SystemAppearance bridge client rejects partial appearance events as Invali
       ] as const
 
       for (const { payload } of cases) {
-        const result = yield* runScoped(
-          Effect.gen(function* () {
-            const appearance = yield* SystemAppearance
-            return yield* Effect.exit(
-              appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+        const result = yield* Effect.gen(function* () {
+          const appearance = yield* SystemAppearance
+          return yield* Effect.exit(
+            appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+          )
+        }).pipe(
+          Effect.provide(
+            Layer.provide(
+              SystemAppearanceLive,
+              makeSystemAppearanceBridgeClientLayer(systemAppearanceEventExchange(payload))
             )
-          }),
-          Layer.provide(
-            SystemAppearanceLive,
-            makeSystemAppearanceBridgeClientLayer(systemAppearanceEventExchange(payload))
           )
         )
 
@@ -8827,14 +8505,15 @@ test("SystemAppearance bridge client fails unsupported appearance events before 
         }
       }
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const appearance = yield* SystemAppearance
-          return yield* Effect.exit(
-            appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
-          )
-        }),
-        Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+      const result = yield* Effect.gen(function* () {
+        const appearance = yield* SystemAppearance
+        return yield* Effect.exit(
+          appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+        )
+      }).pipe(
+        Effect.provide(
+          Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+        )
       )
 
       expectExitFailure(result, (error) => hasErrorTag(error, "Unsupported"))
@@ -8866,8 +8545,8 @@ test("native host RPC runtime denies protected SystemAppearance support queries 
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "system-appearance-denied",
@@ -8876,9 +8555,8 @@ test("native host RPC runtime denies protected SystemAppearance support queries 
             traceId: "trace-system-appearance-denied",
             payload: { method: "onAppearanceChanged" }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -8923,21 +8601,22 @@ test("PowerMonitorRpcs declares the Phase 8 event-only surface", () => {
 test("PowerMonitor bridge client decodes power event streams", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const power = yield* PowerMonitor
-          return {
-            suspend: yield* power.onSuspend().pipe(Stream.take(1), Stream.runCollect),
-            resume: yield* power.onResume().pipe(Stream.take(1), Stream.runCollect),
-            shutdown: yield* power.onShutdown().pipe(Stream.take(1), Stream.runCollect),
-            lock: yield* power.onLockScreen().pipe(Stream.take(1), Stream.runCollect),
-            unlock: yield* power.onUnlockScreen().pipe(Stream.take(1), Stream.runCollect),
-            source: yield* power.onPowerSourceChanged().pipe(Stream.take(1), Stream.runCollect),
-            lockSupported: yield* power.isSupported("onLockScreen"),
-            sourceSupported: yield* power.isSupported("onPowerSourceChanged")
-          }
-        }),
-        Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(powerMonitorExchange()))
+      const result = yield* Effect.gen(function* () {
+        const power = yield* PowerMonitor
+        return {
+          suspend: yield* power.onSuspend().pipe(Stream.take(1), Stream.runCollect),
+          resume: yield* power.onResume().pipe(Stream.take(1), Stream.runCollect),
+          shutdown: yield* power.onShutdown().pipe(Stream.take(1), Stream.runCollect),
+          lock: yield* power.onLockScreen().pipe(Stream.take(1), Stream.runCollect),
+          unlock: yield* power.onUnlockScreen().pipe(Stream.take(1), Stream.runCollect),
+          source: yield* power.onPowerSourceChanged().pipe(Stream.take(1), Stream.runCollect),
+          lockSupported: yield* power.isSupported("onLockScreen"),
+          sourceSupported: yield* power.isSupported("onPowerSourceChanged")
+        }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(powerMonitorExchange()))
+        )
       )
 
       expect(Array.from(result.suspend)).toEqual([
@@ -8998,22 +8677,23 @@ test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", 
                 )
               : Stream.empty
         }
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const power = yield* PowerMonitor
-            return yield* Effect.exit(
-              method === "PowerMonitor.Suspend"
-                ? power.onSuspend().pipe(Stream.take(1), Stream.runCollect)
-                : method === "PowerMonitor.Resume"
-                  ? power.onResume().pipe(Stream.take(1), Stream.runCollect)
-                  : method === "PowerMonitor.Shutdown"
-                    ? power.onShutdown().pipe(Stream.take(1), Stream.runCollect)
-                    : method === "PowerMonitor.LockScreen"
-                      ? power.onLockScreen().pipe(Stream.take(1), Stream.runCollect)
-                      : power.onUnlockScreen().pipe(Stream.take(1), Stream.runCollect)
-            )
-          }),
-          Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange))
+        const exit = yield* Effect.gen(function* () {
+          const power = yield* PowerMonitor
+          return yield* Effect.exit(
+            method === "PowerMonitor.Suspend"
+              ? power.onSuspend().pipe(Stream.take(1), Stream.runCollect)
+              : method === "PowerMonitor.Resume"
+                ? power.onResume().pipe(Stream.take(1), Stream.runCollect)
+                : method === "PowerMonitor.Shutdown"
+                  ? power.onShutdown().pipe(Stream.take(1), Stream.runCollect)
+                  : method === "PowerMonitor.LockScreen"
+                    ? power.onLockScreen().pipe(Stream.take(1), Stream.runCollect)
+                    : power.onUnlockScreen().pipe(Stream.take(1), Stream.runCollect)
+          )
+        }).pipe(
+          Effect.provide(
+            Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange))
+          )
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -9039,12 +8719,11 @@ test("PowerMonitor bridge client fails unsupported event streams before subscrip
         }
       }
 
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const power = yield* PowerMonitor
-          return yield* Effect.exit(power.onSuspend().pipe(Stream.take(1), Stream.runCollect))
-        }),
-        Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange))
+      const exit = yield* Effect.gen(function* () {
+        const power = yield* PowerMonitor
+        return yield* Effect.exit(power.onSuspend().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(
+        Effect.provide(Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange)))
       )
 
       expectExitFailure(exit, (error) => hasErrorTag(error, "Unsupported"))
@@ -9068,8 +8747,8 @@ test("native host RPC runtime denies protected PowerMonitor support queries befo
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "power-monitor-denied",
@@ -9078,9 +8757,8 @@ test("native host RPC runtime denies protected PowerMonitor support queries befo
             traceId: "trace-power-monitor-denied",
             payload: { method: "onSuspend" }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -9099,19 +8777,16 @@ test("Dock service delegates through a substitutable DockClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const supported = yield* runScoped(
-        Effect.gen(function* () {
-          const dock = yield* Dock
-          yield* dock.setBadgeCount(5)
-          yield* dock.setBadgeText("5")
-          yield* dock.setProgress(0.5, { state: "normal" })
-          yield* dock.setMenu(menuTemplate)
-          yield* dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
-          yield* dock.requestAttention({ critical: true })
-          return yield* dock.isSupported("setBadgeText")
-        }),
-        makeDockServiceLayer(dockClient(calls))
-      )
+      const supported = yield* Effect.gen(function* () {
+        const dock = yield* Dock
+        yield* dock.setBadgeCount(5)
+        yield* dock.setBadgeText("5")
+        yield* dock.setProgress(0.5, { state: "normal" })
+        yield* dock.setMenu(menuTemplate)
+        yield* dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
+        yield* dock.requestAttention({ critical: true })
+        return yield* dock.isSupported("setBadgeText")
+      }).pipe(Effect.provide(makeDockServiceLayer(dockClient(calls))))
 
       expect(supported).toBe(true)
       expect(calls).toEqual([
@@ -9135,20 +8810,17 @@ test("Dock bridge client sends typed host envelopes and maps support result", ()
         payload: request.method === "Dock.isSupported" ? { supported: true } : undefined
       }))
 
-      const supported = yield* runScoped(
-        Effect.gen(function* () {
-          const dock = yield* Dock
-          yield* dock.setBadgeCount(5)
-          yield* dock.setBadgeText("1")
-          yield* dock.setBadgeText(null)
-          yield* dock.setProgress(null)
-          yield* dock.setMenu(null)
-          yield* dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
-          yield* dock.requestAttention()
-          return yield* dock.isSupported("setJumpList")
-        }),
-        Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))
-      )
+      const supported = yield* Effect.gen(function* () {
+        const dock = yield* Dock
+        yield* dock.setBadgeCount(5)
+        yield* dock.setBadgeText("1")
+        yield* dock.setBadgeText(null)
+        yield* dock.setProgress(null)
+        yield* dock.setMenu(null)
+        yield* dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
+        yield* dock.requestAttention()
+        return yield* dock.isSupported("setJumpList")
+      }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
 
       expect(supported).toBe(true)
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
@@ -9171,18 +8843,15 @@ test("Dock bridge client rejects invalid badge text before transport", async () 
     payload: undefined
   }))
 
-  const dock = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Dock
-      }),
-      Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))
-    )
+  const dock = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dock
+    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
   )
 
-  const nulExit = yield* Effect.exit(dock.setBadgeText("bad\u0000text"))
-  const newlineExit = yield* Effect.exit(dock.setBadgeText("line\nbreak"))
-  const tabExit = yield* Effect.exit(dock.setBadgeText("badge\ttext"))
+  const nulExit = await Effect.runPromiseExit(dock.setBadgeText("bad\u0000text"))
+  const newlineExit = await Effect.runPromiseExit(dock.setBadgeText("line\nbreak"))
+  const tabExit = await Effect.runPromiseExit(dock.setBadgeText("badge\ttext"))
 
   for (const exit of [nulExit, newlineExit, tabExit]) {
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -9197,20 +8866,17 @@ test("Dock bridge client rejects invalid numeric state before transport", async 
     payload: undefined
   }))
 
-  const dock = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Dock
-      }),
-      Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))
-    )
+  const dock = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dock
+    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
   )
 
-  const negativeBadgeExit = yield* Effect.exit(dock.setBadgeCount(-1))
-  const fractionalBadgeExit = yield* Effect.exit(dock.setBadgeCount(1.5))
-  const belowZeroProgressExit = yield* Effect.exit(dock.setProgress(-0.5))
-  const aboveOneProgressExit = yield* Effect.exit(dock.setProgress(1.5))
-  const invalidProgressExit = yield* Effect.exit(dock.setProgress(Number.NaN))
+  const negativeBadgeExit = await Effect.runPromiseExit(dock.setBadgeCount(-1))
+  const fractionalBadgeExit = await Effect.runPromiseExit(dock.setBadgeCount(1.5))
+  const belowZeroProgressExit = await Effect.runPromiseExit(dock.setProgress(-0.5))
+  const aboveOneProgressExit = await Effect.runPromiseExit(dock.setProgress(1.5))
+  const invalidProgressExit = await Effect.runPromiseExit(dock.setProgress(Number.NaN))
 
   for (const exit of [
     negativeBadgeExit,
@@ -9243,17 +8909,14 @@ test("Dock bridge client rejects malformed jump-list items before transport", as
     [{ id: "open", title: "Open", commandId: "bad\u0000" }]
   ]
 
-  const dock = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Dock
-      }),
-      Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))
-    )
+  const dock = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dock
+    }).pipe(Effect.provide(Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))))
   )
 
   for (const items of invalidItems) {
-    const exit = yield* Effect.exit(dock.setJumpList(items))
+    const exit = await Effect.runPromiseExit(dock.setJumpList(items))
     expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
   }
   expect(requests).toEqual([])
@@ -9294,8 +8957,8 @@ test("native host RPC runtime denies protected Dock calls before handlers run", 
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "dock-denied",
@@ -9304,9 +8967,8 @@ test("native host RPC runtime denies protected Dock calls before handlers run", 
             traceId: "trace-dock-denied",
             payload: { count: 1 }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -9335,22 +8997,16 @@ test("Dock service propagates unsupported platform and host failure", () =>
         setProgress: () => Effect.fail(makeHostProtocolHostUnavailableError("Dock.setProgress"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const dock = yield* Dock
-          return yield* Effect.exit(
-            dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
-          )
-        }),
-        makeDockServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const dock = yield* Dock
-          return yield* Effect.exit(dock.setProgress(0.5))
-        }),
-        makeDockServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const dock = yield* Dock
+        return yield* Effect.exit(
+          dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
+        )
+      }).pipe(Effect.provide(makeDockServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const dock = yield* Dock
+        return yield* Effect.exit(dock.setProgress(0.5))
+      }).pipe(Effect.provide(makeDockServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -9360,34 +9016,31 @@ test("Dock service propagates unsupported platform and host failure", () =>
 test("Linux Dock client reports unimplemented partial methods as unsupported", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const dock = yield* Dock
-          const badgeCountSupported = yield* dock.isSupported("setBadgeCount")
-          const progressSupported = yield* dock.isSupported("setProgress")
-          const attentionSupported = yield* dock.isSupported("requestAttention")
-          const badgeTextSupported = yield* dock.isSupported("setBadgeText")
-          const menuSupported = yield* dock.isSupported("setMenu")
-          const badgeCountExit = yield* Effect.exit(dock.setBadgeCount(1))
-          const progressExit = yield* Effect.exit(dock.setProgress(0.5))
-          const attentionExit = yield* Effect.exit(dock.requestAttention())
-          const textExit = yield* Effect.exit(dock.setBadgeText("hi"))
-          const menuExit = yield* Effect.exit(dock.setMenu(null))
-          return {
-            attentionExit,
-            attentionSupported,
-            badgeCountExit,
-            badgeCountSupported,
-            badgeTextSupported,
-            menuExit,
-            menuSupported,
-            progressExit,
-            progressSupported,
-            textExit
-          }
-        }),
-        makeDockServiceLayer(makeLinuxDockClient())
-      )
+      const result = yield* Effect.gen(function* () {
+        const dock = yield* Dock
+        const badgeCountSupported = yield* dock.isSupported("setBadgeCount")
+        const progressSupported = yield* dock.isSupported("setProgress")
+        const attentionSupported = yield* dock.isSupported("requestAttention")
+        const badgeTextSupported = yield* dock.isSupported("setBadgeText")
+        const menuSupported = yield* dock.isSupported("setMenu")
+        const badgeCountExit = yield* Effect.exit(dock.setBadgeCount(1))
+        const progressExit = yield* Effect.exit(dock.setProgress(0.5))
+        const attentionExit = yield* Effect.exit(dock.requestAttention())
+        const textExit = yield* Effect.exit(dock.setBadgeText("hi"))
+        const menuExit = yield* Effect.exit(dock.setMenu(null))
+        return {
+          attentionExit,
+          attentionSupported,
+          badgeCountExit,
+          badgeCountSupported,
+          badgeTextSupported,
+          menuExit,
+          menuSupported,
+          progressExit,
+          progressSupported,
+          textExit
+        }
+      }).pipe(Effect.provide(makeDockServiceLayer(makeLinuxDockClient())))
 
       expect(result.badgeCountSupported).toBe(false)
       expect(result.progressSupported).toBe(false)
@@ -9422,20 +9075,17 @@ test("GlobalShortcut service delegates through a substitutable GlobalShortcutCli
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const shortcuts = yield* GlobalShortcut
-          const supported = yield* shortcuts.isSupported()
-          yield* shortcuts.register("CmdOrCtrl+K", windowHandle)
-          const registered = yield* shortcuts.isRegistered("CmdOrCtrl+K")
-          const pressed = yield* shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect)
-          yield* shortcuts.unregister("CmdOrCtrl+K")
-          yield* shortcuts.unregisterAll()
+      const result = yield* Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        const supported = yield* shortcuts.isSupported()
+        yield* shortcuts.register("CmdOrCtrl+K", windowHandle)
+        const registered = yield* shortcuts.isRegistered("CmdOrCtrl+K")
+        const pressed = yield* shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect)
+        yield* shortcuts.unregister("CmdOrCtrl+K")
+        yield* shortcuts.unregisterAll()
 
-          return { pressed, registered, supported }
-        }),
-        makeGlobalShortcutServiceLayer(globalShortcutClient(calls))
-      )
+        return { pressed, registered, supported }
+      }).pipe(Effect.provide(makeGlobalShortcutServiceLayer(globalShortcutClient(calls))))
 
       expect(result.supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
       expect(result.registered).toBe(true)
@@ -9469,19 +9119,20 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
               : undefined
       }))
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const shortcuts = yield* GlobalShortcut
-          const supported = yield* shortcuts.isSupported()
-          yield* shortcuts.register("CmdOrCtrl+K", windowHandle)
-          const registered = yield* shortcuts.isRegistered("CmdOrCtrl+K")
-          const pressed = yield* shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect)
-          yield* shortcuts.unregister("CmdOrCtrl+K")
-          yield* shortcuts.unregisterAll()
+      const result = yield* Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        const supported = yield* shortcuts.isSupported()
+        yield* shortcuts.register("CmdOrCtrl+K", windowHandle)
+        const registered = yield* shortcuts.isRegistered("CmdOrCtrl+K")
+        const pressed = yield* shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect)
+        yield* shortcuts.unregister("CmdOrCtrl+K")
+        yield* shortcuts.unregisterAll()
 
-          return { pressed, registered, supported }
-        }),
-        Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        return { pressed, registered, supported }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        )
       )
 
       expect(result.supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
@@ -9515,12 +9166,13 @@ test("GlobalShortcut bridge client rejects inconsistent isSupported output as In
 
       for (const { label, payload } of cases) {
         const exchange = globalShortcutExchange([], () => ({ kind: "success", payload }))
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const client = yield* GlobalShortcut
-            return yield* Effect.exit(client.isSupported())
-          }),
-          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        const exit = yield* Effect.gen(function* () {
+          const client = yield* GlobalShortcut
+          return yield* Effect.exit(client.isSupported())
+        }).pipe(
+          Effect.provide(
+            Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+          )
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -9551,12 +9203,13 @@ test("GlobalShortcut bridge client decodes valid isSupported outputs", () =>
 
       for (const { payload, expected } of cases) {
         const exchange = globalShortcutExchange([], () => ({ kind: "success", payload }))
-        const result = yield* runScoped(
-          Effect.gen(function* () {
-            const shortcuts = yield* GlobalShortcut
-            return yield* shortcuts.isSupported()
-          }),
-          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        const result = yield* Effect.gen(function* () {
+          const shortcuts = yield* GlobalShortcut
+          return yield* shortcuts.isSupported()
+        }).pipe(
+          Effect.provide(
+            Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+          )
         )
 
         expect(result).toEqual(expected)
@@ -9592,12 +9245,13 @@ test("GlobalShortcut bridge client rejects invalid pressed event identifiers as 
                 )
               : Stream.empty
         }
-        const exit = yield* runScoped(
-          Effect.gen(function* () {
-            const shortcuts = yield* GlobalShortcut
-            return yield* Effect.exit(shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect))
-          }),
-          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        const exit = yield* Effect.gen(function* () {
+          const shortcuts = yield* GlobalShortcut
+          return yield* Effect.exit(shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect))
+        }).pipe(
+          Effect.provide(
+            Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+          )
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -9608,24 +9262,25 @@ test("GlobalShortcut bridge client rejects invalid pressed event identifiers as 
 
 test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* GlobalShortcut
-      }),
-      Layer.provide(
-        GlobalShortcutLive,
-        makeGlobalShortcutBridgeClientLayer(
-          globalShortcutExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* GlobalShortcut
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          GlobalShortcutLive,
+          makeGlobalShortcutBridgeClientLayer(
+            globalShortcutExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const registerEmptyExit = yield* Effect.exit(client.register("", windowHandle))
-  const isRegisteredEmptyExit = yield* Effect.exit(client.isRegistered(""))
-  const unregisterNulExit = yield* Effect.exit(client.unregister("Cmd\u0000K"))
-  const registerNulExit = yield* Effect.exit(client.register("Cmd\u0000K", windowHandle))
+  const registerEmptyExit = await Effect.runPromiseExit(client.register("", windowHandle))
+  const isRegisteredEmptyExit = await Effect.runPromiseExit(client.isRegistered(""))
+  const unregisterNulExit = await Effect.runPromiseExit(client.unregister("Cmd\u0000K"))
+  const registerNulExit = await Effect.runPromiseExit(client.register("Cmd\u0000K", windowHandle))
 
   expectExitFailure(registerEmptyExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(isRegisteredEmptyExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -9663,8 +9318,8 @@ test("native host RPC runtime denies protected GlobalShortcut calls before handl
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "global-shortcut-denied",
@@ -9673,9 +9328,8 @@ test("native host RPC runtime denies protected GlobalShortcut calls before handl
             traceId: "trace-global-shortcut-denied",
             payload: { accelerator: "CmdOrCtrl+K", registrarWindow: windowHandle }
           })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
+        )
+        .pipe(Effect.provide(Layer.effect(PermissionRegistry, makePermissionRegistry())))
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -9688,18 +9342,18 @@ test("native host RPC runtime denies protected GlobalShortcut calls before handl
 test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events, keeps listening after command failure, and unregisters on scope close", async () => {
   const calls: string[] = []
   const rows: AuditEvent[] = []
-  const pressed = yield* (Queue.unbounded<GlobalShortcutPressedEvent>())
-  const invoked = yield* (Deferred.make<void>())
-  const resources = yield* (makeResourceRegistry())
-  const permissions = yield* (
+  const pressed = await Effect.runPromise(Queue.unbounded<GlobalShortcutPressedEvent>())
+  const invoked = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(
     makePermissionRegistry({ audit: memoryAudit(rows), traceId: () => "trace-1" })
   )
-  const commands = yield* (
+  const commands = await Effect.runPromise(
     makeCommandRegistry(resources, permissions, { audit: memoryAudit(rows) })
   )
-  yield* (permissions.declare(globalShortcutCommandCapability, { source: "test" }))
+  await Effect.runPromise(permissions.declare(globalShortcutCommandCapability, { source: "test" }))
   let handlerCalls = 0
-  yield* (
+  await Effect.runPromise(
     registerTestCommand(commands, {
       id: "openProject",
       payload: Schema.Void,
@@ -9716,24 +9370,25 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
     })
   )
 
-  const handle = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const shortcuts = yield* GlobalShortcut
-        return yield* shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
-      }),
-      Layer.mergeAll(
-        makeGlobalShortcutServiceLayer({
-          ...globalShortcutClient(calls),
-          onPressed: () => Stream.fromQueue(pressed)
-        }),
-        Layer.succeed(ResourceRegistry)(resources),
-        Layer.succeed(CommandRegistry)(commands)
+  const handle = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      return yield* shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeGlobalShortcutServiceLayer({
+            ...globalShortcutClient(calls),
+            onPressed: () => Stream.fromQueue(pressed)
+          }),
+          Layer.succeed(ResourceRegistry)(resources),
+          Layer.succeed(CommandRegistry)(commands)
+        )
       )
     )
   )
 
-  yield* (
+  await Effect.runPromise(
     Queue.offer(
       pressed,
       new GlobalShortcutPressedEvent({
@@ -9742,7 +9397,7 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
       })
     )
   )
-  yield* (
+  await Effect.runPromise(
     Queue.offer(
       pressed,
       new GlobalShortcutPressedEvent({
@@ -9751,7 +9406,7 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
       })
     )
   )
-  yield* (
+  await Effect.runPromise(
     Queue.offer(
       pressed,
       new GlobalShortcutPressedEvent({
@@ -9760,7 +9415,7 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
       })
     )
   )
-  yield* (
+  await Effect.runPromise(
     Queue.offer(
       pressed,
       new GlobalShortcutPressedEvent({
@@ -9769,9 +9424,9 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
       })
     )
   )
-  yield* (Deferred.await(invoked))
-  yield* (resources.closeScope(windowHandle.ownerScope))
-  yield* (
+  await Effect.runPromise(Deferred.await(invoked))
+  await Effect.runPromise(resources.closeScope(windowHandle.ownerScope))
+  await Effect.runPromise(
     Effect.gen(function* () {
       yield* Queue.offer(
         pressed,
@@ -9828,18 +9483,18 @@ test("command binding warning errors expose bounded attributes only", () => {
 test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events and unregisters on scope close", async () => {
   const calls: string[] = []
   const rows: AuditEvent[] = []
-  const pressed = yield* (Queue.unbounded<GlobalShortcutPressedEvent>())
-  const invoked = yield* (Deferred.make<void>())
-  const resources = yield* (makeResourceRegistry())
-  const permissions = yield* (
+  const pressed = await Effect.runPromise(Queue.unbounded<GlobalShortcutPressedEvent>())
+  const invoked = await Effect.runPromise(Deferred.make<void>())
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(
     makePermissionRegistry({ audit: memoryAudit(rows), traceId: () => "trace-1" })
   )
-  const commands = yield* (
+  const commands = await Effect.runPromise(
     makeCommandRegistry(resources, permissions, { audit: memoryAudit(rows) })
   )
-  yield* (permissions.declare(globalShortcutCommandCapability, { source: "test" }))
+  await Effect.runPromise(permissions.declare(globalShortcutCommandCapability, { source: "test" }))
   let handlerCalls = 0
-  yield* (
+  await Effect.runPromise(
     registerTestCommand(commands, {
       id: "openProject",
       payload: Schema.Void,
@@ -9852,24 +9507,25 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
     })
   )
 
-  const handle = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const shortcuts = yield* GlobalShortcut
-        return yield* shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
-      }),
-      Layer.mergeAll(
-        makeGlobalShortcutServiceLayer({
-          ...globalShortcutClient(calls),
-          onPressed: () => Stream.fromQueue(pressed)
-        }),
-        Layer.succeed(ResourceRegistry)(resources),
-        Layer.succeed(CommandRegistry)(commands)
+  const handle = await Effect.runPromise(
+    Effect.gen(function* () {
+      const shortcuts = yield* GlobalShortcut
+      return yield* shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeGlobalShortcutServiceLayer({
+            ...globalShortcutClient(calls),
+            onPressed: () => Stream.fromQueue(pressed)
+          }),
+          Layer.succeed(ResourceRegistry)(resources),
+          Layer.succeed(CommandRegistry)(commands)
+        )
       )
     )
   )
 
-  yield* (
+  await Effect.runPromise(
     Queue.offer(
       pressed,
       new GlobalShortcutPressedEvent({
@@ -9878,7 +9534,7 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
       })
     )
   )
-  yield* (
+  await Effect.runPromise(
     Queue.offer(
       pressed,
       new GlobalShortcutPressedEvent({
@@ -9887,7 +9543,7 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
       })
     )
   )
-  yield* (
+  await Effect.runPromise(
     Queue.offer(
       pressed,
       new GlobalShortcutPressedEvent({
@@ -9896,9 +9552,9 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
       })
     )
   )
-  yield* (Deferred.await(invoked))
-  yield* (resources.closeScope(windowHandle.ownerScope))
-  yield* (
+  await Effect.runPromise(Deferred.await(invoked))
+  await Effect.runPromise(resources.closeScope(windowHandle.ownerScope))
+  await Effect.runPromise(
     Effect.gen(function* () {
       yield* Queue.offer(
         pressed,
@@ -9933,31 +9589,31 @@ test("GlobalShortcut conflicts are typed Effect values", () =>
         Layer.succeed(ResourceRegistry)(bindingResources),
         Layer.succeed(CommandRegistry)(bindingCommands)
       )
-      const conflictExit = yield* runScoped(
-        Effect.gen(function* () {
-          const shortcuts = yield* GlobalShortcut
-          return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
-        }),
-        makeGlobalShortcutServiceLayer({
-          ...globalShortcutClient([]),
-          register: (accelerator) =>
-            Effect.fail(makeGlobalShortcutAlreadyRegisteredError(accelerator))
-        })
-      )
-      const bindConflictExit = yield* runScoped(
-        Effect.gen(function* () {
-          const shortcuts = yield* GlobalShortcut
-          return yield* Effect.exit(
-            shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
-          )
-        }),
-        Layer.mergeAll(
+      const conflictExit = yield* Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+      }).pipe(
+        Effect.provide(
           makeGlobalShortcutServiceLayer({
             ...globalShortcutClient([]),
             register: (accelerator) =>
               Effect.fail(makeGlobalShortcutAlreadyRegisteredError(accelerator))
-          }),
-          bindingCoreLayer
+          })
+        )
+      )
+      const bindConflictExit = yield* Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        return yield* Effect.exit(shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle))
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            makeGlobalShortcutServiceLayer({
+              ...globalShortcutClient([]),
+              register: (accelerator) =>
+                Effect.fail(makeGlobalShortcutAlreadyRegisteredError(accelerator))
+            }),
+            bindingCoreLayer
+          )
         )
       )
       expectExitFailure(conflictExit, (error) => hasErrorTag(error, "AlreadyExists"))
@@ -9984,20 +9640,14 @@ test("GlobalShortcut service propagates unsupported platform and host failure", 
         register: () => Effect.fail(makeHostProtocolHostUnavailableError("GlobalShortcut.register"))
       }
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const shortcuts = yield* GlobalShortcut
-          return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
-        }),
-        makeGlobalShortcutServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const shortcuts = yield* GlobalShortcut
-          return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
-        }),
-        makeGlobalShortcutServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+      }).pipe(Effect.provide(makeGlobalShortcutServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+      }).pipe(Effect.provide(makeGlobalShortcutServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -10007,15 +9657,14 @@ test("GlobalShortcut service propagates unsupported platform and host failure", 
 test("Linux GlobalShortcut client reports missing host adapters as typed unsupported values", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const shortcuts = yield* GlobalShortcut
-          const supported = yield* shortcuts.isSupported()
-          const registerExit = yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
-          const x11Supported = yield* makeLinuxGlobalShortcutClient("x11").isSupported()
-          return { registerExit, supported, x11Supported }
-        }),
-        makeGlobalShortcutServiceLayer(makeLinuxGlobalShortcutClient("wayland"))
+      const result = yield* Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        const supported = yield* shortcuts.isSupported()
+        const registerExit = yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+        const x11Supported = yield* makeLinuxGlobalShortcutClient("x11").isSupported()
+        return { registerExit, supported, x11Supported }
+      }).pipe(
+        Effect.provide(makeGlobalShortcutServiceLayer(makeLinuxGlobalShortcutClient("wayland")))
       )
 
       expect(result.supported).toEqual(
@@ -10387,59 +10036,56 @@ test("Window service delegates through a substitutable WindowClient port", () =>
           )
       }
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const created = yield* window.create({ title: "Main" })
-          yield* window.show(created)
-          yield* window.hide(created)
-          yield* window.focus(created)
-          const current = yield* window.getCurrent()
-          const byId = yield* window.getById(String(created.id))
-          const windows = yield* window.list()
-          const parent = yield* window.getParent(created)
-          const children = yield* window.getChildren(created)
-          const bounds = yield* window.getBounds(created)
-          yield* window.setBounds(
-            created,
-            new WindowBounds({ x: bounds.x, y: bounds.y, width: 800, height: 600 })
-          )
-          yield* window.setBoundsOnDisplay(
-            created,
-            "display-1",
-            new WindowBounds({ x: 15, y: 25, width: 700, height: 500 })
-          )
-          yield* window.center(created)
-          yield* window.centerOnDisplay(created, "display-1")
-          yield* window.setTitle(created, "Renamed")
-          yield* window.setResizable(created, false)
-          yield* window.setDecorations(created, true)
-          yield* window.setTrafficLights(created, { x: 12, y: 13 })
-          yield* window.setVibrancy(created, "windowBackground")
-          yield* window.clearVibrancy(created)
-          yield* window.setShadow(created, false)
-          yield* window.setTitleBarStyle(created, "hiddenInset")
-          yield* window.setTitleBarTransparent(created, true)
-          yield* window.setTransparent(created, true)
-          yield* window.setAlwaysOnTop(created, true)
-          yield* window.setSkipTaskbar(created, true)
-          yield* window.setProgress(created, { state: "normal", progress: 42 })
-          yield* window.requestAttention(created, "critical")
-          yield* window.cancelAttention(created)
-          yield* window.minimize(created)
-          yield* window.maximize(created)
-          yield* window.setFullscreen(created, true)
-          yield* window.setSimpleFullscreen(created, true)
-          const state = yield* window.getState(created)
-          const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
-          yield* window.restore(created)
-          yield* window.destroy(created)
-          yield* window.close(created)
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const created = yield* window.create({ title: "Main" })
+        yield* window.show(created)
+        yield* window.hide(created)
+        yield* window.focus(created)
+        const current = yield* window.getCurrent()
+        const byId = yield* window.getById(String(created.id))
+        const windows = yield* window.list()
+        const parent = yield* window.getParent(created)
+        const children = yield* window.getChildren(created)
+        const bounds = yield* window.getBounds(created)
+        yield* window.setBounds(
+          created,
+          new WindowBounds({ x: bounds.x, y: bounds.y, width: 800, height: 600 })
+        )
+        yield* window.setBoundsOnDisplay(
+          created,
+          "display-1",
+          new WindowBounds({ x: 15, y: 25, width: 700, height: 500 })
+        )
+        yield* window.center(created)
+        yield* window.centerOnDisplay(created, "display-1")
+        yield* window.setTitle(created, "Renamed")
+        yield* window.setResizable(created, false)
+        yield* window.setDecorations(created, true)
+        yield* window.setTrafficLights(created, { x: 12, y: 13 })
+        yield* window.setVibrancy(created, "windowBackground")
+        yield* window.clearVibrancy(created)
+        yield* window.setShadow(created, false)
+        yield* window.setTitleBarStyle(created, "hiddenInset")
+        yield* window.setTitleBarTransparent(created, true)
+        yield* window.setTransparent(created, true)
+        yield* window.setAlwaysOnTop(created, true)
+        yield* window.setSkipTaskbar(created, true)
+        yield* window.setProgress(created, { state: "normal", progress: 42 })
+        yield* window.requestAttention(created, "critical")
+        yield* window.cancelAttention(created)
+        yield* window.minimize(created)
+        yield* window.maximize(created)
+        yield* window.setFullscreen(created, true)
+        yield* window.setSimpleFullscreen(created, true)
+        const state = yield* window.getState(created)
+        const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
+        yield* window.restore(created)
+        yield* window.destroy(created)
+        yield* window.close(created)
 
-          return { bounds, byId, children, created, current, event, parent, state, windows }
-        }),
-        makeWindowServiceLayer(client)
-      )
+        return { bounds, byId, children, created, current, event, parent, state, windows }
+      }).pipe(Effect.provide(makeWindowServiceLayer(client)))
 
       expect(result.created).toEqual(windowHandle)
       expect(result.current).toEqual(windowHandle)
@@ -10517,13 +10163,10 @@ test("Window service can be composed from a separately provided WindowClient", (
           })
       }
 
-      const created = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          return yield* window.create()
-        }),
-        Layer.provide(WindowLive, Layer.succeed(WindowClient)(client))
-      )
+      const created = yield* Effect.gen(function* () {
+        const window = yield* Window
+        return yield* window.create()
+      }).pipe(Effect.provide(Layer.provide(WindowLive, Layer.succeed(WindowClient)(client))))
 
       expect(created.id).toBe(resourceId("window-1"))
       expect(calls).toEqual(["create:0"])
@@ -10613,64 +10256,65 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
           1_710_000_000_028, 1_710_000_000_029, 1_710_000_000_030
         ])
       })
-      const program = runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const created = yield* window.create({
-            title: "Main",
-            width: 320,
-            height: 240,
-            titleBarStyle: "hiddenInset",
-            vibrancy: "windowBackground",
-            trafficLights: { x: 12, y: 13 }
-          })
-          const duringLifetime = yield* registry.list()
-          yield* window.show(created)
-          yield* window.hide(created)
-          yield* window.focus(created)
-          const bounds = yield* window.getBounds(created)
-          yield* window.setBounds(
-            created,
-            new WindowBounds({ x: 30, y: 40, width: bounds.width, height: bounds.height })
-          )
-          yield* window.setBoundsOnDisplay(
-            created,
-            "display-1",
-            new WindowBounds({ x: 15, y: 25, width: 320, height: 240 })
-          )
-          yield* window.center(created)
-          yield* window.centerOnDisplay(created, "display-1")
-          yield* window.setTitle(created, "Renamed")
-          yield* window.setResizable(created, false)
-          yield* window.setDecorations(created, true)
-          yield* window.setTrafficLights(created, { x: 12, y: 13 })
-          yield* window.setVibrancy(created, "windowBackground")
-          yield* window.clearVibrancy(created)
-          yield* window.setShadow(created, false)
-          yield* window.setTitleBarStyle(created, "hiddenInset")
-          yield* window.setTitleBarTransparent(created, true)
-          yield* window.setTransparent(created, true)
-          yield* window.setAlwaysOnTop(created, true)
-          yield* window.setSkipTaskbar(created, true)
-          yield* window.setProgress(created, {
-            state: "normal",
-            progress: 42,
-            window: handleFor("forged-window")
-          } as Parameters<typeof window.setProgress>[1])
-          yield* window.requestAttention(created, "critical")
-          yield* window.cancelAttention(created)
-          yield* window.minimize(created)
-          yield* window.maximize(created)
-          yield* window.setFullscreen(created, true)
-          yield* window.setSimpleFullscreen(created, true)
-          const state = yield* window.getState(created)
-          yield* window.restore(created)
-          yield* window.close(created)
-          const afterClose = yield* registry.list()
+      const program = Effect.gen(function* () {
+        const window = yield* Window
+        const created = yield* window.create({
+          title: "Main",
+          width: 320,
+          height: 240,
+          titleBarStyle: "hiddenInset",
+          vibrancy: "windowBackground",
+          trafficLights: { x: 12, y: 13 }
+        })
+        const duringLifetime = yield* registry.list()
+        yield* window.show(created)
+        yield* window.hide(created)
+        yield* window.focus(created)
+        const bounds = yield* window.getBounds(created)
+        yield* window.setBounds(
+          created,
+          new WindowBounds({ x: 30, y: 40, width: bounds.width, height: bounds.height })
+        )
+        yield* window.setBoundsOnDisplay(
+          created,
+          "display-1",
+          new WindowBounds({ x: 15, y: 25, width: 320, height: 240 })
+        )
+        yield* window.center(created)
+        yield* window.centerOnDisplay(created, "display-1")
+        yield* window.setTitle(created, "Renamed")
+        yield* window.setResizable(created, false)
+        yield* window.setDecorations(created, true)
+        yield* window.setTrafficLights(created, { x: 12, y: 13 })
+        yield* window.setVibrancy(created, "windowBackground")
+        yield* window.clearVibrancy(created)
+        yield* window.setShadow(created, false)
+        yield* window.setTitleBarStyle(created, "hiddenInset")
+        yield* window.setTitleBarTransparent(created, true)
+        yield* window.setTransparent(created, true)
+        yield* window.setAlwaysOnTop(created, true)
+        yield* window.setSkipTaskbar(created, true)
+        yield* window.setProgress(created, {
+          state: "normal",
+          progress: 42,
+          window: handleFor("forged-window")
+        } as Parameters<typeof window.setProgress>[1])
+        yield* window.requestAttention(created, "critical")
+        yield* window.cancelAttention(created)
+        yield* window.minimize(created)
+        yield* window.maximize(created)
+        yield* window.setFullscreen(created, true)
+        yield* window.setSimpleFullscreen(created, true)
+        const state = yield* window.getState(created)
+        yield* window.restore(created)
+        yield* window.close(created)
+        const afterClose = yield* registry.list()
 
-          return { created, duringLifetime, afterClose, state }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        return { created, duringLifetime, afterClose, state }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
 
       const result = yield* program
@@ -10931,15 +10575,16 @@ test("host WindowClient adapter exposes explicit destroy through host destroy", 
         now: nextNumber([1_710_000_000_100, 1_710_000_000_101])
       })
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const created = yield* window.create({ title: "Destroy" })
-          yield* window.destroy(created)
-          const afterDestroy = yield* registry.list()
-          return { afterDestroy, created }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const created = yield* window.create({ title: "Destroy" })
+        yield* window.destroy(created)
+        const afterDestroy = yield* registry.list()
+        return { afterDestroy, created }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
 
       expect(String(result.created.id)).toBe("host-window-1")
@@ -10991,18 +10636,19 @@ test("host WindowClient adapter creates owned child windows and closes children 
         ])
       })
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const parent = yield* window.create({ title: "Parent" })
-          const child = yield* window.create({ title: "Child", parent })
-          const duringLifetime = yield* registry.list()
-          yield* window.close(parent)
-          const afterClose = yield* registry.list()
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const parent = yield* window.create({ title: "Parent" })
+        const child = yield* window.create({ title: "Child", parent })
+        const duringLifetime = yield* registry.list()
+        yield* window.close(parent)
+        const afterClose = yield* registry.list()
 
-          return { afterClose, child, duringLifetime, parent }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        return { afterClose, child, duringLifetime, parent }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
 
       expect(String(result.parent.id)).toBe("host-parent")
@@ -11023,7 +10669,7 @@ test("host WindowClient adapter creates owned child windows and closes children 
 
 test("host WindowClient adapter looks up current, id, list, and removes closed windows", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const router = yield* makeAppEventRouter()
@@ -11110,35 +10756,36 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
         },
         router
       )
-      return yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const parent = yield* window.create({ title: "Parent" })
-          const currentParent = yield* window.getCurrent()
-          const child = yield* window.create({ title: "Child", parent })
-          const listed = yield* window.list()
-          const childParent = yield* window.getParent(child)
-          const parentChildren = yield* window.getChildren(parent)
-          const parentById = yield* window.getById(String(parent.id))
-          yield* window.focus(child)
-          const currentChild = yield* window.getCurrent()
-          yield* window.close(child)
-          const closedChildExit = yield* Effect.exit(window.getById(String(child.id)))
-          yield* window.close(parent)
+      return yield* Effect.gen(function* () {
+        const window = yield* Window
+        const parent = yield* window.create({ title: "Parent" })
+        const currentParent = yield* window.getCurrent()
+        const child = yield* window.create({ title: "Child", parent })
+        const listed = yield* window.list()
+        const childParent = yield* window.getParent(child)
+        const parentChildren = yield* window.getChildren(parent)
+        const parentById = yield* window.getById(String(parent.id))
+        yield* window.focus(child)
+        const currentChild = yield* window.getCurrent()
+        yield* window.close(child)
+        const closedChildExit = yield* Effect.exit(window.getById(String(child.id)))
+        yield* window.close(parent)
 
-          return {
-            child,
-            childParent,
-            closedChildExit,
-            currentChild,
-            currentParent,
-            listed,
-            parent,
-            parentChildren,
-            parentById
-          }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        return {
+          child,
+          childParent,
+          closedChildExit,
+          currentChild,
+          currentParent,
+          listed,
+          parent,
+          parentChildren,
+          parentById
+        }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
     })
   )
@@ -11173,28 +10820,29 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
 })
 
 test("Window.events streams renderer-visible lifecycle events from the app router", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const router = yield* makeAppEventRouter()
       const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry, {}, router)
 
-      return yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const eventsFiber = yield* window
-            .events()
-            .pipe(Stream.take(5), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
-          yield* Effect.sleep("10 millis")
-          const created = yield* window.create({ title: "Events" })
-          yield* window.show(created)
-          yield* window.hide(created)
-          yield* window.focus(created)
-          yield* window.close(created)
+      return yield* Effect.gen(function* () {
+        const window = yield* Window
+        const eventsFiber = yield* window
+          .events()
+          .pipe(Stream.take(5), Stream.runCollect, Effect.forkChild({ startImmediately: true }))
+        yield* Effect.sleep("10 millis")
+        const created = yield* window.create({ title: "Events" })
+        yield* window.show(created)
+        yield* window.hide(created)
+        yield* window.focus(created)
+        yield* window.close(created)
 
-          return yield* Fiber.join(eventsFiber)
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        return yield* Fiber.join(eventsFiber)
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
     })
   )
@@ -11262,20 +10910,21 @@ test("Window.events registers host-originated opened events in ResourceRegistry"
             : Stream.empty
       }
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const event = yield* window.events().pipe(
-            Stream.filter(
-              (event) => event.type === "window-registry-event" && event.phase === "opened"
-            ),
-            Stream.take(1),
-            Stream.runHead
-          )
-          const snapshot = yield* registry.list()
-          return { event, snapshot }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const event = yield* window.events().pipe(
+          Stream.filter(
+            (event) => event.type === "window-registry-event" && event.phase === "opened"
+          ),
+          Stream.take(1),
+          Stream.runHead
+        )
+        const snapshot = yield* registry.list()
+        return { event, snapshot }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        )
       )
 
       const event = Option.getOrThrow(result.event)
@@ -11327,14 +10976,15 @@ test("Window.events rejects host-originated opened events with mismatched handle
             : Stream.empty
       }
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const eventExit = yield* Effect.exit(window.events().pipe(Stream.take(1), Stream.runHead))
-          const snapshot = yield* registry.list()
-          return { eventExit, snapshot }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const eventExit = yield* Effect.exit(window.events().pipe(Stream.take(1), Stream.runHead))
+        const snapshot = yield* registry.list()
+        return { eventExit, snapshot }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        )
       )
 
       expectExitFailure(
@@ -11400,14 +11050,15 @@ test("Window.events strips handles for host-originated events without local reso
             : Stream.empty
       }
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const events = yield* window.events().pipe(Stream.take(3), Stream.runCollect)
-          const snapshot = yield* registry.list()
-          return { events, snapshot }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const events = yield* window.events().pipe(Stream.take(3), Stream.runCollect)
+        const snapshot = yield* registry.list()
+        return { events, snapshot }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        )
       )
 
       expect(Array.from(result.events).map((event) => event.window)).toEqual([
@@ -11456,15 +11107,16 @@ test("Window.events closes ResourceRegistry handles for host-originated terminal
             : Stream.empty
       }
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const created = yield* window.create({ title: "Host closed" })
-          const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
-          const snapshot = yield* registry.list()
-          return { created, event, snapshot }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const created = yield* window.create({ title: "Host closed" })
+        const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
+        const snapshot = yield* registry.list()
+        return { created, event, snapshot }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        )
       )
 
       const event = Option.getOrThrow(result.event)
@@ -11515,15 +11167,16 @@ test("Window.events attaches host-originated state events to fresh handles", () 
             : Stream.empty
       }
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const created = yield* window.create({ title: "Host state" })
-          const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
-          const state = yield* window.getState(created)
-          return { created, event, state }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const created = yield* window.create({ title: "Host state" })
+        const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
+        const state = yield* window.getState(created)
+        return { created, event, state }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        )
       )
 
       const event = Option.getOrThrow(result.event)
@@ -11584,14 +11237,15 @@ test("Window.events attaches host-originated bounds events to fresh handles", ()
             : Stream.empty
       }
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const created = yield* window.create({ title: "Host bounds" })
-          const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
-          return { created, event }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const created = yield* window.create({ title: "Host bounds" })
+        const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
+        return { created, event }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        )
       )
 
       const event = Option.getOrThrow(result.event)
@@ -11608,8 +11262,8 @@ test("Window.events attaches host-originated bounds events to fresh handles", ()
 
 test("Window.events checks and audits subscribe permission before opening the event stream", async () => {
   const deniedRows: AuditEvent[] = []
-  const deniedRegistry = yield* (makeResourceRegistry())
-  const deniedPermissions = yield* (
+  const deniedRegistry = await Effect.runPromise(makeResourceRegistry())
+  const deniedPermissions = await Effect.runPromise(
     makePermissionRegistry({ audit: memoryAudit(deniedRows), traceId: () => "trace-denied" })
   )
   let deniedSubscribeCount = 0
@@ -11618,26 +11272,30 @@ test("Window.events checks and audits subscribe permission before opening the ev
   })
   const deniedExchange: BridgeClientExchange = {
     request: (request) =>
-      runScoped(
-        deniedRuntime.dispatch(request),
-        Layer.mergeAll(
-          Layer.succeed(ResourceRegistry)(deniedRegistry),
-          Layer.succeed(PermissionRegistry)(deniedPermissions)
-        )
-      ) as ReturnType<BridgeClientExchange["request"]>,
+      deniedRuntime
+        .dispatch(request)
+        .pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(ResourceRegistry)(deniedRegistry),
+              Layer.succeed(PermissionRegistry)(deniedPermissions)
+            )
+          )
+        ) as ReturnType<BridgeClientExchange["request"]>,
     subscribe: () => {
       deniedSubscribeCount += 1
       return Stream.empty
     }
   }
 
-  const deniedExit = yield* Effect.exit(
-    runScoped(
-      Effect.gen(function* () {
-        const window = yield* Window
-        return yield* window.events().pipe(Stream.take(1), Stream.runHead)
-      }),
-      Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(deniedExchange, deniedRegistry))
+  const deniedExit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.events().pipe(Stream.take(1), Stream.runHead)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(deniedExchange, deniedRegistry))
+      )
     )
   )
 
@@ -11649,11 +11307,11 @@ test("Window.events checks and audits subscribe permission before opening the ev
   ])
 
   const allowedRows: AuditEvent[] = []
-  const allowedRegistry = yield* (makeResourceRegistry())
-  const allowedPermissions = yield* (
+  const allowedRegistry = await Effect.runPromise(makeResourceRegistry())
+  const allowedPermissions = await Effect.runPromise(
     makePermissionRegistry({ audit: memoryAudit(allowedRows), traceId: () => "trace-allowed" })
   )
-  yield* (
+  await Effect.runPromise(
     allowedPermissions.declare(
       P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] }),
       {
@@ -11668,13 +11326,16 @@ test("Window.events checks and audits subscribe permission before opening the ev
   })
   const allowedExchange: BridgeClientExchange = {
     request: (request) =>
-      runScoped(
-        allowedRuntime.dispatch(request),
-        Layer.mergeAll(
-          Layer.succeed(ResourceRegistry)(allowedRegistry),
-          Layer.succeed(PermissionRegistry)(allowedPermissions)
-        )
-      ) as ReturnType<BridgeClientExchange["request"]>,
+      allowedRuntime
+        .dispatch(request)
+        .pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(ResourceRegistry)(allowedRegistry),
+              Layer.succeed(PermissionRegistry)(allowedPermissions)
+            )
+          )
+        ) as ReturnType<BridgeClientExchange["request"]>,
     subscribe: (method) => {
       allowedSubscribeCount += 1
       return method === WINDOW_EVENT_METHOD
@@ -11696,13 +11357,14 @@ test("Window.events checks and audits subscribe permission before opening the ev
     }
   }
 
-  const event = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        const window = yield* Window
-        return yield* window.events().pipe(Stream.take(1), Stream.runHead)
-      }),
-      Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(allowedExchange, allowedRegistry))
+  const event = await Effect.runPromise(
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.events().pipe(Stream.take(1), Stream.runHead)
+    }).pipe(
+      Effect.provide(
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(allowedExchange, allowedRegistry))
+      )
     )
   )
 
@@ -11722,7 +11384,7 @@ test("Window.events checks and audits subscribe permission before opening the ev
 
 test("native host RPC runtime denies Window.getCurrent before lookup work", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const response = yield* Effect.scoped(
+  const response = await runScopedPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const router = yield* makeAppEventRouter()
@@ -11733,8 +11395,8 @@ test("native host RPC runtime denies Window.getCurrent before lookup work", asyn
           originAuth: RendererOriginAuth.unsafeDisabledForTests
         }
       )
-      return yield* runScoped(
-        runtime.dispatch(
+      return yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "window-get-current-denied",
@@ -11742,12 +11404,15 @@ test("native host RPC runtime denies Window.getCurrent before lookup work", asyn
             timestamp: 1710000000000,
             traceId: "trace-window-get-current-denied"
           })
-        ),
-        Layer.mergeAll(
-          Layer.effect(PermissionRegistry, makePermissionRegistry()),
-          Layer.succeed(ResourceRegistry)(registry)
         )
-      )
+        .pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.effect(PermissionRegistry, makePermissionRegistry()),
+              Layer.succeed(ResourceRegistry)(registry)
+            )
+          )
+        )
     })
   )
 
@@ -11902,14 +11567,15 @@ test("Window lookup uses host transport without runtime router", () =>
       const requests: HostProtocolRequestEnvelope[] = []
       const registry = yield* makeResourceRegistry()
       const rpcExchange = makeWindowRpcExchange(windowExchange(requests), registry)
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const created = yield* window.create({ title: "Lookup" })
-          const current = yield* window.getCurrent()
-          return { created, current }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const created = yield* window.create({ title: "Lookup" })
+        const current = yield* window.getCurrent()
+        return { created, current }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
 
       expect(result.current.id).toBe(result.created.id)
@@ -11928,8 +11594,8 @@ test("native host RPC runtime denies owned child Window.create before host trans
         originAuth: RendererOriginAuth.unsafeDisabledForTests
       })
 
-      const response = yield* runScoped(
-        runtime.dispatch(
+      const response = yield* runtime
+        .dispatch(
           new HostProtocolRequestEnvelope({
             kind: "request",
             id: "window-create-child-denied",
@@ -11938,12 +11604,15 @@ test("native host RPC runtime denies owned child Window.create before host trans
             timestamp: 1710000000000,
             traceId: "trace-window-create-child-denied"
           })
-        ),
-        Layer.mergeAll(
-          Layer.effect(PermissionRegistry, makePermissionRegistry()),
-          Layer.effect(ResourceRegistry, makeResourceRegistry())
         )
-      )
+        .pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.effect(PermissionRegistry, makePermissionRegistry()),
+              Layer.effect(ResourceRegistry, makeResourceRegistry())
+            )
+          )
+        )
 
       expect(response.kind).toBe("failure")
       if (response.kind === "failure") {
@@ -11973,20 +11642,14 @@ test("Window service propagates owned child unsupported platform and host failur
       }
       const parent = handleFor("parent")
 
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          return yield* Effect.exit(window.create({ parent }))
-        }),
-        makeWindowServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          return yield* Effect.exit(window.create({ parent }))
-        }),
-        makeWindowServiceLayer(hostFailureClient)
-      )
+      const unsupportedExit = yield* Effect.gen(function* () {
+        const window = yield* Window
+        return yield* Effect.exit(window.create({ parent }))
+      }).pipe(Effect.provide(makeWindowServiceLayer(unsupportedClient)))
+      const hostFailureExit = yield* Effect.gen(function* () {
+        const window = yield* Window
+        return yield* Effect.exit(window.create({ parent }))
+      }).pipe(Effect.provide(makeWindowServiceLayer(hostFailureClient)))
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -12020,14 +11683,15 @@ test("host WindowClient adapter propagates owned child create host failure", () 
         now: nextNumber([1_710_000_001_100, 1_710_000_001_101])
       })
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const parent = yield* window.create({ title: "Parent" })
-          const childExit = yield* Effect.exit(window.create({ title: "Child", parent }))
-          return { childExit, parent }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const parent = yield* window.create({ title: "Parent" })
+        const childExit = yield* Effect.exit(window.create({ title: "Child", parent }))
+        return { childExit, parent }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
 
       expectExitFailure(result.childExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -12065,13 +11729,14 @@ test("host WindowClient adapter propagates lookup host failure", () =>
         now: nextNumber([1_710_000_001_200, 1_710_000_001_201])
       })
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          yield* window.create({ title: "Lookup" })
-          return yield* Effect.exit(window.getCurrent())
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        yield* window.create({ title: "Lookup" })
+        return yield* Effect.exit(window.getCurrent())
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
 
       expectExitFailure(result, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -12116,14 +11781,15 @@ test("host WindowClient adapter rejects mismatched lookup host output", () =>
         now: nextNumber([1_710_000_001_300, 1_710_000_001_301, 1_710_000_001_302])
       })
 
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const parent = yield* window.create({ title: "Parent" })
-          yield* window.create({ title: "Child", parent })
-          return yield* Effect.exit(window.getById(String(parent.id)))
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+      const result = yield* Effect.gen(function* () {
+        const window = yield* Window
+        const parent = yield* window.create({ title: "Parent" })
+        yield* window.create({ title: "Child", parent })
+        return yield* Effect.exit(window.getById(String(parent.id)))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
 
       expectExitFailure(
@@ -12141,7 +11807,7 @@ test("host WindowClient adapter rejects mismatched lookup host output", () =>
   ))
 
 test("AppEventRouter sends firstResponder events to the focused window only", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       yield* router.windowOpened(handleFor("window-1"))
@@ -12177,7 +11843,7 @@ test("AppEventRouter sends firstResponder events to the focused window only", as
 })
 
 test("AppEventRouter buffers one firstResponder event per kind until a window opens", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       yield* router.publish({
@@ -12215,12 +11881,12 @@ test("AppEventRouter buffers one firstResponder event per kind until a window op
 })
 
 test("AppEventRouter rejects empty window identifiers", async () => {
-  const exit = yield* Effect.exit(Effect.scoped(
+  const exit = await runScopedPromiseExit(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       return yield* router.windowOpened(handleFor(""))
     })
-  ))
+  )
 
   expect(Exit.isFailure(exit)).toBe(true)
 })
@@ -12232,7 +11898,7 @@ test("AppEventRouter targetedRoute rejects control-byte window identifiers", () 
 })
 
 test("AppEventRouter rejects control-byte route metadata on publish", async () => {
-  const exit = yield* Effect.exit(Effect.scoped(
+  const exit = await runScopedPromiseExit(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       return yield* router.publish({
@@ -12244,13 +11910,13 @@ test("AppEventRouter rejects control-byte route metadata on publish", async () =
         }
       })
     })
-  ))
+  )
 
   expect(Exit.isFailure(exit)).toBe(true)
 })
 
 test("AppEventRouter observes state transitions for windows, focus, and close", async () => {
-  const snapshots = yield* Effect.scoped(
+  const snapshots = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       const states = yield* router
@@ -12281,7 +11947,7 @@ test("AppEventRouter observes state transitions for windows, focus, and close", 
 })
 
 test("AppEventRouter emits ordered terminal window registry events", async () => {
-  const events = yield* Effect.scoped(
+  const events = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       const collected = yield* router
@@ -12315,7 +11981,7 @@ test("AppEventRouter emits ordered terminal window registry events", async () =>
 })
 
 test("AppEventRouter emits fallback focus after focused window closes", async () => {
-  const events = yield* Effect.scoped(
+  const events = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       const collected = yield* router
@@ -12348,7 +12014,7 @@ test("AppEventRouter emits fallback focus after focused window closes", async ()
 })
 
 test("AppEventRouter observes firstResponder buffered pending and drained transitions", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       const states = yield* router
@@ -12395,7 +12061,7 @@ test("AppEventRouter observes firstResponder buffered pending and drained transi
 })
 
 test("AppEventRouter completes active subscriptions when their window closes", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       yield* router.windowOpened(handleFor("window-1"))
@@ -12413,7 +12079,7 @@ test("AppEventRouter completes active subscriptions when their window closes", a
 })
 
 test("AppEventRouter does not replay normal events to late subscribers", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       yield* router.windowOpened(handleFor("window-1"))
@@ -12440,7 +12106,7 @@ test("AppEventRouter does not replay normal events to late subscribers", async (
 })
 
 test("AppEventRouter drains pending firstResponder events once", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       yield* router.publish({
@@ -12475,7 +12141,7 @@ test("AppEventRouter drains pending firstResponder events once", async () => {
 })
 
 test("AppEventRouter receives live events published while pending replay is consumed", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       yield* router.publish({
@@ -12505,7 +12171,7 @@ test("AppEventRouter receives live events published while pending replay is cons
 })
 
 test("AppEventRouter isolates event channel capacity by window and event name", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter({ eventChannelCapacity: 1 })
       yield* router.windowOpened(handleFor("window-1"))
@@ -12543,7 +12209,7 @@ test("AppEventRouter isolates event channel capacity by window and event name", 
 })
 
 test("AppEventRouter keeps newest audit event when audit replay buffer is full", async () => {
-  const audits = yield* Effect.scoped(
+  const audits = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter({ auditReplayCapacity: 1 })
       yield* router.publish({
@@ -12576,7 +12242,7 @@ test("AppEventRouter keeps newest audit event when audit replay buffer is full",
 
 test("AppEventRouter broadcasts in creation order and short-circuits on refusal", async () => {
   const seen: string[] = []
-  const decision = yield* Effect.scoped(
+  const decision = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       yield* router.windowOpened(handleFor("window-1"))
@@ -12603,7 +12269,7 @@ test("AppEventRouter broadcasts in creation order and short-circuits on refusal"
 })
 
 test("AppEventRouter drops targeted events for closed targets with an audit row", async () => {
-  const audit = yield* Effect.scoped(
+  const audit = await runScopedPromise(
     Effect.gen(function* () {
       const router = yield* makeAppEventRouter()
       const fiber = yield* router
@@ -12634,26 +12300,27 @@ test("AppEventRouter drops targeted events for closed targets with an audit row"
 })
 
 test("host WindowClient adapter declares per-window scopes and closes scoped resources", async () => {
-  const result = yield* Effect.scoped(
+  const result = await runScopedPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const router = yield* makeAppEventRouter()
       const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry, {}, router)
-      return yield* runScoped(
-        Effect.gen(function* () {
-          const window = yield* Window
-          const created = yield* window.create({})
-          const child = yield* registry.register({
-            kind: "stream",
-            ownerScope: created.ownerScope,
-            state: "open"
-          })
-          yield* window.close(created)
-          const afterClose = yield* registry.list()
+      return yield* Effect.gen(function* () {
+        const window = yield* Window
+        const created = yield* window.create({})
+        const child = yield* registry.register({
+          kind: "stream",
+          ownerScope: created.ownerScope,
+          state: "open"
+        })
+        yield* window.close(created)
+        const afterClose = yield* registry.list()
 
-          return { child, afterClose }
-        }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        return { child, afterClose }
+      }).pipe(
+        Effect.provide(
+          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        )
       )
     })
   )
@@ -12667,41 +12334,38 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* WindowClient
-          const malformedInputExit = yield* Effect.exit(
-            client.show({
-              ...windowHandle,
-              // @ts-expect-error intentionally malformed handle id exercises runtime decoding.
-              id: ""
-            })
-          )
-          const unknownExit = yield* Effect.exit(client.focus(windowHandle))
-          const created = yield* client.create({})
-          const invalidDisplayBoundsExit = yield* Effect.exit(
-            client.setBoundsOnDisplay(created, "", { x: 0, y: 0, width: 100, height: 100 })
-          )
-          const invalidDisplayExit = yield* Effect.exit(client.centerOnDisplay(created, ""))
-          const staleExit = yield* Effect.exit(
-            client.hide({
-              ...created,
-              generation: created.generation + 1
-            })
-          )
-          yield* client.close(created)
-          const repeatedCloseExit = yield* Effect.exit(client.close(created))
-          return {
-            invalidDisplayBoundsExit,
-            invalidDisplayExit,
-            malformedInputExit,
-            repeatedCloseExit,
-            staleExit,
-            unknownExit
-          }
-        }),
-        makeWindowTestBridgeClientLayer(rpcExchange, registry)
-      )
+      const result = yield* Effect.gen(function* () {
+        const client = yield* WindowClient
+        const malformedInputExit = yield* Effect.exit(
+          client.show({
+            ...windowHandle,
+            // @ts-expect-error intentionally malformed handle id exercises runtime decoding.
+            id: ""
+          })
+        )
+        const unknownExit = yield* Effect.exit(client.focus(windowHandle))
+        const created = yield* client.create({})
+        const invalidDisplayBoundsExit = yield* Effect.exit(
+          client.setBoundsOnDisplay(created, "", { x: 0, y: 0, width: 100, height: 100 })
+        )
+        const invalidDisplayExit = yield* Effect.exit(client.centerOnDisplay(created, ""))
+        const staleExit = yield* Effect.exit(
+          client.hide({
+            ...created,
+            generation: created.generation + 1
+          })
+        )
+        yield* client.close(created)
+        const repeatedCloseExit = yield* Effect.exit(client.close(created))
+        return {
+          invalidDisplayBoundsExit,
+          invalidDisplayExit,
+          malformedInputExit,
+          repeatedCloseExit,
+          staleExit,
+          unknownExit
+        }
+      }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(rpcExchange, registry)))
 
       expectExitFailure(
         result.malformedInputExit,
@@ -12744,26 +12408,20 @@ test("host WindowClient adapter maps malformed generated RPC successes to typed 
   const invalidCloseExchange: BridgeClientExchange = {
     request: () => Effect.succeed({ kind: "success", payload: { unexpected: true } })
   }
-  const createRegistry = yield* (makeResourceRegistry())
-  const closeRegistry = yield* (makeResourceRegistry())
+  const createRegistry = await Effect.runPromise(makeResourceRegistry())
+  const closeRegistry = await Effect.runPromise(makeResourceRegistry())
 
-  const createExit = yield* Effect.exit(
-    runScoped(
-      Effect.gen(function* () {
-        const client = yield* WindowClient
-        return yield* client.create({})
-      }),
-      makeWindowTestBridgeClientLayer(invalidCreateExchange, createRegistry)
-    )
+  const createExit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const client = yield* WindowClient
+      return yield* client.create({})
+    }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(invalidCreateExchange, createRegistry)))
   )
-  const closeExit = yield* Effect.exit(
-    runScoped(
-      Effect.gen(function* () {
-        const client = yield* WindowClient
-        return yield* client.close(windowHandle)
-      }),
-      makeWindowTestBridgeClientLayer(invalidCloseExchange, closeRegistry)
-    )
+  const closeExit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const client = yield* WindowClient
+      return yield* client.close(windowHandle)
+    }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(invalidCloseExchange, closeRegistry)))
   )
 
   expectExitFailure(
@@ -12782,12 +12440,9 @@ test("host WindowClient adapter exposes only supported callable methods", () =>
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
-      const client = yield* runScoped(
-        Effect.gen(function* () {
-          return yield* WindowClient
-        }),
-        makeWindowTestBridgeClientLayer(rpcExchange, registry)
-      )
+      const client = yield* Effect.gen(function* () {
+        return yield* WindowClient
+      }).pipe(Effect.provide(makeWindowTestBridgeClientLayer(rpcExchange, registry)))
 
       expect("create" in client).toBe(true)
       expect("close" in client).toBe(true)
@@ -12823,12 +12478,13 @@ test("Window bridge client rejects invalid chrome inputs before crossing the hos
         const requests: HostProtocolRequestEnvelope[] = []
         const registry = yield* makeResourceRegistry()
         const rpcExchange = makeWindowRpcExchange(windowExchange(requests), registry)
-        const program = runScoped(
-          Effect.gen(function* () {
-            const window = yield* Window
-            return yield* Effect.exit(window.create(input as WindowCreateOptions))
-          }),
-          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        const program = Effect.gen(function* () {
+          const window = yield* Window
+          return yield* Effect.exit(window.create(input as WindowCreateOptions))
+        }).pipe(
+          Effect.provide(
+            Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+          )
         )
 
         const exit = yield* program
@@ -12841,23 +12497,24 @@ test("Window bridge client rejects invalid chrome inputs before crossing the hos
 
 test("Shell bridge client rejects empty path strings as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Shell
-      }),
-      Layer.provide(
-        ShellLive,
-        makeShellBridgeClientLayer(
-          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const showExit = yield* Effect.exit(client.showItemInFolder(""))
-  const openExit = yield* Effect.exit(client.openPath(""))
-  const trashExit = yield* Effect.exit(client.trashItem(""))
+  const showExit = await Effect.runPromiseExit(client.showItemInFolder(""))
+  const openExit = await Effect.runPromiseExit(client.openPath(""))
+  const trashExit = await Effect.runPromiseExit(client.trashItem(""))
 
   expectExitFailure(showExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(openExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -12867,23 +12524,24 @@ test("Shell bridge client rejects empty path strings as InvalidArgument", async 
 
 test("Shell bridge client rejects control characters in path inputs as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Shell
-      }),
-      Layer.provide(
-        ShellLive,
-        makeShellBridgeClientLayer(
-          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const showExit = yield* Effect.exit(client.showItemInFolder("/tmp/a\u0000b"))
-  const openExit = yield* Effect.exit(client.openPath("/tmp/a\u0000b.txt"))
-  const trashExit = yield* Effect.exit(client.trashItem("/tmp/a\u0000b"))
+  const showExit = await Effect.runPromiseExit(client.showItemInFolder("/tmp/a\u0000b"))
+  const openExit = await Effect.runPromiseExit(client.openPath("/tmp/a\u0000b.txt"))
+  const trashExit = await Effect.runPromiseExit(client.trashItem("/tmp/a\u0000b"))
 
   expectExitFailure(showExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(openExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -12893,24 +12551,25 @@ test("Shell bridge client rejects control characters in path inputs as InvalidAr
 
 test("Shell bridge client rejects unsafe path argv shapes as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Shell
-      }),
-      Layer.provide(
-        ShellLive,
-        makeShellBridgeClientLayer(
-          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Shell
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          ShellLive,
+          makeShellBridgeClientLayer(
+            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const showExit = yield* Effect.exit(client.showItemInFolder("/tmp/../secret"))
-  const openExit = yield* Effect.exit(client.openPath("C:\\Temp\\..\\secret.txt"))
-  const trashExit = yield* Effect.exit(client.trashItem("../secret"))
-  const optionPrefixExit = yield* Effect.exit(client.openPath("-a"))
+  const showExit = await Effect.runPromiseExit(client.showItemInFolder("/tmp/../secret"))
+  const openExit = await Effect.runPromiseExit(client.openPath("C:\\Temp\\..\\secret.txt"))
+  const trashExit = await Effect.runPromiseExit(client.trashItem("../secret"))
+  const optionPrefixExit = await Effect.runPromiseExit(client.openPath("-a"))
 
   expectExitFailure(showExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(openExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -12922,15 +12581,16 @@ test("Shell bridge client rejects unsafe path argv shapes as InvalidArgument", a
 test("Path bridge client rejects empty canonical path strings from host as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const path = yield* Path
-          return yield* Effect.exit(path.appData())
-        }),
-        Layer.provide(
-          PathLive,
-          makePathBridgeClientLayer(
-            pathExchange([], () => ({ kind: "success", payload: { path: "" } }))
+      const exit = yield* Effect.gen(function* () {
+        const path = yield* Path
+        return yield* Effect.exit(path.appData())
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            PathLive,
+            makePathBridgeClientLayer(
+              pathExchange([], () => ({ kind: "success", payload: { path: "" } }))
+            )
           )
         )
       )
@@ -12941,23 +12601,24 @@ test("Path bridge client rejects empty canonical path strings from host as Inval
 
 test("Updater bridge client rejects empty version strings as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Updater
-      }),
-      Layer.provide(
-        UpdaterLive,
-        makeUpdaterBridgeClientLayer(
-          updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const checkExit = yield* Effect.exit(client.check({ currentVersion: "" }))
-  const downloadExit = yield* Effect.exit(client.download({ version: "" }))
-  const installExit = yield* Effect.exit(client.install({ version: "" }))
+  const checkExit = await Effect.runPromiseExit(client.check({ currentVersion: "" }))
+  const downloadExit = await Effect.runPromiseExit(client.download({ version: "" }))
+  const installExit = await Effect.runPromiseExit(client.install({ version: "" }))
 
   expectExitFailure(checkExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(downloadExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -12969,15 +12630,16 @@ test("Updater bridge client rejects check responses missing version when availab
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const checkExit = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* Updater
-          return yield* Effect.exit(client.check({ currentVersion: "1.0.0" }))
-        }),
-        Layer.provide(
-          UpdaterLive,
-          makeUpdaterBridgeClientLayer(
-            updaterExchange(requests, () => ({ kind: "success", payload: { available: true } }))
+      const checkExit = yield* Effect.gen(function* () {
+        const client = yield* Updater
+        return yield* Effect.exit(client.check({ currentVersion: "1.0.0" }))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            UpdaterLive,
+            makeUpdaterBridgeClientLayer(
+              updaterExchange(requests, () => ({ kind: "success", payload: { available: true } }))
+            )
           )
         )
       )
@@ -12999,18 +12661,19 @@ test("Updater bridge client requires version for update-bearing status states", 
         "installing"
       ]
       for (const state of updateStates) {
-        const statusExit = yield* runScoped(
-          Effect.gen(function* () {
-            const client = yield* Updater
-            return yield* Effect.exit(client.getStatus())
-          }),
-          Layer.provide(
-            UpdaterLive,
-            makeUpdaterBridgeClientLayer(
-              updaterExchange([], () => ({
-                kind: "success",
-                payload: { state }
-              }))
+        const statusExit = yield* Effect.gen(function* () {
+          const client = yield* Updater
+          return yield* Effect.exit(client.getStatus())
+        }).pipe(
+          Effect.provide(
+            Layer.provide(
+              UpdaterLive,
+              makeUpdaterBridgeClientLayer(
+                updaterExchange([], () => ({
+                  kind: "success",
+                  payload: { state }
+                }))
+              )
             )
           )
         )
@@ -13023,18 +12686,19 @@ test("Updater bridge client requires version for update-bearing status states", 
 test("Updater bridge client rejects out-of-bounds progress values from host as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* Updater
-          return yield* Effect.exit(client.getStatus())
-        }),
-        Layer.provide(
-          UpdaterLive,
-          makeUpdaterBridgeClientLayer(
-            updaterExchange([], () => ({
-              kind: "success",
-              payload: { state: "downloading", progress: 1.5 }
-            }))
+      const exit = yield* Effect.gen(function* () {
+        const client = yield* Updater
+        return yield* Effect.exit(client.getStatus())
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            UpdaterLive,
+            makeUpdaterBridgeClientLayer(
+              updaterExchange([], () => ({
+                kind: "success",
+                payload: { state: "downloading", progress: 1.5 }
+              }))
+            )
           )
         )
       )
@@ -13045,15 +12709,16 @@ test("Updater bridge client rejects out-of-bounds progress values from host as I
 
 test("Updater bridge client rejects control-byte versions as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Updater
-      }),
-      Layer.provide(
-        UpdaterLive,
-        makeUpdaterBridgeClientLayer(
-          updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Updater
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          UpdaterLive,
+          makeUpdaterBridgeClientLayer(
+            updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
@@ -13062,9 +12727,9 @@ test("Updater bridge client rejects control-byte versions as InvalidArgument", a
   const versions = ["1.0.0\u0000dev", "1.0.0\n", "1.0.0\u007f"]
 
   for (const version of versions) {
-    const checkExit = yield* Effect.exit(client.check({ currentVersion: version }))
-    const downloadExit = yield* Effect.exit(client.download({ version }))
-    const installExit = yield* Effect.exit(client.install({ version }))
+    const checkExit = await Effect.runPromiseExit(client.check({ currentVersion: version }))
+    const downloadExit = await Effect.runPromiseExit(client.download({ version }))
+    const installExit = await Effect.runPromiseExit(client.install({ version }))
 
     expectExitFailure(checkExit, (error) => hasErrorTag(error, "InvalidArgument"))
     expectExitFailure(downloadExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -13077,34 +12742,36 @@ test("Updater bridge client rejects control-byte versions from host output", () 
   Effect.runPromise(
     Effect.gen(function* () {
       const checkRequests: HostProtocolRequestEnvelope[] = []
-      const checkExit = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* Updater
-          return yield* Effect.exit(client.check({ currentVersion: "1.0.0" }))
-        }),
-        Layer.provide(
-          UpdaterLive,
-          makeUpdaterBridgeClientLayer(
-            updaterExchange(checkRequests, () => ({
-              kind: "success",
-              payload: { available: true, version: "1.2.3\n", notes: "update" }
-            }))
+      const checkExit = yield* Effect.gen(function* () {
+        const client = yield* Updater
+        return yield* Effect.exit(client.check({ currentVersion: "1.0.0" }))
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            UpdaterLive,
+            makeUpdaterBridgeClientLayer(
+              updaterExchange(checkRequests, () => ({
+                kind: "success",
+                payload: { available: true, version: "1.2.3\n", notes: "update" }
+              }))
+            )
           )
         )
       )
       const statusRequests: HostProtocolRequestEnvelope[] = []
-      const statusExit = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* Updater
-          return yield* Effect.exit(client.getStatus())
-        }),
-        Layer.provide(
-          UpdaterLive,
-          makeUpdaterBridgeClientLayer(
-            updaterExchange(statusRequests, () => ({
-              kind: "success",
-              payload: { state: "downloading", version: "2.0.0\u007f", progress: 0.5 }
-            }))
+      const statusExit = yield* Effect.gen(function* () {
+        const client = yield* Updater
+        return yield* Effect.exit(client.getStatus())
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            UpdaterLive,
+            makeUpdaterBridgeClientLayer(
+              updaterExchange(statusRequests, () => ({
+                kind: "success",
+                payload: { state: "downloading", version: "2.0.0\u007f", progress: 0.5 }
+              }))
+            )
           )
         )
       )
@@ -13118,22 +12785,23 @@ test("Updater bridge client rejects control-byte versions from host output", () 
 
 test("Dialog bridge client rejects empty message strings as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Dialog
-      }),
-      Layer.provide(
-        DialogLive,
-        makeDialogBridgeClientLayer(
-          dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
+          )
         )
       )
     )
   )
 
-  const messageExit = yield* Effect.exit(client.message({ level: "info", message: "" }))
-  const confirmExit = yield* Effect.exit(client.confirm({ message: "" }))
+  const messageExit = await Effect.runPromiseExit(client.message({ level: "info", message: "" }))
+  const confirmExit = await Effect.runPromiseExit(client.confirm({ message: "" }))
 
   expectExitFailure(messageExit, (error) => hasErrorTag(error, "InvalidArgument"))
   expectExitFailure(confirmExit, (error) => hasErrorTag(error, "InvalidArgument"))
@@ -13142,30 +12810,31 @@ test("Dialog bridge client rejects empty message strings as InvalidArgument", as
 
 test("Dialog bridge client rejects NUL bytes in defaultPath as InvalidArgument", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Dialog
-      }),
-      Layer.provide(
-        DialogLive,
-        makeDialogBridgeClientLayer(
-          dialogExchange(requests, () => ({
-            kind: "success",
-            payload: { paths: [] }
-          }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({
+              kind: "success",
+              payload: { paths: [] }
+            }))
+          )
         )
       )
     )
   )
 
-  const openFileExit = yield* Effect.exit(
+  const openFileExit = await Effect.runPromiseExit(
     client.openFile({ defaultPath: "/tmp/a\u0000b" })
   )
-  const openDirExit = yield* Effect.exit(
+  const openDirExit = await Effect.runPromiseExit(
     client.openDirectory({ defaultPath: "/tmp/a\u0000b" })
   )
-  const saveFileExit = yield* Effect.exit(
+  const saveFileExit = await Effect.runPromiseExit(
     client.saveFile({ defaultPath: "/tmp/a\u0000b" })
   )
 
@@ -13177,39 +12846,40 @@ test("Dialog bridge client rejects NUL bytes in defaultPath as InvalidArgument",
 
 test("Dialog bridge client rejects malformed file filters before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Dialog
-      }),
-      Layer.provide(
-        DialogLive,
-        makeDialogBridgeClientLayer(
-          dialogExchange(requests, () => ({
-            kind: "success",
-            payload: { paths: ["/canonical/file.txt"] }
-          }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({
+              kind: "success",
+              payload: { paths: ["/canonical/file.txt"] }
+            }))
+          )
         )
       )
     )
   )
 
-  const openFileExit = yield* Effect.exit(
+  const openFileExit = await Effect.runPromiseExit(
     client.openFile({ filters: [{ name: "", extensions: ["txt"] }] })
   )
-  const openFileBadNameExit = yield* Effect.exit(
+  const openFileBadNameExit = await Effect.runPromiseExit(
     client.openFile({ filters: [{ name: "Docs", extensions: [""] }] })
   )
-  const openFileBadExtensionExit = yield* Effect.exit(
+  const openFileBadExtensionExit = await Effect.runPromiseExit(
     client.openFile({ filters: [{ name: "Docs", extensions: ["*.txt"] }] })
   )
-  const openFileEmptyExtensionsExit = yield* Effect.exit(
+  const openFileEmptyExtensionsExit = await Effect.runPromiseExit(
     client.openFile({ filters: [{ name: "Docs", extensions: [] }] })
   )
-  const openFileControlExtensionExit = yield* Effect.exit(
+  const openFileControlExtensionExit = await Effect.runPromiseExit(
     client.openFile({ filters: [{ name: "Docs", extensions: ["txt\n"] }] })
   )
-  const openFileNulExtensionExit = yield* Effect.exit(
+  const openFileNulExtensionExit = await Effect.runPromiseExit(
     client.openFile({ filters: [{ name: "Docs", extensions: [`txt${String.fromCharCode(0)}x`] }] })
   )
 
@@ -13245,19 +12915,16 @@ test("Dialog bridge client rejects malformed host output paths as InvalidOutput"
             return { kind: "success", payload: { paths: ["/tmp/good.txt", badPath] } }
           })
 
-          const exit = yield* runScoped(
-            Effect.gen(function* () {
-              const dialog = yield* Dialog
-              if (method === "saveFile") {
-                return yield* Effect.exit(dialog.saveFile({ defaultPath: "/tmp/seed.txt" }))
-              }
-              if (method === "openFile") {
-                return yield* Effect.exit(dialog.openFile({ defaultPath: "/tmp/seed.txt" }))
-              }
-              return yield* Effect.exit(dialog.openDirectory({ defaultPath: "/tmp/seed.txt" }))
-            }),
-            Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))
-          )
+          const exit = yield* Effect.gen(function* () {
+            const dialog = yield* Dialog
+            if (method === "saveFile") {
+              return yield* Effect.exit(dialog.saveFile({ defaultPath: "/tmp/seed.txt" }))
+            }
+            if (method === "openFile") {
+              return yield* Effect.exit(dialog.openFile({ defaultPath: "/tmp/seed.txt" }))
+            }
+            return yield* Effect.exit(dialog.openDirectory({ defaultPath: "/tmp/seed.txt" }))
+          }).pipe(Effect.provide(Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))))
 
           expectExitFailure(
             exit,
@@ -13282,18 +12949,19 @@ test("Dialog bridge client runs generated methods inside the layer scope", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
-      const confirmed = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* Dialog
-          return yield* client.confirm({ message: "Continue?" })
-        }),
-        Layer.provide(
-          DialogLive,
-          makeDialogBridgeClientLayer(
-            dialogExchange(requests, (request) => ({
-              kind: "success",
-              payload: request.method === "Dialog.confirm" ? { confirmed: true } : undefined
-            }))
+      const confirmed = yield* Effect.gen(function* () {
+        const client = yield* Dialog
+        return yield* client.confirm({ message: "Continue?" })
+      }).pipe(
+        Effect.provide(
+          Layer.provide(
+            DialogLive,
+            makeDialogBridgeClientLayer(
+              dialogExchange(requests, (request) => ({
+                kind: "success",
+                payload: request.method === "Dialog.confirm" ? { confirmed: true } : undefined
+              }))
+            )
           )
         )
       )
@@ -13305,45 +12973,46 @@ test("Dialog bridge client runs generated methods inside the layer scope", () =>
 
 test("Dialog bridge client rejects invalid native UI text before transport", async () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  const client = yield* (
-    runScoped(
-      Effect.gen(function* () {
-        return yield* Dialog
-      }),
-      Layer.provide(
-        DialogLive,
-        makeDialogBridgeClientLayer(
-          dialogExchange(requests, () => ({
-            kind: "success",
-            payload: { paths: [] }
-          }))
+  const client = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Dialog
+    }).pipe(
+      Effect.provide(
+        Layer.provide(
+          DialogLive,
+          makeDialogBridgeClientLayer(
+            dialogExchange(requests, () => ({
+              kind: "success",
+              payload: { paths: [] }
+            }))
+          )
         )
       )
     )
   )
 
-  const openFileTitleExit = yield* Effect.exit(client.openFile({ title: "bad\u0000" }))
-  const openDirectoryTitleExit = yield* Effect.exit(
+  const openFileTitleExit = await Effect.runPromiseExit(client.openFile({ title: "bad\u0000" }))
+  const openDirectoryTitleExit = await Effect.runPromiseExit(
     client.openDirectory({ title: "bad\n" })
   )
-  const saveFileTitleExit = yield* Effect.exit(client.saveFile({ title: "" }))
-  const messageTitleExit = yield* Effect.exit(
+  const saveFileTitleExit = await Effect.runPromiseExit(client.saveFile({ title: "" }))
+  const messageTitleExit = await Effect.runPromiseExit(
     client.message({ level: "info", title: "bad\u0000", message: "hello" })
   )
-  const messageTextExit = yield* Effect.exit(
+  const messageTextExit = await Effect.runPromiseExit(
     client.message({ level: "info", message: "hello\nworld" })
   )
-  const messageDetailExit = yield* Effect.exit(
+  const messageDetailExit = await Effect.runPromiseExit(
     client.message({ level: "info", message: "hello", detail: "bad\u007f" })
   )
-  const confirmTitleExit = yield* Effect.exit(
+  const confirmTitleExit = await Effect.runPromiseExit(
     client.confirm({ title: "bad\u0000", message: "go" })
   )
-  const confirmMessageExit = yield* Effect.exit(client.confirm({ message: "go\t" }))
-  const confirmLabelExit = yield* Effect.exit(
+  const confirmMessageExit = await Effect.runPromiseExit(client.confirm({ message: "go\t" }))
+  const confirmLabelExit = await Effect.runPromiseExit(
     client.confirm({ message: "go", confirmLabel: "yes\n" })
   )
-  const cancelLabelExit = yield* Effect.exit(
+  const cancelLabelExit = await Effect.runPromiseExit(
     client.confirm({ message: "go", cancelLabel: "" })
   )
 
@@ -13774,13 +13443,12 @@ const registerTestCommand = <Input>(
   })
 }
 
-const makeCommandBindingLayer = (calls: unknown[] = []) =>
-  Effect.gen(function* () {
-  const resources = yield* (makeResourceRegistry())
-  const permissions = yield* (makePermissionRegistry())
-  const commands = yield* (makeCommandRegistry(resources, permissions))
-  yield* (permissions.declare(menuCommandCapability, { source: "test" }))
-  yield* (
+const makeCommandBindingLayer = async (calls: unknown[] = []) => {
+  const resources = await Effect.runPromise(makeResourceRegistry())
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions))
+  await Effect.runPromise(permissions.declare(menuCommandCapability, { source: "test" }))
+  await Effect.runPromise(
     registerTestCommand(commands, {
       id: "app.file.open",
       payload: Schema.Struct({
@@ -14803,10 +14471,11 @@ const makeWindowRpcExchange = (
     })
   )
   const request: BridgeClientExchange["request"] = (request) =>
-    runScoped(
-      runtime.dispatch(request),
-      Layer.merge(registryLayer, permissionsLayer)
-    ) as ReturnType<BridgeClientExchange["request"]>
+    runtime
+      .dispatch(request)
+      .pipe(Effect.provide(Layer.merge(registryLayer, permissionsLayer))) as ReturnType<
+      BridgeClientExchange["request"]
+    >
 
   const subscribe: BridgeClientExchange["subscribe"] = (method) => {
     if (method !== WINDOW_EVENT_METHOD || appEventRouter === undefined) {
