@@ -1,13 +1,15 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInternalError } from "@effect-desktop/bridge"
+import { type BridgeClientExchange, makeHostProtocolInternalError } from "@effect-desktop/bridge"
 import { type AuditEvent, makePermissionRegistry, P } from "@effect-desktop/core"
 import { Cause, Effect, Exit, Option, Stream } from "effect"
 
 import {
+  makeScopedAccessGrantBridgeClientLayer,
   makeScopedAccessGrantMemoryClient,
   makeScopedAccessGrantServiceLayer,
   makeScopedAccessGrantUnsupportedClient,
   ScopedAccessGrant,
+  ScopedAccessGrantClient,
   type ScopedAccessGrantClientApi
 } from "./scoped-access-grant.js"
 import {
@@ -222,6 +224,33 @@ test("ScopedAccessGrant unsupported client validates then fails closed", async (
   expectExitFailure(exit, (error) => {
     expect(error).toMatchObject({ tag: "Unsupported", operation: "ScopedAccessGrant.grant" })
   })
+})
+
+test("ScopedAccessGrant bridge client fails event stream as unsupported before subscribing", async () => {
+  const subscriptions: string[] = []
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.die("unexpected request"),
+    subscribe: (method) => {
+      subscriptions.push(method)
+      return Stream.empty
+    }
+  }
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* ScopedAccessGrantClient
+      return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
+    }).pipe(Effect.provide(makeScopedAccessGrantBridgeClientLayer(exchange)))
+  )
+
+  expectExitFailure(exit, (error) => {
+    expect(error).toMatchObject({
+      tag: "Unsupported",
+      reason: "host-adapter-unimplemented",
+      operation: "ScopedAccessGrant.Event"
+    })
+  })
+  expect(subscriptions).toEqual([])
 })
 
 const configuredPermissions = async (rows: AuditEvent[]) => {

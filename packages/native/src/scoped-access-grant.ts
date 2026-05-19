@@ -27,7 +27,6 @@ import {
 } from "@effect-desktop/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import {
@@ -468,7 +467,7 @@ const makeScopedAccessGrantService = (
 
 const scopedAccessGrantClientFromRpcClient = (
   client: DesktopRpcClient<ScopedAccessGrantRpc>,
-  exchange: BridgeClientExchange | undefined
+  _exchange: BridgeClientExchange | undefined
 ): ScopedAccessGrantClientApi =>
   Object.freeze({
     grant: (input) =>
@@ -503,8 +502,7 @@ const scopedAccessGrantClientFromRpcClient = (
         client["ScopedAccessGrant.isSupported"](undefined),
         "ScopedAccessGrant.isSupported"
       ),
-    events: () =>
-      subscribeNativeEvent(exchange, ScopedAccessGrantEventMethod, ScopedAccessGrantEvent)
+    events: () => Stream.fail(unsupportedError(ScopedAccessGrantEventMethod))
   } satisfies ScopedAccessGrantClientApi)
 
 function scopedAccessGrantRpc<
