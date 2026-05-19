@@ -47,6 +47,7 @@ import {
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
   WINDOW_REQUEST_ATTENTION_METHOD,
+  WINDOW_CLEAR_VIBRANCY_METHOD,
   WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
@@ -253,6 +254,7 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           request.method === WINDOW_SET_DECORATIONS_METHOD ||
           request.method === WINDOW_SET_TRAFFIC_LIGHTS_METHOD ||
           request.method === WINDOW_SET_VIBRANCY_METHOD ||
+          request.method === WINDOW_CLEAR_VIBRANCY_METHOD ||
           request.method === WINDOW_SET_SHADOW_METHOD ||
           request.method === WINDOW_SET_ALWAYS_ON_TOP_METHOD ||
           request.method === WINDOW_SET_PROGRESS_METHOD ||
@@ -847,6 +849,7 @@ export const runHeadless = <A, E, R>(
         setTrafficLights: (windowId, trafficLights) =>
           rawWindow.setTrafficLights(windowId, trafficLights),
         setVibrancy: (windowId, material) => rawWindow.setVibrancy(windowId, material),
+        clearVibrancy: (windowId) => rawWindow.clearVibrancy(windowId),
         setShadow: (windowId, hasShadow) => rawWindow.setShadow(windowId, hasShadow),
         setTitleBarTransparent: (windowId, titleBarTransparent) =>
           rawWindow.setTitleBarTransparent(windowId, titleBarTransparent),
@@ -958,6 +961,7 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_SET_DECORATIONS_METHOD:
     case WINDOW_SET_TRAFFIC_LIGHTS_METHOD:
     case WINDOW_SET_VIBRANCY_METHOD:
+    case WINDOW_CLEAR_VIBRANCY_METHOD:
     case WINDOW_SET_SHADOW_METHOD:
     case WINDOW_SET_ALWAYS_ON_TOP_METHOD:
     case WINDOW_SET_PROGRESS_METHOD:

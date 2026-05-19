@@ -437,6 +437,7 @@ const makeWindowScenario = (
     setTrafficLights: (_window, _trafficLights): Effect.Effect<void, WindowError, never> =>
       Effect.void,
     setVibrancy: (_window, _material): Effect.Effect<void, WindowError, never> => Effect.void,
+    clearVibrancy: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
     setShadow: (_window, _hasShadow): Effect.Effect<void, WindowError, never> => Effect.void,
     setTitleBarTransparent: (
       _window,

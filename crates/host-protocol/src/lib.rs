@@ -64,6 +64,7 @@ pub const WINDOW_SET_RESIZABLE_METHOD: &str = "Window.setResizable";
 pub const WINDOW_SET_DECORATIONS_METHOD: &str = "Window.setDecorations";
 pub const WINDOW_SET_TRAFFIC_LIGHTS_METHOD: &str = "Window.setTrafficLights";
 pub const WINDOW_SET_VIBRANCY_METHOD: &str = "Window.setVibrancy";
+pub const WINDOW_CLEAR_VIBRANCY_METHOD: &str = "Window.clearVibrancy";
 pub const WINDOW_SET_SHADOW_METHOD: &str = "Window.setShadow";
 pub const WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD: &str = "Window.setTitleBarTransparent";
 pub const WINDOW_SET_ALWAYS_ON_TOP_METHOD: &str = "Window.setAlwaysOnTop";
@@ -3657,6 +3658,24 @@ impl WindowSetVibrancyPayload {
 
     pub fn material(&self) -> &str {
         &self.material
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowClearVibrancyPayload {
+    window_id: String,
+}
+
+impl WindowClearVibrancyPayload {
+    pub fn new(window_id: impl Into<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
     }
 }
 
@@ -11947,18 +11966,18 @@ mod tests {
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
         UpdaterStatusPayload, UpdaterStatusState, UpdaterTrustAnchorPayload, WindowAttentionType,
         WindowBoundsEventPayload, WindowBoundsPayload, WindowCenterOnDisplayPayload,
-        WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload, WindowListResponse,
-        WindowLookupResponse, WindowParentResponse, WindowProgressState,
-        WindowRegistryEventPayload, WindowRegistryEventPhase, WindowRequestAttentionPayload,
-        WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
-        WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
-        WindowSetShadowPayload, WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
-        WindowSetTitleBarTransparentPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
-        WindowSetVibrancyPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
-        WindowTrafficLights, WorkspaceIndexActorKind, WorkspaceIndexActorPayload,
-        WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload,
-        WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
-        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        WindowClearVibrancyPayload, WindowCreatePayload, WindowCreateResponse,
+        WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowParentResponse,
+        WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
+        WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
+        WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
+        WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSimpleFullscreenPayload,
+        WindowSetSkipTaskbarPayload, WindowSetTitleBarTransparentPayload, WindowSetTitlePayload,
+        WindowSetTrafficLightsPayload, WindowSetVibrancyPayload, WindowStateEventPayload,
+        WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
+        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
+        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
+        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
         WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
         CRASH_REPORTER_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS,
@@ -13357,6 +13376,14 @@ mod tests {
             serde_json::to_string(&set_vibrancy)
                 .expect("window set vibrancy payload should encode"),
             r#"{"windowId":"window-1","material":"windowBackground"}"#
+        );
+
+        let clear_vibrancy = WindowClearVibrancyPayload::new("window-1");
+        assert_eq!(clear_vibrancy.window_id(), "window-1");
+        assert_eq!(
+            serde_json::to_string(&clear_vibrancy)
+                .expect("window clear vibrancy payload should encode"),
+            r#"{"windowId":"window-1"}"#
         );
 
         let set_shadow = WindowSetShadowPayload::new("window-1", false);

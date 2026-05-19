@@ -8,6 +8,7 @@ import {
   WINDOW_CENTER_ON_DISPLAY_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_CANCEL_ATTENTION_METHOD,
+  WINDOW_CLEAR_VIBRANCY_METHOD,
   WINDOW_DESTROY_METHOD,
   WINDOW_EVENT_METHOD,
   WINDOW_FOCUS_METHOD,
@@ -227,6 +228,12 @@ export class WindowSetVibrancyPayload extends Schema.Class<WindowSetVibrancyPayl
   material: WindowVibrancyMaterial
 }) {}
 
+export class WindowClearVibrancyPayload extends Schema.Class<WindowClearVibrancyPayload>(
+  "WindowClearVibrancyPayload"
+)({
+  windowId: Schema.NonEmptyString
+}) {}
+
 export class WindowSetShadowPayload extends Schema.Class<WindowSetShadowPayload>(
   "WindowSetShadowPayload"
 )({
@@ -372,6 +379,7 @@ export interface HostWindowClient {
     windowId: string,
     material: WindowVibrancyInput
   ) => Effect.Effect<void, HostProtocolError, never>
+  readonly clearVibrancy: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
   readonly setShadow: (
     windowId: string,
     hasShadow: boolean
@@ -560,6 +568,14 @@ export const makeHostWindowClient = (
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
       }),
+    clearVibrancy: (windowId) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeClearVibrancyPayload(windowId)
+        const request = yield* makeRequest(WINDOW_CLEAR_VIBRANCY_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
     setShadow: (windowId, hasShadow) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetShadowPayload(windowId, hasShadow)
@@ -724,6 +740,7 @@ const decodeUnknownWindowSetTrafficLightsPayload = Schema.decodeUnknownSync(
   WindowSetTrafficLightsPayload
 )
 const decodeUnknownWindowSetVibrancyPayload = Schema.decodeUnknownSync(WindowSetVibrancyPayload)
+const decodeUnknownWindowClearVibrancyPayload = Schema.decodeUnknownSync(WindowClearVibrancyPayload)
 const decodeUnknownWindowSetShadowPayload = Schema.decodeUnknownSync(WindowSetShadowPayload)
 const decodeUnknownWindowSetTitleBarTransparentPayload = Schema.decodeUnknownSync(
   WindowSetTitleBarTransparentPayload
@@ -833,6 +850,14 @@ const encodeSetVibrancyPayload = (
   Effect.try({
     try: () => decodeUnknownWindowSetVibrancyPayload({ windowId, material }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_VIBRANCY_METHOD)
+  })
+
+const encodeClearVibrancyPayload = (
+  windowId: string
+): Effect.Effect<WindowClearVibrancyPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowClearVibrancyPayload({ windowId }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_CLEAR_VIBRANCY_METHOD)
   })
 
 const encodeSetShadowPayload = (

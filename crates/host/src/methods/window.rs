@@ -4,12 +4,12 @@
 
 use crate::window::{WindowCreateRequest, WindowMethodHandler};
 use host_protocol::{
-    HostProtocolError, WindowBoundsPayload, WindowCenterOnDisplayPayload, WindowCreatePayload,
-    WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
-    WindowParentResponse, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
-    WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
-    WindowSetProgressPayload, WindowSetResizablePayload, WindowSetShadowPayload,
-    WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
+    HostProtocolError, WindowBoundsPayload, WindowCenterOnDisplayPayload,
+    WindowClearVibrancyPayload, WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload,
+    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowRequestAttentionPayload,
+    WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
+    WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
+    WindowSetShadowPayload, WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
     WindowSetTitleBarTransparentPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
     WindowSetVibrancyPayload, WindowStatePayload,
 };
@@ -214,6 +214,16 @@ pub(crate) fn set_vibrancy(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_vibrancy_payload(payload)?;
     handler.set_vibrancy(payload.window_id(), payload.material())?;
+
+    Ok(None)
+}
+
+pub(crate) fn clear_vibrancy(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_clear_vibrancy_payload(payload)?;
+    handler.clear_vibrancy(payload.window_id())?;
 
     Ok(None)
 }
@@ -699,6 +709,42 @@ fn decode_set_vibrancy_payload(
             "payload",
             "material must be non-empty",
             host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_clear_vibrancy_payload(
+    payload: Option<Value>,
+) -> Result<WindowClearVibrancyPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_clear_vibrancy_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD
+            ),
+            host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+        )),
+    }
+}
+
+fn decode_clear_vibrancy_payload(
+    payload: Value,
+) -> Result<WindowClearVibrancyPayload, HostProtocolError> {
+    let payload: WindowClearVibrancyPayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+        )
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
         ));
     }
     Ok(payload)

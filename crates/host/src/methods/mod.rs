@@ -344,6 +344,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::set_vibrancy),
     ),
     route(
+        host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+        HostMethodDispatcher::Window(window::clear_vibrancy),
+    ),
+    route(
         host_protocol::WINDOW_SET_SHADOW_METHOD,
         HostMethodDispatcher::Window(window::set_shadow),
     ),
@@ -3883,6 +3887,11 @@ mod tests {
                 "request-window-set-vibrancy",
                 host_protocol::WINDOW_SET_VIBRANCY_METHOD,
                 serde_json::json!({ "windowId": "window-1", "material": "windowBackground" }),
+            ),
+            (
+                "request-window-clear-vibrancy",
+                host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+                serde_json::json!({ "windowId": "window-1" }),
             ),
             (
                 "request-window-set-shadow",
@@ -7513,6 +7522,10 @@ mod tests {
         }
 
         fn set_vibrancy(&self, _window_id: &str, _material: &str) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn clear_vibrancy(&self, _window_id: &str) -> Result<(), HostProtocolError> {
             Ok(())
         }
 

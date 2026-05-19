@@ -283,6 +283,13 @@ export const WindowSetVibrancy = windowRpc(
   P.nativeInvoke({ primitive: "Window", methods: ["setVibrancy"] }),
   WindowVibrancySupport
 )
+export const WindowClearVibrancy = windowRpc(
+  "clearVibrancy",
+  WindowHandleInput,
+  Schema.Void,
+  P.nativeInvoke({ primitive: "Window", methods: ["clearVibrancy"] }),
+  WindowVibrancySupport
+)
 export const WindowSetShadow = windowRpc(
   "setShadow",
   WindowShadowInput,
@@ -394,6 +401,7 @@ const makeWindowRpcGroup = () =>
     WindowSetDecorations,
     WindowSetTrafficLights,
     WindowSetVibrancy,
+    WindowClearVibrancy,
     WindowSetShadow,
     WindowSetTitleBarTransparent,
     WindowSetAlwaysOnTop,
@@ -450,6 +458,7 @@ export const WindowMethodNames = Object.freeze([
   "setDecorations",
   "setTrafficLights",
   "setVibrancy",
+  "clearVibrancy",
   "setShadow",
   "setTitleBarTransparent",
   "setAlwaysOnTop",
@@ -516,6 +525,7 @@ export interface WindowClientApi {
     window: WindowHandle,
     material: WindowVibrancyMaterialInput
   ) => Effect.Effect<void, WindowError, never>
+  readonly clearVibrancy: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly setShadow: (
     window: WindowHandle,
     hasShadow: boolean
@@ -707,6 +717,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       yield* window.setVibrancy(input.window, input.material)
     }),
+  "Window.clearVibrancy": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.clearVibrancy(input.window)
+    }),
   "Window.setShadow": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -829,6 +844,7 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     setDecorations: (window, decorations) => client.setDecorations(window, decorations),
     setTrafficLights: (window, trafficLights) => client.setTrafficLights(window, trafficLights),
     setVibrancy: (window, material) => client.setVibrancy(window, material),
+    clearVibrancy: (window) => client.clearVibrancy(window),
     setShadow: (window, hasShadow) => client.setShadow(window, hasShadow),
     setTitleBarTransparent: (window, titleBarTransparent) =>
       client.setTitleBarTransparent(window, titleBarTransparent),
@@ -998,6 +1014,11 @@ function windowClientFromRpcClient(
       Effect.gen(function* () {
         const decoded = yield* decodeWindowVibrancyInput(window, material, "Window.setVibrancy")
         yield* runWindowRpc(client["Window.setVibrancy"](decoded), "Window.setVibrancy")
+      }),
+    clearVibrancy: (window) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowHandleInput(window, "Window.clearVibrancy")
+        yield* runWindowRpc(client["Window.clearVibrancy"](decoded), "Window.clearVibrancy")
       }),
     setShadow: (window, hasShadow) =>
       Effect.gen(function* () {
@@ -1815,6 +1836,15 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           "Window.setVibrancy"
         )
         yield* host.setVibrancy(window.id, input.material)
+      }),
+    "Window.clearVibrancy": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.clearVibrancy"
+        )
+        yield* host.clearVibrancy(window.id)
       }),
     "Window.setShadow": (input: WindowShadowInput) =>
       Effect.gen(function* () {

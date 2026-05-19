@@ -170,6 +170,8 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         material: &str,
     ) -> std::result::Result<(), HostProtocolError>;
 
+    fn clear_vibrancy(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
     fn set_shadow(
         &self,
         window_id: &str,
@@ -422,6 +424,10 @@ enum WindowCommand {
     SetVibrancy {
         window_id: String,
         material: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    ClearVibrancy {
+        window_id: String,
         reply: Sender<WindowCommandReply>,
     },
     SetShadow {
@@ -1146,6 +1152,16 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_VIBRANCY_METHOD)
+    }
+
+    fn clear_vibrancy(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ClearVibrancy {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD)
     }
 
     fn set_shadow(
@@ -2443,6 +2459,17 @@ impl WindowRegistry {
         macos::set_vibrancy(&resources._window, material)
     }
 
+    fn clear_vibrancy(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+            ));
+        };
+
+        macos::clear_vibrancy(&resources._window)
+    }
+
     fn set_shadow(
         &self,
         window_id: &str,
@@ -3410,6 +3437,13 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_vibrancy(&window_id, &material)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ClearVibrancy { window_id, reply } => {
+                let result = self
+                    .clear_vibrancy(&window_id)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other

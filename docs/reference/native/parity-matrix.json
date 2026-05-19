@@ -3710,6 +3710,33 @@
       "hostStatus": "routed"
     },
     {
+      "tag": "Window.clearVibrancy",
+      "surface": "Window",
+      "method": "clearVibrancy",
+      "capability": "native",
+      "support": {
+        "status": "partial",
+        "reason": "vibrancy-macos-only",
+        "platforms": [
+          {
+            "platform": "macos",
+            "status": "supported"
+          },
+          {
+            "platform": "windows",
+            "status": "unsupported",
+            "reason": "vibrancy-macos-only"
+          },
+          {
+            "platform": "linux",
+            "status": "unsupported",
+            "reason": "vibrancy-macos-only"
+          }
+        ]
+      },
+      "hostStatus": "routed"
+    },
+    {
       "tag": "Window.close",
       "surface": "Window",
       "method": "close",
@@ -4254,11 +4281,11 @@
     }
   ],
   "summary": {
-    "total": 235,
-    "routed": 235,
+    "total": 236,
+    "routed": 236,
     "missing": 0,
     "supported": 127,
-    "partial": 50,
+    "partial": 51,
     "unsupported": 58
   }
 }

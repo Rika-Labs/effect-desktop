@@ -8,6 +8,7 @@ import {
   HostProtocolStaleHandleError,
   HostProtocolUnsupportedError,
   WINDOW_CANCEL_ATTENTION_METHOD,
+  WINDOW_CLEAR_VIBRANCY_METHOD,
   RendererOriginAuth,
   WINDOW_CREATE_METHOD,
   WINDOW_CENTER_METHOD,
@@ -751,6 +752,7 @@ const expectedWindowMethods: Array<(typeof WindowMethodNames)[number]> = [
   "setDecorations",
   "setTrafficLights",
   "setVibrancy",
+  "clearVibrancy",
   "setShadow",
   "setTitleBarTransparent",
   "setAlwaysOnTop",
@@ -8316,6 +8318,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setDecorations",
     "Window.setTrafficLights",
     "Window.setVibrancy",
+    "Window.clearVibrancy",
     "Window.setShadow",
     "Window.setTitleBarTransparent",
     "Window.setAlwaysOnTop",
@@ -8355,6 +8358,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.setDecorations"]
     void client["Window.setTrafficLights"]
     void client["Window.setVibrancy"]
+    void client["Window.clearVibrancy"]
     void client["Window.setShadow"]
     void client["Window.setTitleBarTransparent"]
     void client["Window.setAlwaysOnTop"]
@@ -8392,6 +8396,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setDecorations",
     "Window.setTrafficLights",
     "Window.setVibrancy",
+    "Window.clearVibrancy",
     "Window.setShadow",
     "Window.setTitleBarTransparent",
     "Window.setAlwaysOnTop",
@@ -8516,6 +8521,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     setTrafficLights: (_window, trafficLights) =>
       recordVoid(calls, `setTrafficLights:${trafficLights.x},${trafficLights.y}`),
     setVibrancy: (_window, material) => recordVoid(calls, `setVibrancy:${material}`),
+    clearVibrancy: () => recordVoid(calls, "clearVibrancy"),
     setShadow: (_window, hasShadow) => recordVoid(calls, `setShadow:${hasShadow}`),
     setTitleBarTransparent: (_window, titleBarTransparent) =>
       recordVoid(calls, `setTitleBarTransparent:${titleBarTransparent}`),
@@ -8577,6 +8583,7 @@ test("Window service delegates through a substitutable WindowClient port", async
       yield* window.setDecorations(created, true)
       yield* window.setTrafficLights(created, { x: 12, y: 13 })
       yield* window.setVibrancy(created, "windowBackground")
+      yield* window.clearVibrancy(created)
       yield* window.setShadow(created, false)
       yield* window.setTitleBarTransparent(created, true)
       yield* window.setAlwaysOnTop(created, true)
@@ -8638,6 +8645,7 @@ test("Window service delegates through a substitutable WindowClient port", async
     "setDecorations:true",
     "setTrafficLights:12,13",
     "setVibrancy:windowBackground",
+    "clearVibrancy",
     "setShadow:false",
     "setTitleBarTransparent:true",
     "setAlwaysOnTop:true",
@@ -8696,6 +8704,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-decorations-request",
       "set-traffic-lights-request",
       "set-vibrancy-request",
+      "clear-vibrancy-request",
       "set-shadow-request",
       "set-title-bar-transparent-request",
       "set-always-on-top-request",
@@ -8725,6 +8734,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       "set-decorations-trace",
       "set-traffic-lights-trace",
       "set-vibrancy-trace",
+      "clear-vibrancy-trace",
       "set-shadow-trace",
       "set-title-bar-transparent-trace",
       "set-always-on-top-trace",
@@ -8746,7 +8756,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       1_710_000_000_010, 1_710_000_000_011, 1_710_000_000_012, 1_710_000_000_013, 1_710_000_000_014,
       1_710_000_000_015, 1_710_000_000_016, 1_710_000_000_017, 1_710_000_000_018, 1_710_000_000_019,
       1_710_000_000_020, 1_710_000_000_021, 1_710_000_000_022, 1_710_000_000_023, 1_710_000_000_024,
-      1_710_000_000_025, 1_710_000_000_026
+      1_710_000_000_025, 1_710_000_000_026, 1_710_000_000_027
     ])
   })
   const program = Effect.gen(function* () {
@@ -8775,6 +8785,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     yield* window.setDecorations(created, true)
     yield* window.setTrafficLights(created, { x: 12, y: 13 })
     yield* window.setVibrancy(created, "windowBackground")
+    yield* window.clearVibrancy(created)
     yield* window.setShadow(created, false)
     yield* window.setTitleBarTransparent(created, true)
     yield* window.setAlwaysOnTop(created, true)
@@ -8917,6 +8928,12 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
       {
         windowId: "host-window-1",
         material: "windowBackground"
+      }
+    ],
+    [
+      WINDOW_CLEAR_VIBRANCY_METHOD,
+      {
+        windowId: "host-window-1"
       }
     ],
     [
@@ -10856,6 +10873,7 @@ test("host WindowClient adapter exposes only supported callable methods", async 
   expect("center" in client).toBe(true)
   expect("centerOnDisplay" in client).toBe(true)
   expect("setVibrancy" in client).toBe(true)
+  expect("clearVibrancy" in client).toBe(true)
   expect("setShadow" in client).toBe(true)
   expect("setTitleBarTransparent" in client).toBe(true)
 })
@@ -12083,6 +12101,7 @@ const noopWindowClient: WindowClientApi = {
   setDecorations: () => Effect.void,
   setTrafficLights: () => Effect.void,
   setVibrancy: () => Effect.void,
+  clearVibrancy: () => Effect.void,
   setShadow: () => Effect.void,
   setTitleBarTransparent: () => Effect.void,
   setAlwaysOnTop: () => Effect.void,

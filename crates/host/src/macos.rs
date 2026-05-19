@@ -161,6 +161,10 @@ pub(crate) fn set_vibrancy(
     platform::set_vibrancy(window, material)
 }
 
+pub(crate) fn clear_vibrancy(window: &Window) -> std::result::Result<(), HostProtocolError> {
+    platform::clear_vibrancy(window)
+}
+
 pub(crate) fn set_shadow(
     window: &Window,
     has_shadow: bool,
@@ -334,6 +338,17 @@ mod platform {
                 host_protocol::WINDOW_SET_VIBRANCY_METHOD,
             )
         })
+    }
+
+    pub(super) fn clear_vibrancy(window: &Window) -> std::result::Result<(), HostProtocolError> {
+        window_vibrancy::clear_vibrancy(window)
+            .map(|_| ())
+            .map_err(|error| {
+                HostProtocolError::internal(
+                    format!("failed to clear macOS vibrancy: {error}"),
+                    host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+                )
+            })
     }
 
     pub(super) fn set_shadow(
@@ -557,6 +572,13 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "window vibrancy is only supported on macOS",
             host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        ))
+    }
+
+    pub(super) fn clear_vibrancy(_window: &Window) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window vibrancy is only supported on macOS",
+            host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
         ))
     }
 
