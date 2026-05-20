@@ -160,7 +160,11 @@ const rowFromFact = (
   const surface = separator === -1 ? fact.tag : fact.tag.slice(0, separator)
   const method = separator === -1 ? fact.tag : fact.tag.slice(separator + 1)
   const hostMethod = hostMethodForNativeTag(fact.tag)
-  const hostStatus = hostMethods.has(hostMethod) ? "routed" : "missing"
+  const hostStatus = !fact.callable
+    ? "capability-fact"
+    : hostMethods.has(hostMethod)
+      ? "routed"
+      : "missing"
 
   return new NativeParityMatrixRow({
     tag: fact.tag,

@@ -327,7 +327,8 @@ test("native parity docs and CLI artifact are generated from current source", ()
 const testSurface = (
   tag: string,
   support: RpcSupportMetadata = { status: "supported" },
-  capability: RpcCapabilityMetadata | undefined = { kind: "none" }
+  capability: RpcCapabilityMetadata | undefined = { kind: "none" },
+  callable = true
 ) =>
   Object.freeze({
     schemaDocs: Object.freeze([
@@ -335,9 +336,10 @@ const testSurface = (
         name: tag.slice(tag.lastIndexOf(".") + 1),
         tag,
         kind: "mutation",
-        payload: Schema.Void,
-        success: Schema.Void,
-        error: Schema.Void,
+        callable,
+        payload: callable ? Option.some(Schema.Void) : Option.none(),
+        success: callable ? Option.some(Schema.Void) : Option.none(),
+        error: callable ? Option.some(Schema.Void) : Option.none(),
         stream: Option.none(),
         capability: capability === undefined ? Option.none() : Option.some(capability),
         support
@@ -352,9 +354,10 @@ const testSurfaceWithoutCapability = () =>
         name: "missing",
         tag: "Example.missing",
         kind: "mutation",
-        payload: Schema.Void,
-        success: Schema.Void,
-        error: Schema.Void,
+        callable: true,
+        payload: Option.some(Schema.Void),
+        success: Option.some(Schema.Void),
+        error: Option.some(Schema.Void),
         stream: Option.none(),
         capability: Option.none(),
         support: { status: "supported" }

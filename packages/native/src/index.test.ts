@@ -7979,9 +7979,10 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
           name: doc.name,
           tag: doc.tag,
           kind: doc.kind,
-          payload: doc.payload,
-          success: doc.success,
-          error: doc.error,
+          callable: doc.callable,
+          payload: Option.getOrUndefined(doc.payload),
+          success: Option.getOrUndefined(doc.success),
+          error: Option.getOrUndefined(doc.error),
           stream: doc.stream,
           support: doc.support,
           capability: Option.isSome(doc.capability) ? doc.capability.value : undefined
@@ -7991,6 +7992,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
           name: "getDisplays",
           tag: "Screen.getDisplays",
           kind: "mutation",
+          callable: true,
           payload: Schema.Void,
           success: ScreenDisplaysResult,
           error: HostProtocolErrorSchema,
@@ -8002,6 +8004,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
           name: "getPrimaryDisplay",
           tag: "Screen.getPrimaryDisplay",
           kind: "mutation",
+          callable: true,
           payload: Schema.Void,
           success: ScreenDisplay,
           error: HostProtocolErrorSchema,
@@ -8013,6 +8016,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
           name: "getPointerPoint",
           tag: "Screen.getPointerPoint",
           kind: "mutation",
+          callable: true,
           payload: Schema.Void,
           success: ScreenPoint,
           error: HostProtocolErrorSchema,
@@ -8024,6 +8028,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
           name: "isSupported",
           tag: "Screen.isSupported",
           kind: "mutation",
+          callable: true,
           payload: ScreenIsSupportedInput,
           success: ScreenSupportedResult,
           error: HostProtocolErrorSchema,
@@ -8192,7 +8197,7 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
         expect(Layer.isLayer(surface.clientLayer)).toBe(true)
         expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
         expect(surface.schemaDocs.map((doc) => doc.tag)).toEqual(Array.from(tags))
-        expect(surface.schemaDocs.map((doc) => doc.error)).toEqual(
+        expect(surface.schemaDocs.map((doc) => Option.getOrUndefined(doc.error))).toEqual(
           tags.map(() => HostProtocolErrorSchema)
         )
       }

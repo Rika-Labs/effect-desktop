@@ -1164,7 +1164,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Download.isSupported",
@@ -1202,7 +1202,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Download.pause",
@@ -1230,7 +1230,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Download.resume",
@@ -1258,7 +1258,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Download.start",
@@ -1286,7 +1286,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "EgressPolicy.decide",
@@ -5257,7 +5257,7 @@
   ],
   "summary": {
     "total": 291,
-    "routed": 291,
+    "routed": 286,
     "missing": 0,
     "supported": 158,
     "partial": 71,

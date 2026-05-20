@@ -437,6 +437,7 @@ export {
 } from "./dialog.js"
 export {
   Download,
+  DownloadCapabilityFacts,
   DownloadClient,
   DownloadHandlersLive,
   DownloadLive,
@@ -452,11 +453,9 @@ export {
   makeHostDownloadRpcRuntime,
   type DownloadClientApi,
   type DownloadError,
-  type DownloadMemoryClientOptions,
   type DownloadRpc,
   type DownloadRpcHandlers,
-  type DownloadServiceApi,
-  type DownloadServiceOptions
+  type DownloadServiceApi
 } from "./download.js"
 export {
   EgressPolicy,

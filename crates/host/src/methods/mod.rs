@@ -1298,26 +1298,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(session_permission::is_supported),
     ),
     route(
-        host_protocol::DOWNLOAD_START_METHOD,
-        HostMethodDispatcher::Payload(download::start),
-    ),
-    route(
-        host_protocol::DOWNLOAD_PAUSE_METHOD,
-        HostMethodDispatcher::Payload(download::pause),
-    ),
-    route(
-        host_protocol::DOWNLOAD_RESUME_METHOD,
-        HostMethodDispatcher::Payload(download::resume),
-    ),
-    route(
-        host_protocol::DOWNLOAD_CANCEL_METHOD,
-        HostMethodDispatcher::Payload(download::cancel),
-    ),
-    route(
-        host_protocol::DOWNLOAD_LIST_METHOD,
-        HostMethodDispatcher::Payload(download::list),
-    ),
-    route(
         host_protocol::DOWNLOAD_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(download::is_supported),
     ),

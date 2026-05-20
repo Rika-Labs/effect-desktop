@@ -50,7 +50,7 @@ export const NativeParitySupport = Schema.Union([
 
 export type NativeParitySupport = Schema.Schema.Type<typeof NativeParitySupport>
 
-export const NativeParityHostStatus = Schema.Literals(["routed", "missing"])
+export const NativeParityHostStatus = Schema.Literals(["routed", "missing", "capability-fact"])
 
 export type NativeParityHostStatus = Schema.Schema.Type<typeof NativeParityHostStatus>
 
