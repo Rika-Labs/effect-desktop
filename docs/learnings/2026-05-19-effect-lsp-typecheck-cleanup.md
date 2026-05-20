@@ -7,8 +7,8 @@ Branch: `fix-pr-1254-lockfile`
 
 The branch had accumulated ~3,120 `@effect/language-service` diagnostics that the
 project `tsconfig` promotes to errors. This sweep drove the workspace typecheck
-from ~3,120 down to 4 residuals (a 99.87% reduction), with no `@effect-diagnostics`
-suppression directives anywhere.
+from ~3,120 down to 3 residuals (a 99.9% reduction), with no `@effect-diagnostics`
+suppression directives anywhere. Workspace lint and format are fully clean.
 
 ## What actually shipped
 
@@ -59,27 +59,30 @@ Running a global `oxfmt .` on this repo can invoke an autofix layer that leaves
 unrelated files in a broken state. Always format specific files
 (`oxfmt <files>`), never the repo root, when other work is in flight.
 
-## Documented residuals (4)
+## Documented residuals (3)
 
-### 3× `unsafeEffectTypeAssertion` in `desktop-app.ts`
+### 2× `unsafeEffectTypeAssertion` in `desktop-app.ts`
 
-`bindRpcGroup` (~line 1372): `Layer.provide(RpcServer.layer(group.middleware(
-PermissionInterceptor)), handlers)` genuinely still requires `RpcServer.Protocol`
-plus `Rpc.Middleware<AddMiddleware<Rpcs, PermissionInterceptor>>` and
-`Rpc.ServicesServer<...>`. `RpcServer.Protocol` is supplied by the bridge package
-at integration time, not inside core. The blocker for a clean fix is the
-`AddMiddleware<Rpcs, X>` conditional type: TypeScript cannot reduce it while
-`Rpcs` is generic, so `ToHandler<AddMiddleware<Rpcs, X>>` and `ToHandler<Rpcs>`
-stay un-unifiable even though they denote the same handler set for every
-concrete `Rpcs`.
+Both are TypeScript type-system limitations — TS cannot reduce a conditional type
+applied to a still-generic type parameter. No code change clears them; the only
+escape is a cast, asserted once with an inline comment.
 
-`dependentLayer` (~1167) and `buildSpine` return (~1175): load-bearing casts at
-the core↔composition seam. The merged layer's real channels carry `WorkflowEngine`
-(satisfied later by `coreServicesLayer`'s in-memory engine) and `Config.ConfigError`
-(from `coreServicesLayer` / the provider layer). Both predate this branch.
-Eliminating them means aligning every upstream layer declaration with its actual
-provided services and `Layer.orDie`-wrapping `ConfigError` at the boundary — a
-real architectural change that risks the green test suite, tracked as follow-up.
+`runtime()` (~line 836): `buildSpine` genuinely provides a superset of
+`DesktopRuntimeServices` and requires a subset of
+`Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>`, but its inferred
+requirement is the nested `Exclude<Exclude<RIn, …>, …>` that TS will not reduce
+against a generic `RIn`. The `dependentLayer` / `runtimeBase` casts that used to
+sit alongside this one were genuinely eliminated: dropping the `Layer<never, …>`
+annotation on `coreServicesLayer` exposed its real provided services, and
+`Layer.orDie` on the config-error-bearing layers (a malformed startup config is
+unrecoverable) made the error channel resolve honestly.
+
+`bindRpcGroup` (~1367): `Layer.provide(RpcServer.layer(group.middleware(
+PermissionInterceptor)), handlers)` needs `Rpc.ToHandler<AddMiddleware<Rpcs,
+PermissionInterceptor>>`, while `handlers` provides `Rpc.ToHandler<Rpcs>`.
+`AddMiddleware` adds no RPCs so the handler sets are identical, but TS cannot
+reduce `AddMiddleware<Rpcs, X>` while `Rpcs` is generic. `RpcServer.Protocol`
+is also genuinely supplied by the bridge package at integration time.
 
 ### 1× `globalTimers` in `process.test.ts`
 
